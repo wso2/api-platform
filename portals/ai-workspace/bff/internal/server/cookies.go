@@ -20,8 +20,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"ai-workspace-bff/internal/session"
 )
 
 func sameSite(v string) http.SameSite {
@@ -35,18 +33,19 @@ func sameSite(v string) http.SameSite {
 	}
 }
 
-// setSessionCookie writes the opaque session id cookie, bounded by the session's
-// absolute expiry.
-func (s *Server) setSessionCookie(w http.ResponseWriter, sess *session.Session) {
+// setSessionCookie writes the session cookie carrying the JWT itself, bounded by
+// the supplied absolute expiry. The cookie stays HttpOnly so browser JS cannot
+// read it, but the proxy reads the JWT straight from it — no server-side lookup.
+func (s *Server) setSessionCookie(w http.ResponseWriter, jwt string, absExpiry time.Time) {
 	maxAge := 0
-	if !sess.AbsoluteExpiry.IsZero() {
-		if d := time.Until(sess.AbsoluteExpiry); d > 0 {
+	if !absExpiry.IsZero() {
+		if d := time.Until(absExpiry); d > 0 {
 			maxAge = int(d.Seconds())
 		}
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.Cookie.Name,
-		Value:    sess.ID,
+		Value:    jwt,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,

@@ -16,8 +16,8 @@
 
 // Package auth implements the BFF's two login mechanisms: file-based (forwarding
 // credentials to the Platform API) and OIDC (confidential authorization-code
-// flow). In both cases the resulting token is stored server-side; the browser
-// only receives the opaque session cookie.
+// flow). The resulting access JWT is placed in the HttpOnly session cookie; for
+// OIDC the refresh/id tokens are additionally kept server-side for renewal.
 package auth
 
 import (

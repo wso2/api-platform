@@ -61,13 +61,15 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	s := &Server{
 		cfg:          cfg,
-		store:        session.NewMemoryStore(),
 		fileBased:    auth.NewFileBased(upstream, cfg.PlatformAPIURL, cfg.PlatformLoginPath, cfg.Session.AbsoluteTTL),
 		proxy:        proxy.ReverseProxy(target, cfg.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
 	if cfg.OIDC.Enabled {
+		// The session store exists only to hold OIDC refresh/id tokens for renewal.
+		// File-based sessions are fully self-contained in the cookie JWT.
+		s.store = session.NewMemoryStore()
 		o, err := auth.NewOIDC(
 			ctx, upstream,
 			cfg.OIDC.Issuer, cfg.OIDC.ClientID, cfg.OIDC.ClientSecret,
@@ -93,7 +95,10 @@ func (s *Server) Close() error {
 	if s.oidc != nil {
 		s.oidc.Close()
 	}
-	return s.store.Close()
+	if s.store != nil {
+		return s.store.Close()
+	}
+	return nil
 }
 
 // oidcClaimMapping builds the claim mapping for OIDC tokens from config. Each

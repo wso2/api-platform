@@ -295,6 +295,13 @@ func (o *OIDC) SessionFromToken(tok *tokenResponse, prev *session.Session) *sess
 	return s
 }
 
+// UserFromAccessToken decodes the access token's claims (without verifying) and
+// maps them to a display User. Used as a fallback when no stored session entry
+// is available (e.g. after a BFF restart), so id_token-only claims may be absent.
+func (o *OIDC) UserFromAccessToken(accessToken string) session.User {
+	return session.UserFromClaims(session.DecodeJWTClaims(accessToken), nil, o.mapping)
+}
+
 func (o *OIDC) sessionFromToken(tok *tokenResponse) *session.Session {
 	atClaims := session.DecodeJWTClaims(tok.AccessToken)
 	idClaims := session.DecodeJWTClaims(tok.IDToken)

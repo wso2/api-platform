@@ -22,10 +22,11 @@
 // Native-fetch client for the Platform API, routed same-origin through the BFF.
 //
 // Auth model (BFF):
-//   The browser holds NO token. Every request rides the HttpOnly `_bff_session`
-//   cookie (credentials: 'include'); the BFF looks up the session and injects the
-//   bearer token when proxying to the Platform API. State-mutating requests carry
-//   a custom CSRF header that cross-site attackers cannot set.
+//   Every request rides the HttpOnly `_bff_session` cookie (credentials:
+//   'include'), which now carries the JWT itself; the BFF reads that token
+//   straight from the cookie and injects it as the bearer when proxying to the
+//   Platform API. State-mutating requests carry a custom CSRF header that
+//   cross-site attackers cannot set.
 // ============================================================================
 
 import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';

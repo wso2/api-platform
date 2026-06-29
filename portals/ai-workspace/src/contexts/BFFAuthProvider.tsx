@@ -19,8 +19,10 @@
 /*
  * BFFAuthProvider — the single auth provider for both file-based and OIDC modes.
  *
- * The browser never holds a token. This provider hydrates the user from the BFF
- * session endpoint (GET /api/session, sent with the HttpOnly cookie). Login and
+ * This provider hydrates the user from the BFF session endpoint
+ * (GET /api/session, sent with the HttpOnly cookie), which also returns the full
+ * JWT for call-sites that need the raw token (the BFF proxy still injects the
+ * same token upstream, so most API calls don't need it). Login and
  * logout are delegated to the BFF:
  *   - OIDC: full-page redirect to /api/auth/login (the BFF does the code exchange)
  *   - basic: the login page POSTs /api/login, then the app reloads to re-hydrate
@@ -39,6 +41,10 @@ const OIDC_LOGIN_URL = '/api/auth/login';
 
 interface SessionResponse {
   authenticated: boolean;
+  // The full JWT minted/obtained by the BFF. The BFF still injects this same
+  // token when proxying (the browser need not send it), but it is surfaced here
+  // for call-sites that require the raw token.
+  accessToken?: string | null;
   user?: {
     name?: string | null;
     email?: string | null;
@@ -69,6 +75,7 @@ function bffHeaders(): Record<string, string> {
 
 export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -78,12 +85,22 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch(SESSION_URL, { credentials: 'include', headers: bffHeaders() });
         if (!cancelled && res.ok) {
           const body = (await res.json()) as SessionResponse;
-          setUser(body.authenticated ? toAppUser(body.user) : null);
+          if (body.authenticated) {
+            setUser(toAppUser(body.user));
+            setAccessToken(body.accessToken ?? null);
+          } else {
+            setUser(null);
+            setAccessToken(null);
+          }
         } else if (!cancelled) {
           setUser(null);
+          setAccessToken(null);
         }
       } catch {
-        if (!cancelled) setUser(null);
+        if (!cancelled) {
+          setUser(null);
+          setAccessToken(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -129,12 +146,12 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: user !== null,
       isLoading: loading,
       user,
-      accessToken: null, // tokens live in the BFF session, never in the browser
+      accessToken, // full JWT surfaced from the BFF session (also injected by the proxy)
       hasPermission,
       login,
       logout,
     }),
-    [user, loading, hasPermission, login, logout],
+    [user, accessToken, loading, hasPermission, login, logout],
   );
 
   return <AppAuthContext.Provider value={value}>{children}</AppAuthContext.Provider>;

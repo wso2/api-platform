@@ -16,7 +16,8 @@
 
 // Package proxy reverse-proxies SPA API calls to the Platform API, replacing the
 // nginx /api-proxy location. It strips the inbound browser Cookie and injects the
-// session's bearer token so the token never travels through the browser.
+// bearer token (read by the handler straight from the HttpOnly session cookie)
+// as the upstream Authorization header.
 package proxy
 
 import (

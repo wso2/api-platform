@@ -77,38 +77,45 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.persistAndSetCookie(w, r, sess); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create session"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": sess.User})
+	// The cookie carries the JWT itself. File-based sessions have no refresh
+	// token, so nothing is stored server-side at all.
+	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
+	writeJSON(w, http.StatusOK, map[string]any{"user": sess.User, "accessToken": sess.AccessToken})
 }
 
-// handleLogout (POST /api/logout) — destroy session, clear cookie.
+// handleLogout (POST /api/logout) — clear the cookie and (OIDC) drop the
+// refresh-state entry, returning the IDP end-session URL.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	sess, _ := s.currentSession(r)
-	if sess != nil {
-		_ = s.store.Delete(r.Context(), sess.ID)
-	}
+	jwt, _ := s.tokenFromCookie(r)
 	s.clearSessionCookie(w)
 
-	if sess != nil && sess.Mode == session.ModeOIDC && s.oidc != nil {
-		writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": s.oidc.LogoutURL(sess.IDToken)})
+	if s.oidc != nil && jwt != "" {
+		idToken := ""
+		if sess, ok, _ := s.store.Get(r.Context(), jwt); ok {
+			idToken = sess.IDToken
+		}
+		_ = s.store.Delete(r.Context(), jwt)
+		writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": s.oidc.LogoutURL(idToken)})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleSession (GET /api/session) — hydrate the SPA (no token in the body).
+// handleSession (GET /api/session) — hydrate the SPA, including the access token.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	// Per-user authentication state must never be cached by browsers or proxies.
+	// Per-user authentication state (and the token it now carries) must never be
+	// cached by browsers or proxies.
 	w.Header().Set("Cache-Control", "no-store")
-	sess, ok := s.currentSession(r)
+	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": sess.User})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"authenticated": true,
+		"user":          s.userFromToken(r.Context(), jwt),
+		"accessToken":   jwt,
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -157,10 +164,13 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
 		return
 	}
-	if err := s.persistAndSetCookie(w, r, sess); err != nil {
+	// OIDC: the cookie carries the access JWT, while the refresh/id tokens are
+	// kept server-side keyed by that JWT so the proxy can renew it later.
+	if err := s.putRefreshState(r.Context(), sess); err != nil {
 		http.Redirect(w, r, "/login?error=session_failed", http.StatusFound)
 		return
 	}
+	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
 	http.Redirect(w, r, sanitizeReturn(ret), http.StatusFound)
 }
 
@@ -168,28 +178,36 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 // Reverse proxy
 // ---------------------------------------------------------------------------
 
-// handleProxy (/api/proxy/*) — inject the session's bearer and forward upstream.
+// handleProxy (/api/proxy/*) — take the JWT straight from the cookie and forward
+// it upstream. No server-side lookup is involved unless the token is an OIDC
+// access token that is near expiry and must be refreshed.
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.currentSession(r)
+	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not authenticated"})
 		return
 	}
 
-	// Refresh near-expiry OIDC access tokens before proxying.
-	if sess.Mode == session.ModeOIDC && s.oidc != nil && s.needsRefresh(sess) {
-		refreshed, err := s.refreshSession(r.Context(), sess)
-		if err != nil {
-			slog.Warn("token refresh failed", "err", err)
-			_ = s.store.Delete(r.Context(), sess.ID)
-			s.clearSessionCookie(w)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
-			return
+	// Refresh near-expiry OIDC access tokens before proxying. The expiry is read
+	// from the JWT itself (not the store); the store is consulted only when an
+	// actual refresh is required.
+	if s.oidc != nil {
+		exp := session.ExpiryFromClaims(session.DecodeJWTClaims(jwt))
+		if needsRefreshSoon(exp) {
+			refreshed, err := s.refreshByToken(r.Context(), jwt)
+			if err != nil {
+				slog.Warn("token refresh failed", "err", err)
+				_ = s.store.Delete(r.Context(), jwt)
+				s.clearSessionCookie(w)
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
+				return
+			}
+			jwt = refreshed.AccessToken
+			s.setSessionCookie(w, jwt, refreshed.AbsoluteExpiry)
 		}
-		sess = refreshed
 	}
 
-	s.proxy.ServeHTTP(w, proxy.WithToken(r, sess.AccessToken))
+	s.proxy.ServeHTTP(w, proxy.WithToken(r, jwt))
 }
 
 // ---------------------------------------------------------------------------
@@ -217,60 +235,70 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 // Session helpers
 // ---------------------------------------------------------------------------
 
-func (s *Server) currentSession(r *http.Request) (*session.Session, bool) {
+// tokenFromCookie returns the JWT stored directly in the session cookie.
+func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
 	c, err := r.Cookie(s.cfg.Cookie.Name)
 	if err != nil || c.Value == "" {
-		return nil, false
+		return "", false
 	}
-	sess, ok, err := s.store.Get(r.Context(), c.Value)
-	if err != nil || !ok {
-		return nil, false
-	}
-	return sess, true
+	return c.Value, true
 }
 
-func (s *Server) persistAndSetCookie(w http.ResponseWriter, r *http.Request, sess *session.Session) error {
-	id, err := session.NewID()
-	if err != nil {
-		return err
+// userFromToken builds the display User for /api/session. File-based claims are
+// self-contained in the JWT. For OIDC the stored entry holds the richer User
+// (which merged id_token claims at login); we fall back to decoding the access
+// token if that entry is gone (e.g. after a BFF restart).
+func (s *Server) userFromToken(ctx context.Context, jwt string) session.User {
+	if s.oidc != nil {
+		if sess, ok, _ := s.store.Get(ctx, jwt); ok {
+			return sess.User
+		}
+		return s.oidc.UserFromAccessToken(jwt)
 	}
-	sess.ID = id
-	if err := s.store.Put(r.Context(), sess); err != nil {
-		return err
-	}
-	s.setSessionCookie(w, sess)
-	return nil
+	return session.UserFromClaims(session.DecodeJWTClaims(jwt), nil, session.DefaultClaimMapping())
 }
 
-func (s *Server) needsRefresh(sess *session.Session) bool {
-	if sess.RefreshToken == "" || sess.AccessExpiry.IsZero() {
+// putRefreshState stores the OIDC refresh/id tokens keyed by the access JWT so
+// the proxy can renew the token later. The cookie itself carries the JWT.
+func (s *Server) putRefreshState(ctx context.Context, sess *session.Session) error {
+	sess.ID = sess.AccessToken
+	return s.store.Put(ctx, sess)
+}
+
+// needsRefreshSoon reports whether an access token is within the renewal window
+// of its expiry. A zero expiry (no exp claim) is treated as not-refreshable.
+func needsRefreshSoon(accessExpiry time.Time) bool {
+	if accessExpiry.IsZero() {
 		return false
 	}
-	return time.Now().Add(60 * time.Second).After(sess.AccessExpiry)
+	return time.Now().Add(60 * time.Second).After(accessExpiry)
 }
 
-// refreshSession performs a single-flight refresh per session id and rotates the
-// stored refresh token.
-func (s *Server) refreshSession(ctx context.Context, sess *session.Session) (*session.Session, error) {
+// refreshByToken performs a single-flight refresh keyed by the current access
+// JWT, rotating the stored token set and re-keying the store entry to the new
+// access token.
+func (s *Server) refreshByToken(ctx context.Context, jwt string) (*session.Session, error) {
 	s.refreshMu.Lock()
-	mu := s.refreshLocks[sess.ID]
+	mu := s.refreshLocks[jwt]
 	if mu == nil {
 		mu = &refreshLock{}
-		s.refreshLocks[sess.ID] = mu
+		s.refreshLocks[jwt] = mu
 	}
 	s.refreshMu.Unlock()
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Re-read under the lock: the session may have been refreshed or deleted while
-	// we waited. Using the freshly-read session (not the stale caller copy) avoids
-	// resurrecting a deleted session or refreshing with a rotated-out token.
-	cur, ok, _ := s.store.Get(ctx, sess.ID)
+	// Re-read under the lock: a concurrent request may have already refreshed (and
+	// thus deleted) this entry while we waited.
+	cur, ok, _ := s.store.Get(ctx, jwt)
 	if !ok {
 		return nil, errors.New("session no longer exists")
 	}
-	if !s.needsRefresh(cur) {
+	if cur.RefreshToken == "" {
+		return nil, errors.New("session has no refresh token")
+	}
+	if !needsRefreshSoon(cur.AccessExpiry) {
 		return cur, nil
 	}
 
@@ -279,7 +307,7 @@ func (s *Server) refreshSession(ctx context.Context, sess *session.Session) (*se
 		return nil, err
 	}
 	updated := s.oidc.SessionFromToken(tok, cur)
-	updated.ID = cur.ID
+	updated.ID = updated.AccessToken
 	// Preserve the original absolute deadline: the hard cap must bound total
 	// session lifetime, not slide forward on every refresh (which would let an
 	// active session live indefinitely and disagree with the cookie's MaxAge).
@@ -287,6 +315,11 @@ func (s *Server) refreshSession(ctx context.Context, sess *session.Session) (*se
 	if err := s.store.Put(ctx, updated); err != nil {
 		return nil, err
 	}
+	// Drop the old entry and its single-flight lock now that the token rotated.
+	_ = s.store.Delete(ctx, jwt)
+	s.refreshMu.Lock()
+	delete(s.refreshLocks, jwt)
+	s.refreshMu.Unlock()
 	return updated, nil
 }
 

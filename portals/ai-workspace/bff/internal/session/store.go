@@ -14,9 +14,10 @@
  * under the License.
  */
 
-// Package session holds server-side sessions. The browser only ever receives an
-// opaque session id in an HttpOnly cookie; the tokens live here so the BFF can
-// inject them when proxying. The BFF does NOT validate tokens — it stores and
+// Package session holds the BFF's session helpers. The access JWT now travels in
+// the HttpOnly cookie itself, so the proxy forwards it without any lookup. The
+// store survives only to hold OIDC refresh/id tokens (keyed by the access token)
+// so the proxy can renew the access token. The BFF does NOT validate tokens — it
 // forwards them, and only decodes (without verifying) their claims for display.
 package session
 
@@ -48,7 +49,8 @@ type Org struct {
 	Handle string `json:"handle"`
 }
 
-// Session is the server-side record keyed by the opaque cookie id.
+// Session is the server-side record. For OIDC it is keyed by the access token and
+// holds the refresh/id tokens needed to renew it; file-based auth does not use it.
 type Session struct {
 	ID             string
 	Mode           string
