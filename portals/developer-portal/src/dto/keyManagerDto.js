@@ -22,11 +22,11 @@
  */
 class KeyManagerDTO {
     constructor(km) {
-        this.id = km.KM_ID;
-        this.orgId = km.ORG_ID;
+        this.id = km.UUID;
+        this.orgId = km.ORG_UUID;
         this.name = km.NAME;
         this.type = km.TYPE;
-        this.enabled = km.ENABLED;
+        this.enabled = !!km.ENABLED;
         this.tokenEndpoint = km.TOKEN_ENDPOINT;
         this.clientRegistrationEndpoint = km.CLIENT_REG_ENDPOINT;
         if (km.ISSUER) {
@@ -47,7 +47,7 @@ class KeyManagerDTO {
  */
 class KeyManagerPublicDTO {
     constructor(km) {
-        this.id = km.KM_ID;
+        this.id = km.UUID;
         this.name = km.NAME;
         this.type = km.TYPE;
         this.tokenEndpoint = km.TOKEN_ENDPOINT;

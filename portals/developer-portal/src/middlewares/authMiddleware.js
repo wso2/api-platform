@@ -95,14 +95,14 @@ async function verifyBearerToken(token, req) {
 
 /**
  * Verifies that `orgClaim` (from the token or session) matches the
- * ORGANIZATION_IDENTIFIER of the org identified by `pathOrgId`.
+ * IDP_REF_ID of the org identified by `pathOrgId`.
  * Returns an Error (with .status set) on failure, null on success.
  */
 const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function checkOrgIsolation(pathOrgId, orgClaim) {
     if (!ORG_UUID_RE.test(pathOrgId)) {
-        const err = new Error('Invalid organization ID: must be a UUID');
+        const err = new Error('Invalid organization UUID: must be a UUID');
         err.status = 400;
         return err;
     }
@@ -125,10 +125,10 @@ async function checkOrgIsolation(pathOrgId, orgClaim) {
         err.status = 500;
         return err;
     }
-    if (orgClaim !== orgDetails.ORGANIZATION_IDENTIFIER) {
+    if (orgClaim !== orgDetails.IDP_REF_ID) {
         logger.warn('Org isolation mismatch', {
             pathOrgId,
-            orgIdentifier: orgDetails.ORGANIZATION_IDENTIFIER,
+            orgIdentifier: orgDetails.IDP_REF_ID,
             orgClaim,
         });
         const err = new Error('Token org does not match requested organization');

@@ -18,10 +18,9 @@
  */
 class ApplicationDTO {
     constructor(app) {
-        this.id = app.APP_ID;
+        this.id = app.UUID;
         this.name = app.NAME;
         this.description = app.DESCRIPTION;
-        this.type = app.TYPE;
         if (app.DP_APP_KEY_MAPPINGs) {
             this.appMap = app.DP_APP_KEY_MAPPINGs.map(map => new AppMappingDTO(map));
         }
@@ -36,28 +35,11 @@ class ApplicationDTO {
     }
 }
 
-class SubscriptionDTO {
-    constructor(sub) {
-        this.id = sub.SUB_ID;
-        this.appId = sub.APP_ID;
-        this.apiId = sub.REFERENCE_ID;
-        this.planId = sub.PLAN_ID;
-    }
-
-    setResponseData(data) {
-        this.data = data;
-    }
-
-    getResponseData() {
-        return this.data;
-    }
-}
-
 class AppMappingDTO {
     constructor(map) {
         this.appRefID = map.AS_CLIENT_ID;
-        this.kmID = map.KM_ID;
-        this.keyType = map.KEY_TYPE;
+        this.kmID = map.KM_UUID;
+        this.keyType = map.TYPE;
         this.additionalProperties = map.ADDITIONAL_PROPERTIES;
     }
 
@@ -71,6 +53,5 @@ class AppMappingDTO {
 }
 
 module.exports = {
-    ApplicationDTO,
-    SubscriptionDTO
+    ApplicationDTO
 };

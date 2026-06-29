@@ -27,21 +27,23 @@ const whCrypto = createCryptoUtil(config.advanced.encryptionKey);
  * Create a new webhook subscriber for an organization.
  * The secret is encrypted before storage.
  */
-const create = async (orgId, subData) => {
+const create = async (orgId, subData, createdBy) => {
     try {
         if (subData.secret && !whCrypto.enabled) {
             throw new Error('Webhook subscriber encryption key is not configured. ' +
                 'Set config.advanced.encryptionKey to a 64-char hex string.');
         }
         const record = await WebhookSubscriber.create({
-            ORG_ID: orgId,
+            ORG_UUID: orgId,
             NAME: subData.name,
             TARGET_URL: subData.url,
             ...(subData.secret && { SECRET_ENC: whCrypto.encrypt(subData.secret) }),
             ...(subData.publicKey && { PUBLIC_KEY: subData.publicKey }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
-            ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
+            ...(subData.enabled !== undefined && { ENABLED: subData.enabled ? 1 : 0 }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy,
         });
         return record;
     } catch (error) {
@@ -57,15 +59,17 @@ const create = async (orgId, subData) => {
  * Update an existing webhook subscriber.
  * Re-encrypts the secret if it is provided.
  */
-const update = async (orgId, subscriberId, subData) => {
+const update = async (orgId, subscriberId, subData, updatedBy) => {
     try {
         const updatePayload = {
             ...(subData.name && { NAME: subData.name }),
             ...(subData.url && { TARGET_URL: subData.url }),
             ...(subData.publicKey !== undefined && { PUBLIC_KEY: subData.publicKey }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
-            ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
+            ...(subData.enabled !== undefined && { ENABLED: subData.enabled ? 1 : 0 }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
+            UPDATED_BY: updatedBy,
+            UPDATED_AT: new Date(),
         };
 
         if (subData.secret) {
@@ -76,7 +80,7 @@ const update = async (orgId, subscriberId, subData) => {
         }
 
         const [updatedRowsCount] = await WebhookSubscriber.update(updatePayload, {
-            where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId }
+            where: { UUID: subscriberId, ORG_UUID: orgId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
@@ -100,7 +104,7 @@ const update = async (orgId, subscriberId, subData) => {
 const list = async (orgId) => {
     try {
         return await WebhookSubscriber.findAll({
-            where: { ORG_ID: orgId }
+            where: { ORG_UUID: orgId }
         });
     } catch (error) {
         logger.error('Error fetching webhook subscribers', { error });
@@ -115,7 +119,7 @@ const list = async (orgId) => {
 const matchSubscribers = async (orgId, eventType) => {
     try {
         const subscribers = await WebhookSubscriber.findAll({
-            where: { ORG_ID: orgId, ENABLED: true }
+            where: { ORG_UUID: orgId, ENABLED: 1 }
         });
         return subscribers.filter(sub => {
             const patterns = sub.EVENT_PATTERNS;
@@ -137,11 +141,11 @@ const matchSubscribers = async (orgId, eventType) => {
 };
 
 /**
- * Get a single webhook subscriber by ID.
+ * Get a single webhook subscriber by UUID.
  */
 const get = async (orgId, subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId } });
+        const sub = await WebhookSubscriber.findOne({ where: { UUID: subscriberId, ORG_UUID: orgId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -156,14 +160,14 @@ const get = async (orgId, subscriberId) => {
 };
 
 /**
- * Get a single webhook subscriber by ID only, without scoping to an org.
- * SUBSCRIBER_ID is a globally unique UUID primary key, so this is safe.
- * Used by the delivery worker, which only has the subscriber ID (from the
- * delivery row) and not the org ID in scope.
+ * Get a single webhook subscriber by UUID only, without scoping to an org.
+ * UUID is a globally unique UUID primary key, so this is safe.
+ * Used by the delivery worker, which only has the subscriber UUID (from the
+ * delivery row) and not the org UUID in scope.
  */
 const getById = async (subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { SUBSCRIBER_ID: subscriberId } });
+        const sub = await WebhookSubscriber.findOne({ where: { UUID: subscriberId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -183,7 +187,7 @@ const getById = async (subscriberId) => {
 const deleteSubscriber = async (orgId, subscriberId) => {
     try {
         const deleted = await WebhookSubscriber.destroy({
-            where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId }
+            where: { UUID: subscriberId, ORG_UUID: orgId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');

@@ -20,23 +20,23 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
-    PLAN_ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         allowNull: false,
         primaryKey: true
     },
-    PLAN_NAME: {
+    HANDLE: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: 'unique_org_plan_name'
+        unique: 'unique_org_plan_handle'
     },
-    DISPLAY_NAME: {
+    NAME: {
         type: DataTypes.STRING,
         allowNull: false
     },
     DESCRIPTION: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(1023),
         allowNull: true
     },
     REQUEST_COUNT: {
@@ -46,20 +46,38 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
     REF_ID: {
         type: DataTypes.STRING,
         allowNull: true
-    }
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
     tableName: 'DP_SUBSCRIPTION_PLAN',
     returning: true,
     indexes: [
-        { name: 'IDX_SUB_PLAN_ORG_NAME', unique: true, fields: ['ORG_ID', 'PLAN_NAME'] }
+        { name: 'UQ_SUBSCRIPTION_PLAN_ORG_HANDLE', unique: true, fields: ['ORG_UUID', 'HANDLE'] }
     ]
 });
 
 SubscriptionPlan.belongsTo(Organization, {
     foreignKey: {
-        name: 'ORG_ID',
-        unique: 'unique_org_plan_name'
+        name: 'ORG_UUID',
+        unique: 'unique_org_plan_handle'
     }
 });
 

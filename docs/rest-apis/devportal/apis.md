@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
 `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planID`, `displayName`, or `requestCount` are ignored.
 
 > Payload
@@ -31,7 +31,7 @@ artifact: string
 schemaDefinition: string
 apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE",
+  API","apiType":"REST","agentVisibility":"VISIBLE",
   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
   "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
@@ -54,7 +54,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -74,7 +74,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiStatus": "PUBLISHED",
     "apiDescription": "Weather forecast API.",
     "apiType": "REST",
-    "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
     "tags": [
       "weather"
@@ -199,7 +198,7 @@ curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 
 ```
 
-Lists API metadata for an organization. The service supports exact filters by API name, version, and tags, free-text search with `query`, group filtering, and view filtering. Unknown query parameters are rejected.
+Lists API metadata for an organization. The service supports exact filters by API name, version, and tags, free-text search with `query`, and view filtering. Unknown query parameters are rejected.
 
 ### Authentication
 
@@ -215,8 +214,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |query|query|string|false|Free-text API metadata search term.|
 |apiName|query|string|false|Exact API name filter.|
 |version|query|string|false|Exact API version filter.|
-|tags|query|string|false|Exact API tags filter used by the metadata DAO.|
-|groups|query|string|false|Space-separated visible groups used for API visibility filtering.|
+|tags|query|string|false|Comma-separated tag names. Matches APIs tagged with any of the given names.|
 |view|query|string|false|Developer Portal view name used to filter visible APIs.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
@@ -240,7 +238,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
         "apiStatus": "PUBLISHED",
         "apiDescription": "Weather forecast API.",
         "apiType": "REST",
-        "visibility": "PUBLIC",
         "agentVisibility": "VISIBLE",
         "labels": [
           "default"
@@ -327,14 +324,12 @@ Status Code **200**
 |»»» apiTitle|string¦null|false|none|none|
 |»»» remotes|[object]|false|none|none|
 |»»» apiVersion|string|false|none|none|
-|»»» apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
+|»»» apiStatus|string|false|none|API lifecycle status.|
 |»»» apiDescription|string|false|none|none|
 |»»» apiType|string|false|none|none|
-|»»» visibility|string|false|none|none|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
-|»»» visibleGroups|[string]|false|none|none|
 |»»» owners|[ApiOwnersResponse](schemas.md#schemaapiownersresponse)|false|none|none|
 |»»»» technicalOwner|string|false|none|none|
 |»»»» businessOwner|string|false|none|none|
@@ -376,6 +371,15 @@ Status Code **200**
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiStatus|PUBLISHED|
+|apiStatus|DEPRECATED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 
 #### Enumerated Values
 
@@ -435,7 +439,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiStatus": "PUBLISHED",
     "apiDescription": "Weather forecast API.",
     "apiType": "REST",
-    "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
     "labels": [
       "default"
@@ -549,7 +552,7 @@ artifact: string
 schemaDefinition: string
 apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE",
+  API","apiType":"REST","agentVisibility":"VISIBLE",
   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
   "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
@@ -572,7 +575,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
@@ -594,7 +597,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiStatus": "PUBLISHED",
     "apiDescription": "Weather forecast API.",
     "apiType": "REST",
-    "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
     "labels": [
       "default"

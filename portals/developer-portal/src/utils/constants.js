@@ -49,14 +49,31 @@ module.exports = {
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
     USER_ID: 'sub',
+    SYSTEM_ACTOR: 'system',
     BASIC_HEADER: 'basicAuthHeader',
-    API_VISIBILITY: {
-        PUBLIC: 'PUBLIC',
-        PRIVATE: 'PRIVATE'
-    },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
         DEPRECATED: "DEPRECATED"
+    },
+    API_FLOW_STATUS: {
+        DRAFT: "DRAFT",
+        PUBLISHED: "PUBLISHED",
+    },
+    API_FLOW_CONTENT_TYPE: {
+        ARAZZO: "ARAZZO",
+        MD: "MD",
+    },
+    AGENT_VISIBILITY: {
+        VISIBLE: "VISIBLE",
+        HIDDEN: "HIDDEN",
+    },
+    SUBSCRIPTION_STATUS: {
+        ACTIVE: "ACTIVE",
+        INACTIVE: "INACTIVE",
+    },
+    API_KEY_STATUS: {
+        ACTIVE: "ACTIVE",
+        REVOKED: "REVOKED",
     },
     API_TYPE: {
         REST: "REST",
@@ -68,8 +85,8 @@ module.exports = {
     },
     DEVPORTAL_MODE: {
         DEFAULT: "DEFAULT",
-        MCP_ONLY: "MCPSERVERSONLY",
-        API_PROXIES: "APISONLY",
+        MCP_SERVERS_ONLY: "MCP_SERVERS_ONLY",
+        APIS_ONLY: "APIS_ONLY",
     },
     DOC_TYPES: {
         DOC_ID: 'DOC_',

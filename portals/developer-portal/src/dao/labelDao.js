@@ -18,11 +18,11 @@
 const Labels = require('../models/label');
 const { APILabels } = require('../models/apiMetadata');
 const ViewLabels = require('../models/viewLabel');
-const { Sequelize } = require('sequelize');
+const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
-const createMany = async (orgID, labels, t) => {
+const createMany = async (orgID, labels, createdBy, t) => {
 
     const labelList = [];
     try {
@@ -30,7 +30,9 @@ const createMany = async (orgID, labels, t) => {
             labelList.push({
                 NAME: label.name,
                 DISPLAY_NAME: label.displayName,
-                ORG_ID: orgID
+                ORG_UUID: orgID,
+                CREATED_BY: createdBy,
+                UPDATED_BY: createdBy
             });
         })
         const labelResponse = await Labels.bulkCreate(labelList, { transaction: t });
@@ -43,16 +45,16 @@ const createMany = async (orgID, labels, t) => {
     }
 }
 
-const createApiMapping = async (orgID, apiID, labels, t) => {
+const createApiMapping = async (orgID, apiID, labels, createdBy, t) => {
 
     const labelList = [];
     const IDList = await getId(orgID, labels, t);
     try {
         IDList.forEach(label => {
             labelList.push({
-                LABEL_ID: label,
-                API_ID: apiID,
-                ORG_ID: orgID
+                LABEL_UUID: label,
+                API_UUID: apiID,
+                CREATED_BY: createdBy,
             });
         });
         const labelResponse = await APILabels.bulkCreate(labelList, { transaction: t, ignoreDuplicates: true });
@@ -66,23 +68,25 @@ const createApiMapping = async (orgID, apiID, labels, t) => {
 
 }
 
-const update = async (orgID, label, t) => {
+const update = async (orgID, label, updatedBy, t) => {
 
     try {
         let [record, created] = await Labels.findOrCreate({
             where: {
                 NAME: label.name,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             defaults: {
                 NAME: label.name,
                 DISPLAY_NAME: label.displayName,
+                CREATED_BY: updatedBy,
+                UPDATED_BY: updatedBy
             },
             transaction: t,
             returning: true
         });
         if (!created) {
-            record = await record.update(label, { transaction: t }); // Update if found
+            record = await record.update({ DISPLAY_NAME: label.displayName, UPDATED_BY: updatedBy, UPDATED_AT: new Date() }, { transaction: t }); // Update if found
         }
         return record;
     } catch (error) {
@@ -114,13 +118,14 @@ const getIdList = async (orgID, label, t) => {
     const labelResponse = await Labels.findOne({
         where: {
             NAME: label,
-            ORG_ID: orgID
-        }
-    }, { transaction: t });
+            ORG_UUID: orgID
+        },
+        transaction: t
+    });
     if (!labelResponse) {
         throw new CustomError(404, constants.ERROR_CODE[404], "Label not found")
     }
-    return labelResponse.dataValues.LABEL_ID;
+    return labelResponse.dataValues.UUID;
 }
 
 const deleteLabel = async (orgID, labelNames) => {
@@ -129,7 +134,7 @@ const deleteLabel = async (orgID, labelNames) => {
         const labelResponse = await Labels.destroy({
             where: {
                 NAME: labelNames,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             }
         });
         return labelResponse;
@@ -146,7 +151,7 @@ const list = async (orgID) => {
     try {
         const labelResponse = await Labels.findAll({
             where: {
-                ORG_ID: orgID
+                ORG_UUID: orgID
             }
         });
         return labelResponse;
@@ -160,19 +165,15 @@ const list = async (orgID) => {
 
 const deleteApiMapping = async (orgID, apiID, labels, t) => {
 
-    const IDList = await getId(orgID, labels);
-    let deleteResponse;
+    const IDList = await getId(orgID, labels, t);
     try {
-        IDList.forEach(async label => {
-            deleteResponse = await APILabels.destroy({
-                where: {
-                    LABEL_ID: label,
-                    API_ID: apiID,
-                    ORG_ID: orgID
-                }
-            }, { transaction: t });
+        return await APILabels.destroy({
+            where: {
+                LABEL_UUID: { [Op.in]: IDList },
+                API_UUID: apiID,
+            },
+            transaction: t
         });
-        return deleteResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -181,10 +182,11 @@ const deleteApiMapping = async (orgID, apiID, labels, t) => {
     }
 }
 
-const addToView = async (orgID, labelID, viewID, t) => {
+const addToView = async (orgID, labelID, viewID, createdBy, t) => {
     try {
         const [record] = await ViewLabels.findOrCreate({
-            where: { LABEL_ID: labelID, VIEW_ID: viewID, ORG_ID: orgID },
+            where: { LABEL_UUID: labelID, VIEW_UUID: viewID },
+            defaults: { CREATED_BY: createdBy },
             transaction: t,
         });
         return record;

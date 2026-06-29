@@ -32,20 +32,16 @@ function _validateRequiredFields(payload) {
 }
 
 /**
- * Build a specific conflict message based on which unique constraint (name or
- * target URL) was violated.
+ * Build a specific conflict message for the name unique constraint.
  */
 function _uniqueConstraintMessage(error, payload) {
     const fields = Array.isArray(error.fields)
         ? error.fields
         : error.fields ? Object.keys(error.fields) : (error.errors || []).map(e => e.path);
-    if (fields.includes('TARGET_URL')) {
-        return `A webhook subscriber with target URL "${payload?.url}" already exists in this organization.`;
-    }
     if (fields.includes('NAME')) {
         return `A webhook subscriber with name "${payload?.name}" already exists in this organization.`;
     }
-    return 'A webhook subscriber with that name or target URL already exists in this organization.';
+    return 'A webhook subscriber with that name already exists in this organization.';
 }
 
 const createWebhookSubscriber = async (req, res) => {
@@ -58,7 +54,8 @@ const createWebhookSubscriber = async (req, res) => {
             return res.status(400).json({ error: validationError });
         }
 
-        const record = await whDao.create(orgId, payload);
+        const userId = util.resolveActor(req);
+        const record = await whDao.create(orgId, payload, userId);
         const dto = new WebhookSubscriberDTO(record);
         return res.status(201).json(dto);
     } catch (error) {
@@ -77,7 +74,8 @@ const updateWebhookSubscriber = async (req, res) => {
         const { orgId, subscriberId } = req.params;
         const payload = req.body;
 
-        const [, updatedRows] = await whDao.update(orgId, subscriberId, payload);
+        const userId = util.resolveActor(req);
+        const [, updatedRows] = await whDao.update(orgId, subscriberId, payload, userId);
         const dto = new WebhookSubscriberDTO(updatedRows[0]);
         return res.status(200).json(dto);
     } catch (error) {
@@ -124,8 +122,8 @@ const getWebhookSubscriber = async (req, res) => {
 function _formatDeliverySummary(delivery) {
     const event = delivery.DP_EVENT;
     return {
-        deliveryId: delivery.DELIVERY_ID,
-        eventType: event ? event.EVENT_TYPE : null,
+        deliveryId: delivery.UUID,
+        eventType: event ? event.TYPE : null,
         occurredAt: event ? event.OCCURRED_AT : null,
         status: delivery.STATUS,
         attemptCount: delivery.ATTEMPT_COUNT,

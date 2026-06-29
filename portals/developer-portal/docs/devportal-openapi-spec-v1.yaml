@@ -302,7 +302,7 @@ paths:
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml`
         / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
-        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`,
+        `status`, `agentVisibility`, `tags`, `labels`,
         `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
         GraphQL APIs when provided.
@@ -335,14 +335,13 @@ paths:
       summary: List API metadata
       description: >-
         Lists API metadata for an organization. The service supports exact filters by API name, version, and tags,
-        free-text search with `query`, group filtering, and view filtering. Unknown query parameters are rejected.
+        free-text search with `query`, and view filtering. Unknown query parameters are rejected.
       operationId: getAllApiMetadataForOrganization
       parameters:
         - $ref: "#/components/parameters/apiSearchQuery"
         - $ref: "#/components/parameters/apiNameQuery"
         - $ref: "#/components/parameters/apiVersionQuery"
         - $ref: "#/components/parameters/apiTagsQuery"
-        - $ref: "#/components/parameters/apiGroupsQuery"
         - $ref: "#/components/parameters/apiViewQuery"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
@@ -1261,7 +1260,7 @@ paths:
       summary: Create a view
       description: >-
         Creates a Developer Portal view for an organization and associates it with the supplied label names. If
-        `displayName` is omitted, the service stores the view name as the display name.
+        `name` is omitted, the service stores the view's handle as its name.
       requestBody:
         $ref: "#/components/requestBodies/ViewCreateBody"
       responses:
@@ -2304,16 +2303,8 @@ components:
       required: false
       schema:
         type: string
-        example: weather public
-      description: Exact API tags filter used by the metadata DAO.
-    apiGroupsQuery:
-      name: groups
-      in: query
-      required: false
-      schema:
-        type: string
-        example: subscriber admin
-      description: Space-separated visible groups used for API visibility filtering.
+        example: weather,public
+      description: Comma-separated tag names. Matches APIs tagged with any of the given names.
     apiViewQuery:
       name: view
       in: query
@@ -2576,20 +2567,20 @@ components:
             partnerView:
               summary: Create a partner APIs view
               value:
-                name: partner-apis
-                displayName: Partner APIs
+                handle: partner-apis
+                name: Partner APIs
                 labels:
                   - partner
                   - public
             internalView:
-              summary: Create a view using the name as display name
+              summary: Create a view using the handle as name
               value:
-                name: internal-apis
+                handle: internal-apis
                 labels:
                   - internal
     ViewUpdateBody:
       required: true
-      description: View update payload. Include only the display-name or label changes that should be applied.
+      description: View update payload. Include only the name or label changes that should be applied.
       content:
         application/json:
           schema:
@@ -2598,7 +2589,7 @@ components:
             renameAndRelabel:
               summary: Rename a view and adjust labels
               value:
-                displayName: Partner and Public APIs
+                name: Partner and Public APIs
                 addedLabels:
                   - premium
                 removedLabels:
@@ -2763,7 +2754,6 @@ components:
           example:
             name: Weather onboarding v2
             status: PUBLISHED
-            visibility: PUBLIC
             agentVisibility: VISIBLE
     APIFlowPromptBody:
       required: true
@@ -2831,13 +2821,13 @@ components:
                 type: string
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
-                  fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility,
-                  agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, visibleGroups,
+                  fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType,
+                  agentVisibility, apiStatus, referenceID, apiHandle, tags, labels,
                   owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   planName }` objects — only `planName` is read; the plan must already exist in the organization).
                 example: >-
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
-                  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE",
+                  API","apiType":"REST","agentVisibility":"VISIBLE",
                   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
                   "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}
@@ -3153,7 +3143,6 @@ components:
               apiStatus: PUBLISHED
               apiDescription: Weather forecast API.
               apiType: REST
-              visibility: PUBLIC
               agentVisibility: VISIBLE
               tags:
                 - weather
@@ -3183,7 +3172,6 @@ components:
               apiStatus: PUBLISHED
               apiDescription: Weather forecast API.
               apiType: REST
-              visibility: PUBLIC
               agentVisibility: VISIBLE
               labels:
                 - default
@@ -3217,7 +3205,6 @@ components:
                   apiStatus: PUBLISHED
                   apiDescription: Weather forecast API.
                   apiType: REST
-                  visibility: PUBLIC
                   agentVisibility: VISIBLE
                   labels:
                     - default
@@ -3484,7 +3471,6 @@ components:
             description: Guides users through the Weather API onboarding workflow.
             agentPrompt: Follow this workflow to onboard a Weather API user.
             status: PUBLISHED
-            visibility: PUBLIC
             agentVisibility: VISIBLE
             contentType: ARAZZO
             apiFlowDefinition: "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}"
@@ -3527,8 +3513,8 @@ components:
           schema:
             $ref: "#/components/schemas/ViewResponse"
           example:
-            name: partner-apis
-            displayName: Partner APIs
+            handle: partner-apis
+            name: Partner APIs
             labels:
               - partner
               - public
@@ -3552,7 +3538,7 @@ components:
           schema:
             $ref: "#/components/schemas/ViewUpdateRequest"
           example:
-            displayName: Partner and Public APIs
+            name: Partner and Public APIs
             addedLabels:
               - premium
             removedLabels:
@@ -3822,25 +3808,25 @@ components:
           type: string
         apiStatus:
           type: string
-          description: API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).
+          enum:
+            - PUBLISHED
+            - DEPRECATED
+          description: API lifecycle status.
           example: PUBLISHED
         apiDescription:
           type: string
         apiType:
           type: string
-        visibility:
-          type: string
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
         addedLabels:
           type: array
           items:
             type: string
         removedLabels:
-          type: array
-          items:
-            type: string
-        visibleGroups:
           type: array
           items:
             type: string
@@ -3964,14 +3950,14 @@ components:
     ViewResponse:
       type: object
       required:
+        - handle
         - name
-        - displayName
         - labels
       properties:
-        name:
+        handle:
           type: string
           example: partner-apis
-        displayName:
+        name:
           type: string
           example: Partner APIs
         labels:
@@ -4025,7 +4011,15 @@ components:
         organizationIdentifier:
           type: string
         orgConfiguration:
-          $ref: "#/components/schemas/GenericObject"
+          type: object
+          properties:
+            devportalMode:
+              type: string
+              enum:
+                - DEFAULT
+                - MCP_SERVERS_ONLY
+                - APIS_ONLY
+          additionalProperties: true
     SubscriptionPlanRequest:
       type: object
       required:
@@ -4688,15 +4682,15 @@ components:
     ViewCreateRequest:
       type: object
       required:
-        - name
+        - handle
         - labels
       properties:
-        name:
+        handle:
           type: string
           example: partner-apis
-        displayName:
+        name:
           type: string
-          description: Optional display name. Defaults to `name` when omitted.
+          description: Optional display name. Defaults to `handle` when omitted.
           example: Partner APIs
         labels:
           type: array
@@ -4711,7 +4705,7 @@ components:
     ViewUpdateRequest:
       type: object
       properties:
-        displayName:
+        name:
           type: string
           example: Partner and Public APIs
         addedLabels:
@@ -4842,6 +4836,9 @@ components:
           example: Weather onboarding
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
       additionalProperties: false
     APIFlowResponse:
@@ -4862,12 +4859,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
-        visibility:
-          type: string
-          example: PUBLIC
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           example: VISIBLE
         contentType:
           type: string
@@ -4920,14 +4920,16 @@ components:
           example: Follow this workflow to onboard a Weather API user.
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           default: PUBLISHED
           example: PUBLISHED
-        visibility:
-          type: string
-          default: PUBLIC
-          example: PUBLIC
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           default: VISIBLE
           example: VISIBLE
         contentType:
@@ -4961,12 +4963,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
-        visibility:
-          type: string
-          example: PUBLIC
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           example: VISIBLE
         contentType:
           type: string

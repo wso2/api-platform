@@ -31,26 +31,26 @@ const loadSubscriptions = async (req, res, next) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         let allSubscriptions = [];
         try {
             const createdBy = req.user && req.user.sub;
             const localSubs = await subDao.list(orgID, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
-                id: sub.SUB_ID,
+                id: sub.UUID,
                 type: 'TOKEN_BASED',
-                apiName: sub.DP_API_METADATA?.API_NAME || '',
-                apiVersion: sub.DP_API_METADATA?.API_VERSION || '',
-                apiHandle: sub.DP_API_METADATA?.API_HANDLE || '#',
-                planName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
+                apiName: sub.DP_API_METADATA?.NAME || '',
+                apiVersion: sub.DP_API_METADATA?.VERSION || '',
+                apiHandle: sub.DP_API_METADATA?.HANDLE || '#',
+                planName: sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
                 status: sub.STATUS,
-                subscriptionToken: sub.SUB_TOKEN,
+                subscriptionToken: sub.TOKEN,
                 createdAt: sub.CREATED_AT || null,
             }));
         } catch (err) {

@@ -4,7 +4,7 @@
       <i class="bi bi-house sidebar-icon"></i>
       <span class="nav-text">Home</span>
     </a>
-    {{#in devportalMode values="DEFAULT,APISONLY"}}
+    {{#in devportalMode values="DEFAULT,APIS_ONLY"}}
     <a href="{{baseUrl}}/apis" class="nav-link" id="apis">
       <i class="bi bi-boxes sidebar-icon"></i>
       <span class="nav-text">APIs</span>
@@ -27,7 +27,7 @@
       {{/if}}
     </div>
     {{/in}}
-    {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
+    {{#in devportalMode values="DEFAULT,MCP_SERVERS_ONLY"}}
     <a href="{{baseUrl}}/mcps" class="nav-link" id="mcps">
       <img src="/images/mcp-icon.svg" class="sidebar-icon" alt="" />
       <span class="nav-text">MCP Servers</span>

@@ -23,9 +23,7 @@ spec:
     - Gold
     - Bronze
 
-  visibility: PUBLIC
   agentVisibility: VISIBLE
-  visibleGroups: []
 
   businessInformation:
     businessOwner: API Team

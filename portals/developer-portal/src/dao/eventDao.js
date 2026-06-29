@@ -26,8 +26,8 @@ const DPEventDelivery = require('../models/eventDelivery');
  */
 async function create({ eventType, orgId, aggregateType, aggregateId, payload }, transaction) {
     return DPEvent.create(
-        { EVENT_TYPE: eventType, ORG_ID: orgId,
-          AGGREGATE_TYPE: aggregateType, AGGREGATE_ID: aggregateId, PAYLOAD: payload || {} },
+        { TYPE: eventType, ORG_UUID: orgId,
+          AGGREGATE_TYPE: aggregateType, AGGREGATE_UUID: aggregateId, PAYLOAD: payload || {} },
         { transaction }
     );
 }
@@ -38,7 +38,7 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
  */
 async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, transaction) {
     const rows = subscribers.map(sub => ({
-        EVENT_ID: eventId,
+        EVENT_UUID: eventId,
         SUBSCRIBER_ID: sub.id,
         TARGET_URL: sub.url,
         ENCRYPTED_FIELDS: (perSubscriberEncrypted && perSubscriberEncrypted[sub.id]) || null,
@@ -69,8 +69,8 @@ async function claimPending(batchSize) {
         }
         const events = await DPEvent.findAll(findOpts);
         if (events.length === 0) return [];
-        const ids = events.map(e => e.EVENT_ID);
-        await DPEvent.update({ STATUS: 'DISPATCHED' }, { where: { EVENT_ID: { [Op.in]: ids } }, transaction: t });
+        const ids = events.map(e => e.UUID);
+        await DPEvent.update({ STATUS: 'DISPATCHED' }, { where: { UUID: { [Op.in]: ids } }, transaction: t });
         return events;
     });
 }
@@ -94,10 +94,10 @@ async function claimDueDeliveries(batchSize) {
         }
         const rows = await DPEventDelivery.findAll(findOpts);
         if (rows.length === 0) return [];
-        const ids = rows.map(r => r.DELIVERY_ID);
+        const ids = rows.map(r => r.UUID);
         await DPEventDelivery.update(
             { STATUS: 'IN_FLIGHT', LAST_ATTEMPT_AT: new Date() },
-            { where: { DELIVERY_ID: { [Op.in]: ids } }, transaction: t }
+            { where: { UUID: { [Op.in]: ids } }, transaction: t }
         );
         return rows;
     });
@@ -109,7 +109,7 @@ async function claimDueDeliveries(batchSize) {
 async function markDelivered(deliveryId, httpStatus) {
     await DPEventDelivery.update(
         { STATUS: 'DELIVERED', LAST_HTTP_STATUS: httpStatus, DELIVERED_AT: new Date() },
-        { where: { DELIVERY_ID: deliveryId } }
+        { where: { UUID: deliveryId } }
     );
     await reconcile(await DPEventDelivery.findByPk(deliveryId));
 }
@@ -125,7 +125,7 @@ async function markFailed(deliveryId, { httpStatus, error, attemptCount, nextAtt
         LAST_ERROR: error ? String(error).slice(0, 1000) : null,
         NEXT_ATTEMPT_AT: deadLetter ? new Date() : nextAttemptAt
     };
-    await DPEventDelivery.update(update, { where: { DELIVERY_ID: deliveryId } });
+    await DPEventDelivery.update(update, { where: { UUID: deliveryId } });
     if (deadLetter) {
         await reconcile(await DPEventDelivery.findByPk(deliveryId));
     }
@@ -137,14 +137,14 @@ async function markFailed(deliveryId, { httpStatus, error, attemptCount, nextAtt
  */
 async function reconcile(delivery) {
     if (!delivery) return;
-    const all = await DPEventDelivery.findAll({ where: { EVENT_ID: delivery.EVENT_ID } });
+    const all = await DPEventDelivery.findAll({ where: { EVENT_UUID: delivery.EVENT_UUID } });
     if (all.length === 0) return;
     const terminal = all.every(d => d.STATUS === 'DELIVERED' || d.STATUS === 'DEAD_LETTERED');
     if (!terminal) return;
     const allDelivered = all.every(d => d.STATUS === 'DELIVERED');
     await DPEvent.update(
         { STATUS: allDelivered ? 'ALL_DELIVERED' : 'FAILED' },
-        { where: { EVENT_ID: delivery.EVENT_ID } }
+        { where: { UUID: delivery.EVENT_UUID } }
     );
 }
 
@@ -153,14 +153,14 @@ async function reconcile(delivery) {
  */
 async function list({ orgId, status, limit = 50, offset = 0 }) {
     const where = {};
-    if (orgId) where.ORG_ID = orgId;
+    if (orgId) where.ORG_UUID = orgId;
     if (status) where.STATUS = status;
     return DPEvent.findAndCountAll({
         where,
         order: [['OCCURRED_AT', 'DESC']],
         limit,
         offset,
-        include: [{ model: DPEventDelivery, attributes: ['DELIVERY_ID', 'SUBSCRIBER_ID', 'STATUS', 'ATTEMPT_COUNT', 'DELIVERED_AT'] }]
+        include: [{ model: DPEventDelivery, attributes: ['UUID', 'SUBSCRIBER_ID', 'STATUS', 'ATTEMPT_COUNT', 'DELIVERED_AT'] }]
     });
 }
 
@@ -180,7 +180,7 @@ async function get(eventId) {
 async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
     return DPEventDelivery.findAll({
         where: { SUBSCRIBER_ID: subscriberId },
-        include: [{ model: DPEvent, where: { ORG_ID: orgId }, attributes: ['EVENT_TYPE', 'OCCURRED_AT'] }],
+        include: [{ model: DPEvent, where: { ORG_UUID: orgId }, attributes: ['TYPE', 'OCCURRED_AT'] }],
         order: [[DPEvent, 'OCCURRED_AT', 'DESC']],
         limit
     });
@@ -194,11 +194,11 @@ async function retryDelivery(deliveryId, orgId) {
         { STATUS: 'PENDING', NEXT_ATTEMPT_AT: new Date(), LAST_ERROR: null },
         {
             where: {
-                DELIVERY_ID: deliveryId,
+                UUID: deliveryId,
                 STATUS: { [Op.in]: ['DEAD_LETTERED', 'FAILED', 'IN_FLIGHT'] },
-                EVENT_ID: {
+                EVENT_UUID: {
                     [Op.in]: sequelize.literal(
-                        `(SELECT EVENT_ID FROM DP_EVENT WHERE ORG_ID = ${sequelize.escape(orgId)})`
+                        `(SELECT UUID FROM DP_EVENT WHERE ORG_UUID = ${sequelize.escape(orgId)})`
                     )
                 }
             }

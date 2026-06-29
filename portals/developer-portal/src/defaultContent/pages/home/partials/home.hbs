@@ -9,9 +9,9 @@
     </span>
 
     <h1 class="hero-headline">
-      {{#if (eq devportalMode "MCPSERVERSONLY")}}
+      {{#if (eq devportalMode "MCP_SERVERS_ONLY")}}
       <span class="hero-headline-accent">MCP servers</span><br>built for AI agents.
-      {{else if (eq devportalMode "APISONLY")}}
+      {{else if (eq devportalMode "APIS_ONLY")}}
       <span class="hero-headline-accent">APIs &amp; workflows</span><br>built for Developers and AI Agents.
       {{else}}
       <span class="hero-headline-accent">APIs, MCP servers &amp; workflows</span><br>built for Developers and AI Agents.
@@ -19,20 +19,22 @@
     </h1>
 
     <p class="hero-desc">
-      {{#if (eq devportalMode "MCPSERVERSONLY")}}
+      {{#if (eq devportalMode "MCP_SERVERS_ONLY")}}
       Discover MCP tools and servers, configure them for your AI agents, and get up and running in minutes.
+      {{else if (eq devportalMode "APIS_ONLY")}}
+      Discover, connect, and orchestrate APIs and workflows. Browse the catalog, subscribe, and get going in minutes.
       {{else}}
       Discover, connect, and orchestrate APIs, MCP tools, and workflows. Browse the catalogs, subscribe, and get going in minutes.
       {{/if}}
     </p>
 
     <div class="hero-ctas">
-      {{#in devportalMode values="DEFAULT,APISONLY"}}
+      {{#in devportalMode values="DEFAULT,APIS_ONLY"}}
       <a href="{{baseUrl}}/apis" class="hero-btn hero-btn--gradient">
         Browse our APIs <i class="bi bi-arrow-right" aria-hidden="true"></i>
       </a>
       {{/in}}
-      {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
+      {{#in devportalMode values="DEFAULT,MCP_SERVERS_ONLY"}}
       <a href="{{baseUrl}}/mcps" class="hero-btn hero-btn--gradient">
         Browse our MCP servers <i class="bi bi-arrow-right" aria-hidden="true"></i>
       </a>

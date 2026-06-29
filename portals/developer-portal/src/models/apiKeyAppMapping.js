@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -17,20 +17,20 @@
  */
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
+const APIKey = require('./apiKey');
+const { Application } = require('./application');
 
-const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
-    UUID: {
+const APIKeyAppMapping = sequelize.define('DP_API_KEY_APP_MAPPING', {
+    KEY_UUID: {
         type: DataTypes.STRING(40),
-        defaultValue: Sequelize.UUIDV4,
-        primaryKey: true
+        allowNull: false,
+        primaryKey: true,
+        references: { model: APIKey, key: 'UUID' },
     },
-    API_UUID: {
+    APP_UUID: {
         type: DataTypes.STRING(40),
-        allowNull: false
-    },
-    PLAN_UUID: {
-        type: DataTypes.STRING(40),
-        allowNull: false
+        allowNull: false,
+        references: { model: Application, key: 'UUID' },
     },
     CREATED_BY: {
         type: DataTypes.STRING,
@@ -43,23 +43,17 @@ const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING',
     },
 }, {
     timestamps: false,
-    tableName: 'DP_API_SUBSCRIPTION_PLAN_MAPPING',
+    tableName: 'DP_API_KEY_APP_MAPPING',
     returning: true,
     indexes: [
-        {
-            name: 'UQ_API_SUBSCRIPTION_PLAN_MAPPING_PLAN_API',
-            unique: true,
-            fields: ['PLAN_UUID', 'API_UUID']
-        },
-        {
-            name: 'IDX_API_SUBSCRIPTION_PLAN_MAPPING_API_UUID',
-            fields: ['API_UUID']
-        }
-    ]
+        { name: 'IDX_API_KEY_APP_MAPPING_APP_UUID', fields: ['APP_UUID'] },
+    ],
 });
 
-// APIMetadata<->SubscriptionPlan belongsToMany (through this model) is
-// registered once in application.js, where both ends of the association
-// already live alongside the rest of the subscription wiring.
+APIKeyAppMapping.belongsTo(APIKey, { foreignKey: 'KEY_UUID', onDelete: 'CASCADE' });
+APIKey.hasOne(APIKeyAppMapping, { foreignKey: 'KEY_UUID', onDelete: 'CASCADE' });
 
-module.exports = APISubscriptionPlan;
+APIKeyAppMapping.belongsTo(Application, { foreignKey: 'APP_UUID', onDelete: 'CASCADE' });
+Application.hasMany(APIKeyAppMapping, { foreignKey: 'APP_UUID', onDelete: 'CASCADE' });
+
+module.exports = APIKeyAppMapping;

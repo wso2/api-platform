@@ -351,15 +351,11 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "visibility": "string",
-    "agentVisibility": "string",
+    "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
     ],
     "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
       "string"
     ],
     "owners": {
@@ -434,15 +430,11 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "visibility": "string",
-    "agentVisibility": "string",
+    "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
     ],
     "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
       "string"
     ],
     "owners": {
@@ -512,15 +504,11 @@ xor
   "apiStatus": "PUBLISHED",
   "apiDescription": "string",
   "apiType": "string",
-  "visibility": "string",
-  "agentVisibility": "string",
+  "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
   ],
   "removedLabels": [
-    "string"
-  ],
-  "visibleGroups": [
     "string"
   ],
   "owners": {
@@ -551,18 +539,25 @@ xor
 |apiTitle|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
 |apiVersion|string|false|none|none|
-|apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
+|apiStatus|string|false|none|API lifecycle status.|
 |apiDescription|string|false|none|none|
 |apiType|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
-|visibleGroups|[string]|false|none|none|
 |owners|[ApiOwnersResponse](#schemaapiownersresponse)|false|none|none|
 |apiImageMetadata|[ApiImageMetadataResponse](#schemaapiimagemetadataresponse)|false|none|none|
 |tags|[string]|false|none|none|
 |labels|[string]|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiStatus|PUBLISHED|
+|apiStatus|DEPRECATED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 
 <h2 id="tocS_ApiOwnersResponse">ApiOwnersResponse</h2>
 
@@ -793,8 +788,8 @@ OAuth key mapping entry attached to an application.
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -807,8 +802,8 @@ OAuth key mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|handle|string|true|none|none|
 |name|string|true|none|none|
-|displayName|string|true|none|none|
 |labels|[string]|true|none|none|
 
 <h2 id="tocS_OrganizationCreateRequest">OrganizationCreateRequest</h2>
@@ -856,7 +851,9 @@ OAuth key mapping entry attached to an application.
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
   "organizationIdentifier": "string",
-  "orgConfiguration": {}
+  "orgConfiguration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 
 ```
@@ -871,7 +868,16 @@ OAuth key mapping entry attached to an application.
 |businessOwnerEmail|string(email)|false|none|none|
 |orgHandle|string|true|none|none|
 |organizationIdentifier|string|true|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|orgConfiguration|object|false|none|none|
+|» devportalMode|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 <h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 
@@ -1644,8 +1650,8 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -1658,8 +1664,8 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
-|displayName|string|false|none|Optional display name. Defaults to `name` when omitted.|
+|handle|string|true|none|none|
+|name|string|false|none|Optional display name. Defaults to `handle` when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
@@ -1671,7 +1677,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "displayName": "Partner and Public APIs",
+  "name": "Partner and Public APIs",
   "addedLabels": [
     "premium"
   ],
@@ -1686,7 +1692,7 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|displayName|string|false|none|none|
+|name|string|false|none|none|
 |addedLabels|[string]|false|none|Label names to attach to the view.|
 |removedLabels|[string]|false|none|Label names to detach from the view.|
 
@@ -1865,6 +1871,13 @@ OAuth key payload.
 |name|string|false|none|none|
 |status|string|false|none|none|
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+
 <h2 id="tocS_APIFlowResponse">APIFlowResponse</h2>
 
 <a id="schemaapiflowresponse"></a>
@@ -1880,7 +1893,6 @@ OAuth key payload.
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": "string",
@@ -1901,7 +1913,6 @@ OAuth key payload.
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|string¦null|false|none|none|
@@ -1913,6 +1924,10 @@ OAuth key payload.
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
@@ -1970,7 +1985,6 @@ OAuth key payload.
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": {},
@@ -1988,7 +2002,6 @@ OAuth key payload.
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
@@ -2015,6 +2028,10 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
@@ -2032,7 +2049,6 @@ continued
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": {},
@@ -2050,7 +2066,6 @@ continued
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|any|false|none|none|
@@ -2077,6 +2092,10 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 

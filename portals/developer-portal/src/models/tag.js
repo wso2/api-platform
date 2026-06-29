@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -17,19 +17,22 @@
  */
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
+const { Organization } = require('./organization');
 
-const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
+
+const Tags = sequelize.define('DP_TAG', {
+
     UUID: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    API_UUID: {
+    ORG_UUID: {
         type: DataTypes.STRING(40),
-        allowNull: false
+        allowNull: false,
     },
-    PLAN_UUID: {
-        type: DataTypes.STRING(40),
+    NAME: {
+        type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_BY: {
@@ -41,25 +44,34 @@ const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING',
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_API_SUBSCRIPTION_PLAN_MAPPING',
+    tableName: 'DP_TAG',
     returning: true,
     indexes: [
         {
-            name: 'UQ_API_SUBSCRIPTION_PLAN_MAPPING_PLAN_API',
+            name: 'UQ_TAG_NAME_ORG_UUID',
             unique: true,
-            fields: ['PLAN_UUID', 'API_UUID']
+            fields: ['NAME', 'ORG_UUID'],
         },
         {
-            name: 'IDX_API_SUBSCRIPTION_PLAN_MAPPING_API_UUID',
-            fields: ['API_UUID']
+            name: 'IDX_TAG_ORG_UUID',
+            fields: ['ORG_UUID'],
         }
-    ]
+    ],
 });
 
-// APIMetadata<->SubscriptionPlan belongsToMany (through this model) is
-// registered once in application.js, where both ends of the association
-// already live alongside the rest of the subscription wiring.
+Tags.belongsTo(Organization, {
+    foreignKey: 'ORG_UUID'
+})
 
-module.exports = APISubscriptionPlan;
+module.exports = Tags;

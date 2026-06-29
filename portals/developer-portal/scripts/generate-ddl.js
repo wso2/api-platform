@@ -210,6 +210,18 @@ for (const model of ordered) {
         continue;
     }
 
+    // Sequelize has no first-class CHECK constraint support, so model-declared
+    // `checks` (cross-column / structural invariants only — see R4-NO-ENUM-CHECK)
+    // are spliced into the CREATE TABLE statement directly. The table is always
+    // freshly dropped+created by this script, so this is just as idempotent as
+    // the IF NOT EXISTS table guard Sequelize already applies.
+    if (model.options.checks && model.options.checks.length) {
+        const checksSql = model.options.checks
+            .map(c => `, CONSTRAINT "${c.name}" CHECK ${c.sql}`)
+            .join('');
+        createSql = createSql.replace(/\);$/, `${checksSql});`);
+    }
+
     lines.push(`-- ${model.tableName}`);
     lines.push(createSql.trim());
     lines.push('');
@@ -219,11 +231,16 @@ for (const model of ordered) {
             // QueryGenerator.addIndexQuery(tableName, options, rawTablename)
             const idxSql = qg.addIndexQuery(
                 model.tableName,
-                { fields: idx.fields, unique: !!idx.unique, name: idx.name },
+                { fields: idx.fields, unique: !!idx.unique, name: idx.name, where: idx.where },
                 model.tableName,
             );
             if (idxSql) {
-                const stmt = idxSql.trim();
+                let stmt = idxSql.trim();
+                // Sequelize's addIndexQuery has no IF NOT EXISTS option; splice it
+                // in for the dialects that support it (R9-INDEX).
+                if (dialect === 'postgres' || dialect === 'sqlite') {
+                    stmt = stmt.replace(/^CREATE( UNIQUE)? INDEX /, 'CREATE$1 INDEX IF NOT EXISTS ');
+                }
                 lines.push(stmt.endsWith(';') ? stmt : stmt + ';');
             }
         } catch (_) {

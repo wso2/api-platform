@@ -52,33 +52,33 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.loggedOrg = orgName;
         orgID = await orgDao.getId(orgName);
         const orgDetails = await orgDao.get(orgName);
-        templateContent.devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        templateContent.devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         templateContent.orgID = orgID;
 
         const viewId = await viewDao.getId(orgID, viewName);
         const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
         templateContent.apiFlows = apiFlows;
 
-        const allAPIs = await apiDao.getByCondition({ ORG_ID: orgID });
+        const allAPIs = await apiDao.getByCondition({ ORG_UUID: orgID });
         templateContent.orgAPIs = allAPIs.map(api => ({
-            apiId: api.API_ID,
-            apiName: api.API_NAME,
-            apiHandle: api.API_HANDLE,
-            apiDescription: api.API_DESCRIPTION,
-            apiType: api.API_TYPE,
-            apiVersion: api.API_VERSION,
+            apiId: api.UUID,
+            apiName: api.NAME,
+            apiHandle: api.HANDLE,
+            apiDescription: api.DESCRIPTION,
+            apiType: api.TYPE,
+            apiVersion: api.VERSION,
             apiStatus: api.STATUS,
             productionUrl: api.PRODUCTION_URL,
             sandboxUrl: api.SANDBOX_URL,
-            tags: api.TAGS || '',
+            tags: (api.DP_TAGs || []).map(tag => tag.NAME),
             agentVisibility: api.AGENT_VISIBILITY,
-            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.PLAN_NAME),
+            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.NAME),
         }));
 
         let orgLabels = [];
         try {
             const labelsRaw = await labelDao.list(orgID);
-            orgLabels = labelsRaw.map(l => ({ labelId: l.LABEL_ID, name: l.NAME, displayName: l.DISPLAY_NAME }));
+            orgLabels = labelsRaw.map(l => ({ labelId: l.UUID, name: l.NAME, displayName: l.DISPLAY_NAME }));
         } catch (err) {
             logger.warn('Failed to load labels for settings page', { error: err.message });
         }
@@ -88,8 +88,8 @@ const loadViewSettingsPage = async (req, res) => {
         try {
             const plansRaw = await subscriptionPlanDao.list(orgID);
             orgPlans = plansRaw.map(p => ({
-                planId: p.PLAN_ID,
-                planName: p.PLAN_NAME,
+                planId: p.UUID,
+                planName: p.NAME,
                 displayName: p.DISPLAY_NAME,
                 description: p.DESCRIPTION || '',
                 requestCount: p.REQUEST_COUNT,
@@ -169,18 +169,19 @@ const saveLlmsConfig = async (req, res) => {
 
     try {
         const orgID = await orgDao.getId(orgName);
+        const userId = util.resolveActor(req);
         const content = Buffer.from(JSON.stringify({ aiEnabled, portalName, portalDescription }));
         const orgData = {
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName,
-            fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG
+            fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG,
         };
         const existing = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         if (existing) {
-            await orgDao.updateContent(orgData);
+            await orgDao.updateContent({ ...orgData, updatedBy: userId });
         } else {
-            await orgDao.createContent(orgData);
+            await orgDao.createContent({ ...orgData, createdBy: userId });
         }
         res.json({ message: 'Saved successfully' });
     } catch (err) {

@@ -2,15 +2,10 @@
 
     {{!-- Hidden fields --}}
     <input type="hidden" id="editingApiFlowId" value="" />
-    <input type="hidden" id="editingApiFlowVisibility" value="PUBLIC" />
     <input type="hidden" id="editingApiFlowAgentVisibility" value="VISIBLE" />
 
-    {{!-- Hidden radio inputs for visibility / agentVisibility (keep IDs/names intact for JS) --}}
+    {{!-- Hidden radio inputs for agentVisibility (keep IDs/names intact for JS) --}}
     <div style="display:none;">
-        <input type="radio" class="btn-check" name="apiFlowVisibility" id="visibilityPublic" value="PUBLIC"
-            autocomplete="off" checked />
-        <input type="radio" class="btn-check" name="apiFlowVisibility" id="visibilityPrivate" value="PRIVATE"
-            autocomplete="off" />
         <input type="radio" class="btn-check" name="apiFlowAgentVisibility" id="agentVisibilityVisible" value="VISIBLE"
             autocomplete="off" checked />
         <input type="radio" class="btn-check" name="apiFlowAgentVisibility" id="agentVisibilityHidden" value="HIDDEN"
@@ -82,31 +77,6 @@
                     <div class="invalid-feedback">Description is required.</div>
                 </div>
 
-                {{!-- Portal visibility --}}
-                <div class="mb-2">
-                    <label class="form-label fw-semibold mb-2 d-block">Portal visibility</label>
-                    <div class="af-visibility-cards">
-                        <div class="af-visibility-card af-visibility-card--active" id="portalPublicCard"
-                            data-value="PUBLIC" role="button" tabindex="0" aria-pressed="true">
-                            <div class="af-visibility-card-icon"><i class="bi bi-globe"></i></div>
-                            <div class="af-visibility-card-content">
-                                <div class="af-visibility-card-title">Public</div>
-                                <div class="af-visibility-card-desc">Anyone on the portal can see and run it.</div>
-                            </div>
-                            <i class="bi bi-check-circle-fill af-visibility-card-check" aria-hidden="true"></i>
-                        </div>
-                        <div class="af-visibility-card" id="portalPrivateCard" data-value="PRIVATE" role="button"
-                            tabindex="0" aria-pressed="false">
-                            <div class="af-visibility-card-icon"><i class="bi bi-lock"></i></div>
-                            <div class="af-visibility-card-content">
-                                <div class="af-visibility-card-title">Private</div>
-                                <div class="af-visibility-card-desc">Restricted to your team or specific roles.</div>
-                            </div>
-                            <i class="bi bi-check-circle-fill af-visibility-card-check" aria-hidden="true"></i>
-                        </div>
-                    </div>
-                </div>
-
                 {{!-- Agent visibility --}}
                 <div class="mb-3">
                     <label class="form-label fw-semibold mb-2 d-block">Agent visibility</label>
@@ -130,11 +100,6 @@
                             </div>
                             <i class="bi bi-check-circle-fill af-visibility-card-check" aria-hidden="true"></i>
                         </div>
-                    </div>
-                    <div class="form-text mt-2">
-                        <i class="bi bi-info-circle me-1"></i>
-                        Portal and agent visibility are independent — e.g. a public workflow can still be hidden from
-                        agents.
                     </div>
                 </div>
             </div>{{!-- end afStep1 --}}
@@ -394,7 +359,6 @@
                         <span class="af-preview-empty" id="afPreviewNameEmpty">— enter a name above</span>
                     </div>
                     <p class="af-preview-desc" id="afPreviewDesc"></p>
-                    <span class="af-preview-badge af-preview-badge--public" id="afPreviewBadge">public</span>
                 </div>
             </div>
 

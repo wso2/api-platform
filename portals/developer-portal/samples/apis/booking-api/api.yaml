@@ -25,9 +25,7 @@ spec:
     - Silver
     - Bronze
 
-  visibility: PUBLIC
   agentVisibility: VISIBLE
-  visibleGroups: []
 
   businessInformation:
     businessOwner: Platform Owner

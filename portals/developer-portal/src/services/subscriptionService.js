@@ -20,6 +20,7 @@ const subDao = require('../dao/subscriptionDao');
 const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
+const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
@@ -38,15 +39,15 @@ async function safePublish(eventType, payload, opts) {
 
 function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
-        subscription_id: sub.SUB_ID,
+        subscription_id: sub.UUID,
         subscription_plan: {
             ref_id: plan ? (plan.REF_ID || null) : null,
-            name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null,
+            name: plan ? (plan.NAME || null) : null,
         },
         api: {
-            name: apiMetadata ? apiMetadata.API_NAME : null,
-            version: apiMetadata ? apiMetadata.API_VERSION : null,
-            ref_id: apiMetadata ? (apiMetadata.REFERENCE_ID || '') : '',
+            name: apiMetadata ? apiMetadata.NAME : null,
+            version: apiMetadata ? apiMetadata.VERSION : null,
+            ref_id: apiMetadata ? (apiMetadata.REF_ID || '') : '',
         },
     };
 }
@@ -54,11 +55,11 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
 function formatSubscriptionResponse(sub) {
     const plan = sub.DP_SUBSCRIPTION_PLAN || {};
     return {
-        subscriptionId: sub.SUB_ID,
-        subscriptionToken: sub.SUB_TOKEN,
+        subscriptionId: sub.UUID,
+        subscriptionToken: sub.TOKEN,
         status: sub.STATUS,
-        apiId: sub.API_ID,
-        subscriptionPlanName: plan.PLAN_NAME || null,
+        apiId: sub.API_UUID,
+        subscriptionPlanName: plan.NAME || null,
         createdBy: sub.CREATED_BY || null,
         createdAt: sub.CREATED_AT || null,
     };
@@ -91,14 +92,14 @@ const createSubscription = async (req, res) => {
         let matchedPlan = null;
 
         if (reqPlanId) {
-            matchedPlan = plans.find(p => p.PLAN_ID === reqPlanId);
+            matchedPlan = plans.find(p => p.UUID === reqPlanId);
             if (!matchedPlan) {
                 return res.status(400).json({
                     code: '400', message: 'Bad Request',
                     description: `Subscription plan not found for this API`,
                 });
             }
-            planId = matchedPlan.PLAN_ID;
+            planId = matchedPlan.UUID;
         }
 
         let newSub;
@@ -110,13 +111,13 @@ const createSubscription = async (req, res) => {
                 transaction: t,
                 orgId: orgID,
                 aggregateType: 'subscription',
-                aggregateId: newSub.SUB_ID,
-                plaintextKey: newSub.SUB_TOKEN,
+                aggregateId: newSub.UUID,
+                plaintextKey: newSub.TOKEN,
             });
         });
 
-        const created = await subDao.get(orgID, newSub.SUB_ID, createdBy);
-        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgID, apiId, subscriptionId: newSub.SUB_ID });
+        const created = await subDao.get(orgID, newSub.UUID, createdBy);
+        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgID, apiId, subscriptionId: newSub.UUID });
         return res.status(201).json(formatSubscriptionResponse(created));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -180,6 +181,9 @@ const updateSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const subscriptionId = req.params.subId;
     const { status } = req.body;
+    if (!Object.values(constants.SUBSCRIPTION_STATUS).includes(status)) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: `Invalid status. Must be one of: ${Object.values(constants.SUBSCRIPTION_STATUS).join(', ')}.` });
+    }
 
     try {
         const existing = await subDao.get(orgID, subscriptionId, req.user.sub);

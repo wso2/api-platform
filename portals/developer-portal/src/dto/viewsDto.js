@@ -19,8 +19,8 @@
 
 class ViewDTO {
     constructor(view) {
+        this.handle = view.HANDLE;
         this.name = view.NAME;
-        this.displayName = view.DISPLAY_NAME;
         this.labels = view.DP_LABELs.map(label => label.dataValues.NAME);
     }
 

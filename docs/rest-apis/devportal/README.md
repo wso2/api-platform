@@ -47,6 +47,7 @@ Base URLs:
 - [Replace API content](api-content.md#replace-api-content)
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
+- [List API document file names](api-content.md#list-api-document-file-names)
 
 ### [Subscription Plans](subscription-plans.md)
 
