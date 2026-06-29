@@ -686,26 +686,24 @@ paths:
     post:
       tags:
         - Labels
-      summary: Create labels
-      description: Creates one or more labels for the organization. The response echoes the accepted label array.
-      operationId: createLabels
+      summary: Create a label
+      description: Creates a label for the organization.
+      operationId: createLabel
       requestBody:
-        $ref: "#/components/requestBodies/LabelsBody"
+        $ref: "#/components/requestBodies/LabelBody"
       responses:
         "201":
-          description: The accepted label array, echoed back as-is.
+          description: The created label.
           headers:
             Location:
-              description: URL of the label collection for this organization.
+              description: URL of the created label.
               schema:
                 type: string
                 format: uri
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/LabelResponse"
+                $ref: "#/components/schemas/LabelResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -716,35 +714,12 @@ paths:
         - OAuth2Security:
             - dp:label_create
             - dp:label_manage
-    put:
-      tags:
-        - Labels
-      summary: Upsert labels
-      description: >-
-        Updates existing labels by name or creates them when they do not already exist. The response echoes the accepted
-        label array.
-      operationId: updateLabel
-      requestBody:
-        $ref: "#/components/requestBodies/LabelsBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/LabelArrayResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:label_update
-            - dp:label_manage
     get:
       tags:
         - Labels
       summary: List labels
       description: Returns all labels configured for the organization.
-      operationId: retrieveLabels
+      operationId: listLabels
       responses:
         "200":
           $ref: "#/components/responses/LabelsResponse"
@@ -756,19 +731,64 @@ paths:
         - OAuth2Security:
             - dp:label_read
             - dp:label_manage
+  /devportal/v1/labels/{labelId}:
+    get:
+      tags:
+        - Labels
+      summary: Get a label
+      description: Retrieves a single label by name.
+      operationId: getLabel
+      parameters:
+        - $ref: "#/components/parameters/labelId"
+      responses:
+        "200":
+          $ref: "#/components/responses/LabelResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:label_read
+            - dp:label_manage
+    put:
+      tags:
+        - Labels
+      summary: Update a label
+      description: Updates an existing label by name.
+      operationId: updateLabel
+      parameters:
+        - $ref: "#/components/parameters/labelId"
+      requestBody:
+        $ref: "#/components/requestBodies/LabelBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/LabelResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:label_update
+            - dp:label_manage
     delete:
       tags:
         - Labels
-      summary: Delete labels
-      description: Deletes one or more labels by comma-separated label names.
-      operationId: deleteLabels
+      summary: Delete a label
+      description: Deletes a label by name.
+      operationId: deleteLabel
       parameters:
-        - $ref: "#/components/parameters/labelNamesQuery"
+        - $ref: "#/components/parameters/labelId"
       responses:
         "204":
-          description: Labels deleted successfully.
-        "400":
-          $ref: "#/components/responses/BadRequest"
+          description: Label deleted successfully.
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2247,14 +2267,14 @@ components:
         type: string
         example: app-12345
       description: Optional application ID used to filter API keys associated with that application.
-    labelNamesQuery:
-      name: names
-      in: query
+    labelId:
+      name: labelId
+      in: path
       required: true
       schema:
         type: string
-        example: default,premium
-      description: Comma-separated label names to delete.
+        example: label-12345
+      description: The label ID.
     limit:
       name: limit
       in: query
@@ -2371,21 +2391,16 @@ components:
               summary: Bulk subscription plan YAML upload
               value:
                 subscriptionPlan: plans.yaml
-    LabelsBody:
+    LabelBody:
       required: true
-      description: Label array to create or upsert.
+      description: Label payload.
       content:
         application/json:
           schema:
-            type: array
-            minItems: 1
-            items:
-              $ref: "#/components/schemas/LabelRequest"
+            $ref: "#/components/schemas/LabelRequest"
           example:
-            - name: premium
-              displayName: Premium APIs
-            - name: internal
-              displayName: Internal APIs
+            name: premium
+            displayName: Premium APIs
     SubscriptionCreateBody:
       required: true
       description: Subscription creation payload. `apiId` is the Developer Portal API ID.
@@ -3164,14 +3179,12 @@ components:
                   $ref: "#/components/schemas/LabelResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
-    LabelArrayResponse:
-      description: The accepted label array, echoed back as-is.
+    LabelResponse:
+      description: Label DTO.
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/LabelResponse"
+            $ref: "#/components/schemas/LabelResponse"
     ApplicationResponse:
       description: Application DTO.
       content:
@@ -3833,6 +3846,9 @@ components:
     LabelResponse:
       type: object
       properties:
+        id:
+          type: string
+          example: label-12345
         name:
           type: string
           example: premium

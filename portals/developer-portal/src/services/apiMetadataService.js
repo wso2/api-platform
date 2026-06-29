@@ -1367,20 +1367,29 @@ const listSubscriptionPlans = async (req, res) => {
     }
 };
 
-const createLabels = async (req, res) => {
+const createLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const labels = req.body;
+    const label = req.body;
     const userId = util.resolveActor(req);
     try {
-        await labelDao.createMany(orgId, labels, userId);
-        res.status(201).send(labels);
+        const record = await labelDao.create(orgId, label, userId);
+        res.status(201).json(new LabelDTO(record));
     } catch (error) {
-        logger.error('label create error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label create failed', { error: error.message, stack: error.stack, orgId });
+        util.handleError(res, error);
+    }
+}
+
+const getLabel = async (req, res) => {
+
+    const orgId = req.orgId;
+    const { labelId } = req.params;
+    try {
+        const record = await labelDao.findById(orgId, labelId);
+        res.status(200).json(new LabelDTO(record));
+    } catch (error) {
+        logger.error('label get failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
@@ -1388,53 +1397,39 @@ const createLabels = async (req, res) => {
 const updateLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const labels = req.body;
+    const { labelId } = req.params;
+    const label = req.body;
     const userId = util.resolveActor(req);
     try {
-        for (const label of labels) {
-            await labelDao.update(orgId, label, userId);
-        };
-        res.status(201).send(labels);
+        const record = await labelDao.updateById(orgId, labelId, label, userId);
+        res.status(200).json(new LabelDTO(record));
     } catch (error) {
-        logger.error('label update error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label update failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
 
-const deleteLabels = async (req, res) => {
+const deleteLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const labelNames = req.query.names;
-    const labelList = labelNames.split(",");
+    const { labelId } = req.params;
     try {
-        await labelDao.delete(orgId, labelList);
+        await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
     } catch (error) {
-        logger.error('label delete error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label delete failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
 
-const retrieveLabels = async (req, res) => {
+const listLabels = async (req, res) => {
 
     const orgId = req.orgId;
     try {
         const labels = await getOrgLabels(orgId);
         res.status(200).json(util.toPaginatedList(labels, req));
     } catch (error) {
-        logger.error('label retrieve error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label list failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
@@ -1991,9 +1986,10 @@ module.exports = {
     deleteSubscriptionPlan,
     getSubscriptionPlan,
     listSubscriptionPlans,
-    createLabels,
-    deleteLabels,
-    retrieveLabels,
+    createLabel,
+    getLabel,
+    listLabels,
+    deleteLabel,
     getOrgLabels,
     updateLabel,
     addView,

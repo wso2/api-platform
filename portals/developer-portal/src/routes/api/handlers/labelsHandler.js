@@ -23,8 +23,9 @@
 const apiMetadataService = require('../../../services/apiMetadataService');
 
 module.exports = {
-    createLabels: apiMetadataService.createLabels,
+    createLabel: apiMetadataService.createLabel,
+    listLabels: apiMetadataService.listLabels,
+    getLabel: apiMetadataService.getLabel,
     updateLabel: apiMetadataService.updateLabel,
-    retrieveLabels: apiMetadataService.retrieveLabels,
-    deleteLabels: apiMetadataService.deleteLabels,
+    deleteLabel: apiMetadataService.deleteLabel,
 };

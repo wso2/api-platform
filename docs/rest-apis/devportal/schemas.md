@@ -675,6 +675,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
+  "id": "label-12345",
   "name": "premium",
   "displayName": "Premium APIs"
 }
@@ -685,6 +686,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|id|string|false|none|none|
 |name|string|false|none|none|
 |displayName|string|false|none|none|
 

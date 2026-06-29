@@ -22,6 +22,55 @@ const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
+const create = async (orgId, label, createdBy, t) => {
+    try {
+        return await Labels.create({
+            NAME: label.name,
+            DISPLAY_NAME: label.displayName,
+            ORG_UUID: orgId,
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy
+        }, { transaction: t, returning: true });
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const findById = async (orgId, labelId, t) => {
+    const record = await Labels.findOne({
+        where: { UUID: labelId, ORG_UUID: orgId },
+        transaction: t
+    });
+    if (!record) {
+        throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
+    }
+    return record;
+}
+
+const updateById = async (orgId, labelId, label, updatedBy, t) => {
+    const record = await findById(orgId, labelId, t);
+    return record.update(
+        { DISPLAY_NAME: label.displayName, UPDATED_BY: updatedBy, UPDATED_AT: new Date() },
+        { transaction: t }
+    );
+}
+
+const deleteById = async (orgId, labelId) => {
+    try {
+        const count = await Labels.destroy({ where: { UUID: labelId, ORG_UUID: orgId } });
+        if (count === 0) {
+            throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
+        }
+        return count;
+    } catch (error) {
+        if (error instanceof CustomError) throw error;
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
 const createMany = async (orgId, labels, createdBy, t) => {
 
     const labelList = [];
@@ -128,24 +177,6 @@ const getIdList = async (orgId, label, t) => {
     return labelResponse.dataValues.UUID;
 }
 
-const deleteLabel = async (orgId, labelNames) => {
-
-    try {
-        const labelResponse = await Labels.destroy({
-            where: {
-                NAME: labelNames,
-                ORG_UUID: orgId
-            }
-        });
-        return labelResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
 const list = async (orgId) => {
 
     try {
@@ -196,12 +227,15 @@ const addToView = async (orgId, labelId, viewId, createdBy, t) => {
 }
 
 module.exports = {
+    create,
     createMany,
     createApiMapping,
     update,
+    updateById,
+    findById,
     getId,
     getIdList,
-    delete: deleteLabel,
+    deleteById,
     list,
     deleteApiMapping,
     addToView,

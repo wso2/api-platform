@@ -19,16 +19,9 @@
 
 class LabelDTO {
     constructor(label) {
+        this.id = label.UUID;
         this.name = label.NAME;
         this.displayName = label.DISPLAY_NAME;
-    }
-
-    setResponseData(data) {
-        this.data = data;
-    }
-
-    getResponseData() {
-        return this.data;
     }
 }
 

@@ -59,10 +59,11 @@ Base URLs:
 
 ### [Labels](labels.md)
 
-- [Create labels](labels.md#create-labels)
-- [Upsert labels](labels.md#upsert-labels)
+- [Create a label](labels.md#create-a-label)
 - [List labels](labels.md#list-labels)
-- [Delete labels](labels.md#delete-labels)
+- [Get a label](labels.md#get-a-label)
+- [Update a label](labels.md#update-a-label)
+- [Delete a label](labels.md#delete-a-label)
 
 ### [Applications](applications.md)
 
