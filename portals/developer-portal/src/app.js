@@ -188,6 +188,7 @@ app.use((req, res, next) => {
 
 // Central error handler
 app.use((err, req, res, next) => {
+    if (res.headersSent) return;
     const status = err.status || 500;
 
     if (status >= 500) {
