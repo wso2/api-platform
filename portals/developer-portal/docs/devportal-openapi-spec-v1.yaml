@@ -2408,16 +2408,9 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/SubscriptionCreateRequest"
-          examples:
-            defaultPlan:
-              summary: Subscribe with the API default plan
-              value:
-                apiId: api-7f4c2a6b
-            selectedPlan:
-              summary: Subscribe using a specific plan
-              value:
-                apiId: api-7f4c2a6b
-                subscriptionPlanId: pol-7f4c2a6b
+          example:
+            apiId: api-7f4c2a6b
+            subscriptionPlanId: pol-7f4c2a6b
     SubscriptionUpdateBody:
       required: true
       description: Subscription status update payload.
@@ -4056,6 +4049,7 @@ components:
       type: object
       required:
         - apiId
+        - subscriptionPlanId
       properties:
         apiId:
           type: string

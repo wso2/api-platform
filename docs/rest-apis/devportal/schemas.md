@@ -1006,7 +1006,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanId|string|false|none|Developer Portal subscription plan ID.|
+|subscriptionPlanId|string|true|none|Developer Portal subscription plan ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 

@@ -90,19 +90,14 @@ const createSubscription = async (req, res) => {
             });
         }
 
-        let planId = null;
-        let matchedPlan = null;
-
-        if (reqPlanId) {
-            matchedPlan = plans.find(p => p.UUID === reqPlanId);
-            if (!matchedPlan) {
-                return res.status(400).json({
-                    code: '400', message: 'Bad Request',
-                    description: `Subscription plan not found for this API`,
-                });
-            }
-            planId = matchedPlan.UUID;
+        const matchedPlan = plans.find(p => p.UUID === reqPlanId);
+        if (!matchedPlan) {
+            return res.status(400).json({
+                code: '400', message: 'Bad Request',
+                description: 'Subscription plan not found for this API',
+            });
         }
+        const planId = matchedPlan.UUID;
 
         let newSub;
         await sequelize.transaction(async (t) => {
