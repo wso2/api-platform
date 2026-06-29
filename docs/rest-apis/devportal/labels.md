@@ -4,13 +4,13 @@
 
 <a id="opIdcreateLabels"></a>
 
-`POST /o/{orgId}/devportal/v1/labels`
+`POST /devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels \
+curl -X POST https://devportal.api-platform.io/devportal/v1/labels \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -44,7 +44,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[LabelRequest](schemas.md#schemalabelrequest)|true|Label array to create or upsert.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -147,13 +146,13 @@ Status Code **201**
 
 <a id="opIdupdateLabel"></a>
 
-`PUT /o/{orgId}/devportal/v1/labels`
+`PUT /devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/labels \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -187,7 +186,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[LabelRequest](schemas.md#schemalabelrequest)|true|Label array to create or upsert.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -284,13 +282,13 @@ Status Code **201**
 
 <a id="opIdretrieveLabels"></a>
 
-`GET /o/{orgId}/devportal/v1/labels`
+`GET /devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels \
+curl -X GET https://devportal.api-platform.io/devportal/v1/labels \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -305,12 +303,6 @@ Returns all labels configured for the organization.
 This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
-
-<h3 id="list-labels-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -407,13 +399,13 @@ Status Code **200**
 
 <a id="opIddeleteLabels"></a>
 
-`DELETE /o/{orgId}/devportal/v1/labels`
+`DELETE /devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels?names=default%2Cpremium \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/labels?names=default%2Cpremium \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -434,7 +426,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |names|query|string|true|Comma-separated label names to delete.|
-|orgId|path|string|true|none|
 
 > Example responses
 

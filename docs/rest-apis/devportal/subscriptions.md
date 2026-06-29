@@ -4,13 +4,13 @@
 
 <a id="opIdcreateSubscription"></a>
 
-`POST /o/{orgId}/devportal/v1/subscriptions`
+`POST /devportal/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
+curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -41,7 +41,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `apiId` is the Developer Portal API ID.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -119,13 +118,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistSubscriptions"></a>
 
-`GET /o/{orgId}/devportal/v1/subscriptions`
+`GET /devportal/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
+curl -X GET https://devportal.api-platform.io/devportal/v1/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -148,7 +147,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|query|string|false|Optional Developer Portal API ID used to filter results.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -233,13 +231,13 @@ Status Code **200**
 
 <a id="opIdgetSubscription"></a>
 
-`GET /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`GET /devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -259,7 +257,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subId|path|string|true|none|
 
 > Example responses
@@ -310,13 +307,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateSubscription"></a>
 
-`PUT /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`PUT /devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -347,7 +344,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[SubscriptionUpdateRequest](schemas.md#schemasubscriptionupdaterequest)|true|Subscription status update payload.|
-|orgId|path|string|true|none|
 |subId|path|string|true|none|
 
 > Example responses
@@ -409,13 +405,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscription"></a>
 
-`DELETE /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`DELETE /devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -435,7 +431,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subId|path|string|true|none|
 
 > Example responses

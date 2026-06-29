@@ -24,7 +24,7 @@ info:
     Fine-grained Developer Portal API for managing organizations,
     API metadata and content, applications, subscriptions, application credentials, and API flows.
 
-    Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
+    Organization-scoped resources are served under `/devportal/v1`. Operations declare
     the least-privilege OAuth2 scopes required for each resource action.
 servers:
   - url: https://devportal.api-platform.io
@@ -172,9 +172,8 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /o/{orgId}/devportal/v1/views/{viewName}/layout:
+  /devportal/v1/views/{viewName}/layout:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/viewName"
     post:
       tags:
@@ -272,9 +271,8 @@ paths:
             - dp:org_content_delete
             - dp:org_content_manage
             - dp:org_manage
-  /o/{orgId}/devportal/v1/views/{viewName}/layout/{fileType}:
+  /devportal/v1/views/{viewName}/layout/{fileType}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/viewName"
       - $ref: "#/components/parameters/fileType"
     get:
@@ -291,9 +289,7 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/TextMessageResponse"
-  /o/{orgId}/devportal/v1/apis:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/apis:
     post:
       tags:
         - APIs
@@ -356,9 +352,8 @@ paths:
         - OAuth2Security:
             - dp:api_read
             - dp:api_manage
-  /o/{orgId}/devportal/v1/apis/{apiId}:
+  /devportal/v1/apis/{apiId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/apiId"
     get:
       tags:
@@ -427,9 +422,7 @@ paths:
         - OAuth2Security:
             - dp:api_delete
             - dp:api_manage
-  /o/{orgId}/devportal/v1/subscription-plans:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/subscription-plans:
     get:
       tags:
         - Subscription Plans
@@ -510,9 +503,8 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_update
             - dp:sub_plan_manage
-  /o/{orgId}/devportal/v1/subscription-plans/{planId}:
+  /devportal/v1/subscription-plans/{planId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/planId"
     get:
       tags:
@@ -552,9 +544,8 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_delete
             - dp:sub_plan_manage
-  /o/{orgId}/devportal/v1/apis/{apiId}/content:
+  /devportal/v1/apis/{apiId}/content:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/apiId"
     post:
       tags:
@@ -592,7 +583,7 @@ paths:
       description: |
         Replaces or adds static content files for an existing API.
 
-        The upload format is the same as `POST /o/{orgId}/devportal/v1/apis/{apiId}/content`.
+        The upload format is the same as `POST /devportal/v1/apis/{apiId}/content`.
         Existing files with the same stored `type` and `fileName` are updated; new files are created.
         Image metadata is updated only when image metadata can be resolved from the upload or request body.
       operationId: replaceApiContent
@@ -664,9 +655,8 @@ paths:
         - OAuth2Security:
             - dp:api_content_delete
             - dp:api_content_manage
-  /o/{orgId}/devportal/v1/apis/{apiId}/docs:
+  /devportal/v1/apis/{apiId}/docs:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/apiId"
     get:
       tags:
@@ -692,9 +682,7 @@ paths:
         - OAuth2Security:
             - dp:api_content_read
             - dp:api_content_manage
-  /o/{orgId}/devportal/v1/labels:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/labels:
     post:
       tags:
         - Labels
@@ -787,9 +775,7 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /o/{orgId}/devportal/v1/applications:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/applications:
     get:
       tags:
         - Applications
@@ -847,9 +833,8 @@ paths:
         - OAuth2Security:
             - dp:app_create
             - dp:app_manage
-  /o/{orgId}/devportal/v1/applications/{applicationId}:
+  /devportal/v1/applications/{applicationId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/applicationId"
     put:
       tags:
@@ -900,9 +885,7 @@ paths:
         - OAuth2Security:
             - dp:app_delete
             - dp:app_manage
-  /o/{orgId}/devportal/v1/subscriptions:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/subscriptions:
     post:
       tags:
         - Subscriptions
@@ -977,9 +960,8 @@ paths:
         - OAuth2Security:
             - dp:subscription_read
             - dp:subscription_manage
-  /o/{orgId}/devportal/v1/subscriptions/{subId}:
+  /devportal/v1/subscriptions/{subId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/subId"
     get:
       tags:
@@ -1036,9 +1018,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_delete
             - dp:subscription_manage
-  /o/{orgId}/devportal/v1/api-keys/generate:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/api-keys/generate:
     post:
       tags:
         - API Keys
@@ -1083,9 +1063,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_create
             - dp:api_key_manage
-  /o/{orgId}/devportal/v1/api-keys:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/api-keys:
     get:
       tags:
         - API Keys
@@ -1108,9 +1086,8 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate:
+  /devportal/v1/api-keys/{apiKeyId}/regenerate:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/apiKeyId"
     post:
       tags:
@@ -1143,9 +1120,8 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke:
+  /devportal/v1/api-keys/{apiKeyId}/revoke:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/apiKeyId"
     post:
       tags:
@@ -1177,9 +1153,8 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application:
+  /devportal/v1/api-keys/{apiKeyId}/application:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/apiKeyId"
     put:
       tags:
@@ -1241,9 +1216,8 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /o/{orgId}/devportal/v1/applications/{applicationId}/api-keys:
+  /devportal/v1/applications/{applicationId}/api-keys:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/applicationId"
     get:
       tags:
@@ -1267,9 +1241,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /o/{orgId}/devportal/v1/views:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/views:
     post:
       tags:
         - Views
@@ -1313,9 +1285,8 @@ paths:
         - OAuth2Security:
             - dp:view_read
             - dp:view_manage
-  /o/{orgId}/devportal/v1/views/{viewName}:
+  /devportal/v1/views/{viewName}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/viewName"
     put:
       tags:
@@ -1380,9 +1351,8 @@ paths:
         - OAuth2Security:
             - dp:view_delete
             - dp:view_manage
-  /o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys:
+  /devportal/v1/applications/{applicationId}/generate-keys:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/applicationId"
     post:
       tags:
@@ -1410,9 +1380,8 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
+  /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
     post:
@@ -1438,9 +1407,8 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}:
+  /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
     delete:
@@ -1461,9 +1429,8 @@ paths:
       security:
         - OAuth2Security:
             - dp:app_key_revoke
-  /o/{orgId}/devportal/v1/views/{viewName}/api-flows:
+  /devportal/v1/views/{viewName}/api-flows:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/viewName"
     post:
       tags:
@@ -1506,9 +1473,8 @@ paths:
         - OAuth2Security:
             - dp:api_flow_read
             - dp:api_flow_manage
-  /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}:
+  /devportal/v1/views/{viewName}/api-flows/{apiFlowId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/viewName"
       - $ref: "#/components/parameters/apiFlowId"
     get:
@@ -1568,9 +1534,8 @@ paths:
         - OAuth2Security:
             - dp:api_flow_delete
             - dp:api_flow_manage
-  /o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt:
+  /devportal/v1/views/{viewName}/api-flows/generate-prompt:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/viewName"
     post:
       tags:
@@ -1615,9 +1580,7 @@ paths:
         - OAuth2Security:
             - dp:utility_create
             - dp:utility_manage
-  /o/{orgId}/devportal/v1/key-managers:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/key-managers:
     post:
       tags:
         - Key Managers
@@ -1672,9 +1635,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:km_read
-  /o/{orgId}/devportal/v1/key-managers/discover:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/key-managers/discover:
     get:
       tags:
         - Key Managers
@@ -1694,9 +1655,8 @@ paths:
       security:
         - OAuth2Security:
             - dp:km_read
-  /o/{orgId}/devportal/v1/key-managers/{kmId}:
+  /devportal/v1/key-managers/{kmId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/kmId"
     get:
       tags:
@@ -1758,9 +1718,7 @@ paths:
         - OAuth2Security:
             - dp:km_delete
             - dp:km_manage
-  /o/{orgId}/devportal/v1/webhook-subscribers:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/webhook-subscribers:
     post:
       tags:
         - Webhook Subscribers
@@ -1813,9 +1771,8 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}:
+  /devportal/v1/webhook-subscribers/{subscriberId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/subscriberId"
     get:
       tags:
@@ -1876,9 +1833,8 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_delete
             - dp:webhook_subscriber_manage
-  /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries:
+  /devportal/v1/webhook-subscribers/{subscriberId}/deliveries:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/subscriberId"
     get:
       tags:
@@ -1944,9 +1900,7 @@ paths:
                 $ref: "#/components/schemas/MessageResponse"
               example:
                 message: Authentication service unavailable
-  /o/{orgId}/devportal/v1/webhook-events:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
+  /devportal/v1/webhook-events:
     get:
       tags:
         - Webhook Events
@@ -1979,9 +1933,8 @@ paths:
       security:
         - OAuth2Security:
             - dp:event_read
-  /o/{orgId}/devportal/v1/webhook-events/{eventId}:
+  /devportal/v1/webhook-events/{eventId}:
     parameters:
-      - $ref: "#/components/parameters/orgId"
       - $ref: "#/components/parameters/eventId"
     get:
       tags:

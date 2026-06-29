@@ -52,11 +52,11 @@ function mapKey(k) {
 }
 
 /**
- * POST /organizations/:orgId/api-keys/generate
+ * POST /devportal/v1/api-keys/generate
  * Body: { apiId, name, expiresAt?, subscriptionId?, appId? }
  */
 async function generateApiKey(req, res) {
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     const { apiId, name, expiresAt, subscriptionId, appId } = req.body || {};
 
     if (!apiId || typeof apiId !== 'string' || !apiId.trim()) {
@@ -81,11 +81,11 @@ async function generateApiKey(req, res) {
 }
 
 /**
- * GET /organizations/:orgId/api-keys
+ * GET /devportal/v1/api-keys
  * Query: apiId (required), subscriptionId (optional), status (optional), appId (optional)
  */
 async function listApiKeys(req, res) {
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     const { apiId, subscriptionId, status, appId } = req.query;
 
     if (!apiId || typeof apiId !== 'string' || !apiId.trim()) {
@@ -129,10 +129,11 @@ async function listApiKeys(req, res) {
 }
 
 /**
- * POST /organizations/:orgId/api-keys/:apiKeyId/regenerate
+ * POST /devportal/v1/api-keys/:apiKeyId/regenerate
  */
 async function regenerateApiKey(req, res) {
-    const { orgId, apiKeyId } = req.params;
+    const orgId = req.orgId;
+    const { apiKeyId } = req.params;
 
     try {
         const result = await apiKeyService.regenerate({
@@ -147,10 +148,11 @@ async function regenerateApiKey(req, res) {
 }
 
 /**
- * POST /organizations/:orgId/api-keys/:apiKeyId/revoke
+ * POST /devportal/v1/api-keys/:apiKeyId/revoke
  */
 async function revokeApiKey(req, res) {
-    const { orgId, apiKeyId } = req.params;
+    const orgId = req.orgId;
+    const { apiKeyId } = req.params;
 
     try {
         await apiKeyService.revoke({ orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken });
@@ -163,11 +165,12 @@ async function revokeApiKey(req, res) {
 }
 
 /**
- * PUT /organizations/:orgId/api-keys/:apiKeyId/application
+ * PUT /devportal/v1/api-keys/:apiKeyId/application
  * Body: { appId }
  */
 async function associateApiKeyApplication(req, res) {
-    const { orgId, apiKeyId } = req.params;
+    const orgId = req.orgId;
+    const { apiKeyId } = req.params;
     const { appId } = req.body || {};
 
     if (!appId || typeof appId !== 'string' || !appId.trim()) {
@@ -187,10 +190,11 @@ async function associateApiKeyApplication(req, res) {
 }
 
 /**
- * DELETE /organizations/:orgId/api-keys/:apiKeyId/application
+ * DELETE /devportal/v1/api-keys/:apiKeyId/application
  */
 async function removeApiKeyApplication(req, res) {
-    const { orgId, apiKeyId } = req.params;
+    const orgId = req.orgId;
+    const { apiKeyId } = req.params;
 
     try {
         await apiKeyService.removeApplicationAssociation({ orgId, keyId: apiKeyId, actor: req.user.sub });
@@ -203,11 +207,12 @@ async function removeApiKeyApplication(req, res) {
 }
 
 /**
- * GET /organizations/:orgId/applications/:applicationId/api-keys
+ * GET /devportal/v1/applications/:applicationId/api-keys
  * Lists all API keys (across every API) currently associated with an app.
  */
 async function listApplicationApiKeys(req, res) {
-    const { orgId, applicationId } = req.params;
+    const orgId = req.orgId;
+    const { applicationId } = req.params;
 
     try {
         const app = await applicationDao.get(orgId, applicationId, req.user.sub);

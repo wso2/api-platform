@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiMetadata"></a>
 
-`POST /o/{orgId}/devportal/v1/apis`
+`POST /devportal/v1/apis`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -55,7 +55,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
 |» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceId, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -184,13 +183,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllApiMetadataForOrganization"></a>
 
-`GET /o/{orgId}/devportal/v1/apis`
+`GET /devportal/v1/apis`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
+curl -X GET https://devportal.api-platform.io/devportal/v1/apis \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -217,7 +216,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |view|query|string|false|Developer Portal view name used to filter visible APIs.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -381,13 +379,13 @@ Status Code **200**
 
 <a id="opIdgetApiMetadata"></a>
 
-`GET /o/{orgId}/devportal/v1/apis/{apiId}`
+`GET /devportal/v1/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -407,7 +405,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
 > Example responses
@@ -514,13 +511,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApiMetadata"></a>
 
-`PUT /o/{orgId}/devportal/v1/apis/{apiId}`
+`PUT /devportal/v1/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -564,7 +561,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
 |» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceId, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
-|orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
 > Example responses
@@ -686,13 +682,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiMetadata"></a>
 
-`DELETE /o/{orgId}/devportal/v1/apis/{apiId}`
+`DELETE /devportal/v1/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'
@@ -712,7 +708,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
 > Example responses

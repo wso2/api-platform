@@ -116,7 +116,7 @@ function _validateRequiredFields(payload) {
 
 const createKeyManager = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
+        const orgId = req.orgId;
         const payload = _resolvePayload(req);
 
         const validationError = _validateRequiredFields(payload);
@@ -182,7 +182,7 @@ const updateKeyManager = async (req, res) => {
 
 const getKeyManagers = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
+        const orgId = req.orgId;
         const records = await kmDao.list(orgId);
         const dtos = records.map(r => new KeyManagerDTO(r));
         return res.status(200).json(util.toPaginatedList(dtos, req));
@@ -226,7 +226,7 @@ const deleteKeyManager = async (req, res) => {
  */
 const getAvailableKeyManagers = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
+        const orgId = req.orgId;
         const records = await kmDao.listEnabled(orgId);
         const dtos = records.map(r => new KeyManagerPublicDTO(r));
         return res.status(200).json(util.toPaginatedList(dtos, req));

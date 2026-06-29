@@ -94,48 +94,49 @@ async function verifyBearerToken(token, req) {
 }
 
 /**
- * Verifies that `orgClaim` (from the token or session) matches the
- * IDP_REF_ID of the org identified by `pathOrgId`.
- * Returns an Error (with .status set) on failure, null on success.
+ * Resolves the org UUID from an IDP claim value (IDP_REF_ID) and sets req.orgId.
+ * Returns null on success, or an Error (with .status) on failure.
  */
-const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function checkOrgIsolation(pathOrgId, orgClaim) {
-    if (!ORG_UUID_RE.test(pathOrgId)) {
-        const err = new Error('Invalid organization UUID: must be a UUID');
-        err.status = 400;
-        return err;
-    }
-    if (!orgClaim) {
-        const err = new Error('Token org does not match requested organization');
-        err.status = 403;
-        return err;
-    }
-    let orgDetails;
+async function resolveOrgFromClaim(req, orgClaim) {
+    if (!orgClaim) return null;
     try {
-        orgDetails = await orgDao.get(pathOrgId);
+        req.orgId = await orgDao.getId(orgClaim);
+        return null;
     } catch (e) {
         if (e.name === 'SequelizeEmptyResultError') {
             const err = new Error('Organization not found');
             err.status = 404;
             return err;
         }
-        logger.error('Org lookup failed during isolation check', { error: e.message, pathOrgId });
+        logger.error('Org lookup failed', { error: e.message, orgClaim });
         const err = new Error('Internal Server Error');
         err.status = 500;
         return err;
     }
-    if (orgClaim !== orgDetails.IDP_REF_ID) {
-        logger.warn('Org isolation mismatch', {
-            pathOrgId,
-            orgIdentifier: orgDetails.IDP_REF_ID,
-            orgClaim,
-        });
-        const err = new Error('Token org does not match requested organization');
-        err.status = 403;
+}
+
+/**
+ * Resolves the org UUID from the `organization` request header and sets req.orgId.
+ * Used for API-key, mTLS, and local-auth requests that carry no token org claim.
+ * Returns null when the header is absent (allows public endpoints through).
+ */
+async function resolveOrgFromHeader(req) {
+    const orgHeader = req.headers.organization;
+    if (!orgHeader) return null;
+    try {
+        req.orgId = await orgDao.getId(orgHeader);
+        return null;
+    } catch (e) {
+        if (e.name === 'SequelizeEmptyResultError') {
+            const err = new Error('Organization not found');
+            err.status = 404;
+            return err;
+        }
+        logger.error('Org lookup failed from header', { error: e.message, orgHeader });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
         return err;
     }
-    return null;
 }
 
 /**
@@ -144,11 +145,16 @@ async function checkOrgIsolation(pathOrgId, orgClaim) {
  */
 async function authResolver(req, res, next) {
     try {
-        // 1. Local auth users (platform JWT in session, no IdP configured)
+        // 1. Local auth users (platform JWT in session, no IdP configured).
+        // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
+        // sessions, so resolveOrgFromClaim works via the HANDLE lookup in orgDao.getId.
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && !config.identityProvider?.clientId) {
             const platformToken = req.user[constants.ACCESS_TOKEN];
             const claims = platformToken ? extractPlatformJwtClaims(platformToken, null) : null;
+            const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+            const orgErr = await resolveOrgFromClaim(req, orgHandle);
+            if (orgErr) return next(orgErr);
             req.auth = {
                 mode: 'platform-jwt',
                 preauthorized: false,
@@ -163,13 +169,16 @@ async function authResolver(req, res, next) {
         // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
         // scope check for session users (same as API key and mTLS paths).
         if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.identityProvider?.clientId) {
-            const pathOrgMatch = req.path.match(/^\/o\/([^/]+)\//);
-            const pathOrgId = pathOrgMatch ? pathOrgMatch[1] : null;
             const orgIDClaim = config.identityProvider?.orgIDClaim;
-            if (pathOrgId && orgIDClaim) {
+            if (orgIDClaim) {
                 const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-                const isolationErr = await checkOrgIsolation(pathOrgId, sessionOrgClaim);
-                if (isolationErr) return next(isolationErr);
+                if (!sessionOrgClaim) {
+                    const err = new Error('Missing organization claim in session');
+                    err.status = 403;
+                    return next(err);
+                }
+                const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
+                if (orgErr) return next(orgErr);
             }
             req[constants.USER_ID] = req.user[constants.USER_ID];
             req.auth = {
@@ -191,17 +200,18 @@ async function authResolver(req, res, next) {
                 return next(err);
             }
             const decoded = jwt.decode(req.user?.[constants.ACCESS_TOKEN] || token) || {};
-            // Org isolation: verify the token's org claim matches the org in the URL path.
-            // Only enforced in IDP mode — local-auth and platform-JWT tokens have no org claim.
-            // req.params is not yet populated here (authResolver runs before route matching),
-            // so extract orgId directly from the path: /o/<orgId>/devportal/v1/...
-            const pathOrgMatch = req.path.match(/^\/o\/([^/]+)\//);
-            const pathOrgId = pathOrgMatch ? pathOrgMatch[1] : null;
+            // Resolve org UUID from the token's org claim (IDP_REF_ID).
+            // Only in IDP mode — local-auth and platform-JWT tokens carry no org claim.
             const orgIDClaim = config.identityProvider?.orgIDClaim;
-            if (pathOrgId && config.identityProvider?.clientId && orgIDClaim) {
+            if (config.identityProvider?.clientId && orgIDClaim) {
                 const tokenOrgClaim = decoded[orgIDClaim];
-                const isolationErr = await checkOrgIsolation(pathOrgId, tokenOrgClaim);
-                if (isolationErr) return next(isolationErr);
+                if (!tokenOrgClaim) {
+                    const err = new Error('Missing organization claim in token');
+                    err.status = 403;
+                    return next(err);
+                }
+                const orgErr = await resolveOrgFromClaim(req, tokenOrgClaim);
+                if (orgErr) return next(orgErr);
             }
             req[constants.USER_ID] = decoded[constants.USER_ID];
             req.auth = {
@@ -212,27 +222,28 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 4. API key
+        // 4. API key — org resolved from the `organization` request header
         if (config.advanced?.apiKey?.enabled) {
             const keyType = config.advanced.apiKey.keyType;
             if (keyType && config.advanced?.apiKey?.keyValue) {
                 const apiKey = req.headers[keyType.toLowerCase()];
                 if (apiKey && apiKey === config.advanced?.apiKey?.keyValue) {
-                    if (req.headers.organization && req.params && !req.params.orgId) {
-                        req.params.orgId = req.headers.organization;
-                    }
+                    const orgErr = await resolveOrgFromHeader(req);
+                    if (orgErr) return next(orgErr);
                     req.auth = { mode: 'apikey', preauthorized: true, scopes: [] };
                     return next();
                 }
             }
         }
 
-        // 5. mTLS
+        // 5. mTLS — org resolved from the `organization` request header
         if (typeof req.socket?.getPeerCertificate === 'function') {
             const cert = req.socket.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
                 const now = new Date();
                 if (new Date(cert.valid_from) <= now && new Date(cert.valid_to) >= now) {
+                    const orgErr = await resolveOrgFromHeader(req);
+                    if (orgErr) return next(orgErr);
                     req.auth = { mode: 'mtls', preauthorized: true, scopes: [] };
                     return next();
                 }

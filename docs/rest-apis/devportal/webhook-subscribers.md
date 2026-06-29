@@ -4,13 +4,13 @@
 
 <a id="opIdcreateWebhookSubscriber"></a>
 
-`POST /o/{orgId}/devportal/v1/webhook-subscribers`
+`POST /devportal/v1/webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers \
+curl -X POST https://devportal.api-platform.io/devportal/v1/webhook-subscribers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -50,7 +50,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|true|Webhook subscriber configuration payload.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -153,13 +152,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetWebhookSubscribers"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-subscribers`
+`GET /devportal/v1/webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-subscribers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -181,7 +180,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -255,13 +253,13 @@ Status Code **200**
 
 <a id="opIdgetWebhookSubscriber"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
+`GET /devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -281,7 +279,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
@@ -337,13 +334,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateWebhookSubscriber"></a>
 
-`PUT /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
+`PUT /devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -383,7 +380,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|false|Webhook subscriber update payload. All fields are optional; only supplied fields are updated.|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
@@ -492,13 +488,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteWebhookSubscriber"></a>
 
-`DELETE /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
+`DELETE /devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -518,7 +514,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
@@ -555,13 +550,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetWebhookSubscriberDeliveries"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries`
+`GET /devportal/v1/webhook-subscribers/{subscriberId}/deliveries`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId}/deliveries \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -581,7 +576,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses

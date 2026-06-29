@@ -61,9 +61,6 @@ function enforceSecurity(scope) {
                 req[constants.USER_ID] = decodedAccessToken?.[constants.USER_ID];
                 return validateAuthentication(scope)(req, res, next);
             } else if (config.advanced.apiKey.enabled) {
-                if (req.headers.organization) {
-                    req.params.orgId = req.headers.organization;
-                }
                 enforceAPIKey(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
@@ -123,12 +120,7 @@ const ensureAuthenticated = async (req, res, next) => {
     }
     if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
         config.authenticatedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-        let orgId;
-        if (req.params.orgName) {
-            orgId = req.params.orgName;
-        } else {
-            orgId = req.params.orgId;
-        }
+        const orgId = req.params.orgName;
         let orgDetails;
         if (orgId !== undefined) {
             orgDetails = await orgDao.get(orgId);

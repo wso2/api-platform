@@ -42,7 +42,7 @@ const { CustomError } = require("../utils/errors/customErrors");
 const LabelDTO = require("../dto/labelDto");
 
 const createAPIMetadata = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const userId = util.resolveActor(req);
     logger.info('Creating API metadata...', {
         orgId
@@ -227,7 +227,7 @@ const createAPIMetadata = async (req, res) => {
         logger.error('API metadata creation failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
@@ -279,7 +279,8 @@ async function allowAPIStatusChange(apiStatus, orgId, apiId) {
 
 const getAPIMetadata = async (req, res) => {
 
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     try {
         const retrievedAPI = await getMetadataFromDB(orgId, apiId);
         if (retrievedAPI !== "") {
@@ -315,7 +316,7 @@ const getMetadataFromDB = async (orgId, apiId) => {
 
 const getAllAPIMetadata = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
+        const orgId = req.orgId;
         const searchTerm = req.query.query;
         const apiName = req.query.apiName;
         const apiVersion = req.query.version;
@@ -327,7 +328,7 @@ const getAllAPIMetadata = async (req, res) => {
         logger.error('API metadata list retrieval failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             searchTerm: req.query.query,
             apiName: req.query.apiName,
             apiVersion: req.query.version,
@@ -361,7 +362,8 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
 };
 
 const updateAPIMetadata = async (req, res) => {
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     const userId = util.resolveActor(req);
     logger.info('Updating API metadata', {
         orgId,
@@ -600,7 +602,8 @@ const updateAPIMetadata = async (req, res) => {
 };
 
 const deleteAPIMetadata = async (req, res) => {
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -633,12 +636,13 @@ const deleteAPIMetadata = async (req, res) => {
 
 const createAPITemplate = async (req, res) => {
     logger.info('Creating API template...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: req.file?.originalname,
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         const zipFilePath = req.file.path;
         const extractPath = path.join("/tmp", orgId + "/" + apiId);
@@ -731,7 +735,7 @@ const createAPITemplate = async (req, res) => {
         logger.error('API content creation failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: req.file?.originalname,
         });
@@ -742,12 +746,13 @@ const createAPITemplate = async (req, res) => {
 const createAPIContent = async (req, res) => {
     const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
     logger.info('Creating API content...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: uploadedFile?.originalname,
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
         let docMetadata = "";
@@ -786,7 +791,7 @@ const createAPIContent = async (req, res) => {
         logger.error('API content creation failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: uploadedFile?.originalname,
         });
@@ -796,12 +801,13 @@ const createAPIContent = async (req, res) => {
 
 const updateAPITemplate = async (req, res) => {
     logger.info('Updating API template...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: req.file?.originalname
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
@@ -835,7 +841,7 @@ const updateAPITemplate = async (req, res) => {
                 contentPath,
                 imagesPath,
                 documentPath,
-                orgId: req.params.orgId,
+                orgId: req.orgId,
                 apiId: req.params.apiId
             });
             throw new Error(
@@ -889,7 +895,7 @@ const updateAPITemplate = async (req, res) => {
         logger.error('API content update failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: req.file?.originalname
         });
@@ -900,12 +906,13 @@ const updateAPITemplate = async (req, res) => {
 const updateAPIContent = async (req, res) => {
     const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
     logger.info('Updating API content...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: uploadedFile?.originalname
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
@@ -942,7 +949,7 @@ const updateAPIContent = async (req, res) => {
         logger.error('API content update failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: uploadedFile?.originalname
         });
@@ -952,7 +959,8 @@ const updateAPIContent = async (req, res) => {
 
 const getAPIFile = async (req, res) => {
 
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     const apiFileName = req.query.fileName;
     const type = req.query.type;
     let apiFileResponse = "";
@@ -1013,7 +1021,8 @@ const getAPIDocTypes = async (orgId, apiId) => {
 }
 
 const listApiDocs = async (req, res) => {
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     try {
         const names = await apiFileDao.listDocNames(orgId, apiId);
         res.status(200).json(names.map(fileName => ({ fileName })));
@@ -1025,12 +1034,13 @@ const listApiDocs = async (req, res) => {
 
 const deleteAPIFile = async (req, res) => {
     logger.info('Deleting API file...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: req.query.fileName,
         fileType: req.query.type
     });
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
     try {
@@ -1049,7 +1059,7 @@ const deleteAPIFile = async (req, res) => {
         logger.error('API content deletion failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId,
+            orgId: req.orgId,
             apiId: req.params?.apiId
         });
         util.handleError(res, error);
@@ -1089,7 +1099,7 @@ const putSubscriptionPlans = async (req, res) => {
 }
 
 const createSubscriptionPlan = async (req, res) => {
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     const subscriptionPlan = req.body;
     const userId = util.resolveActor(req);
     logger.info('Creating subscription plan...', {
@@ -1134,11 +1144,11 @@ const createSubscriptionPlans = async (req, res) => {
         if (config.generateDefaultSubPlans) {
             const msg = "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.";
             logger.info(msg, {
-                orgId: req.params?.orgId
+                orgId: req.orgId
             });
             res.status(200).json({ message: msg });
         } else {
-            const { orgId } = req.params;
+            const orgId = req.orgId;
             const subscriptionPlans = req.body;
             const userId = util.resolveActor(req);
 
@@ -1180,14 +1190,14 @@ const createSubscriptionPlans = async (req, res) => {
         logger.error('subscription plan create error failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
 };
 
 const updateSubscriptionPlan = async (req, res) => {
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     logger.info('Updating subscription plan...', {
         orgId
     });
@@ -1218,7 +1228,7 @@ const updateSubscriptionPlan = async (req, res) => {
         logger.error('subscription plan not found failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
@@ -1229,11 +1239,11 @@ const updateSubscriptionPlans = async (req, res) => {
         if (config.generateDefaultSubPlans) {
             const msg = "Bulk updating of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.";
             logger.info(msg, {
-                orgId: req.params?.orgId
+                orgId: req.orgId
             });
             res.status(200).json({ message: msg });
         } else {
-            const { orgId } = req.params;
+            const orgId = req.orgId;
             const subscriptionPlans = req.body;
             const userId = util.resolveActor(req);
 
@@ -1272,14 +1282,15 @@ const updateSubscriptionPlans = async (req, res) => {
         logger.error('subscription plan create error failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
 };
 
 const deleteSubscriptionPlan = async (req, res) => {
-    const { orgId, planId } = req.params;
+    const orgId = req.orgId;
+    const { planId } = req.params;
     logger.info('Deleting subscription plan...', {
         orgId,
         planId
@@ -1308,7 +1319,9 @@ const deleteSubscriptionPlan = async (req, res) => {
 
 const getSubscriptionPlan = async (req, res) => {
 
-    const { orgId, planId } = req.params;
+    const orgId = req.orgId;
+
+    const { planId } = req.params;
 
     try {
         const subscriptionPlanResponse = await subscriptionPlanDao.get(planId, orgId);
@@ -1332,7 +1345,7 @@ const getSubscriptionPlan = async (req, res) => {
 // org. Without it, returns all plans for the org.
 const listSubscriptionPlans = async (req, res) => {
 
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     const { name } = req.query;
 
     try {
@@ -1356,7 +1369,7 @@ const listSubscriptionPlans = async (req, res) => {
 
 const createLabels = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const labels = req.body;
     const userId = util.resolveActor(req);
     try {
@@ -1374,7 +1387,7 @@ const createLabels = async (req, res) => {
 
 const updateLabel = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const labels = req.body;
     const userId = util.resolveActor(req);
     try {
@@ -1394,7 +1407,7 @@ const updateLabel = async (req, res) => {
 
 const deleteLabels = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const labelNames = req.query.names;
     const labelList = labelNames.split(",");
     try {
@@ -1412,7 +1425,7 @@ const deleteLabels = async (req, res) => {
 
 const retrieveLabels = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     try {
         const labels = await getOrgLabels(orgId);
         res.status(200).json(util.toPaginatedList(labels, req));
@@ -1443,7 +1456,7 @@ const getOrgLabels = async (orgId) => {
 
 const addView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const labels = req.body.labels;
     const userId = util.resolveActor(req);
     await sequelize.transaction({
@@ -1467,7 +1480,7 @@ const addView = async (req, res) => {
 
 const updateView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
     const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
     const viewName = req.params.viewName;
@@ -1505,7 +1518,7 @@ const updateView = async (req, res) => {
 
 const deleteView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const name = req.params.viewName;
     try {
         const viewDelete = await viewDao.delete(orgId, name);
@@ -1526,7 +1539,7 @@ const deleteView = async (req, res) => {
 
 const getView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const name = req.params.viewName;
     try {
         const view = await getViewInfo(orgId, name);
@@ -1557,7 +1570,7 @@ const getViewInfo = async (orgId, name) => {
 
 const getAllViews = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     try {
         const views = await getViewsFromDB(orgId);
         return res.status(200).json(util.toPaginatedList(views, req));

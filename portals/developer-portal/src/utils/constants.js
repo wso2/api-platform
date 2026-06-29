@@ -16,21 +16,22 @@
  * under the License.
  */
 // Devportal API base segment and version — single source of truth for the
-// org-scoped invocation prefix `/o/{orgId}/devportal/v1`. Change these two to
-// bump the base segment (e.g. devportalv2) or version (e.g. v2) everywhere.
+// invocation prefix `/devportal/v1`. Change these two to bump the base segment
+// (e.g. devportalv2) or version (e.g. v2) everywhere.
 const DEVPORTAL_BASE_SEGMENT = 'devportal';
 const DEVPORTAL_VERSION = 'v1';
-// Express route prefix for org-scoped routes, e.g. '/o/:orgId/devportal/v1'
-const DEVPORTAL_ORG_PREFIX = `/o/:orgId/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
-// Builder for a concrete org path used in server-side URL generation,
-// e.g. devportalOrgPath('abc') => '/o/abc/devportal/v1'
-const devportalOrgPath = (orgId) => `/o/${orgId}/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// Express route prefix for devportal routes, e.g. '/devportal/v1'
+const DEVPORTAL_BASE_PATH = `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// Builder for the devportal base path used in server-side URL generation.
+// The orgId argument is accepted for backward-compatibility but not used —
+// org context is resolved from the token/session, not the URL.
+const devportalOrgPath = (_orgId) => `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
 
 module.exports = {
     DEVPORTAL_API: {
         BASE_SEGMENT: DEVPORTAL_BASE_SEGMENT,
         VERSION: DEVPORTAL_VERSION,
-        ORG_PREFIX: DEVPORTAL_ORG_PREFIX,
+        BASE_PATH: DEVPORTAL_BASE_PATH,
         orgPath: devportalOrgPath,
     },
     IMAGE: 'image',

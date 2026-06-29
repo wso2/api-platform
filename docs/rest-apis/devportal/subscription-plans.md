@@ -4,13 +4,13 @@
 
 <a id="opIdlistSubscriptionPlans"></a>
 
-`GET /o/{orgId}/devportal/v1/subscription-plans`
+`GET /devportal/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
+curl -X GET https://devportal.api-platform.io/devportal/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -31,7 +31,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |name|query|string|false|Filter by exact plan name. Returns an array of zero or one items.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -138,13 +137,13 @@ Status Code **200**
 
 <a id="opIdaddSubscriptionPlans"></a>
 
-`POST /o/{orgId}/devportal/v1/subscription-plans`
+`POST /devportal/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
+curl -X POST https://devportal.api-platform.io/devportal/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -194,7 +193,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -281,13 +279,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdputSubscriptionPlans"></a>
 
-`PUT /o/{orgId}/devportal/v1/subscription-plans`
+`PUT /devportal/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -337,7 +335,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -441,13 +438,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetSubscriptionPlan"></a>
 
-`GET /o/{orgId}/devportal/v1/subscription-plans/{planId}`
+`GET /devportal/v1/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans/{planId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -467,7 +464,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |planId|path|string|true|none|
 
 > Example responses
@@ -560,13 +556,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscriptionPlan"></a>
 
-`DELETE /o/{orgId}/devportal/v1/subscription-plans/{planId}`
+`DELETE /devportal/v1/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans/{planId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -586,7 +582,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |planId|path|string|true|none|
 
 > Example responses

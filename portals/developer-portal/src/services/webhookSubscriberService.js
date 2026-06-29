@@ -46,7 +46,7 @@ function _uniqueConstraintMessage(error, payload) {
 
 const createWebhookSubscriber = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
+        const orgId = req.orgId;
         const payload = req.body;
 
         const validationError = _validateRequiredFields(payload);
@@ -71,7 +71,8 @@ const createWebhookSubscriber = async (req, res) => {
 
 const updateWebhookSubscriber = async (req, res) => {
     try {
-        const { orgId, subscriberId } = req.params;
+        const orgId = req.orgId;
+        const { subscriberId } = req.params;
         const payload = req.body;
 
         const userId = util.resolveActor(req);
@@ -94,7 +95,7 @@ const updateWebhookSubscriber = async (req, res) => {
 
 const getWebhookSubscribers = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
+        const orgId = req.orgId;
         const records = await whDao.list(orgId);
         const dtos = records.map(r => new WebhookSubscriberDTO(r));
         return res.status(200).json(util.toPaginatedList(dtos, req));
@@ -106,7 +107,8 @@ const getWebhookSubscribers = async (req, res) => {
 
 const getWebhookSubscriber = async (req, res) => {
     try {
-        const { orgId, subscriberId } = req.params;
+        const orgId = req.orgId;
+        const { subscriberId } = req.params;
         const record = await whDao.get(orgId, subscriberId);
         const dto = new WebhookSubscriberDTO(record);
         return res.status(200).json(dto);
@@ -135,7 +137,8 @@ function _formatDeliverySummary(delivery) {
 
 const getWebhookSubscriberDeliveries = async (req, res) => {
     try {
-        const { orgId, subscriberId } = req.params;
+        const orgId = req.orgId;
+        const { subscriberId } = req.params;
         await whDao.get(orgId, subscriberId);
         const deliveries = await eventDao.listDeliveriesForSubscriber(orgId, subscriberId, 20);
         return res.status(200).json({ list: deliveries.map(_formatDeliverySummary) });
@@ -150,7 +153,8 @@ const getWebhookSubscriberDeliveries = async (req, res) => {
 
 const deleteWebhookSubscriber = async (req, res) => {
     try {
-        const { orgId, subscriberId } = req.params;
+        const orgId = req.orgId;
+        const { subscriberId } = req.params;
         await whDao.delete(orgId, subscriberId);
         return res.status(204).send();
     } catch (error) {

@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApiKey"></a>
 
-`POST /o/{orgId}/devportal/v1/api-keys/generate`
+`POST /devportal/v1/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/generate \
+curl -X POST https://devportal.api-platform.io/devportal/v1/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -43,7 +43,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `apiId` is the Developer Portal API ID. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -118,13 +117,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApiKeys"></a>
 
-`GET /o/{orgId}/devportal/v1/api-keys`
+`GET /devportal/v1/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys?apiId=api-7f4c2a6b \
+curl -X GET https://devportal.api-platform.io/devportal/v1/api-keys?apiId=api-7f4c2a6b \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -148,7 +147,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |appId|query|string|false|Optional application ID used to filter API keys associated with that application.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -266,13 +264,13 @@ Status Code **200**
 
 <a id="opIdregenerateApiKey"></a>
 
-`POST /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate`
+`POST /devportal/v1/api-keys/{apiKeyId}/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate \
+curl -X POST https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/regenerate \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -292,7 +290,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |apiKeyId|path|string|true|none|
 
 > Example responses
@@ -361,13 +358,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeApiKey"></a>
 
-`POST /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke`
+`POST /devportal/v1/api-keys/{apiKeyId}/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke \
+curl -X POST https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/revoke \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -387,7 +384,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |apiKeyId|path|string|true|none|
 
 > Example responses
@@ -444,13 +440,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdassociateApiKeyApplication"></a>
 
-`PUT /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application`
+`PUT /devportal/v1/api-keys/{apiKeyId}/application`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/application \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -482,7 +478,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Associates an API key with an application, identified by `appId`.|
 |» appId|body|string|true|none|
-|orgId|path|string|true|none|
 |apiKeyId|path|string|true|none|
 
 > Example responses
@@ -562,13 +557,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdremoveApiKeyApplication"></a>
 
-`DELETE /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application`
+`DELETE /devportal/v1/api-keys/{apiKeyId}/application`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/application \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -588,7 +583,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |apiKeyId|path|string|true|none|
 
 > Example responses
@@ -635,13 +629,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApplicationApiKeys"></a>
 
-`GET /o/{orgId}/devportal/v1/applications/{applicationId}/api-keys`
+`GET /devportal/v1/applications/{applicationId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/api-keys \
+curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -663,7 +657,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 
 > Example responses

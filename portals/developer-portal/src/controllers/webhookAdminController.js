@@ -51,7 +51,7 @@ function formatEvent(row) {
  */
 async function listEvents(req, res) {
     try {
-        const { orgId } = req.params;
+        const orgId = req.orgId;
         const { status, limit = '20', offset = '0' } = req.query;
         const parsedLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
         const parsedOffset = Math.max(0, parseInt(offset, 10) || 0);
@@ -77,7 +77,7 @@ async function listEvents(req, res) {
 async function getEvent(req, res) {
     try {
         const event = await eventDao.get(req.params.eventId);
-        if (!event || event.ORG_UUID !== req.params.orgId) {
+        if (!event || event.ORG_UUID !== req.orgId) {
             return res.status(404).json({ message: 'Event not found' });
         }
         res.json(formatEvent(event));

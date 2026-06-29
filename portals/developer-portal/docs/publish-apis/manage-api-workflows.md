@@ -71,7 +71,7 @@ API flow requests are JSON. The `apiFlowDefinition` field contains the Arazzo co
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-flows" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow.json
@@ -91,14 +91,14 @@ curl -X POST \
 ## List Workflows
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows \
+curl http://localhost:3000/devportal/v1/views/{viewName}/api-flows \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Workflow
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl http://localhost:3000/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -115,7 +115,7 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{ap
 
 ```bash
 curl -X PUT \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow-update.json
@@ -125,7 +125,7 @@ curl -X PUT \
 
 ```bash
 curl -X DELETE \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -149,7 +149,7 @@ The portal can generate a suggested agent prompt for a workflow using AI:
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-flows/generate-prompt" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @generate-prompt.json

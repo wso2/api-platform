@@ -68,7 +68,7 @@ function formatSubscriptionResponse(sub) {
 }
 
 const createSubscription = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const { apiId, subscriptionPlanId: reqPlanId } = req.body;
     const createdBy = req.user.sub;
 
@@ -136,7 +136,7 @@ const createSubscription = async (req, res) => {
 };
 
 const listSubscriptions = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const apiId = req.query.apiId;
 
     try {
@@ -160,7 +160,7 @@ const listSubscriptions = async (req, res) => {
 };
 
 const getSubscription = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const subscriptionId = req.params.subId;
 
     try {
@@ -180,7 +180,7 @@ const getSubscription = async (req, res) => {
 };
 
 const updateSubscription = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const subscriptionId = req.params.subId;
     const { status } = req.body;
     if (!Object.values(constants.SUBSCRIPTION_STATUS).includes(status)) {
@@ -221,7 +221,7 @@ const updateSubscription = async (req, res) => {
 };
 
 const deleteSubscription = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const subscriptionId = req.params.subId;
 
     try {

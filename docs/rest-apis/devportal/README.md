@@ -4,7 +4,7 @@
 Fine-grained Developer Portal API for managing organizations,
 API metadata and content, applications, subscriptions, application credentials, and API flows.
 
-Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
+Organization-scoped resources are served under `/devportal/v1`. Operations declare
 the least-privilege OAuth2 scopes required for each resource action.
 
 Base URLs:

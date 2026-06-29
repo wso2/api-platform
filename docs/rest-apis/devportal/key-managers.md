@@ -4,13 +4,13 @@
 
 <a id="opIdcreateKeyManager"></a>
 
-`POST /o/{orgId}/devportal/v1/key-managers`
+`POST /devportal/v1/key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers \
+curl -X POST https://devportal.api-platform.io/devportal/v1/key-managers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -52,7 +52,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[KeyManagerRequest](schemas.md#schemakeymanagerrequest)|false|Key manager configuration payload. Submit as `application/json` or as `multipart/form-data` with a `keymanager` field containing a KeyManager YAML file.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -149,13 +148,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetKeyManagers"></a>
 
-`GET /o/{orgId}/devportal/v1/key-managers`
+`GET /devportal/v1/key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers \
+curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -177,7 +176,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -251,13 +249,13 @@ Status Code **200**
 
 <a id="opIddiscoverKeyManagers"></a>
 
-`GET /o/{orgId}/devportal/v1/key-managers/discover`
+`GET /devportal/v1/key-managers/discover`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/discover \
+curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers/discover \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -279,7 +277,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -349,13 +346,13 @@ Status Code **200**
 
 <a id="opIdgetKeyManager"></a>
 
-`GET /o/{orgId}/devportal/v1/key-managers/{kmId}`
+`GET /devportal/v1/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/{kmId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -375,7 +372,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |kmId|path|string|true|Key manager ID (UUID).|
 
 > Example responses
@@ -425,13 +421,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateKeyManager"></a>
 
-`PUT /o/{orgId}/devportal/v1/key-managers/{kmId}`
+`PUT /devportal/v1/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/{kmId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -473,7 +469,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[KeyManagerUpdateRequest](schemas.md#schemakeymanagerupdaterequest)|false|Key manager update payload. All fields are optional; only supplied fields are updated. Submit as `application/json` or as `multipart/form-data` with a `keymanager` field containing a KeyManager YAML file.|
-|orgId|path|string|true|none|
 |kmId|path|string|true|Key manager ID (UUID).|
 
 > Example responses
@@ -576,13 +571,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteKeyManager"></a>
 
-`DELETE /o/{orgId}/devportal/v1/key-managers/{kmId}`
+`DELETE /devportal/v1/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/{kmId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -602,7 +597,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |kmId|path|string|true|Key manager ID (UUID).|
 
 > Example responses

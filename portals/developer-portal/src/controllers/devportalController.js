@@ -68,7 +68,7 @@ function parseApplicationDataFromRequest(req) {
 // ***** Save Application *****
 
 const listApplications = async (req, res) => {
-    const orgId = String(req.params.orgId || '').replace(/[\r\n]/g, '');
+    const orgId = req.orgId || '';
     const userId = req.auth?.userId || req.user?.sub;
     try {
         const applications = await appDao.list(orgId, userId);
@@ -80,7 +80,7 @@ const listApplications = async (req, res) => {
 };
 
 const saveApplication = async (req, res) => {
-    const orgId = String(req.params.orgId || '').replace(/[\r\n]/g, '');
+    const orgId = req.orgId || '';
     const userId = req.auth?.userId || req.user?.sub;
     try {
         const applicationData = parseApplicationDataFromRequest(req);
@@ -106,7 +106,7 @@ const saveApplication = async (req, res) => {
 // ***** Update Application *****
 
 const updateApplication = async (req, res) => {
-    const orgId = String(req.params.orgId || '').replace(/[\r\n]/g, '');
+    const orgId = req.orgId || '';
     const userId = req.auth?.userId || req.user?.sub;
     try {
         const appId = req.params.applicationId;
@@ -188,7 +188,7 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
 const deleteApplication = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
     const applicationId = req.params.applicationId;
-    const orgId = String(req.params.orgId || '').replace(/[\r\n]/g, '');
+    const orgId = req.orgId || '';
     try {
         const ownedApp = await appDao.get(orgId, applicationId, userId);
         if (!ownedApp) {
@@ -220,7 +220,7 @@ const deleteApplication = async (req, res) => {
 const generateKeys = async (req, res) => {
     let orgId, appId, userId;
     try {
-        orgId = req.params.orgId;
+        orgId = req.orgId;
         appId = req.params.applicationId;
         userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
         logger.info('Initiate create application key mapping...', { orgId: orgId, appId: appId });

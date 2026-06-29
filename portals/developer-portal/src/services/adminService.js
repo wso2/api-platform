@@ -323,7 +323,7 @@ const deleteOrganization = async (req, res) => {
 };
 
 const createOrgContent = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
     const userId = util.resolveActor(req);
@@ -397,7 +397,7 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
 };
 
 const updateOrgContent = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
     const userId = util.resolveActor(req);
@@ -480,7 +480,7 @@ const getOrgContent = async (orgId, viewName, fileType, fileName, filePath) => {
 };
 
 const deleteOrgContent = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     logger.info('Initiate delete organization content...', {
         orgId,
         viewName: req.params.viewName
@@ -513,7 +513,7 @@ const deleteOrgContent = async (req, res) => {
 };
 
 const deleteAllOrgContent = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     logger.info('Initiate delete all organization content...', {
         orgId,
         viewName: req.params.viewName

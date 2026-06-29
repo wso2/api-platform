@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiFlow"></a>
 
-`POST /o/{orgId}/devportal/v1/views/{viewName}/api-flows`
+`POST /devportal/v1/views/{viewName}/api-flows`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -52,7 +52,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[APIFlowCreateRequest](schemas.md#schemaapiflowcreaterequest)|true|API flow creation payload. Use `contentType` `ARAZZO` for JSON/YAML workflow content or `MD` for Markdown flow content.|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
 > Example responses
@@ -88,13 +87,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllApiFlows"></a>
 
-`GET /o/{orgId}/devportal/v1/views/{viewName}/api-flows`
+`GET /devportal/v1/views/{viewName}/api-flows`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -116,7 +115,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
 > Example responses
@@ -195,13 +193,13 @@ Status Code **200**
 
 <a id="opIdgetApiFlow"></a>
 
-`GET /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
+`GET /devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -221,7 +219,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 |apiFlowId|path|string|true|none|
 
@@ -266,13 +263,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApiFlow"></a>
 
-`PUT /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
+`PUT /devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -311,7 +308,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[APIFlowUpdateRequest](schemas.md#schemaapiflowupdaterequest)|true|API flow update payload. Include only the fields that should change.|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 |apiFlowId|path|string|true|none|
 
@@ -339,13 +335,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiFlow"></a>
 
-`DELETE /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
+`DELETE /devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -365,7 +361,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 |apiFlowId|path|string|true|none|
 
@@ -391,13 +386,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgeneratePrompt"></a>
 
-`POST /o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt`
+`POST /devportal/v1/views/{viewName}/api-flows/generate-prompt`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/generate-prompt \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -435,7 +430,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[APIFlowPromptRequest](schemas.md#schemaapiflowpromptrequest)|true|API flow prompt-generation payload.|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
 > Example responses

@@ -169,7 +169,7 @@ const generateHandle = (name) =>
         .substring(0, 100);
 
 const createAPIFlow = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const viewName = req.params.viewName;
     const userId = util.resolveActor(req);
     const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
@@ -232,7 +232,8 @@ const createAPIFlow = async (req, res) => {
 };
 
 const updateAPIFlow = async (req, res) => {
-    const { orgId, apiFlowId, viewName } = req.params;
+    const orgId = req.orgId;
+    const { apiFlowId, viewName } = req.params;
     const userId = util.resolveActor(req);
     const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
     if (status !== undefined && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
@@ -284,7 +285,8 @@ const updateAPIFlow = async (req, res) => {
 };
 
 const deleteAPIFlow = async (req, res) => {
-    const { orgId, apiFlowId, viewName } = req.params;
+    const orgId = req.orgId;
+    const { apiFlowId, viewName } = req.params;
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewName);
@@ -304,7 +306,8 @@ const deleteAPIFlow = async (req, res) => {
 };
 
 const getAPIFlow = async (req, res) => {
-    const { orgId, apiFlowId, viewName } = req.params;
+    const orgId = req.orgId;
+    const { apiFlowId, viewName } = req.params;
     try {
         const viewId = await resolveViewId(orgId, viewName);
         const apiFlow = await apiFlowDao.get(orgId, viewId, apiFlowId);
@@ -319,7 +322,8 @@ const getAPIFlow = async (req, res) => {
 };
 
 const getAllAPIFlows = async (req, res) => {
-    const { orgId, viewName } = req.params;
+    const orgId = req.orgId;
+    const { viewName } = req.params;
     try {
         const viewId = await resolveViewId(orgId, viewName);
         const apiFlows = await apiFlowDao.list(orgId, viewId);
