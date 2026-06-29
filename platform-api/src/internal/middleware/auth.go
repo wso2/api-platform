@@ -349,13 +349,13 @@ func getStringClaim(claims jwt.MapClaims, name string) string {
 
 // resolveUserID returns the stable user identifier used for audit fields
 // (createdBy/updatedBy/etc.). It prefers an explicitly configured claim name,
-// then the conventional "userid" claim, and finally falls back to "sub".
+// then the conventional "user_id" claim, and finally falls back to "sub".
 // Returns an empty string only when none of these are present.
 func resolveUserID(claims jwt.MapClaims, configuredClaim string) string {
 	if v := getStringClaim(claims, configuredClaim); v != "" {
 		return v
 	}
-	if v := getStringClaim(claims, "userid"); v != "" {
+	if v := getStringClaim(claims, "user_id"); v != "" {
 		return v
 	}
 	sub, _ := claims["sub"].(string)
