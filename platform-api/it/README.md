@@ -24,6 +24,7 @@ The suite is written in Gherkin and run by [godog](https://github.com/cucumber/g
 | `src/internal/integration/steps_mcp.go` | Steps for the MCP control-plane (proxy) scenario. |
 | `src/internal/integration/steps_webbroker.go` | Steps for the WebBroker API repository scenario. |
 | `src/internal/integration/steps_secret.go` | Steps for the secret repository scenario. |
+| `src/internal/integration/steps_deployment.go` | Steps for the deployment repository scenarios. |
 | `it/docker-compose.postgres.yaml` | Throwaway PostgreSQL for the tests. |
 | `it/docker-compose.sqlserver.yaml` | Throwaway SQL Server for the tests. |
 
@@ -97,6 +98,15 @@ IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=1433 \
   by — two latent SQL Server bugs in `SecretRepo` where `List` and the
   soft-delete row-lock used the `LIMIT` keyword (rejected by SQL Server); both now
   use the dialect-aware `PaginationClause` / `FetchFirstClause` helpers.
+- **Deployment store** — the deployment repository is driven through its real
+  methods (not raw SQL) so the dialect-specific SQL is verified on every engine:
+  `CreateWithLimitEnforcement` (the `deployment_status` upsert + the FETCH-first
+  hard-limit pruning), `GetCurrentByGateway` (FETCH-first current lookup),
+  `GetDeploymentsWithState` (the `ROW_NUMBER() OVER` per-gateway ranking),
+  `GetStatus`, `HasActiveDeployment`, `GetWithContent`, and the undeploy
+  transition via `SetCurrentWithDetails`. This is the path whose SQL Server
+  undeploy failure was fixed upstream and was previously only covered by the
+  delete-cascade.
 
 ## Relationship to the gateway integration tests
 

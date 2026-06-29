@@ -87,6 +87,12 @@ type world struct {
 	firstSecretHash   string
 	rotatedCipher     []byte
 	rotatedHash       string
+
+	// Deployment scenario.
+	depArtifactID  string
+	depGatewayID   string
+	depIDs         []string
+	lastDepContent []byte
 }
 
 // graph holds the identifiers seeded into a single organization for the cascade

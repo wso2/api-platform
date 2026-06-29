@@ -79,4 +79,5 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	registerMCPSteps(ctx, w)
 	registerWebBrokerSteps(ctx, w)
 	registerSecretSteps(ctx, w)
+	registerDeploymentSteps(ctx, w)
 }
