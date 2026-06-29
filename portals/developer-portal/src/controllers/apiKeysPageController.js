@@ -51,7 +51,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         let metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId, viewName);
         if (metaData && typeof metaData === 'object') {
             metaData = JSON.parse(JSON.stringify(metaData));
-            const images = metaData.apiInfo?.apiImageMetadata;
+            const images = metaData.apiImageMetadata;
             if (images) {
                 for (const key in images) {
                     images[key] = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}${images[key]}`;
@@ -62,7 +62,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         }
 
         let apiDefinitionForNav = null;
-        if (metaData?.apiInfo?.type !== constants.API_TYPE.GRAPHQL && metaData?.apiInfo?.type !== constants.API_TYPE.MCP) {
+        if (metaData?.type !== constants.API_TYPE.GRAPHQL && metaData?.type !== constants.API_TYPE.MCP) {
             try {
                 const apiFile = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
                 apiDefinitionForNav = apiFile?.FILE_CONTENT?.toString(constants.CHARSET_UTF8) || null;

@@ -331,45 +331,42 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
+  "name": "string",
+  "apiTitle": "string",
+  "remotes": [
+    {}
+  ],
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "REST",
+  "referenceId": "string",
+  "handle": "string",
+  "agentVisibility": "VISIBLE",
+  "addedLabels": [
+    "string"
+  ],
+  "removedLabels": [
+    "string"
+  ],
+  "owners": {
+    "technicalOwner": "string",
+    "businessOwner": "string",
+    "businessOwnerEmail": "string",
+    "technicalOwnerEmail": "string"
+  },
+  "apiImageMetadata": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "tags": [
+    "string"
+  ],
+  "labels": [
+    "string"
+  ],
   "id": "string",
   "refId": "string",
-  "handle": "string",
-  "apiInfo": {
-    "name": "string",
-    "apiTitle": "string",
-    "remotes": [
-      {}
-    ],
-    "version": "string",
-    "status": "PUBLISHED",
-    "description": "string",
-    "type": "REST",
-    "referenceId": "string",
-    "handle": "string",
-    "agentVisibility": "VISIBLE",
-    "addedLabels": [
-      "string"
-    ],
-    "removedLabels": [
-      "string"
-    ],
-    "owners": {
-      "technicalOwner": "string",
-      "businessOwner": "string",
-      "businessOwnerEmail": "string",
-      "technicalOwnerEmail": "string"
-    },
-    "apiImageMetadata": {
-      "property1": "string",
-      "property2": "string"
-    },
-    "tags": [
-      "string"
-    ],
-    "labels": [
-      "string"
-    ]
-  },
   "endPoints": {
     "sandboxURL": "string",
     "productionURL": "string"
@@ -391,14 +388,21 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
-|handle|string|false|none|none|
-|apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
-|endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
+|*anonymous*|[ApiInfoResponse](#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|false|none|none|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
+|» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
 <h2 id="tocS_ApiMetadataResponse">ApiMetadataResponse</h2>
 
@@ -409,47 +413,44 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
+  "name": "string",
+  "apiTitle": "string",
+  "remotes": [
+    {}
+  ],
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "REST",
+  "referenceId": "string",
+  "handle": "string",
+  "agentVisibility": "VISIBLE",
+  "addedLabels": [
+    "string"
+  ],
+  "removedLabels": [
+    "string"
+  ],
+  "owners": {
+    "technicalOwner": "string",
+    "businessOwner": "string",
+    "businessOwnerEmail": "string",
+    "technicalOwnerEmail": "string"
+  },
+  "apiImageMetadata": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "tags": [
+    "string"
+  ],
+  "labels": [
+    "string"
+  ],
   "id": "string",
   "refId": "string",
-  "handle": "string",
   "dataSource": "string",
   "planId": "string",
-  "apiInfo": {
-    "name": "string",
-    "apiTitle": "string",
-    "remotes": [
-      {}
-    ],
-    "version": "string",
-    "status": "PUBLISHED",
-    "description": "string",
-    "type": "REST",
-    "referenceId": "string",
-    "handle": "string",
-    "agentVisibility": "VISIBLE",
-    "addedLabels": [
-      "string"
-    ],
-    "removedLabels": [
-      "string"
-    ],
-    "owners": {
-      "technicalOwner": "string",
-      "businessOwner": "string",
-      "businessOwnerEmail": "string",
-      "technicalOwnerEmail": "string"
-    },
-    "apiImageMetadata": {
-      "property1": "string",
-      "property2": "string"
-    },
-    "tags": [
-      "string"
-    ],
-    "labels": [
-      "string"
-    ]
-  },
   "endPoints": {
     "sandboxURL": "string",
     "productionURL": "string"
@@ -471,16 +472,23 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
-|handle|string|false|none|none|
-|dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
-|planId|string|false|none|none|
-|apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
-|endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
+|*anonymous*|[ApiInfoResponse](#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|false|none|none|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
+|» planId|string|false|none|none|
+|» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
+|» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
 <h2 id="tocS_ApiInfoResponse">ApiInfoResponse</h2>
 
@@ -529,6 +537,8 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```
 
+Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
@@ -540,8 +550,8 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 |status|string|false|none|API lifecycle status.|
 |description|string|false|none|none|
 |type|string|false|none|none|
-|referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.|
-|handle|string¦null|false|none|Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.|
+|referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
+|handle|string¦null|false|none|Present when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|

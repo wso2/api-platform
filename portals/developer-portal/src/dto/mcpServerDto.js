@@ -34,15 +34,15 @@ class ServerResponseDTO {
     constructor(row, schema) {
         const source = typeof row?.get === 'function' ? row.get({ plain: true }) : row;
 
-        const storedRemotes = source.METADATA_SEARCH?.apiInfo?.remotes;
+        const storedRemotes = source.METADATA_SEARCH?.remotes;
         const remotes = Array.isArray(storedRemotes) && storedRemotes.length > 0
             ? storedRemotes
             : (source.PRODUCTION_URL ? [{ type: 'streamable-http', url: source.PRODUCTION_URL }] : []);
 
         this.server = {
             $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
-            name: source.METADATA_SEARCH?.apiInfo?.proxyId || source.NAME,
-            title: source.METADATA_SEARCH?.apiInfo?.apiTitle || undefined,
+            name: source.METADATA_SEARCH?.proxyId || source.NAME,
+            title: source.METADATA_SEARCH?.apiTitle || undefined,
             version: source.VERSION,
             description: source.DESCRIPTION,
             remotes
@@ -55,7 +55,7 @@ class ServerResponseDTO {
             choreoCapabilities.prompts = schema.prompts || [];
         }
 
-        const registryMeta = source.METADATA_SEARCH?.apiInfo || {};
+        const registryMeta = source.METADATA_SEARCH || {};
         this._meta = {
             [REGISTRY_META_KEY]: {
                 status: STATUS_MAP[source.STATUS] || source.STATUS,

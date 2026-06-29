@@ -70,7 +70,7 @@ A Handlebars template gives you full control over the landing page HTML. Images 
   <div class="api-overview">
     <h1>Order API</h1>
     <p>Create and manage customer orders.</p>
-    <img src="{{apiMetadata.apiInfo.apiImageMetadata.banner}}" alt="Banner" />
+    <img src="{{apiMetadata.apiImageMetadata.banner}}" alt="Banner" />
   </div>
 </section>
 ```
@@ -79,10 +79,11 @@ Available Handlebars variables:
 
 | Variable | Description |
 |---|---|
-| `{{apiMetadata.apiInfo.apiName}}` | API display name |
-| `{{apiMetadata.apiInfo.apiVersion}}` | API version string |
-| `{{apiMetadata.apiInfo.apiDescription}}` | API description |
-| `{{apiMetadata.apiInfo.apiImageMetadata.<tag>}}` | URL of an image uploaded with the given tag name |
+| `{{apiMetadata.name}}` | API display name |
+| `{{apiMetadata.version}}` | API version string |
+| `{{apiMetadata.description}}` | API description |
+| `{{apiMetadata.type}}` | API type (`REST`, `SOAP`, `MCP`, `WS`, `WEBSUB`, `GRAPHQL`) |
+| `{{apiMetadata.apiImageMetadata.<tag>}}` | URL of an image uploaded with the given tag name |
 
 ### Markdown (`.md`)
 

@@ -14,19 +14,19 @@
                     <div class="d-flex align-items-center justify-content-between w-100">
                         <div class="col-12 col-md-7">
                             <div class="api-title pb-3">
-                                <h4>{{apiInfo.name}}</h4>
-                                <span class="mb-1"> {{apiInfo.version}}</span>
-                                <p class="api-description">{{apiInfo.description}}</p>
+                                <h4>{{name}}</h4>
+                                <span class="mb-1"> {{version}}</span>
+                                <p class="api-description">{{description}}</p>
                             </div>
                         </div>
                         <div class="col-12 col-md-5 text-md-right">
-                            {{#if apiInfo.apiImageMetadata.api-icon}}
-                            <img class="img-thumbnail api-image-small" src="{{apiInfo.apiImageMetadata.api-icon}}"
+                            {{#if apiImageMetadata.api-icon}}
+                            <img class="img-thumbnail api-image-small" src="{{apiImageMetadata.api-icon}}"
                                 alt="API Image" />
                             {{else}}
                             <div
                                 class="img-thumbnail api-image-small image-icon d-flex justify-content-center align-items-center">
-                                {{firstTwoLetters apiInfo.name}}</div>
+                                {{firstTwoLetters name}}</div>
                             {{/if}}
                         </div>
                     </div>

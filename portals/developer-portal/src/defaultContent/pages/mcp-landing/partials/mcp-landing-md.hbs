@@ -1,13 +1,13 @@
-# {{apiMetadata.apiInfo.name}} {{apiMetadata.apiInfo.version}}
+# {{apiMetadata.name}} {{apiMetadata.version}}
 
-> {{apiMetadata.apiInfo.description}}
+> {{apiMetadata.description}}
 
-- **Version:** {{apiMetadata.apiInfo.version}}
+- **Version:** {{apiMetadata.version}}
 - **Type:** MCP Server
 {{#if apiMetadata.endPoints.productionURL}}- **Production Endpoint:** {{apiMetadata.endPoints.productionURL}}
 {{/if}}{{#if apiMetadata.endPoints.sandboxURL}}- **Sandbox Endpoint:** {{apiMetadata.endPoints.sandboxURL}}
-{{/if}}{{#if apiMetadata.apiInfo.tags}}- **Tags:** {{#each apiMetadata.apiInfo.tags}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
-{{/if}}{{#if apiMetadata.apiInfo.labels}}- **Labels:** {{#each apiMetadata.apiInfo.labels}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+{{/if}}{{#if apiMetadata.tags}}- **Tags:** {{#each apiMetadata.tags}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+{{/if}}{{#if apiMetadata.labels}}- **Labels:** {{#each apiMetadata.labels}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
 {{/if}}
 {{#if subscriptionPlans.length}}
 ## Subscription Plans

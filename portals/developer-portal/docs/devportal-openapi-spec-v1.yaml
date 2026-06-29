@@ -2699,14 +2699,14 @@ components:
                 type: string
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
-                  fields mirror the YAML spec: `apiInfo` (name, version, description, type,
-                  agentVisibility, status, referenceId, handle, tags, labels,
-                  owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
+                  fields: `name`, `version`, `description`, `type`,
+                  `agentVisibility`, `status`, `referenceId`, `handle`, `tags`, `labels`,
+                  `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   handle }` objects — only `handle` is read; the plan must already exist in the organization).
                 example: >-
-                  {"apiInfo":{"name":"Weather API","version":"v1","description":"Weather forecast
+                  {"name":"Weather API","version":"v1","description":"Weather forecast
                   API","type":"REST","agentVisibility":"VISIBLE",
-                  "status":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+                  "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
                   "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"handle":"Gold"}]}
     ApiContentZipMultipartBody:
@@ -3042,18 +3042,17 @@ components:
             id: api-7f4c2a6b
             refId: cp-api-12345
             handle: weather-api-v1
-            apiInfo:
-              name: Weather API
-              apiTitle: Weather Forecast API
-              version: v1
-              status: PUBLISHED
-              description: Weather forecast API.
-              type: REST
-              agentVisibility: VISIBLE
-              tags:
-                - weather
-              labels:
-                - default
+            name: Weather API
+            apiTitle: Weather Forecast API
+            version: v1
+            status: PUBLISHED
+            description: Weather forecast API.
+            type: REST
+            agentVisibility: VISIBLE
+            tags:
+              - weather
+            labels:
+              - default
             endPoints:
               productionURL: https://api.example.com/weather
               sandboxURL: https://sandbox.example.com/weather
@@ -3069,17 +3068,16 @@ components:
             id: api-7f4c2a6b
             refId: cp-api-12345
             handle: weather-api-v1
-            apiInfo:
-              name: Weather API
-              apiTitle: Weather Forecast API
-              remotes: []
-              version: v1
-              status: PUBLISHED
-              description: Weather forecast API.
-              type: REST
-              agentVisibility: VISIBLE
-              labels:
-                - default
+            name: Weather API
+            apiTitle: Weather Forecast API
+            remotes: []
+            version: v1
+            status: PUBLISHED
+            description: Weather forecast API.
+            type: REST
+            agentVisibility: VISIBLE
+            labels:
+              - default
             endPoints:
               sandboxURL: https://sandbox.example.com/weather
               productionURL: https://api.example.com/weather
@@ -3103,15 +3101,14 @@ components:
               - id: api-7f4c2a6b
                 refId: cp-api-12345
                 handle: weather-api-v1
-                apiInfo:
-                  name: Weather API
-                  version: v1
-                  status: PUBLISHED
-                  description: Weather forecast API.
-                  type: REST
-                  agentVisibility: VISIBLE
-                  labels:
-                    - default
+                name: Weather API
+                version: v1
+                status: PUBLISHED
+                description: Weather forecast API.
+                type: REST
+                agentVisibility: VISIBLE
+                labels:
+                  - default
                 endPoints:
                   sandboxURL: https://sandbox.example.com/weather
                   productionURL: https://api.example.com/weather
@@ -3661,64 +3658,65 @@ components:
           description: UTF-8 content string returned for stored organization content records.
       additionalProperties: false
     ApiMetadataCreateResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        refId:
-          type: string
-          nullable: true
-          description: >-
-            Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and
-            included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer
-            Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.
-        handle:
-          type: string
-        apiInfo:
-          $ref: "#/components/schemas/ApiInfoResponse"
-        endPoints:
-          $ref: "#/components/schemas/ApiEndpointsResponse"
-        subscriptionPlans:
-          type: array
-          items:
-            $ref: "#/components/schemas/SubscriptionPlanResponse"
-      additionalProperties: true
+      allOf:
+        - $ref: "#/components/schemas/ApiInfoResponse"
+        - type: object
+          properties:
+            id:
+              type: string
+            refId:
+              type: string
+              nullable: true
+              description: >-
+                Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering
+                and included in outbound webhook event payloads. Null/absent for APIs that exist only in the
+                Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the
+                registry.
+            endPoints:
+              $ref: "#/components/schemas/ApiEndpointsResponse"
+            subscriptionPlans:
+              type: array
+              items:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+          additionalProperties: true
     ApiMetadataResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        refId:
-          type: string
-          nullable: true
-          description: >-
-            Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and
-            included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer
-            Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.
-        handle:
-          type: string
-        dataSource:
-          type: string
-          nullable: true
-          description: >-
-            Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata,
-            or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded
-            content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter
-            is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every
-            other operation (get/create/update single API).
-        planId:
-          type: string
-        apiInfo:
-          $ref: "#/components/schemas/ApiInfoResponse"
-        endPoints:
-          $ref: "#/components/schemas/ApiEndpointsResponse"
-        subscriptionPlans:
-          type: array
-          items:
-            $ref: "#/components/schemas/SubscriptionPlanResponse"
-      additionalProperties: false
+      allOf:
+        - $ref: "#/components/schemas/ApiInfoResponse"
+        - type: object
+          properties:
+            id:
+              type: string
+            refId:
+              type: string
+              nullable: true
+              description: >-
+                Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering
+                and included in outbound webhook event payloads. Null/absent for APIs that exist only in the
+                Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the
+                registry.
+            dataSource:
+              type: string
+              nullable: true
+              description: >-
+                Indicates which content matched the search term: `METADATA` if the match was in the API's own
+                metadata, or a content type (e.g. a value from the API Content `type` field) if the match was
+                inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the
+                `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev
+                default) and absent from every other operation (get/create/update single API).
+            planId:
+              type: string
+            endPoints:
+              $ref: "#/components/schemas/ApiEndpointsResponse"
+            subscriptionPlans:
+              type: array
+              items:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+          additionalProperties: true
     ApiInfoResponse:
       type: object
+      description: >-
+        Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an
+        `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.
       properties:
         name:
           type: string
@@ -3755,13 +3753,13 @@ components:
           nullable: true
           description: >-
             External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec`
-            block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.
+            block sets `referenceId` — the create response echoes the parsed YAML back.
         handle:
           type: string
           nullable: true
           description: >-
-            Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser
-            sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.
+            Present when the API was created from a `devportal.yaml` artifact — the parser sets it from
+            `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.
         agentVisibility:
           type: string
           enum:
@@ -3787,7 +3785,6 @@ components:
           type: array
           items:
             type: string
-      additionalProperties: false
     ApiOwnersResponse:
       type: object
       properties:

@@ -34,21 +34,20 @@ const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
 
 const create = async (orgId, apiMetadata, createdBy, t) => {
 
-    const apiInfo = apiMetadata.apiInfo;
     let owners = {};
-    if (apiInfo.owners) {
-        owners = apiInfo.owners;
+    if (apiMetadata.owners) {
+        owners = apiMetadata.owners;
     }
     try {
         const apiMetadataResponse = await APIMetadata.create({
-            REF_ID: apiInfo.referenceId,
-            STATUS: apiInfo.status,
-            NAME: apiInfo.name,
-            HANDLE: apiInfo.handle ? apiInfo.handle : `${apiInfo.name.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.version}`,
-            DESCRIPTION: apiInfo.description,
-            VERSION: apiInfo.version,
-            TYPE: apiInfo.type,
-            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
+            REF_ID: apiMetadata.referenceId,
+            STATUS: apiMetadata.status,
+            NAME: apiMetadata.name,
+            HANDLE: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
+            DESCRIPTION: apiMetadata.description,
+            VERSION: apiMetadata.version,
+            TYPE: apiMetadata.type,
+            AGENT_VISIBILITY: (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
             BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
@@ -73,21 +72,20 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
 
 const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
 
-    const apiInfo = apiMetadata.apiInfo;
     let owners = {};
-    if (apiInfo.owners) {
-        owners = apiInfo.owners;
+    if (apiMetadata.owners) {
+        owners = apiMetadata.owners;
     }
     try {
         const [updateCount] = await APIMetadata.update({
-            REF_ID: apiInfo.referenceId,
-            STATUS: apiInfo.status,
-            NAME: apiInfo.name,
-            HANDLE: apiInfo.handle ? apiInfo.handle : `${apiInfo.name.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.version}`,
-            DESCRIPTION: apiInfo.description,
-            VERSION: apiInfo.version,
-            TYPE: apiInfo.type,
-            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
+            REF_ID: apiMetadata.referenceId,
+            STATUS: apiMetadata.status,
+            NAME: apiMetadata.name,
+            HANDLE: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
+            DESCRIPTION: apiMetadata.description,
+            VERSION: apiMetadata.version,
+            TYPE: apiMetadata.type,
+            AGENT_VISIBILITY: (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
             BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,

@@ -778,12 +778,12 @@ function validateScripts(strContent) {
 function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
-        const images = element.apiInfo.apiImageMetadata;
+        const images = element.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
             apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
-            element.apiInfo.apiImageMetadata[key] = modifiedApiImageURL;
+            element.apiImageMetadata[key] = modifiedApiImageURL;
         }
     });
 }
@@ -902,7 +902,7 @@ function resolveApiType(apiType) {
 function filterAllowedAPIs(searchResults, allowedAPIs) {
     searchResults = searchResults.filter(api => {
         // MCP servers published via the registry have no referenceId
-        if (api?.apiInfo?.type === constants.API_TYPE.MCP && !api.refId) {
+        if (api?.type === constants.API_TYPE.MCP && !api.refId) {
             return true;
         }
         return allowedAPIs.some(allowedAPI => api.refId === allowedAPI.id);

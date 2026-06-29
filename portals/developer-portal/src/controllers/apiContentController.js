@@ -71,8 +71,8 @@ const loadAPIs = async (req, res, next) => {
             const apiData = await loadAPIMetaDataListFromAPI(req, orgId, orgName, searchTerm, tags, viewName);
             let apiTags = [];
             apiData.forEach(api => {
-                if (api.apiInfo.tags) {
-                    api.apiInfo.tags.forEach(tag => {
+                if (api.tags) {
+                    api.tags.forEach(tag => {
                         if (!apiTags.includes(tag)) {
                             apiTags.push(tag);
                         }
@@ -116,8 +116,8 @@ const loadAPIs = async (req, res, next) => {
             const isMcpPage = req.originalUrl.includes("/mcps");
             const filteredList = metaDataList.filter(api =>
                 isMcpPage
-                    ? api.apiInfo?.type === constants.API_TYPE.MCP
-                    : api.apiInfo?.type !== constants.API_TYPE.MCP
+                    ? api?.type === constants.API_TYPE.MCP
+                    : api?.type !== constants.API_TYPE.MCP
             );
 
             const templateContent = {
@@ -176,7 +176,7 @@ const loadAPIContent = async (req, res, next) => {
         const dirName = apiDir ? path.basename(apiDir) : apiHandle;
         const hbsContentPath = path.join(process.cwd(), samplesPath, dirName, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
 
-        const apiType = metaData.apiInfo?.type;
+        const apiType = metaData?.type;
         const isMCP = apiType === constants.API_TYPE.MCP;
         let loadDefault = false;
         let apiDetails = '';
@@ -251,12 +251,12 @@ const loadAPIContent = async (req, res, next) => {
                 if (!additionalAPIContentResponse) {
                     loadDefault = true;
                     if (
-                      metaData.apiInfo &&
-                      metaData.apiInfo.type !== constants.API_TYPE.GRAPHQL &&
-                      metaData.apiInfo.type !== constants.API_TYPE.SOAP &&
-                      metaData.apiInfo.type !== constants.API_TYPE.WS &&
-                      metaData.apiInfo.type !== constants.API_TYPE.WEBSUB &&
-                      metaData.apiInfo.type !== constants.API_TYPE.MCP
+                      metaData.type &&
+                      metaData.type !== constants.API_TYPE.GRAPHQL &&
+                      metaData.type !== constants.API_TYPE.SOAP &&
+                      metaData.type !== constants.API_TYPE.WS &&
+                      metaData.type !== constants.API_TYPE.WEBSUB &&
+                      metaData.type !== constants.API_TYPE.MCP
                     ) {
                         apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
                         apiDetails = await parseSwagger(parseApiDefinitionContent(apiDefinition))
@@ -266,12 +266,12 @@ const loadAPIContent = async (req, res, next) => {
                             apiDetails["serverDetails"] = metaData.endPoints;
                         }
                     }
-                    if (metaData.apiInfo.type === constants.API_TYPE.SOAP) {
+                    if (metaData.type === constants.API_TYPE.SOAP) {
                         apiDetails = {};
                         apiDetails["serverDetails"] = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
                             ? metaData.endPoints : "";
                     }
-                    if (metaData.apiInfo.type === "WS" || metaData.apiInfo.type === "WEBSUB") {
+                    if (metaData.type === "WS" || metaData.type === "WEBSUB") {
                         apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
                         apiDetails = await parseAsyncAPI(parseApiDefinitionContent(apiDefinition))
                         if (metaData.endPoints.productionURL === "" && metaData.endPoints.sandboxURL === "") {
@@ -280,13 +280,13 @@ const loadAPIContent = async (req, res, next) => {
                             apiDetails["serverDetails"] = metaData.endPoints;
                         }
                     }
-                    if (metaData.apiInfo.type === constants.API_TYPE.GRAPHQL) {
+                    if (metaData.type === constants.API_TYPE.GRAPHQL) {
                         apiDefinition = "";
                         apiDefinition = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
                         apiDefinition = apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
                         apiDetails = {
-                            title: metaData.apiInfo.name || "No title",
-                            description: metaData.apiInfo.description || "No description",
+                            title: metaData.name || "No title",
+                            description: metaData.description || "No description",
                             schema: apiDefinition 
                         };
                         if (metaData.endPoints.productionURL === "" && metaData.endPoints.sandboxURL === "") {
@@ -295,8 +295,8 @@ const loadAPIContent = async (req, res, next) => {
                             apiDetails["serverDetails"] = metaData.endPoints;
                         }
                     }
-                    if (constants.API_TYPE.MCP === metaData.apiInfo?.type) {
-                        const mcpRemotes = metaData.apiInfo?.remotes || [];
+                    if (constants.API_TYPE.MCP === metaData?.type) {
+                        const mcpRemotes = metaData?.remotes || [];
                         const mcpProductionURL = mcpRemotes.length > 0 ? mcpRemotes[0].url : (metaData.endPoints?.productionURL || '');
                         apiDetails = {};
                         apiDetails['serverDetails'] = mcpProductionURL ? { productionURL: mcpProductionURL, sandboxURL: '' } : '';
@@ -371,12 +371,12 @@ const loadAPIContent = async (req, res, next) => {
                 }
             }
             let schemaFileName = constants.FILE_NAME.API_DEFINITION_XML;
-            if (metaData.apiInfo.type === constants.API_TYPE.GRAPHQL) {
+            if (metaData.type === constants.API_TYPE.GRAPHQL) {
                 schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
             }
 
             let apiDefinitionForNav = null;
-            if (metaData.apiInfo?.type !== constants.API_TYPE.GRAPHQL && metaData.apiInfo?.type !== constants.API_TYPE.SOAP && metaData.apiInfo?.type !== constants.API_TYPE.MCP) {
+            if (metaData?.type !== constants.API_TYPE.GRAPHQL && metaData?.type !== constants.API_TYPE.SOAP && metaData?.type !== constants.API_TYPE.MCP) {
                 try {
                     apiDefinitionForNav = await getApiDefinitionFileContent(orgId, apiId);
                 } catch (definitionErr) {
@@ -407,7 +407,7 @@ const loadAPIContent = async (req, res, next) => {
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
-            if (metaData.apiInfo.type == "MCP") {
+            if (metaData.type == "MCP") {
                 html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/mcp-landing", viewName);
             } else {
                 html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/api-landing", viewName);
@@ -435,9 +435,9 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
     let metaData, templateContent = {};
     if (config.designMode?.enabled) {
         metaData = loadAPIMetaDataFromFile(apiHandle);
-        templateContent.apiType = metaData.apiInfo.type;
+        templateContent.apiType = metaData.type;
         templateContent.metaData = metaData;
-        if (metaData.apiInfo.type === constants.API_TYPE.MCP) {
+        if (metaData.type === constants.API_TYPE.MCP) {
             const productionURL = metaData.endPoints?.productionURL || '';
             templateContent.swagger = JSON.stringify({ servers: [{ url: productionURL }] });
         } else {
@@ -452,10 +452,10 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
         metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId, viewName);
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
-        const apiType = metaData.apiInfo.type;
+        const apiType = metaData.type;
         templateContent.apiType = apiType;
         let apiDefinition;
-        if (metaData.apiInfo.type === constants.API_TYPE.MCP) {
+        if (metaData.type === constants.API_TYPE.MCP) {
             const productionURL = metaData.endPoints?.productionURL || '';
             templateContent.swagger = JSON.stringify({ servers: [{ url: productionURL }] });
             // Load MCP schema so loadAPIDefinitionRaw can serve it via SPEC_FORMAT_MAP field:'schema'
@@ -467,7 +467,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
             } catch (schemaErr) {
                 logger.warn('Could not load MCP schema definition for raw spec', { orgId, apiId, error: schemaErr.message });
             }
-        } else if (metaData.apiInfo.type === constants.API_TYPE.GRAPHQL) {
+        } else if (metaData.type === constants.API_TYPE.GRAPHQL) {
             apiDefinition = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
             templateContent.graphql = apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
         } else {
@@ -492,7 +492,6 @@ const loadDocsPage = async (req, res, next) => {
         const apiMetadata = await loadAPIMetaDataFromFile(apiHandle);
         const docNames = apiMetadata.docTypes;
         const metaForNav = {
-            apiInfo: {},
             refId: apiMetadata.refId,
         };
         const templateContent = {
@@ -500,8 +499,8 @@ const loadDocsPage = async (req, res, next) => {
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             baseDocUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
-            apiType: apiMetadata.apiInfo?.type,
-            apiName: apiMetadata.apiInfo?.name || '',
+            apiType: apiMetadata.type,
+            apiName: apiMetadata.name || '',
             showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
         }
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -529,7 +528,6 @@ const loadDocsPage = async (req, res, next) => {
             const apiMetadata = await apiDao.get(orgId, apiId);
             let apiType = apiMetadata[0].dataValues.TYPE;
             const metaForNav = {
-                apiInfo: {},
                 refId: apiMetadata[0].dataValues.REF_ID,
             };
 
@@ -616,8 +614,8 @@ const loadDocument = async (req, res, next) => {
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;
-        templateContent.apiName = metaData.apiInfo?.name || '';
-        const metaForNav = { apiInfo: {}, refId: metaData.refId };
+        templateContent.apiName = metaData.name || '';
+        const metaForNav = { refId: metaData.refId };
         templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
@@ -648,13 +646,13 @@ const loadDocument = async (req, res, next) => {
         }
         let apiMetadata = definitionResponse.metaData;
         
-        const isMCPFromRegistry = apiMetadata?.apiInfo?.type === constants.API_TYPE.MCP && !apiMetadata?.refId;
+        const isMCPFromRegistry = apiMetadata?.type === constants.API_TYPE.MCP && !apiMetadata?.refId;
 
         //load API definition
         if (req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH)) {
 
             if (isMCPFromRegistry) {
-                const remotes = apiMetadata?.apiInfo?.remotes || [];
+                const remotes = apiMetadata?.remotes || [];
                 const serverUrl = remotes.length > 0 ? remotes[0].url : '';
                 templateContent.swagger = JSON.stringify({ servers: [{ url: serverUrl }] });
             } else if (definitionResponse.apiType === constants.API_TYPE.MCP) {
@@ -762,7 +760,6 @@ const loadDocument = async (req, res, next) => {
             templateContent.devportalMode = devportalMode;
             const row = apiMetadata[0].dataValues;
             const metaForNav = {
-                apiInfo: {},
                 refId: row.REF_ID,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
@@ -792,8 +789,8 @@ async function loadAPIMetaDataList(samplesPath = config.designMode.apiSamplesPat
     const apis = sampleApiLoader.loadAll(samplesPath);
     apis.forEach(element => {
         const randomNumber = Math.floor(Math.random() * 3) + 3;
-        element.apiInfo.ratings = generateArray(randomNumber);
-        element.apiInfo.ratingsNoFill = generateArray(5 - randomNumber);
+        element.ratings = generateArray(randomNumber);
+        element.ratingsNoFill = generateArray(5 - randomNumber);
     });
     return apis;
 }
@@ -803,8 +800,8 @@ async function loadAPIMetaDataListFromAPI(req, orgId, orgName, searchTerm, tags,
     let metaData = await apiMetadataService.getMetadataListFromDB(orgId, searchTerm, tags, null, null, viewName);
     metaData.forEach(element => {
         const randomNumber = Math.floor(Math.random() * 3) + 3;
-        element.apiInfo.ratings = generateArray(randomNumber);
-        element.apiInfo.ratingsNoFill = generateArray(5 - randomNumber);
+        element.ratings = generateArray(randomNumber);
+        element.ratingsNoFill = generateArray(5 - randomNumber);
     });
     util.appendAPIImageURL(metaData, req, orgId);
 
@@ -820,7 +817,7 @@ async function loadAPIMetaData(req, orgId, apiId, viewName) {
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
         //replace image urls
-        let images = metaData.apiInfo.apiImageMetadata;
+        let images = metaData.apiImageMetadata;
         for (const key in images) {
             let apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
@@ -1053,13 +1050,13 @@ const loadAPIContentMd = async (req, res) => {
         const apiId = await apiDao.getId(orgId, apiHandle);
         const metaData = await loadAPIMetaData(req, orgId, apiId);
 
-        if (metaData.apiInfo?.agentVisibility === 'HIDDEN') {
+        if (metaData?.agentVisibility === 'HIDDEN') {
             return res.status(404).send('# Not Found\n\nThis API is not available for agents.');
         }
 
         const subscriptionPlans = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans);
 
-        const isMCPFromRegistry = metaData.apiInfo?.type === constants.API_TYPE.MCP && !metaData.refId;
+        const isMCPFromRegistry = metaData?.type === constants.API_TYPE.MCP && !metaData.refId;
         let showOAuth2 = true;
         let showApiKey = false;
         let noAuth = false;
@@ -1067,7 +1064,7 @@ const loadAPIContentMd = async (req, res) => {
         // Load API definition
         let apiDefinition = null;
         let specHeading = 'OpenAPI Specification';
-        const apiType = metaData.apiInfo?.type;
+        const apiType = metaData?.type;
         try {
             if (apiType === constants.API_TYPE.GRAPHQL) {
                 specHeading = 'GraphQL Schema';
@@ -1169,12 +1166,12 @@ const loadAPIContentMd = async (req, res) => {
 
 async function buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, configOverrides = {}) {
     const metaDataList = await loadAPIMetaDataListFromAPI(req, orgId, orgName, null, null, viewName);
-    const agentVisibleAPIs = metaDataList.filter(api => api.apiInfo.agentVisibility !== 'HIDDEN');
+    const agentVisibleAPIs = metaDataList.filter(api => api.agentVisibility !== 'HIDDEN');
     const hiddenAPICount = metaDataList.length - agentVisibleAPIs.length;
 
     const byType = { REST: [], MCP: [], GRAPHQL: [], WS: [], WEBSUB: [] };
     for (const api of agentVisibleAPIs) {
-        const type = api.apiInfo.type;
+        const type = api.type;
         if (byType[type]) byType[type].push(api);
     }
 
@@ -1275,13 +1272,13 @@ const loadAPIsMd = async (req, res) => {
         }
 
         const metaDataList = await loadAPIMetaDataListFromAPI(req, orgId, orgName, null, null, viewName);
-        const agentVisibleAPIs = metaDataList.filter(api => api.apiInfo.agentVisibility !== 'HIDDEN');
+        const agentVisibleAPIs = metaDataList.filter(api => api.agentVisibility !== 'HIDDEN');
         const hiddenAPICount = metaDataList.length - agentVisibleAPIs.length;
 
-        const nonMcpAPIs = agentVisibleAPIs.filter(api => api.apiInfo.type !== constants.API_TYPE.MCP);
+        const nonMcpAPIs = agentVisibleAPIs.filter(api => api.type !== constants.API_TYPE.MCP);
         const byType = { REST: [], GRAPHQL: [], WS: [], WEBSUB: [] };
         for (const api of nonMcpAPIs) {
-            const type = api.apiInfo.type;
+            const type = api.type;
             if (byType[type]) byType[type].push(api);
         }
         const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
@@ -1324,9 +1321,9 @@ const loadMCPsMd = async (req, res) => {
         }
 
         const metaDataList = await loadAPIMetaDataListFromAPI(req, orgId, orgName, null, null, viewName);
-        const agentVisibleAPIs = metaDataList.filter(api => api.apiInfo.agentVisibility !== 'HIDDEN');
-        const mcpAPIs = agentVisibleAPIs.filter(api => api.apiInfo.type === constants.API_TYPE.MCP);
-        const hiddenAPICount = metaDataList.filter(api => api.apiInfo.type === constants.API_TYPE.MCP).length - mcpAPIs.length;
+        const agentVisibleAPIs = metaDataList.filter(api => api.agentVisibility !== 'HIDDEN');
+        const mcpAPIs = agentVisibleAPIs.filter(api => api.type === constants.API_TYPE.MCP);
+        const hiddenAPICount = metaDataList.filter(api => api.type === constants.API_TYPE.MCP).length - mcpAPIs.length;
 
         const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
         const templateContent = {
@@ -1374,7 +1371,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
 
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
 
-        if (definitionResponse.metaData?.apiInfo?.agentVisibility === 'HIDDEN') {
+        if (definitionResponse.metaData?.agentVisibility === 'HIDDEN') {
             return res.status(404).json({ message: 'API specification not found' });
         }
 
@@ -1440,7 +1437,7 @@ const loadDocumentMd = async (req, res) => {
 
         const apiId = await apiDao.getId(orgId, apiHandle);
         const docMetaData = await loadAPIMetaData(req, orgId, apiId);
-        if (docMetaData.apiInfo?.agentVisibility === 'HIDDEN') {
+        if (docMetaData?.agentVisibility === 'HIDDEN') {
             return res.status(404).send('# Not Found\n\nThis API is not available for agents.');
         }
         // docName here is without the .md suffix (stripped by the route param)

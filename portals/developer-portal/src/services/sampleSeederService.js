@@ -95,9 +95,9 @@ async function seedSampleAPIs(orgId) {
         try {
             const yamlBuffer = Buffer.from(fs.readFileSync(path.join(apiDir, 'api.yaml')));
             const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
-            apiName = apiMetadata.apiInfo.name || entry;
+            apiName = apiMetadata.name || entry;
 
-            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.version)) {
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.version)) {
                 results.push({ name: apiName, status: 'exists' });
                 continue;
             }
@@ -136,14 +136,14 @@ async function seedSampleAPIs(orgId) {
                 }
 
                 // Label mappings
-                const labels = Array.isArray(apiMetadata.apiInfo.labels) && apiMetadata.apiInfo.labels.length
-                    ? apiMetadata.apiInfo.labels
+                const labels = Array.isArray(apiMetadata.labels) && apiMetadata.labels.length
+                    ? apiMetadata.labels
                     : ['default'];
                 await labelDao.createApiMapping(orgId, apiId, labels, constants.SYSTEM_ACTOR, t);
 
                 // Definition file
                 if (apiDefinitionFile) {
-                    const isGraphQL = apiMetadata.apiInfo.type === constants.API_TYPE.GRAPHQL;
+                    const isGraphQL = apiMetadata.type === constants.API_TYPE.GRAPHQL;
                     const storedName = isGraphQL ? constants.FILE_NAME.API_DEFINITION_GRAPHQL : apiFileName;
                     await apiFileDao.store(apiDefinitionFile, storedName, apiId, constants.DOC_TYPES.API_DEFINITION, constants.SYSTEM_ACTOR, t);
                 }
@@ -155,7 +155,7 @@ async function seedSampleAPIs(orgId) {
                 }
             });
 
-            results.push({ name: apiName, handle: apiMetadata.apiInfo.handle, status: 'ok', apiId });
+            results.push({ name: apiName, handle: apiMetadata.handle, status: 'ok', apiId });
             logger.info('Seeded sample API', { orgId, apiName, apiId });
 
         } catch (err) {
@@ -194,9 +194,9 @@ async function seedSampleMCPs(orgId) {
         try {
             const yamlBuffer = Buffer.from(fs.readFileSync(path.join(mcpDir, 'api.yaml')));
             const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
-            apiName = apiMetadata.apiInfo.name || entry;
+            apiName = apiMetadata.name || entry;
 
-            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.version)) {
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.version)) {
                 results.push({ name: apiName, status: 'exists' });
                 continue;
             }
@@ -221,8 +221,8 @@ async function seedSampleMCPs(orgId) {
                 }
 
                 // Label mappings
-                const labels = Array.isArray(apiMetadata.apiInfo.labels) && apiMetadata.apiInfo.labels.length
-                    ? apiMetadata.apiInfo.labels
+                const labels = Array.isArray(apiMetadata.labels) && apiMetadata.labels.length
+                    ? apiMetadata.labels
                     : ['default'];
                 await labelDao.createApiMapping(orgId, apiId, labels, constants.SYSTEM_ACTOR, t);
 
@@ -245,7 +245,7 @@ async function seedSampleMCPs(orgId) {
                 }
             });
 
-            results.push({ name: apiName, handle: apiMetadata.apiInfo.handle, status: 'ok', apiId });
+            results.push({ name: apiName, handle: apiMetadata.handle, status: 'ok', apiId });
             logger.info('Seeded sample MCP', { orgId, apiName, apiId });
 
         } catch (err) {

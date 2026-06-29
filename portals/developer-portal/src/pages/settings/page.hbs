@@ -1119,21 +1119,19 @@
     }
 
     var meta = {
-      apiInfo: {
-        name:        name,
-        version:     version,
-        handle:      handle,
-        type:        document.getElementById('wz-type').value,
-        status:      document.getElementById('wz-status').value,
-        description: v('wz-desc'),
-        tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
-        agentVisibility: agentVis,
-        owners: {
-          technicalOwner:      v('wz-tech-owner') || undefined,
-          technicalOwnerEmail: v('wz-tech-email') || undefined,
-          businessOwner:       v('wz-biz-owner') || undefined,
-          businessOwnerEmail:  v('wz-biz-email') || undefined,
-        }
+      name:        name,
+      version:     version,
+      handle:      handle,
+      type:        document.getElementById('wz-type').value,
+      status:      document.getElementById('wz-status').value,
+      description: v('wz-desc'),
+      tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
+      agentVisibility: agentVis,
+      owners: {
+        technicalOwner:      v('wz-tech-owner') || undefined,
+        technicalOwnerEmail: v('wz-tech-email') || undefined,
+        businessOwner:       v('wz-biz-owner') || undefined,
+        businessOwnerEmail:  v('wz-biz-email') || undefined,
       },
       endPoints: {
         productionURL: v('wz-prod') || undefined,
@@ -1295,11 +1293,11 @@
       if (!res.ok) throw new Error(res.statusText);
       var apiData = await res.json();
       /* rebuild minimal meta with new status */
-      var meta = {
-        apiInfo: Object.assign({}, apiData.apiInfo || {}, { status: newStatus }),
+      var meta = Object.assign({}, apiData, {
+        status: newStatus,
         endPoints: apiData.endPoints || {},
         subscriptionPlans: apiData.subscriptionPlans || [],
-      };
+      });
       var fd = new FormData();
       fd.append('apiMetadata', JSON.stringify(meta));
       var putRes = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(apiId)), {

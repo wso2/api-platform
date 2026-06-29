@@ -29,10 +29,9 @@ api: string
 apiDefinition: string
 artifact: string
 schemaDefinition: string
-apiMetadata: '{"apiInfo":{"name":"Weather
-  API","version":"v1","description":"Weather forecast
-  API","type":"REST","agentVisibility":"VISIBLE",
-  "status":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+apiMetadata: '{"name":"Weather API","version":"v1","description":"Weather
+  forecast API","type":"REST","agentVisibility":"VISIBLE",
+  "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
   "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"handle":"Gold"}]}'
 
@@ -54,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (name, version, description, type, agentVisibility, status, referenceId, handle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ handle }` objects — only `handle` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `handle`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ handle }` objects — only `handle` is read; the plan must already exist in the organization).|
 
 > Example responses
 
@@ -65,21 +64,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "api-7f4c2a6b",
   "refId": "cp-api-12345",
   "handle": "weather-api-v1",
-  "apiInfo": {
-    "name": "Weather API",
-    "apiTitle": "Weather Forecast API",
-    "version": "v1",
-    "status": "PUBLISHED",
-    "description": "Weather forecast API.",
-    "type": "REST",
-    "agentVisibility": "VISIBLE",
-    "tags": [
-      "weather"
-    ],
-    "labels": [
-      "default"
-    ]
-  },
+  "name": "Weather API",
+  "apiTitle": "Weather Forecast API",
+  "version": "v1",
+  "status": "PUBLISHED",
+  "description": "Weather forecast API.",
+  "type": "REST",
+  "agentVisibility": "VISIBLE",
+  "tags": [
+    "weather"
+  ],
+  "labels": [
+    "default"
+  ],
   "endPoints": {
     "productionURL": "https://api.example.com/weather",
     "sandboxURL": "https://sandbox.example.com/weather"
@@ -228,17 +225,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "api-7f4c2a6b",
       "refId": "cp-api-12345",
       "handle": "weather-api-v1",
-      "apiInfo": {
-        "name": "Weather API",
-        "version": "v1",
-        "status": "PUBLISHED",
-        "description": "Weather forecast API.",
-        "type": "REST",
-        "agentVisibility": "VISIBLE",
-        "labels": [
-          "default"
-        ]
-      },
+      "name": "Weather API",
+      "version": "v1",
+      "status": "PUBLISHED",
+      "description": "Weather forecast API.",
+      "type": "REST",
+      "agentVisibility": "VISIBLE",
+      "labels": [
+        "default"
+      ],
       "endPoints": {
         "sandboxURL": "https://sandbox.example.com/weather",
         "productionURL": "https://api.example.com/weather"
@@ -309,13 +304,13 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)]|false|none|none|
-|»» id|string|false|none|none|
-|»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
-|»» handle|string|false|none|none|
-|»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
-|»» planId|string|false|none|none|
-|»» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
+|» list|[allOf]|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
 |»»» name|string|false|none|none|
 |»»» apiTitle|string¦null|false|none|none|
 |»»» remotes|[object]|false|none|none|
@@ -323,8 +318,8 @@ Status Code **200**
 |»»» status|string|false|none|API lifecycle status.|
 |»»» description|string|false|none|none|
 |»»» type|string|false|none|none|
-|»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.|
-|»»» handle|string¦null|false|none|Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.|
+|»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
+|»»» handle|string¦null|false|none|Present when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
@@ -337,17 +332,32 @@ Status Code **200**
 |»»»» **additionalProperties**|string|false|none|none|
 |»»» tags|[string]|false|none|none|
 |»»» labels|[string]|false|none|none|
-|»» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
-|»»» sandboxURL|string|false|none|none|
-|»»» productionURL|string|false|none|none|
-|»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
 |»»» id|string|false|none|none|
-|»»» handle|string|false|none|none|
-|»»» name|string|false|none|none|
-|»»» description|string|false|none|none|
-|»»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
-|»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
-|»»» orgId|string|false|none|none|
+|»»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|»»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
+|»»» planId|string|false|none|none|
+|»»» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
+|»»»» sandboxURL|string|false|none|none|
+|»»»» productionURL|string|false|none|none|
+|»»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
+|»»»» id|string|false|none|none|
+|»»»» handle|string|false|none|none|
+|»»»» name|string|false|none|none|
+|»»»» description|string|false|none|none|
+|»»»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
+|»»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
+|»»»» orgId|string|false|none|none|
+
+*continued*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -416,19 +426,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "api-7f4c2a6b",
   "refId": "cp-api-12345",
   "handle": "weather-api-v1",
-  "apiInfo": {
-    "name": "Weather API",
-    "apiTitle": "Weather Forecast API",
-    "remotes": [],
-    "version": "v1",
-    "status": "PUBLISHED",
-    "description": "Weather forecast API.",
-    "type": "REST",
-    "agentVisibility": "VISIBLE",
-    "labels": [
-      "default"
-    ]
-  },
+  "name": "Weather API",
+  "apiTitle": "Weather Forecast API",
+  "remotes": [],
+  "version": "v1",
+  "status": "PUBLISHED",
+  "description": "Weather forecast API.",
+  "type": "REST",
+  "agentVisibility": "VISIBLE",
+  "labels": [
+    "default"
+  ],
   "endPoints": {
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"
@@ -535,10 +543,9 @@ api: string
 apiDefinition: string
 artifact: string
 schemaDefinition: string
-apiMetadata: '{"apiInfo":{"name":"Weather
-  API","version":"v1","description":"Weather forecast
-  API","type":"REST","agentVisibility":"VISIBLE",
-  "status":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+apiMetadata: '{"name":"Weather API","version":"v1","description":"Weather
+  forecast API","type":"REST","agentVisibility":"VISIBLE",
+  "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
   "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"handle":"Gold"}]}'
 
@@ -560,7 +567,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (name, version, description, type, agentVisibility, status, referenceId, handle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ handle }` objects — only `handle` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `handle`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ handle }` objects — only `handle` is read; the plan must already exist in the organization).|
 |apiId|path|string|true|none|
 
 > Example responses
@@ -572,19 +579,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "api-7f4c2a6b",
   "refId": "cp-api-12345",
   "handle": "weather-api-v1",
-  "apiInfo": {
-    "name": "Weather API",
-    "apiTitle": "Weather Forecast API",
-    "remotes": [],
-    "version": "v1",
-    "status": "PUBLISHED",
-    "description": "Weather forecast API.",
-    "type": "REST",
-    "agentVisibility": "VISIBLE",
-    "labels": [
-      "default"
-    ]
-  },
+  "name": "Weather API",
+  "apiTitle": "Weather Forecast API",
+  "remotes": [],
+  "version": "v1",
+  "status": "PUBLISHED",
+  "description": "Weather forecast API.",
+  "type": "REST",
+  "agentVisibility": "VISIBLE",
+  "labels": [
+    "default"
+  ],
   "endPoints": {
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"

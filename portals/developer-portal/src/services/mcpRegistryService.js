@@ -63,7 +63,7 @@ async function findRowByServerIdentifier(orgId, serverIdentifier, version, trans
         where: {
             ...baseWhere,
             [Op.and]: sequelize.where(
-                sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                sequelize.literal("\"METADATA_SEARCH\"->>'proxyId'"),
                 serverIdentifier
             )
         },
@@ -85,7 +85,7 @@ async function findRowByServerIdentifier(orgId, serverIdentifier, version, trans
                 where: {
                     ...baseWhere,
                     [Op.and]: sequelize.where(
-                        sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                        sequelize.literal("\"METADATA_SEARCH\"->>'proxyId'"),
                         bareHandle
                     )
                 },
@@ -191,20 +191,18 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
     const primaryUrl = normalizedRemotes.length > 0 ? normalizedRemotes[0].url : '';
     const apiHandle = deriveApiHandle(name, orgHandle);
     return {
-        apiInfo: {
-            referenceId: null,
-            name: name,
-            handle: apiHandle,
-            apiTitle: title || null,
-            description: description || `${name} MCP proxy`,
-            version: version,
-            type: constants.API_TYPE.MCP,
-            status: 'PUBLISHED',
-            remotes: normalizedRemotes,
-            publishedAt: publishedAt || null,
-            updatedAt: updatedAt || null,
-            proxyId: proxyId || null
-        },
+        referenceId: null,
+        name: name,
+        handle: apiHandle,
+        apiTitle: title || null,
+        description: description || `${name} MCP proxy`,
+        version: version,
+        type: constants.API_TYPE.MCP,
+        status: 'PUBLISHED',
+        remotes: normalizedRemotes,
+        publishedAt: publishedAt || null,
+        updatedAt: updatedAt || null,
+        proxyId: proxyId || null,
         endPoints: {
             productionURL: primaryUrl,
             sandboxURL: null
@@ -257,7 +255,7 @@ const listServers = async (req, res) => {
             where[Op.or] = [
                 { NAME: { [Op.iLike]: `%${search}%` } },
                 sequelize.where(
-                    sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                    sequelize.literal("\"METADATA_SEARCH\"->>'proxyId'"),
                     { [Op.iLike]: `%${search}%` }
                 )
             ];
@@ -265,7 +263,7 @@ const listServers = async (req, res) => {
 
         const rows = await APIMetadata.findAll({
             where,
-            order: [[sequelize.literal("(\"METADATA_SEARCH\"->'apiInfo'->>'publishedAt')"), 'DESC NULLS LAST']],
+            order: [[sequelize.literal("(\"METADATA_SEARCH\"->>'publishedAt')"), 'DESC NULLS LAST']],
             limit: limit + 1,
             offset: currentOffset
         });
@@ -302,17 +300,17 @@ const listVersions = async (req, res) => {
             where: {
                 ...baseWhere,
                 [Op.and]: sequelize.where(
-                    sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                    sequelize.literal("\"METADATA_SEARCH\"->>'proxyId'"),
                     serverIdentifier
                 )
             },
-            order: [[sequelize.literal("(\"METADATA_SEARCH\"->'apiInfo'->>'publishedAt')"), 'DESC NULLS LAST']]
+            order: [[sequelize.literal("(\"METADATA_SEARCH\"->>'publishedAt')"), 'DESC NULLS LAST']]
         });
 
         if (rows.length === 0) {
             rows = await APIMetadata.findAll({
                 where: { ...baseWhere, NAME: serverIdentifier },
-                order: [[sequelize.literal("(\"METADATA_SEARCH\"->'apiInfo'->>'publishedAt')"), 'DESC NULLS LAST']]
+                order: [[sequelize.literal("(\"METADATA_SEARCH\"->>'publishedAt')"), 'DESC NULLS LAST']]
             });
         }
 
@@ -394,7 +392,7 @@ const publishServer = async (req, res) => {
                         TYPE: constants.API_TYPE.MCP,
                         VERSION: version,
                         [Op.and]: sequelize.where(
-                            sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                            sequelize.literal("\"METADATA_SEARCH\"->>'proxyId'"),
                             proxyId
                         )
                     },
@@ -411,7 +409,7 @@ const publishServer = async (req, res) => {
 
             if (existing) {
                 existingApiId = existing.UUID;
-                const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || now;
+                const existingPublishedAt = existing.METADATA_SEARCH?.publishedAt || now;
                 const apiMetadataPayload = buildApiMetadataPayload(name, version, description, remotes, title, existingPublishedAt, now, proxyId, orgHandle);
                 await apiDao.update(orgId, existing.UUID, apiMetadataPayload, userId, t);
                 await labelDao.createApiMapping(orgId, existing.UUID, ['default'], userId, t);
@@ -485,8 +483,8 @@ const updateVersion = async (req, res) => {
             if (!existing) return;
 
             updatedApiId = existing.UUID;
-            const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || new Date().toISOString();
-            const existingProxyId = proxyId || existing.METADATA_SEARCH?.apiInfo?.proxyId || null;
+            const existingPublishedAt = existing.METADATA_SEARCH?.publishedAt || new Date().toISOString();
+            const existingProxyId = proxyId || existing.METADATA_SEARCH?.proxyId || null;
             const apiMetadataPayload = buildApiMetadataPayload(existing.NAME, version, description, remotes, title, existingPublishedAt, new Date().toISOString(), existingProxyId, orgHandle);
             await apiDao.update(orgId, existing.UUID, apiMetadataPayload, userId, t);
             await labelDao.createApiMapping(orgId, existing.UUID, ['default'], userId, t);
@@ -588,7 +586,7 @@ const updateAllVersionsStatus = async (req, res) => {
 
         // Build proxyId condition, fall back to NAME match
         const proxyIdCondition = sequelize.where(
-            sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+            sequelize.literal("\"METADATA_SEARCH\"->>'proxyId'"),
             serverIdentifier
         );
 

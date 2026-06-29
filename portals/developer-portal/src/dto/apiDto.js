@@ -24,7 +24,7 @@ class APIDTO {
         this.refId = api.REF_ID;
         this.handle = api.HANDLE;
         this.dataSource = api.DATA_SOURCE;
-        this.apiInfo = new APIInfo(api);
+        Object.assign(this, new APIInfo(api));
         this.endPoints = new Endpoints(api);
         
         if (api.DP_SUBSCRIPTION_PLANs) {
@@ -47,8 +47,8 @@ class APIDTO {
 class APIInfo {
     constructor(apiInfo) {
         this.name = apiInfo.NAME;
-        this.apiTitle = apiInfo.METADATA_SEARCH?.apiInfo?.apiTitle || null;
-        this.remotes = apiInfo.METADATA_SEARCH?.apiInfo?.remotes || [];
+        this.apiTitle = apiInfo.METADATA_SEARCH?.apiTitle || null;
+        this.remotes = apiInfo.METADATA_SEARCH?.remotes || [];
         this.version = apiInfo.VERSION;
         this.description = apiInfo.DESCRIPTION;
         this.type = apiInfo.TYPE;

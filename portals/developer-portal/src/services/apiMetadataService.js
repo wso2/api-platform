@@ -91,15 +91,14 @@ const createAPIMetadata = async (req, res) => {
         }
 
         // Validate input
-        const hasGraphQLSchema = apiMetadata.apiInfo?.type === constants.API_TYPE.GRAPHQL &&
+        const hasGraphQLSchema = apiMetadata.type === constants.API_TYPE.GRAPHQL &&
             req.files?.schemaDefinition?.[0];
-        if (!apiMetadata.apiInfo || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
+        if (!apiMetadata.name || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
         }
-        const { status: apiStatus, agentVisibility: infoAgentVisibility } = apiMetadata.apiInfo;
-        const agentVisibility = apiMetadata.agentVisibility || infoAgentVisibility;
+        const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
             throw new Sequelize.ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
@@ -109,7 +108,6 @@ const createAPIMetadata = async (req, res) => {
                 throw new Sequelize.ValidationError(`Invalid agentVisibility '${agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
             }
             apiMetadata.agentVisibility = normalizedAgentVisibility;
-            apiMetadata.apiInfo.agentVisibility = normalizedAgentVisibility;
         }
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
@@ -140,8 +138,8 @@ const createAPIMetadata = async (req, res) => {
                 await subscriptionPlanDao.createApiMapping(subscriptionPlans, apiId, userId, t);
             }
             //store api labels
-            if (apiMetadata.apiInfo.labels) {
-                const labels = apiMetadata.apiInfo.labels;
+            if (apiMetadata.labels) {
+                const labels = apiMetadata.labels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
@@ -152,8 +150,8 @@ const createAPIMetadata = async (req, res) => {
                 await labelDao.createApiMapping(orgId, apiId, ['default'], userId, t);
             }
             //store api tags
-            if (apiMetadata.apiInfo.tags) {
-                const tags = apiMetadata.apiInfo.tags;
+            if (apiMetadata.tags) {
+                const tags = apiMetadata.tags;
                 if (!Array.isArray(tags)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
@@ -172,7 +170,7 @@ const createAPIMetadata = async (req, res) => {
                 }
             }
             // Save MCP tools as schema definition if the API type is MCP
-            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.type) {
+            if (constants.API_TYPE.MCP === apiMetadata.type) {
                 let schemaFile;
                 if (req.files?.schemaDefinition?.[0]) {
                     schemaFile = req.files.schemaDefinition[0];
@@ -198,7 +196,7 @@ const createAPIMetadata = async (req, res) => {
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.type && req.files?.schemaDefinition?.[0]) {
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && req.files?.schemaDefinition?.[0]) {
                 const file = req.files.schemaDefinition[0];
                 const schemaDefinitionFile = file.buffer;
                 logger.debug('GraphQL schema definition file received', {
@@ -255,10 +253,10 @@ function normalizeGraphQLEndpoint(endPoint) {
 }
 
 function normalizeGraphQLEndpoints(apiMetadata) {
-    if (!apiMetadata?.apiInfo || !apiMetadata?.endPoints) {
+    if (!apiMetadata?.name || !apiMetadata?.endPoints) {
         return;
     }
-    if (constants.API_TYPE.GRAPHQL !== apiMetadata.apiInfo.type) {
+    if (constants.API_TYPE.GRAPHQL !== apiMetadata.type) {
         return;
     }
     apiMetadata.endPoints.productionURL = normalizeGraphQLEndpoint(apiMetadata.endPoints.productionURL);
@@ -419,13 +417,12 @@ const updateAPIMetadata = async (req, res) => {
         }
 
         // Validate input — spec file is optional on update (already stored from create)
-        if (!apiMetadata.apiInfo || !apiMetadata.endPoints) {
+        if (!apiMetadata.name || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
         }
-        const { status: updateApiStatus, agentVisibility: updateInfoAgentVisibility } = apiMetadata.apiInfo;
-        const updateAgentVisibility = apiMetadata.agentVisibility || updateInfoAgentVisibility;
+        const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
             throw new Sequelize.ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
@@ -435,25 +432,24 @@ const updateAPIMetadata = async (req, res) => {
                 throw new Sequelize.ValidationError(`Invalid agentVisibility '${updateAgentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
             }
             apiMetadata.agentVisibility = normalizedUpdateAgentVisibility;
-            apiMetadata.apiInfo.agentVisibility = normalizedUpdateAgentVisibility;
         }
 
         // Compute added/removed labels diff for YAML and artifact paths
         let existingAPI;
-        if (orgId && apiId && Array.isArray(apiMetadata.apiInfo.labels) && (apiArtifactFile?.buffer || req.files?.api?.[0])) {
+        if (orgId && apiId && Array.isArray(apiMetadata.labels) && (apiArtifactFile?.buffer || req.files?.api?.[0])) {
             existingAPI = await getMetadataFromDB(orgId, apiId);
         }
-        if (Array.isArray(apiMetadata.apiInfo.labels) && !apiMetadata.apiInfo.addedLabels && existingAPI !== undefined) {
-            const desiredLabels = [...new Set(apiMetadata.apiInfo.labels.map(label => String(label)))];
-            const currentLabels = new Set(existingAPI?.apiInfo?.labels || []);
-            apiMetadata.apiInfo.addedLabels = desiredLabels.filter(label => !currentLabels.has(label));
-            apiMetadata.apiInfo.removedLabels = [...currentLabels].filter(label => !desiredLabels.includes(label));
+        if (Array.isArray(apiMetadata.labels) && !apiMetadata.addedLabels && existingAPI !== undefined) {
+            const desiredLabels = [...new Set(apiMetadata.labels.map(label => String(label)))];
+            const currentLabels = new Set(existingAPI?.labels || []);
+            apiMetadata.addedLabels = desiredLabels.filter(label => !currentLabels.has(label));
+            apiMetadata.removedLabels = [...currentLabels].filter(label => !desiredLabels.includes(label));
         }
 
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
-        let allowStatusChange = await allowAPIStatusChange(apiMetadata.apiInfo.status, orgId, apiId);
+        let allowStatusChange = await allowAPIStatusChange(apiMetadata.status, orgId, apiId);
         if (!allowStatusChange) {
             throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
         }
@@ -469,18 +465,18 @@ const updateAPIMetadata = async (req, res) => {
             if (!updatedRows) {
                 throw new Sequelize.EmptyResultError("No record found to update");
             }
-            if (apiMetadata.apiInfo.addedLabels) {
-                const labels = apiMetadata.apiInfo.addedLabels;
+            if (apiMetadata.addedLabels) {
+                const labels = apiMetadata.addedLabels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
                 await labelDao.createApiMapping(orgId, apiId, labels, userId, t);
-                updatedAPI[0].dataValues.addedLabels = apiMetadata.apiInfo.addedLabels;
+                updatedAPI[0].dataValues.addedLabels = apiMetadata.addedLabels;
             }
-            if (apiMetadata.apiInfo.removedLabels) {
-                const labels = apiMetadata.apiInfo.removedLabels;
+            if (apiMetadata.removedLabels) {
+                const labels = apiMetadata.removedLabels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
@@ -490,10 +486,10 @@ const updateAPIMetadata = async (req, res) => {
                 if (labelDelete === 0) {
                     throw new Sequelize.EmptyResultError("API Labels not found to delete");
                 }
-                updatedAPI[0].dataValues.removedLabels = apiMetadata.apiInfo.removedLabels;
+                updatedAPI[0].dataValues.removedLabels = apiMetadata.removedLabels;
             }
             // Tags are fully replaced on every update, matching the previous TAGS column's overwrite semantics
-            await tagDao.replaceApiMapping(orgId, apiId, apiMetadata.apiInfo.tags || [], userId, t);
+            await tagDao.replaceApiMapping(orgId, apiId, apiMetadata.tags || [], userId, t);
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -539,10 +535,10 @@ const updateAPIMetadata = async (req, res) => {
             const hasSchemaDefinitionFile = !!req.files?.schemaDefinition?.[0] || !!fullApiBundle?.schemaDefinitionFile;
             logger.debug('Processing MCP API schema definition', {
                 hasSchemaDefinition: hasSchemaDefinitionFile,
-                apiType: apiMetadata.apiInfo.type,
+                apiType: apiMetadata.type,
                 apiId
             });
-            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.type && hasSchemaDefinitionFile) {
+            if (constants.API_TYPE.MCP === apiMetadata.type && hasSchemaDefinitionFile) {
                 let schemaFile;
                 if (req.files?.schemaDefinition?.[0]) {
                     schemaFile = req.files.schemaDefinition[0];
@@ -568,7 +564,7 @@ const updateAPIMetadata = async (req, res) => {
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.type && req.files?.schemaDefinition?.[0]) {
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && req.files?.schemaDefinition?.[0]) {
                 const file = req.files.schemaDefinition[0];
                 const schemaDefinitionFile = file.buffer;
                 const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
@@ -1794,23 +1790,21 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
         .map(planName => ({ handle: planName }));
 
     return {
-        apiInfo: {
-            name: spec.displayName,
-            version: spec.version,
-            description: spec.description,
-            referenceId: spec.referenceId,
-            handle: metadata.name,
-            type: apiType,
-            status: apiStatus,
-            agentVisibility,
-            tags: util.normalizeStringArray(spec.tags),
-            labels: util.normalizeStringArray(spec.labels),
-            owners: {
-                businessOwner: businessInformation.businessOwner,
-                businessOwnerEmail: businessInformation.businessOwnerEmail,
-                technicalOwner: businessInformation.technicalOwner,
-                technicalOwnerEmail: businessInformation.technicalOwnerEmail,
-            },
+        name: spec.displayName,
+        version: spec.version,
+        description: spec.description,
+        referenceId: spec.referenceId,
+        handle: metadata.name,
+        type: apiType,
+        status: apiStatus,
+        agentVisibility,
+        tags: util.normalizeStringArray(spec.tags),
+        labels: util.normalizeStringArray(spec.labels),
+        owners: {
+            businessOwner: businessInformation.businessOwner,
+            businessOwnerEmail: businessInformation.businessOwnerEmail,
+            technicalOwner: businessInformation.technicalOwner,
+            technicalOwnerEmail: businessInformation.technicalOwnerEmail,
         },
         endPoints: {
             sandboxURL: endpoints.sandboxUrl,
