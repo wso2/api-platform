@@ -57,9 +57,9 @@ Example plans: `Free`, `Basic`, `Gold`, `Enterprise`.
 
 ## Application
 
-An **application** is a logical container — representing a mobile app, web app, device, or script — that a developer creates in the portal. Applications are used to generate OAuth2 consumer key/secret pairs for OAuth2-secured APIs.
+An **application** is a logical container — representing a mobile app, web app, device, or script — that a developer creates in the portal. For OAuth2-secured APIs, an application holds the client ID(s) that link to OAuth applications created directly in a key manager; the portal never generates or stores consumer key/secret pairs.
 
-A developer can have multiple applications with independent OAuth2 credentials. For example, a developer might have a `MyApp-Production` application and a `MyApp-Staging` application with separate credentials.
+A developer can have multiple applications, each with independent OAuth2 client IDs. For example, a developer might have a `MyApp-Production` application and a `MyApp-Staging` application linked to separate OAuth applications in the key manager.
 
 > **Note:** Applications are not required for API subscriptions or API key generation. Subscriptions are made directly to an API, and API keys are bound to an API — not to an application.
 

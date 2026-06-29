@@ -162,12 +162,14 @@
             Create an OAuth application directly in <strong>{{kmName}}</strong>, then paste its client ID below to
             link it to this application.
         </p>
+        <div id="addClientIdError-{{kmId}}-{{keyType}}" class="mk-error" style="display:none"></div>
         <div class="mk-add-clientid-row">
             <input type="text" class="mk-input" id="addClientIdInput-{{kmId}}-{{keyType}}"
                 placeholder="Paste client ID" {{#if isReadOnlyMode}}disabled{{/if}} />
             <button data-cyid="addClientId-{{keyType}}" id="addClientIdBtn-{{kmId}}-{{keyType}}"
                 class="mk-btn-primary {{#if isSandbox}}mk-btn-sandbox{{/if}} {{#if isReadOnlyMode}}disabled{{/if}}"
                 style="{{#if isReadOnlyMode}}pointer-events:none;opacity:.5{{/if}}"
+                {{#if isReadOnlyMode}}disabled{{/if}}
                 onclick="addClientId('{{kmId}}', '{{keyType}}', '{{appId}}', '{{orgID}}', '{{kmName}}')">
                 <span class="button-normal-state"><i class="bi bi-plus-lg me-1"></i>Add</span>
                 <span class="button-loading-state" style="display:none">

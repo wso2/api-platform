@@ -63,7 +63,9 @@ async function generateToken(tokenEndpoint, clientId, clientSecret, scopes, vali
             status: error.response?.status || null,
             tokenEndpoint,
         });
-        throw new Error(`Token generation failed: ${error.message}`);
+        const err = new Error(`Token generation failed: ${error.message}`);
+        err.statusCode = error.response?.status ?? null;
+        throw err;
     }
 }
 

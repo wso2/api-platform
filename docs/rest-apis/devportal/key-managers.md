@@ -264,7 +264,7 @@ curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-manager
 
 ```
 
-Returns the minimal public view of enabled key managers for developer use. Does not include admin credentials or internal endpoints.
+Returns the minimal public view of enabled key managers for developer use. Does not include admin credentials. Endpoint data such as tokenEndpoint is included so clients can direct token requests to the correct server.
 
 ### Authentication
 

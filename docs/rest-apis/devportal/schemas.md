@@ -1514,7 +1514,7 @@ A single delivery attempt made to a webhook subscriber.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyManager|string|true|none|none|
-|keyType|string|true|none|none|
+|keyType|string|false|none|none|
 |consumerKey|string|true|none|The OAuth client_id, created directly in the key manager. The portal never sees or stores a client secret — it is supplied per-request when generating a token.|
 
 #### Enumerated Values

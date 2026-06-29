@@ -16,7 +16,7 @@ You will also need an OAuth application already created in the key manager your 
 
 1. Sign in to the Developer Portal.
 2. In the sidebar, click **Applications**.
-3. Click on the application you subscribed with.
+3. Click on your application.
 4. In the application banner, click **Manage Keys**. This opens the **Manage Keys** page.
 5. Select the **Production** or **Sandbox** tab based on your environment.
 

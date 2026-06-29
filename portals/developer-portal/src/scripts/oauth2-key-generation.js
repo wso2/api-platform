@@ -1,7 +1,7 @@
 async function addClientId(kmId, keyType, appId, orgID, keyManager) {
     const input = document.getElementById('addClientIdInput-' + kmId + '-' + keyType);
     const btn = document.getElementById('addClientIdBtn-' + kmId + '-' + keyType);
-    const errorContainer = document.getElementById('keyGenerationErrorContainer-' + keyType);
+    const errorContainer = document.getElementById('addClientIdError-' + kmId + '-' + keyType);
     if (errorContainer) {
         errorContainer.style.display = 'none';
         errorContainer.textContent = '';

@@ -98,6 +98,15 @@ function _validateRequiredFields(payload) {
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
     }
+    const endpoint = payload.tokenEndpoint.trim();
+    if (!endpoint) {
+        return 'tokenEndpoint must not be blank';
+    }
+    try {
+        new URL(endpoint);
+    } catch {
+        return 'tokenEndpoint must be a valid URL';
+    }
     return null;
 }
 

@@ -235,6 +235,9 @@ const generateKeys = async (req, res) => {
         }
 
         const kmRecord = await kmDao.getByName(orgID, kmName);
+        if (!kmRecord) {
+            return res.status(404).json({ message: `Key manager '${kmName}' not found.` });
+        }
 
         const keyType = (rawKeyType || constants.KEY_TYPE.PRODUCTION).toUpperCase();
         if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
