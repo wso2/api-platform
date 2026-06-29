@@ -131,6 +131,17 @@ CREATE TABLE IF NOT EXISTS subscription_plan_limits (
     UNIQUE(subscription_plan_uuid, limit_type, time_amount, time_unit)
 );
 
+-- Records which subscription plans an API (artifact) offers/supports
+CREATE TABLE IF NOT EXISTS artifact_subscription_plans (
+    artifact_uuid VARCHAR(40) NOT NULL,
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(200),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (artifact_uuid, subscription_plan_uuid),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
+);
+
 -- Subscriptions table (application-level subscriptions for any artifact type)
 -- subscription_token: encrypted value (AES-256-GCM) for retrieval (legacy rows have hash)
 -- subscription_token_hash: SHA-256 hash for uniqueness and gateway sync
@@ -536,6 +547,8 @@ CREATE INDEX IF NOT EXISTS idx_webbroker_apis_lifecycle_status ON webbroker_apis
 CREATE INDEX IF NOT EXISTS idx_subscription_plans_org    ON subscription_plans(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(status);
 CREATE INDEX IF NOT EXISTS idx_subscription_plan_limits_plan ON subscription_plan_limits(subscription_plan_uuid);
+
+CREATE INDEX IF NOT EXISTS idx_artifact_subscription_plans_plan ON artifact_subscription_plans(subscription_plan_uuid);
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (
