@@ -128,7 +128,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applicatio
 
 ```
 
-Creates a Developer Portal application in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field.
+Creates a Developer Portal application in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.created` webhook event is published to the organization's configured webhook subscribers.
 
 > Payload
 
@@ -270,7 +270,7 @@ curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/application
 
 ```
 
-Updates an application owned by the authenticated user in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field.
+Updates an application owned by the authenticated user in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated` webhook event is published, plus one `apikey.application_updated` event per API key currently associated with the application.
 
 > Payload
 
@@ -416,7 +416,7 @@ curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/applicat
 
 ```
 
-Deletes an application owned by the authenticated user. Before removing the application record the service will make a best-effort attempt to revoke registered OAuth clients with their respective key managers and deletes all stored key mappings; failures are logged as warnings and do not abort deletion.
+Deletes an application owned by the authenticated user. Before removing the application record the service will make a best-effort attempt to revoke registered OAuth clients with their respective key managers and deletes all stored key mappings; failures are logged as warnings and do not abort deletion. An `application.deleted` webhook event is published, plus one `apikey.application_updated` event (with a cleared association) per API key that was associated with the application.
 
 ### Authentication
 

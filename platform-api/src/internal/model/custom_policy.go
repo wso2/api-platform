@@ -31,6 +31,8 @@ type CustomPolicy struct {
 	Version          string          `json:"version" db:"version"`
 	Description      *string         `json:"description,omitempty" db:"description"`
 	PolicyDefinition json.RawMessage `json:"policyDefinition" db:"policy_definition"`
+	CreatedBy        string          `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string          `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt        time.Time       `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time       `json:"updatedAt" db:"updated_at"`
 }

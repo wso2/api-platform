@@ -29,13 +29,14 @@ type WebBrokerAPI struct {
 	ProjectUUID      string                    `json:"projectId" db:"-"`
 	Name             string                    `json:"name" db:"-"`
 	Description      string                    `json:"description,omitempty" db:"-"`
-	CreatedBy        string                    `json:"createdBy,omitempty" db:"-"`
+	CreatedBy        string                    `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string                    `json:"updatedBy,omitempty" db:"updated_by"`
 	Version          string                    `json:"version" db:"-"`
 	LifeCycleStatus  string                    `json:"lifeCycleStatus" db:"-"`
-	Transport        []string                  `json:"transport,omitempty" db:"-"`
 	CreatedAt        time.Time                 `json:"createdAt" db:"-"`
 	UpdatedAt        time.Time                 `json:"updatedAt" db:"-"`
 	Configuration    WebBrokerAPIConfiguration `json:"configuration" db:"-"`
+	Origin           string                    `json:"origin,omitempty" db:"origin"`
 }
 
 // WebBrokerAPIConfiguration holds the WebBroker API configuration stored as JSON in the DB
@@ -43,6 +44,7 @@ type WebBrokerAPIConfiguration struct {
 	Name              string                       `json:"name,omitempty"`
 	Version           string                       `json:"version,omitempty"`
 	Context           *string                      `json:"context,omitempty"`
+	Transport         []string                     `json:"transport,omitempty"`
 	Receiver          WebBrokerReceiver            `json:"receiver,omitempty"`
 	Broker            WebBrokerBroker              `json:"broker,omitempty"`
 	Channels          map[string]WebBrokerChannel  `json:"channels,omitempty"`

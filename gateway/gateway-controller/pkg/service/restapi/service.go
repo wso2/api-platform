@@ -66,6 +66,9 @@ type UpdateResult struct {
 // DeleteResult holds the result of a Delete operation.
 type DeleteResult struct {
 	Handle string
+	// Config is the stored configuration that was deleted, so the handler can notify
+	// the control plane (undeploy) for gateway-originated artifacts.
+	Config *models.StoredConfig
 }
 
 // RestAPIService encapsulates business logic for REST API CRUD operations.
@@ -173,7 +176,8 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 
 	if !result.IsStale {
 		// Trigger bottom-up sync immediately if connected and control plane type is on-prem
-		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() &&
+			s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
 			go func() {
 				if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
 					log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
@@ -182,7 +186,7 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		}
 
 		// Push to control plane asynchronously if connected
-		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
 			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
 		}
 	}
@@ -351,12 +355,19 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
 
 	// Trigger bottom-up sync if enabled and connected
-	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() &&
+		s.controlPlaneClient.IsOnPrem() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
 		go func() {
 			if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
 				log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
 			}
 		}()
+	}
+
+	// Push to control plane asynchronously if connected
+	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil &&
+		s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
+		go s.waitForDeploymentAndPush(existing.UUID, params.CorrelationID, log)
 	}
 
 	log.Info("API configuration updated",
@@ -415,7 +426,7 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 		slog.String("id", cfg.UUID),
 		slog.String("handle", params.Handle))
 
-	return &DeleteResult{Handle: params.Handle}, nil
+	return &DeleteResult{Handle: params.Handle, Config: cfg}, nil
 }
 
 // undeployFromAPIMBeforeDelete undeploys a gateway-originated API from on-prem APIM
@@ -503,7 +514,7 @@ func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID
 				apiID := configID
 				deploymentID := cfg.DeploymentID
 
-				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
+				if err := s.controlPlaneClient.PushArtifact(apiID, cfg, deploymentID); err != nil {
 					log.Error("Failed to push deployment to control plane",
 						slog.String("api_id", apiID),
 						slog.Any("error", err))
@@ -602,4 +613,3 @@ func (s *RestAPIService) publishEvent(eventType eventhub.EventType, action, enti
 			slog.String("entity_id", entityID))
 	}
 }
-

@@ -19,14 +19,14 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views \
 
 ```
 
-Creates a Developer Portal view for an organization and associates it with the supplied label names. If `displayName` is omitted, the service stores the view name as the display name.
+Creates a Developer Portal view for an organization and associates it with the supplied label names. If `name` is omitted, the service stores the view's handle as its name.
 
 > Payload
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -170,8 +170,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "name": "partner-apis",
-      "displayName": "Partner APIs",
+      "handle": "partner-apis",
+      "name": "Partner APIs",
       "labels": [
         "partner",
         "public"
@@ -217,8 +217,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ViewResponse](schemas.md#schemaviewresponse)]|false|none|none|
+|»» handle|string|true|none|none|
 |»» name|string|true|none|none|
-|»» displayName|string|true|none|none|
 |»» labels|[string]|true|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -250,7 +250,7 @@ Updates the view display name and label associations. `addedLabels` are attached
 
 ```json
 {
-  "displayName": "Partner and Public APIs",
+  "name": "Partner and Public APIs",
   "addedLabels": [
     "premium"
   ],
@@ -271,7 +271,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the display-name or label changes that should be applied.|
+|body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the name or label changes that should be applied.|
 |orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
@@ -281,7 +281,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "displayName": "Partner and Public APIs",
+  "name": "Partner and Public APIs",
   "addedLabels": [
     "premium"
   ],
@@ -411,8 +411,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"

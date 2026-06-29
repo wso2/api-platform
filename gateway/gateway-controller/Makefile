@@ -80,6 +80,7 @@ build: generate-server-code test ## Build Docker image using buildx
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-context target=target \
@@ -107,6 +108,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-context target=target \
@@ -128,6 +130,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-context target=target \
@@ -148,6 +151,7 @@ build-debug: ## Build debug image for remote debugging with dlv (VS Code attach 
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-context target=target \

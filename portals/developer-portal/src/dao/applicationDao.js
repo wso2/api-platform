@@ -19,13 +19,26 @@ const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../
 const { Sequelize } = require('sequelize');
 const logger = require('../config/logger');
 
+// HANDLE is an immutable, org-scoped slug; application names aren't unique,
+// so a short random suffix keeps collisions practically impossible.
+const generateHandle = (name) => {
+    const slug = String(name || '').toLowerCase().trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 100);
+    const suffix = Math.random().toString(36).slice(2, 8);
+    return slug ? `${slug}-${suffix}` : `app-${suffix}`;
+};
+
 const create = async (orgID, userID, appData) => {
     const createAppData = {
         NAME: appData.name,
-        ORG_ID: orgID,
+        HANDLE: generateHandle(appData.name),
+        ORG_UUID: orgID,
         DESCRIPTION: appData.description,
-        TYPE: appData.type,
-        CREATED_BY: userID
+        CREATED_BY: userID,
+        UPDATED_BY: userID
     };
     try {
         const application = await Application.create(createAppData);
@@ -44,12 +57,13 @@ const update = async (orgID, appID, userID, appData) => {
             {
                 NAME: appData.name,
                 DESCRIPTION: appData.description,
-                TYPE: appData.type
+                UPDATED_BY: userID,
+                UPDATED_AT: new Date()
             },
             {
                 where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
+                    ORG_UUID: orgID,
+                    UUID: appID,
                     CREATED_BY: userID
                 }
             }
@@ -57,7 +71,7 @@ const update = async (orgID, appID, userID, appData) => {
         if (!updatedRowsCount) {
             return [updatedRowsCount, null];
         }
-        const updatedApp = await Application.findOne({ where: { ORG_ID: orgID, APP_ID: appID } });
+        const updatedApp = await Application.findOne({ where: { ORG_UUID: orgID, UUID: appID } });
         return [updatedRowsCount, [updatedApp]];
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -67,15 +81,16 @@ const update = async (orgID, appID, userID, appData) => {
     }
 };
 
-const get = async (orgID, appID, userID) => {
+const get = async (orgID, appID, userID, t) => {
     try {
         const application = await Application.findOne(
             {
                 where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
+                    ORG_UUID: orgID,
+                    UUID: appID,
                     CREATED_BY: userID
-                }
+                },
+                ...(t && { transaction: t })
             });
         return application;
     } catch (error) {
@@ -90,9 +105,9 @@ const getId = async (orgID, userID, appName) => {
     try {
         return await Application.findOne(
             {
-                attributes: ['APP_ID'],
+                attributes: ['UUID'],
                 where: {
-                    ORG_ID: orgID,
+                    ORG_UUID: orgID,
                     CREATED_BY: userID,
                     NAME: appName
                 }
@@ -110,7 +125,7 @@ const list = async (orgID, userID) => {
         return await Application.findAll(
             {
                 where: {
-                    ORG_ID: orgID,
+                    ORG_UUID: orgID,
                     CREATED_BY: userID
                 }
             });
@@ -122,14 +137,15 @@ const list = async (orgID, userID) => {
     }
 }
 
-const deleteApp = async (orgID, appID, userID) => {
+const deleteApp = async (orgID, appID, userID, t) => {
     try {
         const deletedRowsCount = await Application.destroy({
             where: {
-                ORG_ID: orgID,
-                APP_ID: appID,
+                ORG_UUID: orgID,
+                UUID: appID,
                 CREATED_BY: userID
-            }
+            },
+            ...(t && { transaction: t })
         });
         if (deletedRowsCount < 1) {
             throw Object.assign(new Sequelize.EmptyResultError('Application not found'));
@@ -148,14 +164,14 @@ const getKeyMapping = async (orgID, appID, t) => {
         const result = await Application.findOne(
             {
                 where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID
+                    ORG_UUID: orgID,
+                    UUID: appID
                 },
                 include: [
                     {
                         model: ApplicationKeyMapping,
                         where: {
-                            APP_ID: appID
+                            APP_UUID: appID
                         }
                     }
                 ],
@@ -174,10 +190,9 @@ const upsertKeyMapping = async (mappingData, t) => {
     try {
         const existing = await ApplicationKeyMapping.findOne({
             where: {
-                ORG_ID: mappingData.orgID,
-                APP_ID: mappingData.appID,
-                ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
-                KEY_TYPE: mappingData.keyType,
+                APP_UUID: mappingData.appID,
+                KM_UUID: mappingData.kmID ?? null,
+                TYPE: mappingData.keyType,
             },
             ...(t && { transaction: t }),
         });
@@ -185,16 +200,19 @@ const upsertKeyMapping = async (mappingData, t) => {
             await existing.update({
                 AS_CLIENT_ID: mappingData.asClientID,
                 ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+                UPDATED_BY: mappingData.createdBy,
+                UPDATED_AT: new Date()
             }, { transaction: t });
             return existing;
         }
         return await ApplicationKeyMapping.create({
-            ORG_ID: mappingData.orgID,
-            APP_ID: mappingData.appID,
-            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            APP_UUID: mappingData.appID,
+            ...(mappingData.kmID && { KM_UUID: mappingData.kmID }),
             AS_CLIENT_ID: mappingData.asClientID,
-            KEY_TYPE: mappingData.keyType,
+            TYPE: mappingData.keyType,
             ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+            CREATED_BY: mappingData.createdBy,
+            UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -208,12 +226,11 @@ const deleteMappings = async (orgID, appID, t) => {
     try {
         const deletedRowsCount = await ApplicationKeyMapping.destroy({
             where: {
-                ORG_ID: orgID,
-                APP_ID: appID
+                APP_UUID: appID
             }, transaction: t
         }, { transaction: t });
         if (deletedRowsCount < 1) {
-            logger.info("No Application Key Mapping found", {
+            logger.debug("No Application Key Mapping found", {
                 orgID,
                 appID,
                 deletedRowsCount,
@@ -232,8 +249,16 @@ const deleteMappings = async (orgID, appID, t) => {
 const deleteMappingsByIds = async (orgID, mappingIds, t) => {
     if (!mappingIds || mappingIds.length === 0) return 0;
     try {
+        const ownedMappings = await ApplicationKeyMapping.findAll({
+            attributes: ['UUID'],
+            where: { UUID: mappingIds },
+            include: [{ model: Application, where: { ORG_UUID: orgID }, attributes: [], required: true }],
+            transaction: t,
+        });
+        const ownedIds = ownedMappings.map((m) => m.UUID);
+        if (ownedIds.length === 0) return 0;
         return await ApplicationKeyMapping.destroy({
-            where: { MAPPING_ID: mappingIds, ORG_ID: orgID },
+            where: { UUID: ownedIds },
             transaction: t,
         });
     } catch (error) {
@@ -245,7 +270,7 @@ const deleteMappingsByIds = async (orgID, mappingIds, t) => {
 const getKeyMappings = async (orgID, appID) => {
     try {
         return await ApplicationKeyMapping.findAll({
-            where: { ORG_ID: orgID, APP_ID: appID }
+            where: { APP_UUID: appID }
         });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -258,12 +283,13 @@ const getKeyMappings = async (orgID, appID) => {
 const createKeyMapping = async (mappingData, t) => {
     try {
         const appKeyMapping = await ApplicationKeyMapping.create({
-            ORG_ID: mappingData.orgID,
-            APP_ID: mappingData.appID,
-            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            APP_UUID: mappingData.appID,
+            ...(mappingData.kmID && { KM_UUID: mappingData.kmID }),
             ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
-            ...(mappingData.keyType && { KEY_TYPE: mappingData.keyType }),
+            ...(mappingData.keyType && { TYPE: mappingData.keyType }),
             ...(mappingData.additionalProperties && { ADDITIONAL_PROPERTIES: mappingData.additionalProperties }),
+            CREATED_BY: mappingData.createdBy,
+            UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });
         return appKeyMapping;
     } catch (error) {

@@ -94,7 +94,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function handleCreateClick() {
         resetApiFlowForm();
-        document.getElementById('apiFlowFormTitle').textContent = 'Create API Flow';
+        const titleEl = document.getElementById('apiFlowFormTitle');
+        if (titleEl) titleEl.textContent = 'Create API Flow';
         document.getElementById('editingApiFlowId').value = '';
         updatePromptFromForm();
         showForm();
@@ -105,6 +106,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('cancelApiFlowBtn')?.addEventListener('click', showList);
     document.getElementById('cancelApiFlowBtn2')?.addEventListener('click', showList);
+    document.getElementById('afBackToListBtn')?.addEventListener('click', (e) => { e.preventDefault(); showList(); });
 
     // Debounced prompt update on name/description change
     let promptDebounce;
@@ -191,7 +193,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Section summaries
     document.getElementById('apiFlowName')?.addEventListener('input', updateSectionSummaries);
-    document.querySelectorAll('input[name="apiFlowVisibility"]').forEach(r => r.addEventListener('change', updateSectionSummaries));
     document.querySelectorAll('input[name="apiFlowAgentVisibility"]').forEach(r => r.addEventListener('change', updateSectionSummaries));
 
     initApiCardPicker();
@@ -206,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function () {
     initAccessMatrix();
 
     // Keep access matrix in sync when radios change by other means
-    document.querySelectorAll('input[name="apiFlowVisibility"]').forEach(r => r.addEventListener('change', syncAccessMatrixFromRadios));
     document.querySelectorAll('input[name="apiFlowAgentVisibility"]').forEach(r => r.addEventListener('change', syncAccessMatrixFromRadios));
 });
 
@@ -987,8 +987,6 @@ function resetApiFlowForm() {
 
     if (arazoEditor) arazoEditor.setValue('');
 
-    const visibilityPublicBtn = document.getElementById('visibilityPublic');
-    if (visibilityPublicBtn) visibilityPublicBtn.checked = true;
     const agentVisibilityVisibleBtn = document.getElementById('agentVisibilityVisible');
     if (agentVisibilityVisibleBtn) agentVisibilityVisibleBtn.checked = true;
     syncAgentPromptTab(false);
@@ -1241,7 +1239,7 @@ async function updatePromptFromForm() {
     const handle = editingFlow?.handle || generateHandle(name);
 
     try {
-        const response = await fetch(`/${orgName}/views/${viewName}/api-flows/generate-prompt`, {
+        const response = await fetch(`/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
             body: JSON.stringify({ name, description, apis, orgName, viewName, handle }),
@@ -1393,9 +1391,8 @@ async function saveApiFlow(orgID, viewName, status) {
     });
     if (!valid) return;
 
-    const visibility = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
     const handle = generateHandle(name);
-    const payload = { name, handle, description, agentPrompt, status, visibility, agentVisibility, contentType, apiFlowDefinition, markdownContent };
+    const payload = { name, handle, description, agentPrompt, status, agentVisibility, contentType, apiFlowDefinition, markdownContent };
     const isEdit = !!apiFlowId;
     const url = isEdit
         ? devportalApi.org(orgID, `/views/${viewName}/api-flows/${apiFlowId}`)
@@ -1536,7 +1533,8 @@ function openEditApiFlow(apiFlowId) {
     const data = (window.apiFlowsData || apiFlowsData || []).find(f => String(f.apiFlowId) === String(apiFlowId));
     if (!data) return;
     resetApiFlowForm();
-    document.getElementById('apiFlowFormTitle').textContent = 'Edit API Flow';
+    const titleEl = document.getElementById('apiFlowFormTitle');
+    if (titleEl) titleEl.textContent = 'Edit API Flow';
     document.getElementById('editingApiFlowId').value = apiFlowId;
     const nameField = document.getElementById('apiFlowName');
     if (nameField) { nameField.value = data.name || ''; nameField.readOnly = true; nameField.classList.add('af-field-readonly'); }
@@ -1558,8 +1556,6 @@ function openEditApiFlow(apiFlowId) {
     document.getElementById('agentPromptField').value = data.agentPrompt || '';
     setSaveButtonMode('edit', data.status);
 
-    const visibilityRadio = document.querySelector(`input[name="apiFlowVisibility"][value="${data.visibility || 'PUBLIC'}"]`);
-    if (visibilityRadio) visibilityRadio.checked = true;
     const agentVisibilityRadio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${data.agentVisibility || 'VISIBLE'}"]`);
     if (agentVisibilityRadio) agentVisibilityRadio.checked = true;
     syncAccessMatrixFromRadios();
@@ -1896,12 +1892,11 @@ function expandAllSections() {
 
 function updateSectionSummaries() {
     const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const vis = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
     const agentVis = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value || 'VISIBLE';
     const s1 = document.getElementById('af-summary-1');
     if (s1) {
         s1.textContent = name
-            ? `${name} · ${vis.charAt(0) + vis.slice(1).toLowerCase()} · Agent ${agentVis.charAt(0) + agentVis.slice(1).toLowerCase()}`
+            ? `${name} · Agent ${agentVis.charAt(0) + agentVis.slice(1).toLowerCase()}`
             : 'Not configured';
     }
 
@@ -1972,18 +1967,14 @@ function initWizard() {
     document.getElementById('afContinueBtn')?.addEventListener('click', () => {
         if (validateWizardStep(currentStep)) goToStep(currentStep + 1);
     });
-    // Clicking or keyboard-activating a complete stepper step navigates back
-    document.querySelectorAll('.af-stepper-step').forEach(el => {
+    document.getElementById('afBackBtn')?.addEventListener('click', () => {
+        if (currentStep > 1) goToStep(currentStep - 1);
+    });
+    // Clicking a complete stepper step navigates back
+    document.querySelectorAll('.af-wizard .cfg-step').forEach(el => {
         el.addEventListener('click', () => {
             const s = parseInt(el.dataset.step);
             if (s < currentStep) goToStep(s);
-        });
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                const s = parseInt(el.dataset.step);
-                if (s < currentStep) goToStep(s);
-            }
         });
     });
 
@@ -2047,29 +2038,26 @@ function updateWizardUI() {
         document.getElementById(`afStep${i}`)?.classList.toggle('d-none', i !== currentStep);
         document.getElementById(`afRight${i}`)?.classList.toggle('d-none', i !== currentStep);
     }
-    // Stepper dots + ARIA state
-    document.querySelectorAll('.af-stepper-step').forEach(el => {
+    // Stepper dots
+    document.querySelectorAll('.af-wizard .cfg-step').forEach(el => {
         const s = parseInt(el.dataset.step);
-        el.classList.toggle('is-active', s === currentStep);
-        el.classList.toggle('is-complete', s < currentStep);
-        if (s > currentStep) {
-            el.classList.remove('is-active', 'is-complete');
+        el.classList.remove('cfg-step--active', 'cfg-step--done');
+        const circ = el.querySelector('.cfg-step-circle');
+        if (s < currentStep) {
+            el.classList.add('cfg-step--done');
+            if (circ) circ.innerHTML = '<i class="bi bi-check" style="font-size:.75rem;line-height:1;"></i>';
+        } else {
+            if (s === currentStep) el.classList.add('cfg-step--active');
+            if (circ) circ.textContent = String(s);
         }
-        const isComplete = s < currentStep;
-        const isCurrent = s === currentStep;
-        el.setAttribute('aria-current', isCurrent ? 'step' : 'false');
-        el.setAttribute('aria-disabled', isComplete ? 'false' : 'true');
-        el.setAttribute('tabindex', isComplete ? '0' : '-1');
-        const dot = el.querySelector('.af-stepper-dot');
-        if (dot) dot.innerHTML = s < currentStep ? '<i class="bi bi-check2"></i>' : String(s);
     });
-    // Stepper lines
-    document.querySelectorAll('.af-stepper-line').forEach((line, idx) => {
-        line.classList.toggle('is-complete', idx + 1 < currentStep);
+    // Stepper connectors
+    document.querySelectorAll('.af-wizard .cfg-step-connector').forEach((line, idx) => {
+        line.classList.toggle('cfg-step-connector--done', idx + 1 < currentStep);
     });
     // Footer
-    const label = document.getElementById('afFooterStepLabel');
-    if (label) label.textContent = `Step ${currentStep} of 3`;
+    const backBtn = document.getElementById('afBackBtn');
+    if (backBtn) backBtn.classList.toggle('d-none', currentStep === 1);
     const continueBtn = document.getElementById('afContinueBtn');
     if (continueBtn) continueBtn.classList.toggle('d-none', currentStep === 3);
     const saveGroup = document.getElementById('saveApiFlowGroup');
@@ -2083,7 +2071,6 @@ function updateWizardUI() {
 function updateStep1Preview() {
     const name = document.getElementById('apiFlowName')?.value?.trim() || '';
     const desc = document.getElementById('apiFlowDescription')?.value?.trim() || '';
-    const vis = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
 
     // Preview card
     const nameEl = document.getElementById('afPreviewName');
@@ -2093,11 +2080,6 @@ function updateStep1Preview() {
 
     const descEl = document.getElementById('afPreviewDesc');
     if (descEl) descEl.textContent = desc;
-    const badge = document.getElementById('afPreviewBadge');
-    if (badge) {
-        badge.textContent = vis.toLowerCase();
-        badge.className = `af-preview-badge${vis === 'PUBLIC' ? ' af-preview-badge--public' : ''}`;
-    }
 
     // Inline field status icons
     if (name.length === 0) {
@@ -2194,42 +2176,24 @@ function initAccessMatrix() {
             }
         });
     };
-    bind('portalPublicCard', 'visibility', 'PUBLIC');
-    bind('portalPrivateCard', 'visibility', 'PRIVATE');
     bind('agentVisibleCard', 'agent', 'VISIBLE');
     bind('agentHiddenCard', 'agent', 'HIDDEN');
     syncAccessMatrixFromRadios();
 }
 
 function setAccessValue(type, value) {
-    if (type === 'visibility') {
-        const radio = document.querySelector(`input[name="apiFlowVisibility"][value="${value}"]`);
-        if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
-    } else {
-        const radio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${value}"]`);
-        if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
-    }
+    const radio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${value}"]`);
+    if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
     syncAccessMatrixFromRadios();
     updateStep1Preview();
 }
 
 function syncAccessMatrixFromRadios() {
-    const vis = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
     const agentVis = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value || 'VISIBLE';
 
-    const portalPublic = document.getElementById('portalPublicCard');
-    const portalPrivate = document.getElementById('portalPrivateCard');
     const agentVisible = document.getElementById('agentVisibleCard');
     const agentHidden = document.getElementById('agentHiddenCard');
 
-    if (portalPublic) {
-        portalPublic.classList.toggle('af-visibility-card--active', vis === 'PUBLIC');
-        portalPublic.setAttribute('aria-pressed', String(vis === 'PUBLIC'));
-    }
-    if (portalPrivate) {
-        portalPrivate.classList.toggle('af-visibility-card--active', vis === 'PRIVATE');
-        portalPrivate.setAttribute('aria-pressed', String(vis === 'PRIVATE'));
-    }
     if (agentVisible) {
         agentVisible.classList.toggle('af-visibility-card--active', agentVis === 'VISIBLE');
         agentVisible.setAttribute('aria-pressed', String(agentVis === 'VISIBLE'));

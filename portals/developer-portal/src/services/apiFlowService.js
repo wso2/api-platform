@@ -110,7 +110,7 @@ For each step in the workflow:
 5. Execute the API call with proper authentication
 6. Validate response (expect 2xx status)
 7. Extract outputs and pass to next step
-8. On error: log step ID, status code, and response body
+8. On error: log step UUID, status code, and response body
 
 ## Retry Policy
 - On network errors or 5xx responses: retry up to 3 times with backoff (0s, 1s, 2s)
@@ -171,13 +171,23 @@ const generateHandle = (name) =>
 const createAPIFlow = async (req, res) => {
     const orgID = req.params.orgId;
     const viewName = req.params.viewName;
-    const { name, handle, description, agentPrompt, status, visibility, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
+    const userId = util.resolveActor(req);
+    const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
     let resolvedHandle = (handle && handle.trim()) ? handle.trim() : generateHandle(name);
     if (!resolvedHandle) {
         const suffix = Math.random().toString(36).slice(2, 10);
         resolvedHandle = `flow-${suffix}`;
     }
-    const resolvedContentType = contentType || 'ARAZZO';
+    const resolvedContentType = contentType || constants.API_FLOW_CONTENT_TYPE.ARAZZO;
+    if (!Object.values(constants.API_FLOW_CONTENT_TYPE).includes(resolvedContentType)) {
+        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_FLOW_CONTENT_TYPE).join(', ')}.` });
+    }
+    if (status && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_FLOW_STATUS).join(', ')}.` });
+    }
+    if (agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
+        return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
+    }
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent || null)
         : normalizeToJSON(apiFlowDefinition);
@@ -191,24 +201,23 @@ const createAPIFlow = async (req, res) => {
         const viewId = await resolveViewId(orgID, viewName);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
-            : generateAgentPrompt(name, description, [], orgDetails.ORGANIZATION_IDENTIFIER || '', viewName, '', resolvedHandle);
+            : generateAgentPrompt(name, description, [], orgDetails.IDP_REF_ID || '', viewName, '', resolvedHandle);
 
         const apiFlow = await apiFlowDao.create(orgID, viewId, {
             name,
             handle: resolvedHandle,
             description,
             agentPrompt: resolvedPrompt,
-            status: status || 'PUBLISHED',
-            visibility: visibility || 'PUBLIC',
-            agentVisibility: agentVisibility || 'VISIBLE',
+            status: status || constants.API_FLOW_STATUS.PUBLISHED,
+            agentVisibility: agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
             apiFlowDefinition: resolvedContent,
             contentType: resolvedContentType
-        }, t);
+        }, userId, t);
 
         await t.commit();
-        logger.info('APIFlow created', { apiFlowId: apiFlow.API_FLOW_ID, orgID, viewId });
+        logger.info('APIFlow created', { apiFlowId: apiFlow.UUID, orgID, viewId });
         res.status(201).json({
-            apiFlowId: apiFlow.API_FLOW_ID,
+            apiFlowId: apiFlow.UUID,
             name: apiFlow.NAME,
             status: apiFlow.STATUS
         });
@@ -224,7 +233,17 @@ const createAPIFlow = async (req, res) => {
 
 const updateAPIFlow = async (req, res) => {
     const { orgId, apiFlowId, viewName } = req.params;
-    const { name, handle, description, agentPrompt, status, visibility, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
+    const userId = util.resolveActor(req);
+    const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
+    if (status !== undefined && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_FLOW_STATUS).join(', ')}.` });
+    }
+    if (agentVisibility !== undefined && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
+        return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
+    }
+    if (contentType !== undefined && !Object.values(constants.API_FLOW_CONTENT_TYPE).includes(contentType)) {
+        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_FLOW_CONTENT_TYPE).join(', ')}.` });
+    }
     const resolvedContentType = contentType;
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent !== undefined ? markdownContent : undefined)
@@ -241,11 +260,10 @@ const updateAPIFlow = async (req, res) => {
             description,
             agentPrompt,
             status,
-            visibility,
             agentVisibility,
             apiFlowDefinition: resolvedContent,
             contentType: resolvedContentType
-        }, t);
+        }, userId, t);
 
         if (count === 0) {
             await t.rollback();
@@ -339,16 +357,15 @@ const parseFileContent = (raw) => {
 const toAPIFlowDTO = (apiFlow) => {
     const fileContent = parseFileContent(apiFlow.FILE_CONTENT);
     return {
-    apiFlowId: apiFlow.API_FLOW_ID,
+    apiFlowId: apiFlow.UUID,
     name: apiFlow.NAME,
     handle: apiFlow.HANDLE,
     description: apiFlow.DESCRIPTION,
     agentPrompt: apiFlow.AGENT_PROMPT,
     status: apiFlow.STATUS,
-    visibility: apiFlow.VISIBILITY || 'PUBLIC',
-    agentVisibility: apiFlow.AGENT_VISIBILITY || 'VISIBLE',
-    contentType: apiFlow.CONTENT_TYPE || 'ARAZZO',
-    apiFlowDefinition: (apiFlow.CONTENT_TYPE || 'ARAZZO') === 'ARAZZO' ? fileContent : null,
+    agentVisibility: apiFlow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE,
+    contentType: apiFlow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
+    apiFlowDefinition: (apiFlow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO) === constants.API_FLOW_CONTENT_TYPE.ARAZZO ? fileContent : null,
     markdownContent: apiFlow.CONTENT_TYPE === 'MD' ? fileContent : null,
     createdAt: apiFlow.CREATED_AT ? new Date(apiFlow.CREATED_AT).toLocaleDateString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric'

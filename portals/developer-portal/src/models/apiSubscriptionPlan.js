@@ -15,38 +15,51 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { DataTypes } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
-const SubscriptionPlan = require('./subscriptionPlan');
-const { APIMetadata } = require('./apiMetadata');
 
-const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN', {
-    API_ID: {
-        type: DataTypes.UUID,
-        allowNull: false,
+const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
+    UUID: {
+        type: DataTypes.STRING(40),
+        defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    PLAN_ID: {
-        type: DataTypes.UUID,
+    API_UUID: {
+        type: DataTypes.STRING(40),
+        allowNull: false
+    },
+    PLAN_UUID: {
+        type: DataTypes.STRING(40),
+        allowNull: false
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
         allowNull: false,
-        primaryKey: true
+        defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_API_SUBSCRIPTION_PLAN',
-    returning: true
+    tableName: 'DP_API_SUBSCRIPTION_PLAN_MAPPING',
+    returning: true,
+    indexes: [
+        {
+            name: 'UQ_API_SUBSCRIPTION_PLAN_MAPPING_PLAN_API',
+            unique: true,
+            fields: ['PLAN_UUID', 'API_UUID']
+        },
+        {
+            name: 'IDX_API_SUBSCRIPTION_PLAN_MAPPING_API_UUID',
+            fields: ['API_UUID']
+        }
+    ]
 });
 
-APIMetadata.belongsToMany(SubscriptionPlan, {
-    foreignKey: 'API_ID',
-    otherKey: 'PLAN_ID',
-    through: APISubscriptionPlan
-});
-
-SubscriptionPlan.belongsToMany(APIMetadata, {
-    foreignKey: 'PLAN_ID',
-    otherKey: 'API_ID',
-    through: APISubscriptionPlan
-});
+// APIMetadata<->SubscriptionPlan belongsToMany (through this model) is
+// registered once in application.js, where both ends of the association
+// already live alongside the rest of the subscription wiring.
 
 module.exports = APISubscriptionPlan;

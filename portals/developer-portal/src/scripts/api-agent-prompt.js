@@ -24,10 +24,11 @@ function buildAgentPrompt(mdUrl) {
 
 function copyAgentPrompt() {
     const text = document.getElementById('apiAgentPromptText').textContent;
+    const btn = document.getElementById('apiBtnCopyPrompt');
     navigator.clipboard.writeText(text).then(() => {
-        const icon = document.getElementById('apiBtnCopyPrompt').querySelector('i');
-        icon.className = 'bi bi-check2';
-        setTimeout(() => { icon.className = 'bi bi-copy'; }, 2000);
+        btn.classList.add('copy-btn--copied');
+        if (btn._copyTimer) clearTimeout(btn._copyTimer);
+        btn._copyTimer = setTimeout(() => { btn.classList.remove('copy-btn--copied'); }, 1600);
     });
 }
 

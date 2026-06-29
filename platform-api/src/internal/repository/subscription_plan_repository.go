@@ -23,11 +23,29 @@ import (
 	"strings"
 	"time"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 
 	"github.com/google/uuid"
 )
+
+// planSelectColumns is the shared column list for reading a subscription plan
+// joined with its single throttling limit row.
+//
+// NOTE: SINGLE-LIMIT ASSUMPTION. Throttling limits live in subscription_plan_limits
+// (one row per limit) and that table supports multiple limits per plan, but the
+// platform-api currently reads only one REQUEST_COUNT limit and maps it onto the
+// plan's StopOnQuotaReach / ThrottleLimitCount / ThrottleLimitUnit fields. The
+// LEFT JOIN below is constrained to REQUEST_COUNT for that reason. This must be
+// improved to surface all limit rows.
+const planSelectColumns = `
+		p.uuid, p.handle, p.name, p.billing_plan, p.expiry_time,
+		p.organization_uuid, p.status, p.created_at, p.updated_at,
+		spl.limit_count, spl.time_unit, spl.stop_on_quota_reach
+	FROM subscription_plans p
+	LEFT JOIN subscription_plan_limits spl
+		ON spl.subscription_plan_uuid = p.uuid AND spl.limit_type = '` + constants.LimitTypeRequestCount + `'`
 
 // SubscriptionPlanRepo implements SubscriptionPlanRepository
 type SubscriptionPlanRepo struct {
@@ -39,7 +57,7 @@ func NewSubscriptionPlanRepo(db *database.DB) SubscriptionPlanRepository {
 	return &SubscriptionPlanRepo{db: db}
 }
 
-// Create inserts a new subscription plan
+// Create inserts a new subscription plan together with its single throttling limit row.
 func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 	if plan == nil {
 		return fmt.Errorf("subscription plan is required")
@@ -51,60 +69,106 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 	plan.CreatedAt = now
 	plan.UpdatedAt = now
 
-	query := `
-		INSERT INTO subscription_plans (uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
-			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err := r.db.Exec(r.db.Rebind(query),
-		plan.UUID, plan.PlanName, plan.BillingPlan, plan.StopOnQuotaReach,
-		plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.ExpiryTime,
-		plan.OrganizationUUID, string(plan.Status), plan.CreatedAt, plan.UpdatedAt,
-	)
+	tx, err := r.db.Begin()
 	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(r.db.Rebind(`
+		INSERT INTO subscription_plans (uuid, handle, name, billing_plan, expiry_time,
+			organization_uuid, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`),
+		plan.UUID, plan.Handle, plan.Name, plan.BillingPlan, plan.ExpiryTime,
+		plan.OrganizationUUID, string(plan.Status), plan.CreatedAt, plan.UpdatedAt,
+	); err != nil {
 		return fmt.Errorf("failed to insert subscription plan: %w", err)
+	}
+
+	if err := r.replaceSingleLimitTx(tx, plan); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// replaceSingleLimitTx clears the plan's single REQUEST_COUNT limit row and re-inserts
+// it from the plan's ThrottleLimitCount / ThrottleLimitUnit / StopOnQuotaReach fields.
+//
+// limit_count is NOT NULL, so a row is written ONLY when ThrottleLimitCount is set.
+// When it is nil the plan has no quota: the row is left deleted and reads default
+// StopOnQuotaReach to 1 (see scanPlan).
+//
+// NOTE: SINGLE-LIMIT ASSUMPTION. subscription_plan_limits supports multiple limits per
+// plan, but only one REQUEST_COUNT limit is persisted here. This must be improved to
+// write all limits defined for the plan.
+func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.SubscriptionPlan) error {
+	if _, err := tx.Exec(r.db.Rebind(`
+		DELETE FROM subscription_plan_limits
+		WHERE subscription_plan_uuid = ? AND limit_type = ?
+	`), plan.UUID, constants.LimitTypeRequestCount); err != nil {
+		return fmt.Errorf("failed to clear subscription plan limit: %w", err)
+	}
+	// No quota configured: leave the row deleted (limit_count is NOT NULL).
+	if plan.ThrottleLimitCount == nil {
+		return nil
+	}
+	if _, err := tx.Exec(r.db.Rebind(`
+		INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid,
+			limit_type, time_unit, time_amount, limit_count, stop_on_quota_reach)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`),
+		uuid.New().String(), plan.UUID, constants.LimitTypeRequestCount,
+		plan.ThrottleLimitUnit, 1, *plan.ThrottleLimitCount, plan.StopOnQuotaReach,
+	); err != nil {
+		return fmt.Errorf("failed to insert subscription plan limit: %w", err)
 	}
 	return nil
 }
 
-// GetByNameAndOrg retrieves a subscription plan by name and organization
-func (r *SubscriptionPlanRepo) GetByNameAndOrg(planName, orgUUID string) (*model.SubscriptionPlan, error) {
-	query := `
-		SELECT uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
-			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at
-		FROM subscription_plans
-		WHERE plan_name = ? AND organization_uuid = ?
-	`
+// scanPlan reads a subscription plan joined with its single throttling limit row
+// (see planSelectColumns). When no limit row exists the throttle fields are left
+// empty and StopOnQuotaReach defaults to 1.
+func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 	plan := &model.SubscriptionPlan{}
-	err := r.db.QueryRow(r.db.Rebind(query), planName, orgUUID).Scan(
-		&plan.UUID, &plan.PlanName, &plan.BillingPlan, &plan.StopOnQuotaReach,
-		&plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &plan.ExpiryTime,
-		&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
+	var (
+		limitCount  sql.NullInt64
+		timeUnit    sql.NullString
+		stopOnQuota sql.NullInt64
 	)
-	if err != nil {
+	if err := scanner.Scan(
+		&plan.UUID, &plan.Handle, &plan.Name, &plan.BillingPlan, &plan.ExpiryTime,
+		&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
+		&limitCount, &timeUnit, &stopOnQuota,
+	); err != nil {
 		return nil, err
+	}
+	if limitCount.Valid {
+		c := int(limitCount.Int64)
+		plan.ThrottleLimitCount = &c
+	}
+	plan.ThrottleLimitUnit = timeUnit.String
+	if stopOnQuota.Valid {
+		plan.StopOnQuotaReach = int(stopOnQuota.Int64)
+	} else {
+		plan.StopOnQuotaReach = 1
 	}
 	return plan, nil
 }
 
+// GetByHandleAndOrg retrieves a subscription plan by handle and organization
+func (r *SubscriptionPlanRepo) GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error) {
+	query := `SELECT ` + planSelectColumns + `
+		WHERE p.handle = ? AND p.organization_uuid = ?`
+	return scanPlan(r.db.QueryRow(r.db.Rebind(query), handle, orgUUID))
+}
+
 // GetByID retrieves a subscription plan by ID and organization
 func (r *SubscriptionPlanRepo) GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error) {
-	query := `
-		SELECT uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
-			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at
-		FROM subscription_plans
-		WHERE uuid = ? AND organization_uuid = ?
-	`
-	plan := &model.SubscriptionPlan{}
-	err := r.db.QueryRow(r.db.Rebind(query), planID, orgUUID).Scan(
-		&plan.UUID, &plan.PlanName, &plan.BillingPlan, &plan.StopOnQuotaReach,
-		&plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &plan.ExpiryTime,
-		&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return plan, nil
+	query := `SELECT ` + planSelectColumns + `
+		WHERE p.uuid = ? AND p.organization_uuid = ?`
+	return scanPlan(r.db.QueryRow(r.db.Rebind(query), planID, orgUUID))
 }
 
 // GetByIDs returns a map of plan UUID to plan name for the given IDs in the organization.
@@ -121,7 +185,7 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 	}
 	args = append(args, orgUUID)
 	query := fmt.Sprintf(`
-		SELECT uuid, plan_name
+		SELECT uuid, name
 		FROM subscription_plans
 		WHERE uuid IN (%s) AND organization_uuid = ?
 	`, strings.Join(placeholders, ","))
@@ -132,11 +196,11 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 	defer rows.Close()
 	m := make(map[string]string)
 	for rows.Next() {
-		var id, planName string
-		if err := rows.Scan(&id, &planName); err != nil {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
 			return nil, err
 		}
-		m[id] = planName
+		m[id] = name
 	}
 	return m, rows.Err()
 }
@@ -144,12 +208,9 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 // ListByOrganization returns subscription plans for an organization with pagination
 func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
-	query := `
-		SELECT uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
-			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at
-		FROM subscription_plans
-		WHERE organization_uuid = ?
-		ORDER BY created_at DESC
+	query := `SELECT ` + planSelectColumns + `
+		WHERE p.organization_uuid = ?
+		ORDER BY p.created_at DESC
 		` + pageClause
 	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
@@ -159,12 +220,8 @@ func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset 
 
 	var list []*model.SubscriptionPlan
 	for rows.Next() {
-		plan := &model.SubscriptionPlan{}
-		if err := rows.Scan(
-			&plan.UUID, &plan.PlanName, &plan.BillingPlan, &plan.StopOnQuotaReach,
-			&plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &plan.ExpiryTime,
-			&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
-		); err != nil {
+		plan, err := scanPlan(rows)
+		if err != nil {
 			return nil, err
 		}
 		list = append(list, plan)
@@ -178,15 +235,19 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 		return fmt.Errorf("subscription plan is required")
 	}
 	plan.UpdatedAt = time.Now()
-	query := `
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(r.db.Rebind(`
 		UPDATE subscription_plans
-		SET plan_name = ?, billing_plan = ?, stop_on_quota_reach = ?, throttle_limit_count = ?,
-			throttle_limit_unit = ?, expiry_time = ?, status = ?, updated_at = ?
+		SET handle = ?, name = ?, billing_plan = ?, expiry_time = ?, status = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
-	`
-	result, err := r.db.Exec(r.db.Rebind(query),
-		plan.PlanName, plan.BillingPlan, plan.StopOnQuotaReach,
-		plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.ExpiryTime,
+	`),
+		plan.Handle, plan.Name, plan.BillingPlan, plan.ExpiryTime,
 		string(plan.Status), plan.UpdatedAt,
 		plan.UUID, plan.OrganizationUUID,
 	)
@@ -197,7 +258,12 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 	if n == 0 {
 		return fmt.Errorf("subscription plan not found: %s", plan.UUID)
 	}
-	return nil
+
+	if err := r.replaceSingleLimitTx(tx, plan); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // Delete removes a subscription plan by ID and organization
@@ -214,15 +280,15 @@ func (r *SubscriptionPlanRepo) Delete(planID, orgUUID string) error {
 	return nil
 }
 
-// ExistsByNameAndOrg returns true if a plan with the given name exists in the organization
-func (r *SubscriptionPlanRepo) ExistsByNameAndOrg(planName, orgUUID string) (bool, error) {
+// ExistsByHandleAndOrg returns true if a plan with the given handle exists in the organization
+func (r *SubscriptionPlanRepo) ExistsByHandleAndOrg(handle, orgUUID string) (bool, error) {
 	query := `
 		SELECT 1 FROM subscription_plans
-		WHERE plan_name = ? AND organization_uuid = ?
+		WHERE handle = ? AND organization_uuid = ?
 		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)
 	var exists int
-	err := r.db.QueryRow(r.db.Rebind(query), planName, orgUUID).Scan(&exists)
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&exists)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}

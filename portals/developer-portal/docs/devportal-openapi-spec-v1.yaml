@@ -21,7 +21,7 @@ info:
   title: WSO2 API Developer Portal Core - Devportal Routes
   version: 1.0.0
   description: |
-    Fine-grained Developer Portal API for managing organizations, providers,
+    Fine-grained Developer Portal API for managing organizations,
     API metadata and content, applications, subscriptions, application credentials, and API flows.
 
     Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
@@ -39,7 +39,6 @@ servers:
 tags:
   - name: Organizations
   - name: Organization Content
-  - name: Providers
   - name: APIs
   - name: API Content
   - name: Subscription Plans
@@ -63,7 +62,7 @@ paths:
       summary: Create an organization
       description: >-
         Creates a Developer Portal organization and initializes its default portal configuration, default label, default
-        view, default WSO2 provider, and default subscription plans when configured.
+        view, and default subscription plans when configured.
       operationId: createOrganization
       requestBody:
         $ref: "#/components/requestBodies/OrganizationCreateBody"
@@ -292,98 +291,6 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/TextMessageResponse"
-  /o/{orgId}/devportal/v1/provider:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
-    post:
-      tags:
-        - Providers
-      summary: Create a provider
-      description: >-
-        Creates an API provider configuration for the organization. The current service contract accepts a provider
-        `name` and `providerURL`, rejects unexpected properties, and stores the provider URL as a provider property.
-      operationId: createProvider
-      requestBody:
-        $ref: "#/components/requestBodies/ProviderBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/ProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_create
-            - dp:provider_manage
-    put:
-      tags:
-        - Providers
-      summary: Update a provider
-      description: Updates the provider URL for an existing organization provider.
-      operationId: updateProvider
-      requestBody:
-        $ref: "#/components/requestBodies/ProviderBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/ProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_update
-            - dp:provider_manage
-    get:
-      tags:
-        - Providers
-      summary: Get providers
-      description: >-
-        Returns all providers for the organization. When `name` is supplied, returns the matching provider
-        configuration.
-      operationId: getProviders
-      parameters:
-        - $ref: "#/components/parameters/providerNameQueryOptional"
-      responses:
-        "200":
-          $ref: "#/components/responses/ProviderLookupResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_read
-            - dp:provider_manage
-    delete:
-      tags:
-        - Providers
-      summary: Delete a provider
-      description: Deletes an organization provider by `name`. When `property` is supplied, deletes only that provider property.
-      operationId: deleteProvider
-      parameters:
-        - $ref: "#/components/parameters/providerNameQueryRequired"
-        - $ref: "#/components/parameters/providerPropertyQuery"
-      responses:
-        "204":
-          description: Provider or provider property deleted successfully.
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_delete
-            - dp:provider_manage
   /o/{orgId}/devportal/v1/apis:
     parameters:
       - $ref: "#/components/parameters/orgId"
@@ -395,7 +302,7 @@ paths:
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml`
         / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
-        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `provider`,
+        `status`, `agentVisibility`, `tags`, `labels`,
         `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
         GraphQL APIs when provided.
@@ -428,14 +335,13 @@ paths:
       summary: List API metadata
       description: >-
         Lists API metadata for an organization. The service supports exact filters by API name, version, and tags,
-        free-text search with `query`, group filtering, and view filtering. Unknown query parameters are rejected.
+        free-text search with `query`, and view filtering. Unknown query parameters are rejected.
       operationId: getAllApiMetadataForOrganization
       parameters:
         - $ref: "#/components/parameters/apiSearchQuery"
         - $ref: "#/components/parameters/apiNameQuery"
         - $ref: "#/components/parameters/apiVersionQuery"
         - $ref: "#/components/parameters/apiTagsQuery"
-        - $ref: "#/components/parameters/apiGroupsQuery"
         - $ref: "#/components/parameters/apiViewQuery"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
@@ -758,6 +664,34 @@ paths:
         - OAuth2Security:
             - dp:api_content_delete
             - dp:api_content_manage
+  /o/{orgId}/devportal/v1/apis/{apiId}/docs:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiId"
+    get:
+      tags:
+        - API Content
+      summary: List API document file names
+      description: Returns the file names of all documents uploaded for an API via the wizard.
+      operationId: listApiDocs
+      responses:
+        "200":
+          description: List of document file names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fileName:
+                      type: string
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_content_read
+            - dp:api_content_manage
   /o/{orgId}/devportal/v1/labels:
     parameters:
       - $ref: "#/components/parameters/orgId"
@@ -885,7 +819,8 @@ paths:
       summary: Create an application
       description: >-
         Creates a Developer Portal application in the specified organization. The request may be JSON, multipart form
-        fields, or an application YAML file in the `application` multipart field.
+        fields, or an application YAML file in the `application` multipart field. An `application.created` webhook
+        event is published to the organization's configured webhook subscribers.
       operationId: saveApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -928,7 +863,9 @@ paths:
       summary: Update an application
       description: >-
         Updates an application owned by the authenticated user in the specified organization. The request may be JSON,
-        multipart form fields, or an application YAML file in the `application` multipart field.
+        multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated`
+        webhook event is published, plus one `apikey.application_updated` event per API key currently associated with
+        the application.
       operationId: updateApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -954,7 +891,9 @@ paths:
       description: >-
         Deletes an application owned by the authenticated user. Before removing the application record the service will
         make a best-effort attempt to revoke registered OAuth clients with their respective key managers and deletes all
-        stored key mappings; failures are logged as warnings and do not abort deletion.
+        stored key mappings; failures are logged as warnings and do not abort deletion. An `application.deleted`
+        webhook event is published, plus one `apikey.application_updated` event (with a cleared association) per API
+        key that was associated with the application.
       operationId: deleteApplication
       responses:
         "200":
@@ -1153,6 +1092,7 @@ paths:
       description: Lists API keys for an API. The `apiId` query parameter is required.
       parameters:
         - $ref: "#/components/parameters/apiIdQueryRequired"
+        - $ref: "#/components/parameters/appIdQueryOptional"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
@@ -1190,6 +1130,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1217,11 +1159,96 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
             - dp:api_key_revoke
+            - dp:api_key_manage
+  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiKeyId"
+    put:
+      tags:
+        - API Keys
+      operationId: associateApiKeyApplication
+      summary: Associate an API key with an application
+      description: >-
+        Associates (or re-associates) an existing API key with an application, for analytics attribution only — it
+        has no effect on the key's validity or authorization. An `apikey.application_updated` webhook event is
+        published once for this key, with a payload of `{ key_id, application }`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyApplicationBody"
+      responses:
+        "200":
+          description: Association updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyApplicationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_update
+            - dp:api_key_manage
+    delete:
+      tags:
+        - API Keys
+      operationId: removeApiKeyApplication
+      summary: Remove an API key's application association
+      description: >-
+        Removes the application association from an API key, if any. An `apikey.application_updated` webhook event
+        is published once for this key, with `application` set to `null`.
+      responses:
+        "204":
+          description: Association removed (or none existed).
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_update
+            - dp:api_key_manage
+  /o/{orgId}/devportal/v1/applications/{applicationId}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
+    get:
+      tags:
+        - API Keys
+      operationId: listApplicationApiKeys
+      summary: List API keys associated with an application
+      description: >-
+        Lists all API keys (across every API) currently associated with the given application. Unlike
+        `listApiKeys`, no `apiId` filter is required.
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiKeyListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_read
             - dp:api_key_manage
   /o/{orgId}/devportal/v1/views:
     parameters:
@@ -1233,7 +1260,7 @@ paths:
       summary: Create a view
       description: >-
         Creates a Developer Portal view for an organization and associates it with the supplied label names. If
-        `displayName` is omitted, the service stores the view name as the display name.
+        `name` is omitted, the service stores the view's handle as its name.
       requestBody:
         $ref: "#/components/requestBodies/ViewCreateBody"
       responses:
@@ -1977,38 +2004,6 @@ paths:
       security:
         - OAuth2Security:
             - dp:event_read
-  /o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
-      - $ref: "#/components/parameters/deliveryId"
-    post:
-      tags:
-        - Webhook Events
-      operationId: retryWebhookDelivery
-      summary: Retry a failed webhook delivery
-      description: >-
-        Resets a `DEAD_LETTERED` or `FAILED` delivery back to `PENDING` so the delivery worker retries it immediately.
-        Requires dp:delivery_manage scope.
-      responses:
-        "200":
-          description: Delivery queued for retry.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: Delivery queued for retry
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:delivery_manage
 components:
   securitySchemes:
     OAuth2Security:
@@ -2026,11 +2021,6 @@ components:
             dp:org_update: Update organizations.
             dp:org_delete: Delete organizations.
             dp:org_manage: Manage organizations (including creating, updating, and deleting).
-            dp:provider_read: Read providers.
-            dp:provider_create: Create providers.
-            dp:provider_update: Update providers.
-            dp:provider_delete: Delete providers.
-            dp:provider_manage: Manage providers (including creating, updating, and deleting).
             dp:org_content_read: Read organization layout or content.
             dp:org_content_create: Create organization layout or content.
             dp:org_content_update: Update organization layout or content.
@@ -2089,7 +2079,6 @@ components:
             dp:api_flow_delete: Delete API flows.
             dp:api_flow_manage: Manage API flows.
             dp:event_read: Read webhook events and delivery details.
-            dp:delivery_manage: Retry failed webhook deliveries.
             dp:utility_create: Create temporary utility files.
             dp:utility_manage: Manage utility operations.
             dp:km_read: Read key manager configurations.
@@ -2154,13 +2143,6 @@ components:
       schema:
         type: string
       description: Webhook event identifier.
-    deliveryId:
-      name: deliveryId
-      in: path
-      required: true
-      schema:
-        type: string
-      description: Webhook delivery identifier.
     applicationId:
       name: applicationId
       in: path
@@ -2251,27 +2233,6 @@ components:
       schema:
         type: string
       description: Optional relative content path used together with `fileType` and `fileName`.
-    providerNameQueryOptional:
-      name: name
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Optional provider name selector. When omitted, all providers are returned.
-    providerNameQueryRequired:
-      name: name
-      in: query
-      required: true
-      schema:
-        type: string
-      description: Provider name.
-    providerPropertyQuery:
-      name: property
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Optional provider property name to delete instead of deleting the whole provider.
     apiSearchQuery:
       name: query
       in: query
@@ -2302,16 +2263,8 @@ components:
       required: false
       schema:
         type: string
-        example: weather public
-      description: Exact API tags filter used by the metadata DAO.
-    apiGroupsQuery:
-      name: groups
-      in: query
-      required: false
-      schema:
-        type: string
-        example: subscriber admin
-      description: Space-separated visible groups used for API visibility filtering.
+        example: weather,public
+      description: Comma-separated tag names. Matches APIs tagged with any of the given names.
     apiViewQuery:
       name: view
       in: query
@@ -2336,6 +2289,14 @@ components:
         type: string
         example: api-7f4c2a6b
       description: Optional Developer Portal API ID used to filter results.
+    appIdQueryOptional:
+      name: appId
+      in: query
+      required: false
+      schema:
+        type: string
+        example: app-12345
+      description: Optional application ID used to filter API keys associated with that application.
     labelNamesQuery:
       name: names
       in: query
@@ -2421,12 +2382,6 @@ components:
               summary: Organization YAML upload
               value:
                 organization: org.yaml
-    ProviderBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderRequest"
     SubscriptionPlanBody:
       required: true
       description: >-
@@ -2525,6 +2480,22 @@ components:
               value:
                 apiId: api-7f4c2a6b
                 name: weather_sandbox_key
+    ApiKeyApplicationBody:
+      required: true
+      description: Associates an API key with an application, identified by `appId`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - appId
+            properties:
+              appId:
+                type: string
+                example: app-12345
+            additionalProperties: false
+          example:
+            appId: app-12345
     AppKeyMappingBody:
       required: true
       description: OAuth key generation payload. The application is identified by the `applicationId` path parameter.
@@ -2556,20 +2527,20 @@ components:
             partnerView:
               summary: Create a partner APIs view
               value:
-                name: partner-apis
-                displayName: Partner APIs
+                handle: partner-apis
+                name: Partner APIs
                 labels:
                   - partner
                   - public
             internalView:
-              summary: Create a view using the name as display name
+              summary: Create a view using the handle as name
               value:
-                name: internal-apis
+                handle: internal-apis
                 labels:
                   - internal
     ViewUpdateBody:
       required: true
-      description: View update payload. Include only the display-name or label changes that should be applied.
+      description: View update payload. Include only the name or label changes that should be applied.
       content:
         application/json:
           schema:
@@ -2578,7 +2549,7 @@ components:
             renameAndRelabel:
               summary: Rename a view and adjust labels
               value:
-                displayName: Partner and Public APIs
+                name: Partner and Public APIs
                 addedLabels:
                   - premium
                 removedLabels:
@@ -2743,7 +2714,6 @@ components:
           example:
             name: Weather onboarding v2
             status: PUBLISHED
-            visibility: PUBLIC
             agentVisibility: VISIBLE
     APIFlowPromptBody:
       required: true
@@ -2811,13 +2781,13 @@ components:
                 type: string
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
-                  fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility,
-                  agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups,
+                  fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType,
+                  agentVisibility, apiStatus, referenceID, apiHandle, tags, labels,
                   owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   planName }` objects — only `planName` is read; the plan must already exist in the organization).
                 example: >-
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
-                  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE","provider":"WSO2",
+                  API","apiType":"REST","agentVisibility":"VISIBLE",
                   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
                   "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}
@@ -3016,22 +2986,6 @@ components:
                   $ref: "#/components/schemas/OrganizationContentListItemResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
-    ProviderResponse:
-      description: Provider DTO returned by create and update operations.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderResponse"
-    ProviderLookupResponse:
-      description: Provider DTO or list of provider DTOs.
-      content:
-        application/json:
-          schema:
-            oneOf:
-              - $ref: "#/components/schemas/ProviderLookupItemResponse"
-              - type: array
-                items:
-                  $ref: "#/components/schemas/ProviderLookupItemResponse"
     BadRequest:
       description: >-
         Bad request. Input validation failures are returned as an array; other bad request errors are returned as a
@@ -3141,7 +3095,6 @@ components:
             apiID: api-7f4c2a6b
             apiReferenceID: cp-api-12345
             apiHandle: weather-api-v1
-            provider: WSO2
             dataSource: DEVPORTAL
             apiInfo:
               apiName: Weather API
@@ -3150,7 +3103,6 @@ components:
               apiStatus: PUBLISHED
               apiDescription: Weather forecast API.
               apiType: REST
-              visibility: PUBLIC
               agentVisibility: VISIBLE
               tags:
                 - weather
@@ -3171,7 +3123,6 @@ components:
             apiID: api-7f4c2a6b
             apiReferenceID: cp-api-12345
             apiHandle: weather-api-v1
-            provider: WSO2
             dataSource: DEVPORTAL
             apiInfo:
               apiName: Weather API
@@ -3181,7 +3132,6 @@ components:
               apiStatus: PUBLISHED
               apiDescription: Weather forecast API.
               apiType: REST
-              visibility: PUBLIC
               agentVisibility: VISIBLE
               labels:
                 - default
@@ -3208,7 +3158,6 @@ components:
               - apiID: api-7f4c2a6b
                 apiReferenceID: cp-api-12345
                 apiHandle: weather-api-v1
-                provider: WSO2
                 dataSource: DEVPORTAL
                 apiInfo:
                   apiName: Weather API
@@ -3216,7 +3165,6 @@ components:
                   apiStatus: PUBLISHED
                   apiDescription: Weather forecast API.
                   apiType: REST
-                  visibility: PUBLIC
                   agentVisibility: VISIBLE
                   labels:
                     - default
@@ -3483,7 +3431,6 @@ components:
             description: Guides users through the Weather API onboarding workflow.
             agentPrompt: Follow this workflow to onboard a Weather API user.
             status: PUBLISHED
-            visibility: PUBLIC
             agentVisibility: VISIBLE
             contentType: ARAZZO
             apiFlowDefinition: "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}"
@@ -3526,8 +3473,8 @@ components:
           schema:
             $ref: "#/components/schemas/ViewResponse"
           example:
-            name: partner-apis
-            displayName: Partner APIs
+            handle: partner-apis
+            name: Partner APIs
             labels:
               - partner
               - public
@@ -3551,7 +3498,7 @@ components:
           schema:
             $ref: "#/components/schemas/ViewUpdateRequest"
           example:
-            displayName: Partner and Public APIs
+            name: Partner and Public APIs
             addedLabels:
               - premium
             removedLabels:
@@ -3762,33 +3709,6 @@ components:
           nullable: true
           description: UTF-8 content string returned for stored organization content records.
       additionalProperties: false
-    ProviderResponse:
-      type: object
-      required:
-        - orgId
-        - name
-        - providerURL
-      properties:
-        orgId:
-          type: string
-        name:
-          type: string
-        providerURL:
-          type: string
-          format: uri
-      additionalProperties: false
-    ProviderLookupItemResponse:
-      type: object
-      required:
-        - name
-        - providerURL
-      properties:
-        name:
-          type: string
-        providerURL:
-          type: string
-          format: uri
-      additionalProperties: false
     ApiMetadataCreateResponse:
       type: object
       properties:
@@ -3797,8 +3717,6 @@ components:
         apiReferenceID:
           type: string
         apiHandle:
-          type: string
-        provider:
           type: string
         dataSource:
           type: string
@@ -3819,8 +3737,6 @@ components:
         apiReferenceID:
           type: string
         apiHandle:
-          type: string
-        provider:
           type: string
         dataSource:
           type: string
@@ -3852,25 +3768,25 @@ components:
           type: string
         apiStatus:
           type: string
-          description: API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).
+          enum:
+            - PUBLISHED
+            - DEPRECATED
+          description: API lifecycle status.
           example: PUBLISHED
         apiDescription:
           type: string
         apiType:
           type: string
-        visibility:
-          type: string
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
         addedLabels:
           type: array
           items:
             type: string
         removedLabels:
-          type: array
-          items:
-            type: string
-        visibleGroups:
           type: array
           items:
             type: string
@@ -3994,14 +3910,14 @@ components:
     ViewResponse:
       type: object
       required:
+        - handle
         - name
-        - displayName
         - labels
       properties:
-        name:
+        handle:
           type: string
           example: partner-apis
-        displayName:
+        name:
           type: string
           example: Partner APIs
         labels:
@@ -4055,19 +3971,15 @@ components:
         organizationIdentifier:
           type: string
         orgConfiguration:
-          $ref: "#/components/schemas/GenericObject"
-    ProviderRequest:
-      type: object
-      required:
-        - name
-        - providerURL
-      properties:
-        name:
-          type: string
-        providerURL:
-          type: string
-          format: uri
-      additionalProperties: false
+          type: object
+          properties:
+            devportalMode:
+              type: string
+              enum:
+                - DEFAULT
+                - MCP_SERVERS_ONLY
+                - APIS_ONLY
+          additionalProperties: true
     SubscriptionPlanRequest:
       type: object
       required:
@@ -4208,6 +4120,12 @@ components:
           type: string
           description: Optional subscription ID to associate the key with.
           example: sub-abc123
+        appId:
+          type: string
+          description: >-
+            Optional application ID to associate the key with, for analytics attribution only — it has no effect on
+            the key's validity or authorization. Must belong to the same organization and be owned by the caller.
+          example: app-12345
         expiresAt:
           oneOf:
             - type: string
@@ -4231,6 +4149,16 @@ components:
           type: string
           description: Developer Portal API ID the key belongs to.
           example: api-7f4c2a6b
+        appId:
+          type: string
+          nullable: true
+          description: ID of the application this key is associated with, if any. Analytics attribution only.
+          example: app-12345
+        appName:
+          type: string
+          nullable: true
+          description: Name of the associated application, if any.
+          example: My Mobile App
         status:
           type: string
           enum:
@@ -4262,6 +4190,21 @@ components:
               type: string
               description: One-time plaintext API key secret.
               example: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
+    ApiKeyApplicationResponse:
+      type: object
+      properties:
+        keyId:
+          type: string
+          example: key-12345
+        application:
+          type: object
+          properties:
+            id:
+              type: string
+              example: app-12345
+            name:
+              type: string
+              example: My Mobile App
     KeyManagerRequest:
       type: object
       required:
@@ -4637,11 +4580,7 @@ components:
             - IN_FLIGHT
             - DELIVERED
             - FAILED
-            - DEAD_LETTERED
           example: DELIVERED
-        attemptCount:
-          type: integer
-          example: 1
         lastHttpStatus:
           type: integer
           nullable: true
@@ -4699,15 +4638,15 @@ components:
     ViewCreateRequest:
       type: object
       required:
-        - name
+        - handle
         - labels
       properties:
-        name:
+        handle:
           type: string
           example: partner-apis
-        displayName:
+        name:
           type: string
-          description: Optional display name. Defaults to `name` when omitted.
+          description: Optional display name. Defaults to `handle` when omitted.
           example: Partner APIs
         labels:
           type: array
@@ -4722,7 +4661,7 @@ components:
     ViewUpdateRequest:
       type: object
       properties:
-        displayName:
+        name:
           type: string
           example: Partner and Public APIs
         addedLabels:
@@ -4853,6 +4792,9 @@ components:
           example: Weather onboarding
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
       additionalProperties: false
     APIFlowResponse:
@@ -4873,12 +4815,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
-        visibility:
-          type: string
-          example: PUBLIC
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           example: VISIBLE
         contentType:
           type: string
@@ -4931,14 +4876,16 @@ components:
           example: Follow this workflow to onboard a Weather API user.
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           default: PUBLISHED
           example: PUBLISHED
-        visibility:
-          type: string
-          default: PUBLIC
-          example: PUBLIC
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           default: VISIBLE
           example: VISIBLE
         contentType:
@@ -4972,12 +4919,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
-        visibility:
-          type: string
-          example: PUBLIC
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           example: VISIBLE
         contentType:
           type: string
@@ -5068,11 +5018,7 @@ components:
             - IN_FLIGHT
             - DELIVERED
             - FAILED
-            - DEAD_LETTERED
           example: DELIVERED
-        attemptCount:
-          type: integer
-          example: 1
         lastHttpStatus:
           type: integer
           nullable: true

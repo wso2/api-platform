@@ -140,8 +140,19 @@
   background: #fdecec;
 }
 
+.sub-action-btn--manage {
+  border-color: #d0d9e3;
+  color: #3d5268;
+}
+
+.sub-action-btn--manage:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #b0bec8;
+}
+
 /* ── Overflow wrapper ─────────────────────────────────────────── */
 .sub-scroll {
   overflow-x: auto;
 }
+
 

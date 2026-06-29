@@ -30,7 +30,6 @@ spec:
   displayName: Order API
   version: v1.0
   description: Create and manage customer orders
-  provider: WSO2
   status: PUBLISHED
 
   tags:
@@ -74,7 +73,6 @@ spec:
   displayName: My MCP Server
   version: 1.0.0
   description: MCP server exposing AI tools.
-  provider: WSO2
   status: PUBLISHED
 
   labels:
@@ -99,7 +97,7 @@ spec:
 
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
-> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 >   -d "username=admin&password=admin" | jq -r .token)
 > ```
 
@@ -136,7 +134,6 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 | `spec.displayName` | Yes | Display name shown in the catalog |
 | `spec.version` | Yes | Version string (e.g. `v1.0`, `2.3`) |
 | `spec.description` | No | Short description shown in the catalog listing |
-| `spec.provider` | No | Provider name (e.g. `WSO2`) |
 | `spec.status` | No | `PUBLISHED` (default) or `PROTOTYPED` |
 | `spec.tags` | No | Tags for search and filtering |
 | `spec.labels` | No | Labels that control which views the API appears in |

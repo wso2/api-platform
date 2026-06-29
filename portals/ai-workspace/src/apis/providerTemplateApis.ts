@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { get, post, put, del } from '../clients/choreoApiClient';
+import { get, post, put, del, patch } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
 
 // ============================================================================
@@ -126,8 +126,93 @@ export async function getProviderTemplate(
 }
 
 /**
+ * List all versions of a Provider Template (newest first).
+ *
+ * Templates are immutable per version — each edit creates a new version. This
+ * powers the version switcher on the overview page.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param organizationId - The organization ID
+ * @returns Promise with the list of versions (most recent first)
+ */
+export async function getProviderTemplateVersions(
+  templateId: string,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate[]> {
+  try {
+    const response = await get<ProviderTemplate[] | ProviderTemplatesResponse>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions?organizationId=${encodeURIComponent(organizationId)}`,
+      undefined,
+      baseUrl
+    );
+    return Array.isArray(response) ? response : response.list ?? [];
+  } catch (error) {
+    logger.error(`Failed to fetch versions for provider template ${templateId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch a specific immutable version of a Provider Template.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param version - The version to fetch (e.g. "v2")
+ * @param organizationId - The organization ID
+ * @returns Promise with that version's full template
+ */
+export async function getProviderTemplateVersion(
+  templateId: string,
+  version: string,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate> {
+  try {
+    const response = await get<ProviderTemplate>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      undefined,
+      baseUrl
+    );
+    return response;
+  } catch (error) {
+    logger.error(`Failed to fetch version ${version} of provider template ${templateId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Create a new version of an existing Provider Template.
+ *
+ * The supplied template must include a `version` (e.g. "v2.0") that is unique
+ * for the template; the new version becomes the latest.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param template - The new version's configuration (must include `version`)
+ * @param organizationId - The organization ID
+ * @returns Promise with the newly created version
+ */
+export async function createProviderTemplateVersion(
+  templateId: string,
+  template: ProviderTemplate,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate> {
+  try {
+    const response = await post<ProviderTemplate>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions?organizationId=${encodeURIComponent(organizationId)}`,
+      template,
+      baseUrl
+    );
+    return response;
+  } catch (error) {
+    logger.error(`Failed to create new version for provider template ${templateId}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Update an existing Provider Template
- * 
+ *
  * @param templateId - The provider template ID
  * @param updates - The fields to update
  * @param organizationId - The organization ID
@@ -142,6 +227,61 @@ export async function getProviderTemplate(
  * console.log(template); // { id: '...', name: 'OpenAI Template Updated', ... }
  * ```
  */
+/**
+ * Enable or disable a specific version of a Provider Template. Disabled
+ * versions stay in the catalog but are hidden from the provider picker.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param version - The version to toggle (e.g. "v1.0")
+ * @param enabled - Whether the version should be enabled
+ * @returns Promise with the updated version
+ */
+export async function setProviderTemplateVersionEnabled(
+  templateId: string,
+  version: string,
+  enabled: boolean,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate> {
+  try {
+    const response = await patch<ProviderTemplate>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      { enabled },
+      baseUrl
+    );
+    return response;
+  } catch (error) {
+    logger.error(`Failed to set enabled=${enabled} for ${templateId} ${version}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a single version of a Provider Template. If it was the only version
+ * the template is removed; otherwise the newest remaining version becomes the
+ * latest.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param version - The version to delete (e.g. "v2.0")
+ */
+export async function deleteProviderTemplateVersion(
+  templateId: string,
+  version: string,
+  organizationId: string,
+  baseUrl: string
+): Promise<void> {
+  try {
+    await del<void>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      undefined,
+      baseUrl
+    );
+  } catch (error) {
+    logger.error(`Failed to delete version ${version} of ${templateId}:`, error);
+    throw error;
+  }
+}
+
 export async function updateProviderTemplate(
   templateId: string,
   updates: UpdateProviderTemplateRequest,

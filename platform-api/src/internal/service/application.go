@@ -38,6 +38,7 @@ type ApplicationService struct {
 	orgRepo              repository.OrganizationRepository
 	apiRepo              repository.APIRepository
 	gatewayEventsService *GatewayEventsService
+	auditRepo            repository.AuditRepository
 	slogger              *slog.Logger
 }
 
@@ -72,6 +73,7 @@ func NewApplicationService(
 	orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository,
 	gatewayEventsService *GatewayEventsService,
+	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
 ) *ApplicationService {
 	return &ApplicationService{
@@ -80,11 +82,12 @@ func NewApplicationService(
 		orgRepo:              orgRepo,
 		apiRepo:              apiRepo,
 		gatewayEventsService: gatewayEventsService,
+		auditRepo:            auditRepo,
 		slogger:              slogger,
 	}
 }
 
-func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID string) (*api.Application, error) {
+func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID, createdBy string) (*api.Application, error) {
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, constants.ErrInvalidApplicationName
 	}
@@ -141,12 +144,17 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		}
 	}
 
+	actor := strings.TrimSpace(createdBy)
+	if actor == "" {
+		actor = strings.TrimSpace(valueOrEmptyApplication(req.CreatedBy))
+	}
 	app := &model.Application{
 		UUID:             uuid.New().String(),
 		Handle:           handle,
 		ProjectUUID:      projectID,
 		OrganizationUUID: orgID,
-		CreatedBy:        strings.TrimSpace(valueOrEmptyApplication(req.CreatedBy)),
+		CreatedBy:        actor,
+		UpdatedBy:        actor,
 		Name:             strings.TrimSpace(req.Name),
 		Description:      strings.TrimSpace(valueOrEmptyApplication(req.Description)),
 		Type:             appType,
@@ -155,6 +163,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 	if err := s.appRepo.CreateApplication(app); err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("CREATE", app.UUID, "application", orgID, actor)
 
 	return s.modelToApplicationResponse(app), nil
 }
@@ -281,9 +290,12 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		app.Type = appType
 	}
 
+	app.UpdatedBy = userID
+
 	if err := s.appRepo.UpdateApplication(app); err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("UPDATE", app.UUID, "application", app.OrganizationUUID, userID)
 
 	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
 	if err != nil {
@@ -297,7 +309,7 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 	return s.modelToApplicationResponse(app), nil
 }
 
-func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID string) error {
+func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor string) error {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return err
@@ -306,7 +318,11 @@ func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID string) erro
 		return constants.ErrApplicationNotFound
 	}
 
-	return s.appRepo.DeleteApplication(app.UUID, orgID)
+	if err := s.appRepo.DeleteApplication(app.UUID, orgID); err != nil {
+		return err
+	}
+	_ = s.auditRepo.Record("DELETE", app.UUID, "application", orgID, actor)
+	return nil
 }
 
 func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
@@ -586,11 +602,11 @@ func (s *ApplicationService) validateAssociationTargetForApplication(target *mod
 		return constants.ErrArtifactNotFound
 	}
 
-	if target.Kind != constants.LLMProvider && target.Kind != constants.LLMProxy {
+	if target.Type != constants.LLMProvider && target.Type != constants.LLMProxy {
 		return constants.ErrArtifactInvalidKind
 	}
 
-	if target.Kind == constants.LLMProxy {
+	if target.Type == constants.LLMProxy {
 		proxyProjectUUID, err := s.appRepo.GetLLMProxyProjectUUID(target.UUID, orgID)
 		if err != nil {
 			return err
@@ -800,7 +816,7 @@ func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationA
 		KeyId: key.Name,
 		AssociatedEntity: api.AssociatedEntity{
 			Id:   key.ArtifactHandle,
-			Kind: key.ArtifactKind,
+			Kind: key.ArtifactType,
 		},
 		Status:    utils.StringPtrIfNotEmpty(key.Status),
 		UserId:    utils.StringPtrIfNotEmpty(key.CreatedBy),
@@ -820,9 +836,8 @@ func (s *ApplicationService) modelToApplicationAssociation(association *model.Ap
 		Uuid:      association.TargetUUID,
 		Name:      association.TargetName,
 		Version:   association.TargetVersion,
-		Kind:      association.Kind,
+		Kind:      association.Type,
 		CreatedAt: utils.TimePtrIfNotZero(association.CreatedAt),
-		UpdatedAt: utils.TimePtrIfNotZero(association.UpdatedAt),
 	}
 }
 
@@ -895,15 +910,15 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 			continue
 		}
 
-		switch artifact.Kind {
+		switch artifact.Type {
 		case constants.LLMProvider, constants.LLMProxy:
-			// Supported artifact kinds for gateway association lookups.
+			// Supported artifact types for gateway association lookups.
 		default:
 			if s.slogger != nil {
-				s.slogger.Warn("Skipping unsupported artifact kind for application mapping broadcast",
+				s.slogger.Warn("Skipping unsupported artifact type for application mapping broadcast",
 					"applicationId", app.Handle,
 					"artifactId", artifactID,
-					"artifactKind", artifact.Kind,
+					"artifactType", artifact.Type,
 				)
 			}
 			continue
@@ -911,7 +926,7 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 
 		gatewayIDsForArtifact, err := s.appRepo.GetDeployedGatewayIDsByArtifactUUID(artifact.UUID, app.OrganizationUUID)
 		if err != nil {
-			return fmt.Errorf("failed to resolve deployed gateways for artifact %s (%s): %w", artifact.Handle, artifact.Kind, err)
+			return fmt.Errorf("failed to resolve deployed gateways for artifact %s (%s): %w", artifact.Handle, artifact.Type, err)
 		}
 		for _, gatewayID := range gatewayIDsForArtifact {
 			gatewayIDs[gatewayID] = struct{}{}

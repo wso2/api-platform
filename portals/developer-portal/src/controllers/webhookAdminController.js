@@ -20,11 +20,10 @@ const logger = require('../config/logger');
 
 function formatDelivery(d) {
     return {
-        deliveryId: d.DELIVERY_ID,
+        deliveryId: d.UUID,
         subscriberId: d.SUBSCRIBER_ID,
         targetUrl: d.TARGET_URL || null,
         status: d.STATUS,
-        attemptCount: d.ATTEMPT_COUNT,
         lastHttpStatus: d.LAST_HTTP_STATUS || null,
         lastError: d.LAST_ERROR || null,
         lastAttemptAt: d.LAST_ATTEMPT_AT || null,
@@ -35,11 +34,11 @@ function formatDelivery(d) {
 function formatEvent(row) {
     const deliveries = (row.DP_EVENT_DELIVERIES || []).map(formatDelivery);
     return {
-        eventId: row.EVENT_ID,
-        eventType: row.EVENT_TYPE,
-        orgId: row.ORG_ID,
+        eventId: row.UUID,
+        eventType: row.TYPE,
+        orgId: row.ORG_UUID,
         aggregateType: row.AGGREGATE_TYPE,
-        aggregateId: row.AGGREGATE_ID,
+        aggregateId: row.AGGREGATE_UUID,
         status: row.STATUS,
         occurredAt: row.OCCURRED_AT,
         deliveries,
@@ -67,7 +66,7 @@ async function listEvents(req, res) {
             pagination: { total: result.count, limit: parsedLimit, offset: parsedOffset },
         });
     } catch (err) {
-        logger.error('[webhookAdmin] listEvents error', { error: err.message });
+        logger.error('Failed to list events', { error: err.message });
         res.status(500).json({ message: err.message });
     }
 }
@@ -78,31 +77,14 @@ async function listEvents(req, res) {
 async function getEvent(req, res) {
     try {
         const event = await eventDao.get(req.params.eventId);
-        if (!event || event.ORG_ID !== req.params.orgId) {
+        if (!event || event.ORG_UUID !== req.params.orgId) {
             return res.status(404).json({ message: 'Event not found' });
         }
         res.json(formatEvent(event));
     } catch (err) {
-        logger.error('[webhookAdmin] getEvent error', { error: err.message });
+        logger.error('Failed to get event', { error: err.message });
         res.status(500).json({ message: err.message });
     }
 }
 
-/**
- * POST /organizations/:orgId/admin/deliveries/:deliveryId/retry
- * Resets a DEAD_LETTERED / FAILED delivery to PENDING so the worker retries it.
- * Note: for apikey.* events the encrypted_key was already stored in the delivery row,
- * so replay works — only new generate/regenerate events expose a new plaintext key.
- */
-async function retryDelivery(req, res) {
-    try {
-        const ok = await eventDao.retryDelivery(req.params.deliveryId, req.params.orgId);
-        if (!ok) return res.status(404).json({ message: 'Delivery not found or not in a retryable state' });
-        res.json({ message: 'Delivery queued for retry' });
-    } catch (err) {
-        logger.error('[webhookAdmin] retryDelivery error', { error: err.message });
-        res.status(500).json({ message: err.message });
-    }
-}
-
-module.exports = { listEvents, getEvent, retryDelivery };
+module.exports = { listEvents, getEvent };

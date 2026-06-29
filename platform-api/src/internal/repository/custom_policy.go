@@ -42,13 +42,13 @@ func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error 
 	now := time.Now()
 	query := r.db.BuildUpsertQuery(
 		"gateway_custom_policies",
-		[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_at", "updated_at"},
+		[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_by", "updated_by", "created_at", "updated_at"},
 		[]string{"organization_uuid", "name", "version"},
-		[]string{"display_name", "description", "policy_definition", "updated_at"},
+		[]string{"display_name", "description", "policy_definition", "updated_by", "updated_at"},
 	)
 	_, err := r.db.Exec(r.db.Rebind(query),
 		policy.UUID, policy.OrganizationUUID, policy.Name, policy.DisplayName, policy.Version,
-		policy.Description, policy.PolicyDefinition, now, now,
+		policy.Description, policy.PolicyDefinition, policy.CreatedBy, policy.UpdatedBy, now, now,
 	)
 	return err
 }
@@ -56,14 +56,15 @@ func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error 
 // GetCustomPolicyByNameAndVersion retrieves a custom policy by org, name, and version.
 func (r *CustomPolicyRepo) GetCustomPolicyByNameAndVersion(orgUUID, name, version string) (*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_by, updated_by, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ? AND name = ? AND version = ?
 	`
 	p := &model.CustomPolicy{}
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, name, version).Scan(
 		&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-		&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
+		&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -71,13 +72,15 @@ func (r *CustomPolicyRepo) GetCustomPolicyByNameAndVersion(orgUUID, name, versio
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 	return p, nil
 }
 
 // ListCustomPolicyByOrganization retrieves all custom policies for an organization.
 func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_by, updated_by, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ?
 		ORDER BY name, version
@@ -91,12 +94,15 @@ func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*mo
 	var policies []*model.CustomPolicy
 	for rows.Next() {
 		p := &model.CustomPolicy{}
+		var createdBy, updatedBy sql.NullString
 		if err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-			&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
+			&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		policies = append(policies, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -110,11 +116,11 @@ func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVer
 	now := time.Now()
 	query := `
 		UPDATE gateway_custom_policies
-		SET version = ?, display_name = ?, description = ?, policy_definition = ?, updated_at = ?
+		SET version = ?, display_name = ?, description = ?, policy_definition = ?, updated_by = ?, updated_at = ?
 		WHERE organization_uuid = ? AND name = ? AND version = ?
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
-		policy.Version, policy.DisplayName, policy.Description, policy.PolicyDefinition, now,
+		policy.Version, policy.DisplayName, policy.Description, policy.PolicyDefinition, policy.UpdatedBy, now,
 		policy.OrganizationUUID, policy.Name, oldVersion,
 	)
 	return err
@@ -123,14 +129,15 @@ func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVer
 // GetCustomPolicyByUUID retrieves a custom policy by its UUID, scoped to an organization.
 func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_by, updated_by, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ? AND uuid = ?
 	`
 	p := &model.CustomPolicy{}
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, policyUUID).Scan(
 		&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-		&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
+		&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -138,13 +145,15 @@ func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*m
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 	return p, nil
 }
 
 // GetCustomPoliciesByName retrieves all versions of a custom policy for a given org and name.
 func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_by, updated_by, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ? AND name = ?
 		ORDER BY version
@@ -158,12 +167,15 @@ func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*mod
 	var policies []*model.CustomPolicy
 	for rows.Next() {
 		p := &model.CustomPolicy{}
+		var createdBy, updatedBy sql.NullString
 		if err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-			&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
+			&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		policies = append(policies, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -189,7 +201,7 @@ func (r *CustomPolicyRepo) CountCustomPolicyUsages(policyUUID string) (int, erro
 
 // GetCustomPolicyUsagesByAPIUUID returns all policy UUIDs currently used with the given API.
 func (r *CustomPolicyRepo) GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]string, error) {
-	query := `SELECT policy_uuid FROM gateway_custom_policy_usages WHERE api_uuid = ?`
+	query := `SELECT policy_uuid FROM gateway_custom_policy_usages WHERE artifact_uuid = ?`
 	rows, err := r.db.Query(r.db.Rebind(query), apiUUID)
 	if err != nil {
 		return nil, err
@@ -208,14 +220,14 @@ func (r *CustomPolicyRepo) GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]str
 
 // InsertCustomPolicyUsage adds a custom policy usage entry for the given API.
 func (r *CustomPolicyRepo) InsertCustomPolicyUsage(policyUUID, apiUUID string) error {
-	query := `INSERT INTO gateway_custom_policy_usages (policy_uuid, api_uuid) VALUES (?, ?)`
+	query := `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`
 	_, err := r.db.Exec(r.db.Rebind(query), policyUUID, apiUUID)
 	return err
 }
 
 // DeleteCustomPolicyUsage removes the usage entry.
 func (r *CustomPolicyRepo) DeleteCustomPolicyUsage(policyUUID, apiUUID string) error {
-	query := `DELETE FROM gateway_custom_policy_usages WHERE policy_uuid = ? AND api_uuid = ?`
+	query := `DELETE FROM gateway_custom_policy_usages WHERE policy_uuid = ? AND artifact_uuid = ?`
 	_, err := r.db.Exec(r.db.Rebind(query), policyUUID, apiUUID)
 	return err
 }

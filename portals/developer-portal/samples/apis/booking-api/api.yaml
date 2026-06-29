@@ -9,7 +9,6 @@ spec:
   displayName: Booking API
   version: v1
   description: Sample hotel/event booking API. Requires API key authentication and a per-request subscription token. Choose a Gold, Silver, or Bronze plan when subscribing.
-  provider: WSO2
   status: PUBLISHED
   referenceID: booking-api-v1
 
@@ -26,9 +25,7 @@ spec:
     - Silver
     - Bronze
 
-  visibility: PUBLIC
   agentVisibility: VISIBLE
-  visibleGroups: []
 
   businessInformation:
     businessOwner: Platform Owner

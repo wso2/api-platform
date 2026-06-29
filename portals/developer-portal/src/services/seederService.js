@@ -19,7 +19,6 @@
 
 const { Sequelize } = require('sequelize');
 const orgDao = require('../dao/organizationDao');
-const providerDao = require('../dao/providerDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
@@ -42,12 +41,13 @@ async function seedDefaultOrg() {
         orgHandle: orgName,
         organizationIdentifier: orgName,
         orgConfig: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
+        createdBy: constants.SYSTEM_ACTOR,
     };
 
     let orgId;
     try {
         const existing = await orgDao.get(orgName);
-        orgId = existing.ORG_ID;
+        orgId = existing.UUID;
     } catch (notFound) {
         if (!(notFound instanceof Sequelize.EmptyResultError)) {
             logger.error('Failed to look up default organization', {
@@ -58,7 +58,7 @@ async function seedDefaultOrg() {
         }
         try {
             const organization = await orgDao.create(payload);
-            orgId = organization.ORG_ID;
+            orgId = organization.UUID;
         } catch (createError) {
             logger.error('Failed to seed default organization', {
                 error: createError.message,
@@ -71,8 +71,8 @@ async function seedDefaultOrg() {
 
     let labelId;
     try {
-        const label = await labelDao.update(orgId, { name: 'default', displayName: 'default' });
-        labelId = label.dataValues.LABEL_ID;
+        const label = await labelDao.update(orgId, { name: 'default', displayName: 'default' }, constants.SYSTEM_ACTOR);
+        labelId = label.dataValues.UUID;
     } catch (error) {
         logger.error('Failed to seed default label', {
             error: error.message,
@@ -83,8 +83,8 @@ async function seedDefaultOrg() {
 
     let viewId;
     try {
-        const view = await viewDao.update(orgId, 'default', 'default');
-        viewId = view.dataValues.VIEW_ID;
+        const view = await viewDao.update(orgId, 'default', 'default', constants.SYSTEM_ACTOR);
+        viewId = view.dataValues.UUID;
     } catch (error) {
         logger.error('Failed to seed default view', {
             error: error.message,
@@ -94,7 +94,7 @@ async function seedDefaultOrg() {
     }
 
     try {
-        await labelDao.addToView(orgId, labelId, viewId);
+        await labelDao.addToView(orgId, labelId, viewId, constants.SYSTEM_ACTOR);
     } catch (error) {
         if (!(error instanceof Sequelize.UniqueConstraintError)) {
             logger.error('Failed to seed label-view link', {
@@ -105,23 +105,10 @@ async function seedDefaultOrg() {
         }
     }
 
-    try {
-        const existingProvider = await providerDao.get(orgId, 'WSO2');
-        if (!existingProvider || existingProvider.length === 0) {
-            await providerDao.create(orgId, { name: 'WSO2', providerURL: 'https://wso2.com' });
-        }
-    } catch (error) {
-        logger.error('Failed to seed provider', {
-            error: error.message,
-            operation: 'seedDefaultOrg',
-        });
-        return;
-    }
-
     if (config.generateDefaultSubPlans) {
         for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
             try {
-                await subscriptionPlanDao.createMany(orgId, [plan]);
+                await subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR);
             } catch (error) {
                 if (!(error instanceof Sequelize.UniqueConstraintError)) {
                     logger.error('Failed to seed subscription plan', {
@@ -134,7 +121,7 @@ async function seedDefaultOrg() {
         }
     }
 
-    logger.info(`Default organization '${orgName}' seeded successfully`);
+    logger.info('Org: default organization seeded ✓');
 }
 
 module.exports = { seedDefaultOrg };

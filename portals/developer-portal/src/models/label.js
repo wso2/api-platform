@@ -20,15 +20,15 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 
-const Labels = sequelize.define('DP_LABELS', {
+const Labels = sequelize.define('DP_LABEL', {
 
-    LABEL_ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
     },
     NAME: {
@@ -39,21 +39,43 @@ const Labels = sequelize.define('DP_LABELS', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_LABELS',
+    tableName: 'DP_LABEL',
     returning: true,
     indexes: [
         {
-            name: 'UQ_LABELS_NAME_ORG_ID',
+            name: 'UQ_LABEL_NAME_ORG_UUID',
             unique: true,
-            fields: ['NAME', 'ORG_ID'],
+            fields: ['NAME', 'ORG_UUID'],
+        },
+        {
+            name: 'IDX_LABEL_ORG_UUID',
+            fields: ['ORG_UUID'],
         }
     ],
 });
 
 Labels.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'ORG_UUID'
 })
 
 module.exports = Labels;

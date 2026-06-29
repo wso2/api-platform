@@ -23,19 +23,18 @@ import "time"
 func defaultConfig() *Server {
 	return &Server{
 		LogLevel:                   "INFO",
+		LogFormat:                  "text",
 		Port:                       "9243",
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
 		EnableScopeValidation:      true,
-    	OrgCreationRequiresAuth:    false,
 		Database: Database{
 			Driver:           "sqlite3",
 			Path:             "./data/api_platform.db",
 			MaxOpenConns:     25,
 			MaxIdleConns:     10,
 			ConnMaxLifetime:  300,
-			ExecuteSchemaDDL: true,
 		},
 		Auth: Auth{
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
@@ -43,6 +42,7 @@ func defaultConfig() *Server {
 			SkipPaths: []string{
 				"/health",
 				"/metrics",
+				"/api/portal/v0.9/auth/login",
 				"/api/internal/v1/ws/gateways/connect",
 				"/api/internal/v1/apis",
 				"/api/internal/v1/llm-providers",
@@ -52,6 +52,7 @@ func defaultConfig() *Server {
 				"/api/internal/v1/gateways",
 				"/api/internal/v1/deployments",
 				"/api/internal/v1/artifacts",
+				"/api/internal/v1/secrets",
 				"/api/internal/v1/websub-apis",
 				"/api/internal/v1/webbroker-apis",
 			},
@@ -61,7 +62,7 @@ func defaultConfig() *Server {
 				SkipValidation: true,
 			},
 			IDP: IDP{
-				Enabled: 		false,
+				Enabled:        false,
 				ValidationMode: "scope",
 				ClaimMappings: IDPClaimMappings{
 					OrganizationClaimName: "organization",
@@ -74,7 +75,7 @@ func defaultConfig() *Server {
 				},
 			},
 			FileBased: FileBased{
-				Enabled: 		false,
+				Enabled: false,
 				Organization: FileBasedOrg{
 					ID:     "99089a17-72e0-4dd8-a2f4-c8dfbb085295",
 					Name:   "AP Organization",
@@ -85,7 +86,7 @@ func defaultConfig() *Server {
 					{
 						Username:     "admin",
 						PasswordHash: "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.",
-						Scopes:       "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read",
+						Scopes:       "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage",
 					},
 				},
 			},

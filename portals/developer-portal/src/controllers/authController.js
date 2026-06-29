@@ -40,7 +40,7 @@ const login = async (req, res, next) => {
         if (config.identityProvider?.clientId) {
             // IDP mode: redirect directly to the IDP, no intermediate login page
             const orgDetails = await orgDao.get(orgName);
-            const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
+            const orgIdentifier = orgDetails?.IDP_REF_ID;
             if (fidp && fidpMap[fidp]) {
                 if (fidp === 'enterprise' && req.query.username) {
                     req.session.username = req.query.username;
@@ -103,7 +103,7 @@ const handleCallback = async (req, res, next) => {
                 }
                 returnTo = returnTo || `/${req.params.orgName}`;
                 delete req.session.returnTo;
-                // todo: track login success
+                logUserAction('USER_LOGIN', req, { orgName: req.params.orgName });
                 req.session.save((saveErr) => {
                     if (saveErr) {
                         logger.error('Session save failed after login', { error: saveErr.message });
@@ -154,7 +154,7 @@ const handleLogOut = async (req, res) => {
         req.logout((err) => {
             if (err) {
                 logger.error('Logout error (local-auth)', {
-                    userId: req.user?.username || 'unknown',
+                    userId: req.user?.id || 'unknown',
                     orgName: req.params.orgName,
                     error: err.message,
                 });
@@ -175,7 +175,7 @@ const handleLogOut = async (req, res) => {
         req.logout((err) => {
             if (err) {
                 logger.error("Logout error", {
-                    userId: req.user?.id || req.user?.username || 'unknown',
+                    userId: req.user?.id || 'unknown',
                     orgName: req.params.orgName,
                     error: err.message,
                     stack: err.stack
@@ -251,7 +251,7 @@ const handleLocalLogin = async (req, res) => {
     let platformToken;
     try {
         const response = await axios.post(
-            `${platformApiUrl}/api/portal/v1/auth/login`,
+            `${platformApiUrl}/api/portal/v0.9/auth/login`,
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -263,6 +263,7 @@ const handleLocalLogin = async (req, res) => {
     } catch (error) {
         if (error.response?.status === 401) {
             logger.warn('Platform API login failed: invalid credentials', { orgName });
+            logUserAction('USER_LOGIN_FAILED', req, { orgName, reason: 'invalid_credentials' });
             return res.redirect(`${baseUrl}/login?error=Invalid+username+or+password`);
         }
         logger.error('Platform API login request failed', { error: error.message, orgName });
@@ -324,6 +325,7 @@ const handleLocalLogin = async (req, res) => {
                 logger.error('Platform-auth login session error', { error: loginErr.message, stack: loginErr.stack });
                 return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
             }
+            logUserAction('USER_LOGIN', req, { orgName, isLocalAuth: true });
             res.set('Cache-Control', 'no-store');
             const redirectTo = returnTo || baseUrl;
             req.session.save((saveErr) => {

@@ -563,7 +563,7 @@ func TestRestoreDeployment(t *testing.T) {
 				cfg:            &config.Server{},
 			}
 
-			result, err := service.RestoreDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID)
+			result, err := service.RestoreDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID, "")
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
@@ -770,7 +770,7 @@ func TestUndeployDeployment(t *testing.T) {
 				cfg:            &config.Server{},
 			}
 
-			result, err := service.UndeployDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID)
+			result, err := service.UndeployDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID, "")
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
@@ -916,7 +916,7 @@ func TestDeleteDeployment(t *testing.T) {
 				deploymentRepo: mockDeploymentRepo,
 			}
 
-			err := service.DeleteDeployment(testAPIUUID, tt.deploymentID, testOrgUUID)
+			err := service.DeleteDeployment(testAPIUUID, tt.deploymentID, testOrgUUID, "")
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
@@ -1334,7 +1334,7 @@ func TestRollbackDeployment_WhenAllDeploymentsArchived(t *testing.T) {
 		cfg:            &config.Server{},
 	}
 
-	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
+	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID, "")
 
 	if err != nil {
 		t.Fatalf("RestoreDeployment() unexpected error: %v", err)
@@ -1391,7 +1391,7 @@ func TestRollbackDeployment_ToArchivedWhenCurrentUndeployed(t *testing.T) {
 		cfg:            &config.Server{},
 	}
 
-	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
+	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID, "")
 
 	if err != nil {
 		t.Fatalf("RestoreDeployment() unexpected error: %v", err)
@@ -1428,7 +1428,7 @@ func TestDeleteDeployment_ArchivedWithNoStatusRow(t *testing.T) {
 		deploymentRepo: mockDeploymentRepo,
 	}
 
-	err := service.DeleteDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
+	err := service.DeleteDeployment(testAPIUUID, testDeploymentID, testOrgUUID, "")
 
 	if err != nil {
 		t.Fatalf("DeleteDeployment() unexpected error for ARCHIVED deployment: %v", err)
@@ -1578,7 +1578,7 @@ func TestUndeployDeployment_WhenOnlyOneDeploymentExists(t *testing.T) {
 		cfg:            &config.Server{},
 	}
 
-	result, err := service.UndeployDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
+	result, err := service.UndeployDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID, "")
 
 	if err != nil {
 		t.Fatalf("UndeployDeployment() unexpected error: %v", err)
@@ -1629,7 +1629,7 @@ func TestRollbackDeployment_CurrentlyDeployedSameID(t *testing.T) {
 		cfg:            &config.Server{},
 	}
 
-	_, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
+	_, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID, "")
 
 	if err == nil {
 		t.Fatal("Expected error when restoring to currently DEPLOYED deployment")
@@ -1667,7 +1667,7 @@ func TestDeleteDeployment_CannotDeleteDeployed(t *testing.T) {
 		deploymentRepo: mockDeploymentRepo,
 	}
 
-	err := service.DeleteDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
+	err := service.DeleteDeployment(testAPIUUID, testDeploymentID, testOrgUUID, "")
 
 	if err == nil {
 		t.Fatal("Expected error when deleting DEPLOYED deployment")
@@ -1736,7 +1736,7 @@ func TestRollbackDeployment_NonExistentDeployment(t *testing.T) {
 		deploymentRepo: mockDeploymentRepo,
 	}
 
-	_, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
+	_, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID, "")
 
 	if err == nil {
 		t.Fatal("Expected error when restoring to non-existent deployment")

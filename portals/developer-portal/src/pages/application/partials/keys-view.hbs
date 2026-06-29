@@ -50,9 +50,10 @@
                                             id='consumer-key-{{../id}}-{{keyType}}'
                                             class='form-control' name="consumerKey" value='{{keys.consumerKey}}'
                                             readonly disabled />
-                                        <button type="button" class="password-copy-btn"
+                                        <button type="button" class="password-copy-btn copy-btn"
                                             onclick="copyConsumerKey('consumer-key-{{../id}}-{{keyType}}')">
-                                            <i class="bi bi-clipboard"></i>
+                                            <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                            <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                         </button>
                                     </div>
                                     <input type='hidden' id='app-ref-{{../id}}-{{keyType}}' class='form-control' name="appRefId"
@@ -75,9 +76,10 @@
                                             onclick="togglePasswordVisibility('consumer-secret-{{../id}}-{{keyType}}')">
                                             <i class="bi bi-eye"></i>
                                         </button>
-                                        <button type="button" class="password-copy-btn"
+                                        <button type="button" class="password-copy-btn copy-btn"
                                             onclick="copyConsumerSecret('consumer-secret-{{../id}}-{{keyType}}')">
-                                            <i class="bi bi-clipboard"></i>
+                                            <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                            <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                         </button>
                                     </div>
                                 </div>
@@ -99,9 +101,10 @@
                                     <input type='url' name="tokenURL"
                                         id='token-endpoint-{{../id}}-{{keyType}}'
                                         class='form-control' value='{{../tokenEndpoint}}' readonly disabled />
-                                    <button type="button" class="password-copy-btn url-copy-btn"
+                                    <button type="button" class="password-copy-btn url-copy-btn copy-btn"
                                         onclick="copyOauthURLs('token-endpoint-{{../id}}-{{keyType}}')">
-                                        <i class="bi bi-clipboard"></i>
+                                        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                     </button>
                                 </div>
                                 {{!-- Revoke Endpoint --}}
@@ -114,9 +117,10 @@
                                     <input type='url' name="revokeURL"
                                         id='revoke-endpoint-{{../id}}-{{keyType}}'
                                         class='form-control' value='{{../revokeEndpoint}}' readonly disabled />
-                                    <button type="button" class="password-copy-btn url-copy-btn"
+                                    <button type="button" class="password-copy-btn url-copy-btn copy-btn"
                                         onclick="copyOauthURLs('revoke-endpoint-{{../id}}-{{keyType}}')">
-                                        <i class="bi bi-clipboard"></i>
+                                        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                     </button>
                                 </div>
                                 {{!-- Authorize Endpoint --}}
@@ -129,9 +133,10 @@
                                     <input type='url' name="authorizeURL"
                                         id='authorize-endpoint-{{../id}}-{{keyType}}'
                                         class='form-control' value='{{../authorizeEndpoint}}' readonly disabled />
-                                    <button type="button" class="password-copy-btn url-copy-btn"
+                                    <button type="button" class="password-copy-btn url-copy-btn copy-btn"
                                         onclick="copyOauthURLs('authorize-endpoint-{{../id}}-{{keyType}}')">
-                                        <i class="bi bi-clipboard"></i>
+                                        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                     </button>
                                 </div>
                             </div>

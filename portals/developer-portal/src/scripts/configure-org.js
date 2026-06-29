@@ -174,24 +174,6 @@ async function uploadContent(orgID) {
     }
 }
 
-async function deleteProvider(orgID, name) {
-    try {
-        const response = await fetch(
-            `/devportal/organizations/${encodeURIComponent(orgID)}/provider?name=${encodeURIComponent(name)}`,
-            { method: 'DELETE', credentials: 'same-origin' }
-        );
-        if (response.ok || response.status === 204) {
-            await showAlert('Provider deleted successfully.', 'success');
-            window.location.href = 'configure';
-        } else {
-            const errorText = await response.text().catch(() => response.statusText || 'Unknown error');
-            showAlert(`Failed to delete provider: ${errorText}`, 'error');
-        }
-    } catch (e) {
-        showAlert(`Error deleting provider: ${e.message}`, 'error');
-    }
-}
-
 function addViewLabel(labelSelectID, labelsContainerID) {
 
     const select = document.getElementById(labelSelectID);
@@ -216,11 +198,11 @@ function addViewLabel(labelSelectID, labelsContainerID) {
     labelsContainer.appendChild(span);
 }
 
-async function editView(existingLabels, labelsContainerID, displayNameID, nameID, orgID) {
+async function editView(existingLabels, labelsContainerID, nameID, handleID, orgID) {
 
     const labelsContainer = document.getElementById(labelsContainerID);
-    const displayName = document.getElementById(displayNameID).value;
     const name = document.getElementById(nameID).value;
+    const handle = document.getElementById(handleID).value;
     const selected = [...labelsContainer.children].map(span => span.textContent.replace("×", "").trim());
     const addedLabels = selected.filter(label => !existingLabels.includes(label));
     let removedLabels = [];
@@ -230,13 +212,13 @@ async function editView(existingLabels, labelsContainerID, displayNameID, nameID
     }
     const sanitizAddedLabels = addedLabels.map(label => sanitizeInput(label));
     const sanitizeRemovedLabels = removedLabels.map(label => sanitizeInput(label));
-    
+
     const data = {
-        displayName: displayName,
+        name: name,
         addedLabels: sanitizAddedLabels,
         removedLabels: sanitizeRemovedLabels
     }
-    const response = await fetch(devportalApi.org(orgID, `/views/${name}`), {
+    const response = await fetch(devportalApi.org(orgID, `/views/${handle}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -250,9 +232,9 @@ async function editView(existingLabels, labelsContainerID, displayNameID, nameID
     }
 }
 
-async function deleteView(orgID, viewName) {
-    
-    const response = await fetch(devportalApi.org(orgID, `/views/${viewName}`), {
+async function deleteView(orgID, viewHandle) {
+
+    const response = await fetch(devportalApi.org(orgID, `/views/${viewHandle}`), {
         method: 'DELETE',
     });
     if (response.ok) {

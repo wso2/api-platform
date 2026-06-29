@@ -45,7 +45,7 @@ data:
     reconnect_initial = {{ $gc.controlplane.reconnect_initial | quote }}
     reconnect_max = {{ $gc.controlplane.reconnect_max | quote }}
     polling_interval = {{ $gc.controlplane.polling_interval | quote }}
-    deployment_push_enabled = {{ $gc.controlplane.deployment_push_enabled }}
+    deployment_sync_enabled = {{ $gc.controlplane.deployment_sync_enabled }}
     sync_batch_size = {{ $gc.controlplane.sync_batch_size }}
 
     {{- range $gc.encryption.providers }}

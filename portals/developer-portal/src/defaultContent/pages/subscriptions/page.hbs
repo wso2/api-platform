@@ -29,15 +29,9 @@
       <h1 class="page-title">Subscriptions</h1>
       <p class="page-desc">APIs and MCP servers your applications are subscribed to.</p>
     </div>
-    {{#if subscriptions.length}}
-    <button class="dp-btn dp-btn--primary" disabled title="Backend not wired yet — UI preview only">
-      <i class="bi bi-plus"></i> New subscription
-    </button>
-    {{/if}}
   </div>
 
   {{> subscription-list }}
 
-  {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
   {{> alert }}
 </div>

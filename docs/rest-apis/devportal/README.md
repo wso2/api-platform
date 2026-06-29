@@ -1,7 +1,7 @@
 
 <h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
 
-Fine-grained Developer Portal API for managing organizations, providers,
+Fine-grained Developer Portal API for managing organizations,
 API metadata and content, applications, subscriptions, application credentials, and API flows.
 
 Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
@@ -33,13 +33,6 @@ Base URLs:
 - [Delete organization layout content](organization-content.md#delete-organization-layout-content)
 - [List organization layout assets by file type](organization-content.md#list-organization-layout-assets-by-file-type)
 
-### [Providers](providers.md)
-
-- [Create a provider](providers.md#create-a-provider)
-- [Update a provider](providers.md#update-a-provider)
-- [Get providers](providers.md#get-providers)
-- [Delete a provider](providers.md#delete-a-provider)
-
 ### [APIs](apis.md)
 
 - [Create API metadata](apis.md#create-api-metadata)
@@ -54,6 +47,7 @@ Base URLs:
 - [Replace API content](api-content.md#replace-api-content)
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
+- [List API document file names](api-content.md#list-api-document-file-names)
 
 ### [Subscription Plans](subscription-plans.md)
 
@@ -91,6 +85,9 @@ Base URLs:
 - [List API keys](api-keys.md#list-api-keys)
 - [Regenerate an API key](api-keys.md#regenerate-an-api-key)
 - [Revoke an API key](api-keys.md#revoke-an-api-key)
+- [Associate an API key with an application](api-keys.md#associate-an-api-key-with-an-application)
+- [Remove an API key's application association](api-keys.md#remove-an-api-keys-application-association)
+- [List API keys associated with an application](api-keys.md#list-api-keys-associated-with-an-application)
 
 ### [Views](views.md)
 
@@ -136,7 +133,6 @@ Base URLs:
 
 - [List webhook events](webhook-events.md#list-webhook-events)
 - [Get a webhook event](webhook-events.md#get-a-webhook-event)
-- [Retry a failed webhook delivery](webhook-events.md#retry-a-failed-webhook-delivery)
 
 ### [Webhook Subscribers](webhook-subscribers.md)
 

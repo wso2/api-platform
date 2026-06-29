@@ -1,162 +1,125 @@
-{{!
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
- *
- * WSO2 LLC. licenses this file to you under the Apache License,
- * Version 2.0 (the "License"); you may not use this file except
- * in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations
- * under the License.
- */
-}}
-<section class="section mb-4">
-  <div class="container-fluid">
-    <div class="defaultapi-section">
-      <div class="container-header mb-4">MCP Server URL</div>
-      {{#if (eq resources.serverDetails "")}}
-        <div class="defaultapi-endpoint-row col-12 col-xl-9">
-          <div class="defaultapi-endpoint-content">
-            <span class="defaultapi-development-label">No endpoints available</span>
-          </div>
-        </div>
+{{!-- MCP Server URL --}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">MCP Server URL</h2>
+  </div>
+  {{#if (eq resources.serverDetails "")}}
+  <div class="aov-endpoint-card">
+    <span style="font-size:13px;color:#8a93a0;">No endpoints available</span>
+  </div>
+  {{else}}
+  {{#unless (eq resources.serverDetails.productionURL "")}}
+  <div class="aov-endpoint-url-row" style="margin-top:0;">
+    <i class="bi bi-link-45deg" style="color:#8a93a0;flex:none;"></i>
+    <pre id="token_mcp_prod_url" class="aov-endpoint-url token-text">{{resources.serverDetails.productionURL}}</pre>
+    <button type="button" class="copy-btn" title="Copy URL" onclick="copyToken(this, 'mcp_prod_url')">
+      <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+      <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
+    </button>
+  </div>
+  {{/unless}}
+  {{/if}}
+</div>
+
+{{!-- Tools --}}
+{{#if schemaDefinition.tools.length}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Tools</h2>
+    <span class="aov-section-count">{{schemaDefinition.tools.length}} tools</span>
+  </div>
+  {{#each schemaDefinition.tools}}
+  <div class="mc-accordion">
+    <div class="mc-accordion-head open" onclick="this.classList.toggle('open')">
+      <span class="mc-accordion-head-label">
+        <i class="bi bi-wrench"></i> {{this.name}}
+      </span>
+      <i class="bi bi-chevron-up mc-accordion-chevron"></i>
+    </div>
+    <div class="mc-accordion-body">
+      {{#if this.description}}
+      <p class="mc-accordion-desc">{{this.description}}</p>
       {{else}}
-        {{#unless (eq resources.serverDetails.productionURL "")}}
-          <div class="defaultapi-endpoint-row col-12 col-xl-9">
-            <div class="defaultapi-endpoint-content">
-              <div class="defaultapi-endpoint-url-container d-flex">
-                <pre id="token_mcp_prod_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.productionURL}}</pre>                
-                  <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('mcp_prod_url')">
-                    <i class="bi bi-copy"></i>
-                  </a>
-              </div>
-            </div>
-          </div>
-        {{/unless}}
+      <p class="mc-accordion-desc" style="color:#b0b8c4;">No description available.</p>
+      {{/if}}
+      {{#if this.inputSchema}}
+      <div class="mc-json-block">
+        <pre><code class="language-json">{{jsonBeautify this.inputSchema}}</code></pre>
+      </div>
       {{/if}}
     </div>
-      <div class="defaultapi-section">
-      <div class="row">
-        <div class="col-12 col-lg-7 mb-4">
-        {{#if schemaDefinition.tools.length}}
-        <div class="container-header mb-4">Tools</div>
-        <div class="defaultapi-resources mb-4">
-          {{#each schemaDefinition.tools}}
-            <div class="accordion-set">
-              <button
-                class="accordion-header"
-                onclick="this.classList.toggle('open')"
-              >
-                <span>{{this.name}}</span>
-                <i class="chevron-icon bi bi-chevron-down"></i>
-              </button>
-              <div class="accordion-body">
-                {{#if this.description}}
-                  <p class="accordion-summary">{{this.description}}</p>
-                {{else}}
-                  <p class="accordion-summary">No summary available.</p>
-                {{/if}}
-                {{#if this.inputSchema}}
-                    <pre class="json-block"><code>    {{jsonBeautify this.inputSchema}}</code></pre>
-                {{/if}}
-              </div>
-            </div>
-          {{/each}}
-        </div>
-        {{/if}}
-        {{#if schemaDefinition.resources.length}}
-        <div class="container-header mb-4">Resources</div>
-        <div class="defaultapi-resources mb-4">
-          {{#each schemaDefinition.resources}}
-            <div class="accordion-set">
-              <button
-                class="accordion-header"
-                onclick="this.classList.toggle('open')"
-              >
-                <span>{{this.name}}</span>
-                <i class="chevron-icon bi bi-chevron-down"></i>
-              </button>
-              <div class="accordion-body">
-                {{#if this.description}}
-                  <p class="accordion-summary">{{this.description}}</p>
-                {{else}}
-                  <p class="accordion-summary">No summary available.</p>
-                {{/if}}
-                {{#if this.uri}}
-                  <p class="accordion-summary"><strong>URI:</strong> {{this.uri}}</p>
-                {{/if}}
-                {{#if this.mimeType}}
-                  <p class="accordion-summary"><strong>MIME Type:</strong> {{this.mimeType}}</p>
-                {{/if}}
-              </div>
-            </div>
-          {{/each}}
-        </div>
-        {{/if}}
-        {{#if schemaDefinition.prompts.length}}
-        <div class="container-header mb-4">Prompts</div>
-        <div class="defaultapi-resources mb-4">
-          {{#each schemaDefinition.prompts}}
-            <div class="accordion-set">
-              <button
-                class="accordion-header"
-                onclick="this.classList.toggle('open')"
-              >
-                <span>{{this.name}}</span>
-                <i class="chevron-icon bi bi-chevron-down"></i>
-              </button>
-              <div class="accordion-body">
-                {{#if this.description}}
-                  <p class="accordion-summary">{{this.description}}</p>
-                {{else}}
-                  <p class="accordion-summary">No summary available.</p>
-                {{/if}}
-                {{#if this.arguments}}
-                    <pre class="json-block"><code>    {{jsonBeautify this.arguments}}</code></pre>
-                {{/if}}
-              </div>
-            </div>
-          {{/each}}
-        </div>
-        {{/if}}
-        </div>
-        <div class="defaultapi-resources-mcp col-12 col-lg-5 mb-4">
-          <div class="mcp-json-block-header">MCP Server Configuration</div>
-        <div class="server-config-container" style="position: relative;">
-        <pre class="mcp-json-block" id="server-config-{{apiID}}">
-        <code class="language-json">
-{
-  <span class="schema-title">"servers"</span>: {
-    <span class="schema-title">"{{apiMetadata.apiInfo.apiName}}"</span>: {
-      <span class="schema-title">"url"</span>: <span class="schema-content">"{{resources.serverDetails.productionURL}}"</span>,
-      <span class="schema-title">"type"</span>: <span class="schema-content">"http"</span>,
-      <span class="schema-title">"headers"</span>: {
-        <span class="schema-title">"Authorization"</span>: <span class="schema-content">"Bearer ${token}</span>"
-      }
-    }
-  }
-}
-        </code>
-        </pre>
-        <button
-            type="button"
-            class="dp-btn-icon"
-            onclick="copyServerConfig('{{apiID}}')"
-            title="Copy"
-            style="position: absolute; top: 10px; right: 10px; border: none; background: transparent; outline: none;"
-        >
-            <i class="bi bi-clipboard"></i>
-        </button>
-        </div>
-          <p style="font-size: small; font-weight: 400;">Please generate a token using the subscribed application and replace the placeholder.</p>
-        </div>
+  </div>
+  {{/each}}
+</div>
+{{/if}}
+
+{{!-- Resources --}}
+{{#if schemaDefinition.resources.length}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Resources</h2>
+    <span class="aov-section-count">{{schemaDefinition.resources.length}} resources</span>
+  </div>
+  {{#each schemaDefinition.resources}}
+  <div class="mc-accordion">
+    <div class="mc-accordion-head open" onclick="this.classList.toggle('open')">
+      <span class="mc-accordion-head-label">
+        <i class="bi bi-file-earmark-code"></i> {{this.name}}
+      </span>
+      <i class="bi bi-chevron-up mc-accordion-chevron"></i>
+    </div>
+    <div class="mc-accordion-body">
+      {{#if this.description}}
+      <p class="mc-accordion-desc">{{this.description}}</p>
+      {{else}}
+      <p class="mc-accordion-desc" style="color:#b0b8c4;">No description available.</p>
+      {{/if}}
+      {{#if this.uri}}
+      <div class="mc-accordion-meta">
+        <span class="mc-accordion-meta-key">URI</span>
+        <code class="mc-accordion-meta-val">{{this.uri}}</code>
       </div>
+      {{/if}}
+      {{#if this.mimeType}}
+      <div class="mc-accordion-meta">
+        <span class="mc-accordion-meta-key">MIME Type</span>
+        <code class="mc-accordion-meta-val">{{this.mimeType}}</code>
+      </div>
+      {{/if}}
     </div>
   </div>
-</section>
+  {{/each}}
+</div>
+{{/if}}
+
+{{!-- Prompts --}}
+{{#if schemaDefinition.prompts.length}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Prompts</h2>
+    <span class="aov-section-count">{{schemaDefinition.prompts.length}} prompts</span>
+  </div>
+  {{#each schemaDefinition.prompts}}
+  <div class="mc-accordion">
+    <div class="mc-accordion-head open" onclick="this.classList.toggle('open')">
+      <span class="mc-accordion-head-label">
+        <i class="bi bi-chat-text"></i> {{this.name}}
+      </span>
+      <i class="bi bi-chevron-up mc-accordion-chevron"></i>
+    </div>
+    <div class="mc-accordion-body">
+      {{#if this.description}}
+      <p class="mc-accordion-desc">{{this.description}}</p>
+      {{else}}
+      <p class="mc-accordion-desc" style="color:#b0b8c4;">No description available.</p>
+      {{/if}}
+      {{#if this.arguments}}
+      <div class="mc-json-block">
+        <pre><code class="language-json">{{jsonBeautify this.arguments}}</code></pre>
+      </div>
+      {{/if}}
+    </div>
+  </div>
+  {{/each}}
+</div>
+{{/if}}

@@ -24,7 +24,28 @@
     const apiId = cfg.dataset.apiId;
     const readOnly = cfg.dataset.readOnly === 'true';
     const csrfToken = cfg.dataset.csrfToken || '';
+    let applications = [];
+    try {
+        applications = JSON.parse(cfg.dataset.applications || '[]');
+    } catch (e) {
+        applications = [];
+    }
     if (cfg.dataset.loadError === 'true') return;
+
+    /* ── App filter ────────────────────────────────────────────── */
+
+    const appFilter = document.getElementById('ak-app-filter');
+    if (appFilter) {
+        appFilter.addEventListener('change', function () {
+            const url = new URL(window.location.href);
+            if (appFilter.value) {
+                url.searchParams.set('appId', appFilter.value);
+            } else {
+                url.searchParams.delete('appId');
+            }
+            window.location.href = url.toString();
+        });
+    }
 
     function jsonMutationHeaders() {
         const h = { 'Content-Type': 'application/json' };
@@ -52,7 +73,7 @@
     }
 
     // Close any overlay when clicking on the backdrop
-    ['generateApiKeyModal', 'regenerateApiKeyModal', 'showApiKeySecretModal', 'ak-revoke-modal'].forEach(function (id) {
+    ['generateApiKeyModal', 'regenerateApiKeyModal', 'showApiKeySecretModal', 'ak-revoke-modal', 'ak-app-modal'].forEach(function (id) {
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('click', function (e) {
@@ -65,16 +86,14 @@
     var _secretReloadOnClose = false;
     var _copyTimer = null;
 
-    function showSecretModal(value, reloadOnClose) {
+    function showSecretModal(value, reloadOnClose, keyName) {
         _secretReloadOnClose = !!reloadOnClose;
         const codeEl = document.getElementById('api-key-secret-value');
         if (codeEl) codeEl.textContent = value || '';
-        // Reset copy button to default state
+        const nameEl = document.getElementById('ak-secret-key-name');
+        if (nameEl) nameEl.textContent = keyName || '';
         const copyBtn = document.getElementById('btn-copy-api-key-secret');
-        if (copyBtn) {
-            copyBtn.className = 'ak-copy-btn';
-            copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
-        }
+        if (copyBtn) copyBtn.classList.remove('copy-btn--copied');
         akShowModal('showApiKeySecretModal');
     }
 
@@ -107,12 +126,10 @@
                     document.body.removeChild(ta);
                 }
             } catch (e) {}
-            copyBtn.className = 'ak-copy-btn ak-copy-btn--copied';
-            copyBtn.innerHTML = '<i class="bi bi-check-lg"></i> Copied';
+            copyBtn.classList.add('copy-btn--copied');
             if (_copyTimer) clearTimeout(_copyTimer);
             _copyTimer = setTimeout(function () {
-                copyBtn.className = 'ak-copy-btn';
-                copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
+                copyBtn.classList.remove('copy-btn--copied');
             }, 1600);
         });
     }
@@ -148,6 +165,37 @@
     if (regenCloseBtn) regenCloseBtn.addEventListener('click', closeRegenModal);
     const regenCancelBtn = document.getElementById('ak-regen-cancel');
     if (regenCancelBtn) regenCancelBtn.addEventListener('click', closeRegenModal);
+
+    /* ── Associate app modal ──────────────────────────────────── */
+
+    function closeAppModal() { akHideModal('ak-app-modal'); }
+
+    const appCloseBtn = document.getElementById('ak-app-close');
+    if (appCloseBtn) appCloseBtn.addEventListener('click', closeAppModal);
+    const appCancelBtn = document.getElementById('ak-app-cancel');
+    if (appCancelBtn) appCancelBtn.addEventListener('click', closeAppModal);
+
+    document.querySelectorAll('.btn-app-key').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (readOnly) return;
+            const keyId = btn.getAttribute('data-key-id') || '';
+            const currentAppId = btn.getAttribute('data-app-id') || '';
+            const keyIdInput = document.getElementById('ak-app-key-id');
+            if (keyIdInput) keyIdInput.value = keyId;
+            const select = document.getElementById('ak-app-select');
+            if (select) {
+                select.innerHTML = '<option value="">— None —</option>';
+                applications.forEach(function (app) {
+                    const opt = document.createElement('option');
+                    opt.value = app.appId;
+                    opt.textContent = app.name;
+                    if (app.appId === currentAppId) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            }
+            akShowModal('ak-app-modal');
+        });
+    });
 
     /* ── API requests ─────────────────────────────────────────── */
 
@@ -186,6 +234,56 @@
         }
     }
 
+    async function putApplication(keyId, appId) {
+        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/application'), {
+            method: 'PUT', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify({ appId: appId }),
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(function () { return {}; });
+            throw new Error(data.description || data.message || response.statusText || 'Request failed');
+        }
+    }
+
+    async function deleteApplicationAssociation(keyId) {
+        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/application'), {
+            method: 'DELETE', credentials: 'same-origin',
+            headers: jsonMutationHeaders(),
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(function () { return {}; });
+            throw new Error(data.description || data.message || response.statusText || 'Request failed');
+        }
+    }
+
+    /* ── Associate app submit ─────────────────────────────────── */
+
+    const submitAppBtn = document.getElementById('btn-submit-app-association');
+    if (submitAppBtn) {
+        submitAppBtn.addEventListener('click', async function () {
+            if (submitAppBtn.disabled || submitAppBtn.dataset.loading === 'true') return;
+            const keyId = document.getElementById('ak-app-key-id')?.value || '';
+            const select = document.getElementById('ak-app-select');
+            const appId = select ? select.value : '';
+            submitAppBtn.dataset.loading = 'true';
+            submitAppBtn.disabled = true;
+            try {
+                if (appId) {
+                    await putApplication(keyId, appId);
+                } else {
+                    await deleteApplicationAssociation(keyId);
+                }
+                closeAppModal();
+                window.location.reload();
+            } catch (e) {
+                if (typeof showAlert === 'function') await showAlert(e.message || 'Failed to update app association', 'error');
+            } finally {
+                submitAppBtn.disabled = false;
+                delete submitAppBtn.dataset.loading;
+            }
+        });
+    }
+
     /* ── Generate submit ──────────────────────────────────────── */
 
     const submitGenBtn = document.getElementById('btn-submit-generate-api-key');
@@ -217,7 +315,7 @@
                 delete submitGenBtn.dataset.loading;
             }
             if (data && data.key) {
-                showSecretModal(data.key, true);
+                showSecretModal(data.key, true, name);
             } else if (data) {
                 window.location.reload();
             }
@@ -271,7 +369,7 @@
                 delete submitRegenBtn.dataset.loading;
             }
             if (data && data.key) {
-                showSecretModal(data.key, true);
+                showSecretModal(data.key, true, name);
             } else if (data) {
                 window.location.reload();
             }

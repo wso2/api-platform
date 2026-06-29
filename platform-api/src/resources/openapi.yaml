@@ -10,10 +10,6 @@ info:
     validated against a configured Identity Provider (IDP) using JWKS-based signature
     verification.
 
-    The organization registration endpoint (`POST /organizations`) is **public by default** and
-    requires no authentication. Set `ORG_CREATION_REQUIRES_AUTH=true` on the server to enforce
-    authentication for this endpoint in production environments.
-
     **Required claim**: `organization` — UUID of the caller's organization. All operations are
     automatically scoped to this organization.
 
@@ -48,15 +44,11 @@ paths:
       description: |
         Registers a new organization with a unique UUID and handle.
         This endpoint is used during the organization onboarding process.
-
-        Authentication is controlled by the `ORG_CREATION_REQUIRES_AUTH` server configuration flag.
-        By default the endpoint is public and no authentication is needed. Set
-        `ORG_CREATION_REQUIRES_AUTH=true` to require a valid Bearer JWT token.
+        A valid Bearer JWT token with the `ap:organization:create` or `ap:organization:manage` scope is required.
       operationId: RegisterOrganization
       tags:
         - Organizations
       security:
-        - {}
         - OAuth2Security:
             - ap:organization:create
             - ap:organization:manage
@@ -924,174 +916,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/publications:
-    get:
-      summary: Get REST API publications
-      description: |
-        Retrieves all DevPortals associated with an API including publication details.
-      operationId: GetRESTAPIPublications
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:read
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      responses:
-        '200':
-          description: API publications retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIDevPortalListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      summary: Publish REST API to DevPortal
-      description: |
-        Publishes an existing API from platform-api to the configured DevPortal.
-      operationId: PublishRESTAPIToDevPortal
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:create
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      requestBody:
-        description: DevPortal to publish to
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublishToDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully published to DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-              example:
-                success: true
-                message: "API published successfully to DevPortal"
-                timestamp: "2025-10-29T21:25:09.418859918+05:30"
-        '400':
-          description: Bad request - Invalid input or DevPortal not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                invalidApiId:
-                  summary: Invalid API ID format
-                  value:
-                    code: 400
-                    message: Bad Request
-                    description: API ID must be a valid UUID
-                devPortalDisabled:
-                  summary: DevPortal not configured
-                  value:
-                    code: 400
-                    message: Bad Request
-                    description: DevPortal integration is not enabled. Set DEVPORTAL_ENABLED=true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: 404
-                message: Not Found
-                description: API with ID 1f01c9b2-440b-4cfe-bf48-f8f168062df4 does not exist
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: 503
-                message: Service Unavailable
-                description: Failed to reach DevPortal after 3 retry attempts (total 60 seconds)
-
-  /rest-apis/{apiId}/publications/{devportalId}:
-    delete:
-      summary: Unpublish REST API from DevPortal
-      description: |
-        Removes an API from the configured DevPortal.
-      operationId: UnpublishRESTAPIFromDevPortal
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:delete
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-        - name: devportalId
-          in: path
-          required: true
-          description: UUID of the DevPortal to unpublish from
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: API successfully unpublished from DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-              example:
-                success: true
-                message: "API unpublished successfully from DevPortal"
-                timestamp: "2025-10-29T21:08:59.834784232+05:30"
-        '400':
-          description: Bad request - Invalid input or DevPortal not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /rest-apis/{apiId}/deployments:
     post:
       summary: Create and deploy a new deployment
@@ -1643,129 +1467,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/publications:
-    get:
-      summary: Get WebSub API publications
-      description: |
-        Retrieves all DevPortals associated with a WebSub API including publication details.
-      operationId: GetWebSubAPIPublications
-      security:
-        - OAuth2Security:
-            - ap:websub_api:publication:read
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      responses:
-        '200':
-          description: API publications retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WebSubAPIDevPortalListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      summary: Publish WebSub API to DevPortal
-      description: |
-        Publishes an existing WebSub API to the configured DevPortal.
-      operationId: PublishWebSubAPIToDevPortal
-      security:
-        - OAuth2Security:
-            - ap:websub_api:publication:create
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      requestBody:
-        description: DevPortal to publish to
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublishToDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully published to DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /websub-apis/{apiId}/publications/{devportalId}:
-    delete:
-      summary: Unpublish WebSub API from DevPortal
-      description: |
-        Removes a WebSub API from the configured DevPortal.
-      operationId: UnpublishWebSubAPIFromDevPortal
-      security:
-        - OAuth2Security:
-            - ap:websub_api:publication:delete
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-        - name: devportalId
-          in: path
-          required: true
-          description: UUID of the DevPortal to unpublish from
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: API successfully unpublished from DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /websub-apis/{apiId}/deployments:
     post:
       summary: Deploy WebSub API to a gateway
@@ -2291,129 +1992,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/publications:
-    get:
-      summary: Get WebBroker API publications
-      description: |
-        Retrieves all DevPortals associated with a WebBroker API including publication details.
-      operationId: GetWebBrokerAPIPublications
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:publication:read
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      responses:
-        '200':
-          description: API publications retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WebBrokerAPIDevPortalListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      summary: Publish WebBroker API to DevPortal
-      description: |
-        Publishes an existing WebBroker API to the configured DevPortal.
-      operationId: PublishWebBrokerAPIToDevPortal
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:publication:create
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      requestBody:
-        description: DevPortal to publish to
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublishToDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully published to DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /webbroker-apis/{apiId}/publications/{devportalId}:
-    delete:
-      summary: Unpublish WebBroker API from DevPortal
-      description: |
-        Removes a WebBroker API from the configured DevPortal.
-      operationId: UnpublishWebBrokerAPIFromDevPortal
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:publication:delete
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-        - name: devportalId
-          in: path
-          required: true
-          description: UUID of the DevPortal to unpublish from
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: API successfully unpublished from DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /webbroker-apis/{apiId}/deployments:
     post:
       summary: Deploy WebBroker API to a gateway
@@ -2713,6 +2291,16 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: versions
+          in: query
+          description: |
+            Which versions to include. The default ("latest") returns one entry
+            per template — its latest version, for the catalog. Use "all" to
+            return every version row across all templates.
+          schema:
+            type: string
+            enum: [latest, all]
+            default: latest
       responses:
         '200':
           description: List of LLM provider templates
@@ -2760,7 +2348,10 @@ paths:
 
     put:
       summary: Update an existing LLM provider template
-      description: Update an existing LLM provider template configuration.
+      description: |
+        Update the latest version of a template in place (name, description, and
+        other configuration). This does NOT create a new version — use
+        POST /llm-provider-templates/{id}/versions to create a new version.
       operationId: updateLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -2829,6 +2420,239 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-provider-templates/{id}/versions:
+    get:
+      summary: List versions of an LLM provider template
+      description: List all immutable versions of a template, newest first.
+      operationId: listLLMProviderTemplateVersions
+      security:
+        - OAuth2Security:
+            - ap:llm_template:read
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+        - name: limit
+          in: query
+          description: Maximum number of versions to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of versions to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of template versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new version of an LLM provider template
+      description: |
+        Create a new version of an existing template. The version (e.g. v2.0)
+        must be supplied in the body, match the v<major>.<minor> pattern, and be
+        unique for the template. The new version becomes the latest.
+
+        The template family is identified by the path parameter; the new version's
+        handle is computed server-side from the family handle and the supplied version.
+      operationId: createLLMProviderTemplateVersion
+      security:
+        - OAuth2Security:
+            - ap:llm_template:create
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
+      responses:
+        '201':
+          description: New version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-provider-templates/{id}/versions/{version}:
+    get:
+      summary: Get a specific version of an LLM provider template
+      description: Retrieve the complete configuration for a specific immutable version.
+      operationId: getLLMProviderTemplateVersion
+      security:
+        - OAuth2Security:
+            - ap:llm_template:read
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+        - name: version
+          in: path
+          required: true
+          description: Version to retrieve (e.g. v2.0). Matched case-insensitively.
+          schema:
+            type: string
+          example: v2.0
+      responses:
+        '200':
+          description: LLM provider template version details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      summary: Enable or disable a specific version of an LLM provider template
+      description: |
+        Toggle whether a version is offered when creating providers. Disabled
+        versions stay in the catalog but are hidden from the provider picker.
+      operationId: setLLMProviderTemplateVersionEnabled
+      security:
+        - OAuth2Security:
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+        - name: version
+          in: path
+          required: true
+          description: Version to toggle (e.g. v1.0). Matched case-insensitively.
+          schema:
+            type: string
+          example: v1.0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+                  example: false
+      responses:
+        '200':
+          description: Updated template version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a specific version of an LLM provider template
+      description: |
+        Delete a single version. If it was the only version the template is
+        removed; otherwise the newest remaining version becomes the latest.
+      operationId: deleteLLMProviderTemplateVersion
+      security:
+        - OAuth2Security:
+            - ap:llm_template:delete
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+        - name: version
+          in: path
+          required: true
+          description: Version to delete (e.g. v2.0). Matched case-insensitively.
+          schema:
+            type: string
+          example: v2.0
+      responses:
+        '204':
+          description: Version deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2894,6 +2718,13 @@ paths:
                       reset:
                         duration: 1
                         unit: month
+              associatedGateways:
+                - name: prod-eu
+                  configurations:
+                    host: prod-eu.platform-gw.local
+                - name: prod-us
+                  configurations:
+                    host: prod-us.platform-gw.local
       responses:
         '201':
           description: LLM provider created successfully
@@ -6221,318 +6052,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /devportals:
-    post:
-      summary: Create a new DevPortal
-      description: |
-        Creates a new DevPortal within the organization specified in the JWT token.
-        Organization ID is automatically extracted from the token and does not need to be provided.
-      operationId: CreateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:create
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      requestBody:
-        description: DevPortal registration details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateDevPortalRequest'
-      responses:
-        '201':
-          description: DevPortal created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: DevPortal name already exists within organization
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    get:
-      summary: List all DevPortals
-      description: |
-        Retrieves a list of all registered DevPortals for the organization specified in the JWT token.
-        Organization ID is automatically extracted from the token.
-      operationId: ListDevPortals
-      security:
-        - OAuth2Security:
-            - ap:devportal:read
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - name: limit
-          in: query
-          description: Maximum number of DevPortals to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of DevPortals to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-        - name: default
-          in: query
-          description: Filter by default DevPortal
-          schema:
-            type: boolean
-        - name: active
-          in: query
-          description: Filter by active DevPortals
-          schema:
-            type: boolean
-      responses:
-        '200':
-          description: DevPortals retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}:
-    get:
-      summary: Get DevPortal by UUID
-      description: |
-        Retrieves a specific DevPortal by its UUID. Access is validated against the organization 
-        in the JWT token.
-      operationId: GetDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:read
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - $ref: '#/components/parameters/DevPortalID'
-      responses:
-        '200':
-          description: DevPortal retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    put:
-      summary: Update DevPortal
-      description: |
-        Updates an existing DevPortal's mutable fields.
-        Access is validated against the organization in the JWT token.
-      operationId: UpdateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - $ref: '#/components/parameters/DevPortalID'
-      requestBody:
-        description: DevPortal object that needs to be updated
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateDevPortalRequest'
-      responses:
-        '200':
-          description: DevPortal updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: DevPortal name already exists within organization
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    delete:
-      summary: Delete DevPortal
-      description: |
-        Permanently deletes a DevPortal.
-        Deletion is blocked if the DevPortal has active API publications.
-        Access is validated against the organization in the JWT token.
-      operationId: DeleteDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:delete
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - $ref: '#/components/parameters/DevPortalID'
-      responses:
-        '204':
-          description: DevPortal deleted successfully
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: Conflict. DevPortal has active publications
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}/activate:
-    post:
-      summary: Activate DevPortal
-      description: |
-        Activates a DevPortal, making it available for API publishing.
-        Access is validated against the organization in the JWT token.
-      operationId: ActivateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - $ref: '#/components/parameters/DevPortalID'
-      responses:
-        '200':
-          description: DevPortal activated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}/deactivate:
-    post:
-      summary: Deactivate DevPortal
-      description: |
-        Deactivates a DevPortal, preventing new API publications.
-        Access is validated against the organization in the JWT token.
-      operationId: DeactivateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - $ref: '#/components/parameters/DevPortalID'
-      responses:
-        '200':
-          description: DevPortal deactivated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}/set-default:
-    post:
-      summary: Set DevPortal as default
-      description: |
-        Sets a DevPortal as the default for the organization.
-        Access is validated against the organization in the JWT token.
-      operationId: SetDevPortalAsDefault
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - $ref: '#/components/parameters/DevPortalID'
-      responses:
-        '200':
-          description: DevPortal set as default successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "DevPortal set as default successfully"
-                  devPortalUuid:
-                    type: string
-                    format: uuid
-                    example: "123e4567-e89b-12d3-a456-426614174000"
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /git/repo/fetch-branches:
     post:
       summary: Fetch Git repository branches
@@ -6705,6 +6224,221 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /secrets:
+    post:
+      summary: Create a secret
+      description: |
+        Create a new encrypted secret scoped to the organization. The plaintext value is never returned.
+      operationId: createSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:create
+            - ap:secret:manage
+      tags:
+        - Secrets
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SecretCreateRequest'
+            example:
+              handle: wso2-openai-key
+              name: WSO2 OpenAI API Key
+              description: API key for WSO2 OpenAI integration
+              value: sk-xxx
+              type: GENERIC
+      responses:
+        '201':
+          description: Secret created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List secrets
+      description: |
+        Returns metadata for all secrets in the organization. The plaintext value is
+        never included in list or get responses.
+      operationId: listSecrets
+      security:
+        - OAuth2Security:
+            - ap:secret:read
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: updatedAfter
+          in: query
+          description: RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.
+          schema:
+            type: string
+            format: date-time
+            example: "2026-01-01T00:00:00Z"
+      responses:
+        '200':
+          description: List of secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /secrets/{handle}:
+    get:
+      summary: Get a secret by handle
+      description: Returns metadata for a single secret. The plaintext value is never returned.
+      operationId: getSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:read
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          description: The secret handle
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Rotate a secret value
+      description: |
+        Re-encrypts and stores a new value for an existing secret. The handle is immutable
+        so all `{{ secret "handle" }}` placeholder references across resources remain valid
+        without modification.
+      operationId: rotateSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:update
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          description: The secret handle
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SecretUpdateRequest'
+            example:
+              value: sk-new-rotated-value
+              name: WSO2 OpenAI API Key (rotated)
+      responses:
+        '200':
+          description: Secret rotated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a secret
+      description: |
+        Soft-deletes a secret by marking it as DEPRECATED. Returns 409 if the secret is
+        still referenced by any LLM provider or API configuration.
+      operationId: deleteSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:delete
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          description: The secret handle
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Secret deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Secret is referenced by active resources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretDeleteConflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     OAuth2Security:
@@ -6728,11 +6462,6 @@ components:
             ap:application:manage: Full access to applications
             ap:application:read: Read applications
             ap:application:update: Update an application
-            ap:devportal:create: Create a DevPortal
-            ap:devportal:delete: Delete a DevPortal
-            ap:devportal:manage: Full access to DevPortals
-            ap:devportal:read: Read DevPortals
-            ap:devportal:update: Update a DevPortal
             ap:gateway:artifact:read: Read gateway live proxy artifacts
             ap:gateway:create: Create a gateway
             ap:gateway:delete: Delete a gateway
@@ -6821,9 +6550,6 @@ components:
             ap:rest_api:gateway:read: Read a REST API's gateways
             ap:rest_api:import: Import a REST API
             ap:rest_api:manage: Full access to REST APIs
-            ap:rest_api:publication:create: Publish a REST API to a DevPortal
-            ap:rest_api:publication:delete: Unpublish a REST API from a DevPortal
-            ap:rest_api:publication:read: Read a REST API's DevPortal publications
             ap:rest_api:read: Read REST APIs
             ap:rest_api:update: Update a REST API
             ap:subscription:create: Create a subscription
@@ -6849,9 +6575,6 @@ components:
             ap:webbroker_api:deployment:restore: Restore a WebBroker API deployment
             ap:webbroker_api:deployment:undeploy: Undeploy a WebBroker API deployment
             ap:webbroker_api:manage: Full access to WebBroker APIs
-            ap:webbroker_api:publication:create: Publish a WebBroker API to a DevPortal
-            ap:webbroker_api:publication:delete: Unpublish a WebBroker API from a DevPortal
-            ap:webbroker_api:publication:read: Read a WebBroker API's DevPortal publications
             ap:webbroker_api:read: Read WebBroker APIs
             ap:webbroker_api:update: Update a WebBroker API
             ap:websub_api:api_key:create: Create an API key for a WebSub API
@@ -6867,9 +6590,6 @@ components:
             ap:websub_api:deployment:restore: Restore a WebSub API deployment
             ap:websub_api:deployment:undeploy: Undeploy a WebSub API deployment
             ap:websub_api:manage: Full access to WebSub APIs
-            ap:websub_api:publication:create: Publish a WebSub API to a DevPortal
-            ap:websub_api:publication:delete: Unpublish a WebSub API from a DevPortal
-            ap:websub_api:publication:read: Read a WebSub API's DevPortal publications
             ap:websub_api:read: Read WebSub APIs
             ap:websub_api:update: Update a WebSub API
   schemas:
@@ -7522,6 +7242,11 @@ components:
           readOnly: true
           description: Timestamp when the api was last updated
           example: "2023-10-12T10:30:00Z"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         upstream:
           $ref: "#/components/schemas/Upstream"
         lifeCycleStatus:
@@ -8786,196 +8511,6 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    CreateDevPortalRequest:
-      type: object
-      required:
-        - name
-        - apiUrl
-        - hostname
-        - apiKey
-        - identifier
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
-          description: Display name of the DevPortal
-          example: "My DevPortal"
-        apiUrl:
-          type: string
-          format: uri
-          description: API URL of the DevPortal
-          example: "https://api.devportal.com"
-        hostname:
-          type: string
-          description: Hostname of the DevPortal
-          example: "devportal.example.com"
-        apiKey:
-          type: string
-          description: API key for authentication with the DevPortal
-          example: "secret-api-key"
-        headerKeyName:
-          type: string
-          description: Custom header name for API key (optional)
-          example: "X-API-Key"
-        visibility:
-          type: string
-          enum: ["public", "private"]
-          description: Visibility of the DevPortal
-          default: "private"
-          example: "private"
-        description:
-          type: string
-          maxLength: 500
-          description: Description of the DevPortal
-          example: "Development portal for testing APIs"
-        identifier:
-          type: string
-          minLength: 1
-          maxLength: 100
-          description: Unique identifier for the DevPortal
-          example: "dev-portal-01"
-
-    UpdateDevPortalRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
-          description: Display name of the DevPortal
-          example: "Updated DevPortal"
-        apiUrl:
-          type: string
-          format: uri
-          description: API URL of the DevPortal
-          example: "https://api.devportal.com"
-        hostname:
-          type: string
-          description: Hostname of the DevPortal
-          example: "devportal.example.com"
-        apiKey:
-          type: string
-          description: API key for authentication with the DevPortal
-          example: "new-secret-api-key"
-        headerKeyName:
-          type: string
-          description: Custom header name for API key (optional)
-          example: "X-API-Key"
-        visibility:
-          type: string
-          enum: ["public", "private"]
-          description: Visibility of the DevPortal
-          example: "public"
-        description:
-          type: string
-          maxLength: 500
-          description: Description of the DevPortal
-          example: "Updated description"
-
-    DevPortalResponse:
-      type: object
-      required:
-        - uuid
-        - organizationUuid
-        - name
-        - identifier
-        - uiUrl
-        - apiUrl
-        - hostname
-        - isActive
-        - isEnabled
-        - isDefault
-        - visibility
-        - createdAt
-        - updatedAt
-      properties:
-        uuid:
-          type: string
-          format: uuid
-          description: Unique identifier for the DevPortal
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        organizationUuid:
-          type: string
-          format: uuid
-          description: UUID of the organization this DevPortal belongs to
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        name:
-          type: string
-          description: Display name of the DevPortal
-          example: "My DevPortal"
-        identifier:
-          type: string
-          description: Unique identifier for the DevPortal
-          example: "dev-portal-01"
-        uiUrl:
-          type: string
-          format: uri
-          description: UI URL of the DevPortal
-          example: "https://devportal.example.com"
-        apiUrl:
-          type: string
-          format: uri
-          description: API URL of the DevPortal
-          example: "https://api.devportal.com"
-        hostname:
-          type: string
-          description: Hostname of the DevPortal
-          example: "devportal.example.com"
-        isActive:
-          type: boolean
-          description: Whether the DevPortal is currently active
-          example: true
-        isEnabled:
-          type: boolean
-          description: Whether the DevPortal is enabled
-          example: true
-        headerKeyName:
-          type: string
-          description: Custom header name for API key
-          example: "X-API-Key"
-        isDefault:
-          type: boolean
-          description: Whether this is the default DevPortal for the organization
-          example: false
-        visibility:
-          type: string
-          enum: ["public", "private"]
-          description: Visibility of the DevPortal
-          example: "private"
-        description:
-          type: string
-          description: Description of the DevPortal
-          example: "Development portal for testing APIs"
-        createdAt:
-          type: string
-          format: date-time
-          description: Timestamp when the DevPortal was created
-          example: "2025-10-15T10:30:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the DevPortal was last updated
-          example: "2025-10-15T10:30:00Z"
-
-    DevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/DevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
     CommonResponse:
       type: object
       required:
@@ -8996,263 +8531,6 @@ components:
           format: date-time
           description: Timestamp of the response
           example: "2025-10-15T10:30:00Z"
-
-    RESTAPIDevPortalResponse:
-      type: object
-      allOf:
-        - $ref: '#/components/schemas/DevPortalResponse'
-        - type: object
-          required:
-            - associatedAt
-            - isPublished
-          properties:
-            associatedAt:
-              type: string
-              format: date-time
-              description: Timestamp when the DevPortal was associated with the API
-              example: "2025-10-15T10:30:00Z"
-            isPublished:
-              type: boolean
-              description: Whether the API is currently published to this DevPortal
-              example: true
-            publication:
-              $ref: '#/components/schemas/RESTAPIPublicationDetails'
-              description: Publication details (only present when isPublished is true)
-
-    RESTAPIDevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/RESTAPIDevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    RESTAPIPublicationDetails:
-      type: object
-      description: Details about API publication to a specific DevPortal
-      required:
-        - status
-        - publishedAt
-        - updatedAt
-      properties:
-        status:
-          type: string
-          description: Current publication status
-          enum: ["published", "failed", "publishing"]
-          example: "published"
-        apiVersion:
-          type: string
-          description: Version of the API that was published
-          example: "1.0.0"
-        devPortalRefId:
-          type: string
-          description: Reference ID in the DevPortal
-          example: "api-12345"
-        sandboxEndpoint:
-          type: string
-          description: Sandbox endpoint URL
-          example: "https://sandbox.api.example.com"
-        productionEndpoint:
-          type: string
-          description: Production endpoint URL
-          example: "https://api.example.com"
-        publishedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the API was published
-          example: "2025-10-15T11:00:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the publication was last updated
-          example: "2025-10-15T11:00:00Z"
-
-    WebSubAPIPublicationDetails:
-      type: object
-      description: Details about WebSub API publication to a specific DevPortal
-      required:
-        - status
-        - publishedAt
-        - updatedAt
-      properties:
-        status:
-          type: string
-          description: Current publication status
-          enum: ["published", "failed", "publishing"]
-          example: "published"
-        apiVersion:
-          type: string
-          description: Version of the API that was published
-          example: "1.0.0"
-        devPortalRefId:
-          type: string
-          description: Reference ID in the DevPortal
-          example: "api-12345"
-        publishedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the API was published
-          example: "2025-10-15T11:00:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the publication was last updated
-          example: "2025-10-15T11:00:00Z"
-
-    WebSubAPIDevPortalResponse:
-      type: object
-      allOf:
-        - $ref: '#/components/schemas/DevPortalResponse'
-        - type: object
-          required:
-            - associatedAt
-            - isPublished
-          properties:
-            associatedAt:
-              type: string
-              format: date-time
-              description: Timestamp when the DevPortal was associated with the API
-              example: "2025-10-15T10:30:00Z"
-            isPublished:
-              type: boolean
-              description: Whether the API is currently published to this DevPortal
-              example: true
-            publication:
-              $ref: '#/components/schemas/WebSubAPIPublicationDetails'
-              description: Publication details (only present when isPublished is true)
-
-    WebSubAPIDevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/WebSubAPIDevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    WebBrokerAPIPublicationDetails:
-      type: object
-      description: Details about WebBroker API publication to a specific DevPortal
-      required:
-        - status
-        - publishedAt
-        - updatedAt
-      properties:
-        status:
-          type: string
-          description: Current publication status
-          enum: ["published", "failed", "publishing"]
-          example: "published"
-        apiVersion:
-          type: string
-          description: Version of the API that was published
-          example: "1.0.0"
-        devPortalRefId:
-          type: string
-          description: Reference ID in the DevPortal
-          example: "api-12345"
-        publishedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the API was published
-          example: "2025-10-15T11:00:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the publication was last updated
-          example: "2025-10-15T11:00:00Z"
-
-    WebBrokerAPIDevPortalResponse:
-      type: object
-      allOf:
-        - $ref: '#/components/schemas/DevPortalResponse'
-        - type: object
-          required:
-            - associatedAt
-            - isPublished
-          properties:
-            associatedAt:
-              type: string
-              format: date-time
-              description: Timestamp when the DevPortal was associated with the API
-              example: "2025-10-15T10:30:00Z"
-            isPublished:
-              type: boolean
-              description: Whether the API is currently published to this DevPortal
-              example: true
-            publication:
-              $ref: '#/components/schemas/WebBrokerAPIPublicationDetails'
-              description: Publication details (only present when isPublished is true)
-
-    WebBrokerAPIDevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/WebBrokerAPIDevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    PublishToDevPortalRequest:
-      type: object
-      required:
-        - devPortalUuid
-        - endPoints
-      properties:
-        devPortalUuid:
-          type: string
-          format: uuid
-          description: UUID of the DevPortal to publish to
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        apiInfo:
-          $ref: '#/components/schemas/PublishRESTAPIInfo'
-        endPoints:
-          $ref: '#/components/schemas/EndPoints'
-        subscriptionPolicies:
-          type: array
-          description: List of subscription policies for the API
-          items:
-            type: string
-          example: ["Unlimited", "Gold", "Silver"]
-
-    UnpublishFromDevPortalRequest:
-      type: object
-      required:
-        - devPortalUuid
-      properties:
-        devPortalUuid:
-          type: string
-          format: uuid
-          description: UUID of the DevPortal to unpublish from
-          example: "123e4567-e89b-12d3-a456-426614174000"
 
     PublishRESTAPIInfo:
       type: object
@@ -9839,17 +9117,37 @@ components:
       required:
         - id
         - name
+        - version
       properties:
         id:
           type: string
           description: Unique handle for the template
+          maxLength: 40
+          example: openai
+        groupId:
+          type: string
+          description: |
+            Stable identifier shared by every version of a template family
+            (defaults to the first version's handle). Read-only.
+          readOnly: true
+          maxLength: 40
           example: openai
         name:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
-          maxLength: 253
+          maxLength: 255
           example: OpenAI
+        managedBy:
+          type: string
+          description: |
+            Identifies who manages the template. Built-in templates use 'wso2';
+            custom templates default to 'customer' and may be set to any value.
+            Optional on create/update — the server defaults it to 'customer' when
+            omitted, so a request/YAML without a managedBy is accepted.
+          default: customer
+          maxLength: 255
+          example: wso2
         description:
           type: string
           description: Description of the LLM provider template
@@ -9859,7 +9157,55 @@ components:
           type: string
           description: Username of the creator
           readOnly: true
+          maxLength: 200
           example: jane.doe
+        updatedBy:
+          type: string
+          description: Username of the last user to update the template
+          readOnly: true
+          maxLength: 200
+          example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
+        version:
+          type: string
+          description: |
+            Content version, e.g. v1.0. Required. A new template starts at v1.0;
+            editing updates that version in place. Supply a new unique version
+            only when creating a new version via
+            POST /llm-provider-templates/{id}/versions.
+          pattern: '^[vV]\d+\.\d+$'
+          maxLength: 30
+          example: v1.0
+        isLatest:
+          type: boolean
+          description: Whether this is the latest version of the template.
+          readOnly: true
+          example: true
+        enabled:
+          type: boolean
+          description: |
+            Whether this version is offered when creating providers. Disabled
+            versions stay in the catalog but are hidden from the provider picker.
+            Response-only: create/update default new versions to enabled; toggle
+            via PATCH /llm-provider-templates/{id}/versions/{version}.
+          readOnly: true
+          example: true
+        openapi:
+          type: string
+          description: |
+            OpenAPI specification content (JSON or YAML) for the provider, when
+            uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
+            spec by URL.
+          example: |
+            openapi: 3.0.3
+            info:
+              title: Provider API
+              version: v1.0
+            paths: {}
         metadata:
           $ref: '#/components/schemas/LLMProviderTemplateMetadata'
         promptTokens:
@@ -9889,21 +9235,103 @@ components:
           readOnly: true
           example: "2023-10-12T10:30:00Z"
 
+    CreateLLMProviderTemplateVersionRequest:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+          description: Human-readable LLM Template name
+          minLength: 1
+          maxLength: 255
+          example: OpenAI
+        version:
+          type: string
+          description: New version identifier, e.g. v2.0. Must be unique for this template.
+          pattern: '^[vV]\d+\.\d+$'
+          maxLength: 30
+          example: v2.0
+        managedBy:
+          type: string
+          description: |
+            Identifies who manages the template. Custom templates default to 'customer'.
+          default: customer
+          maxLength: 255
+          example: customer
+        description:
+          type: string
+          description: Description of the LLM provider template
+          maxLength: 1023
+          example: Default OpenAI template
+        openapi:
+          type: string
+          description: |
+            OpenAPI specification content (JSON or YAML) for the provider, when
+            uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
+            spec by URL.
+        metadata:
+          $ref: '#/components/schemas/LLMProviderTemplateMetadata'
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        resourceMappings:
+          $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
+
     LLMProviderTemplateListItem:
       type: object
       properties:
         id:
           type: string
           example: openai
+        groupId:
+          type: string
+          description: |
+            Stable identifier shared by every version of a template family
+            (defaults to the first version's handle). Read-only.
+          readOnly: true
+          maxLength: 40
+          example: openai
         name:
           type: string
           example: OpenAI
+        managedBy:
+          type: string
+          description: Who manages the template ('wso2' for built-in, otherwise custom-defined).
+          example: wso2
         description:
           type: string
           example: Default OpenAI template
         createdBy:
           type: string
           example: jane.doe
+        version:
+          type: string
+          description: Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
+          example: v1.0
+        isLatest:
+          type: boolean
+          description: Whether this is the latest version of the template.
+          example: true
+        enabled:
+          type: boolean
+          description: Whether this version is offered when creating providers.
+          example: true
+        logoUrl:
+          type: string
+          format: uri
+          description: URL of the provider logo
+          example: https://cdn.example.com/logos/openai.svg
         createdAt:
           type: string
           format: date-time
@@ -9912,6 +9340,10 @@ components:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
 
     LLMProviderTemplateListResponse:
       type: object
@@ -10255,6 +9687,11 @@ components:
           description: Username of the creator
           readOnly: true
           example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         version:
           type: string
           description: Semantic version of the LLM Provider
@@ -10323,6 +9760,21 @@ components:
             $ref: "#/components/schemas/LLMPolicy"
         security:
           $ref: '#/components/schemas/SecurityConfig'
+        associatedGateways:
+          type: array
+          description: >
+            Optional list of gateways this LLM provider can be deployed to, along with
+            per-gateway configuration overrides. This field is optional; omitting it does
+            not change existing behaviour.
+          items:
+            $ref: '#/components/schemas/AssociatedGateway'
+          example:
+            - name: prod-eu
+              configurations:
+                host: prod-eu.platform-gw.local
+            - name: prod-us
+              configurations:
+                host: prod-us.platform-gw.local
         createdAt:
           type: string
           format: date-time
@@ -10335,6 +9787,27 @@ components:
           description: Timestamp when the resource was last updated
           readOnly: true
           example: "2023-10-12T10:30:00Z"
+
+    AssociatedGateway:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 64
+          description: Name of the gateway this artifact can be deployed to
+          example: prod-eu
+        configurations:
+          type: object
+          description: >
+            Per-gateway configuration overrides for this artifact. This is a
+            free-form object; the supported keys depend on the deployed artifact type.
+          additionalProperties: true
+          example:
+            someKey: someValue
 
     LLMProviderListItem:
       type: object
@@ -10351,6 +9824,10 @@ components:
         createdBy:
           type: string
           example: jane.doe
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         version:
           type: string
           example: v1.0
@@ -10457,6 +9934,11 @@ components:
           description: Username of the creator
           readOnly: true
           example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         version:
           type: string
           description: Semantic version of the LLM proxy
@@ -10513,6 +9995,17 @@ components:
             $ref: "#/components/schemas/LLMPolicy"
         security:
           $ref: '#/components/schemas/SecurityConfig'
+        associatedGateways:
+          type: array
+          description: >
+            Optional list of gateways this LLM proxy can be deployed to, along with
+            per-gateway configuration overrides. This field is optional; omitting it
+            does not change existing behaviour.
+          items:
+            $ref: '#/components/schemas/AssociatedGateway'
+          example:
+            - name: prod-eu
+            - name: prod-us
         createdAt:
           type: string
           format: date-time
@@ -10571,6 +10064,10 @@ components:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
 
     LLMProxyListResponse:
       type: object
@@ -10741,6 +10238,11 @@ components:
           description: Username of the creator
           readOnly: true
           example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         version:
           type: string
           description: Semantic version of the MCP proxy
@@ -10791,6 +10293,17 @@ components:
             List of capabilities supported by this proxy. This will be stored as-is and can be used in the future if we need
             this for governance purposes
           $ref: '#/components/schemas/MCPProxyCapabilities'
+        associatedGateways:
+          type: array
+          description: >
+            Optional list of gateways this MCP proxy can be deployed to, along with
+            per-gateway configuration overrides. This field is optional; omitting it
+            does not change existing behaviour.
+          items:
+            $ref: '#/components/schemas/AssociatedGateway'
+          example:
+            - name: prod-eu
+            - name: prod-us
         createdAt:
           type: string
           format: date-time
@@ -10846,6 +10359,10 @@ components:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
 
     MCPProxyListResponse:
       type: object
@@ -11002,6 +10519,10 @@ components:
           readOnly: true
           default: WebSubApi
           example: WebSubApi
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdBy:
           type: string
           description: Username of the creator
@@ -11042,6 +10563,10 @@ components:
             - DEPRECATED
             - RETIRED
           example: CREATED
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdAt:
           type: string
           format: date-time
@@ -11304,6 +10829,10 @@ components:
           readOnly: true
           default: WebBrokerApi
           example: WebBrokerApi
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdBy:
           type: string
           description: Username of the creator
@@ -11344,6 +10873,10 @@ components:
             - DEPRECATED
             - RETIRED
           example: CREATED
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdAt:
           type: string
           format: date-time
@@ -11414,6 +10947,137 @@ components:
         on_consume:
           $ref: '#/components/schemas/WebBrokerEventPolicies'
 
+    SecretCreateRequest:
+      type: object
+      required:
+        - handle
+        - name
+        - value
+      properties:
+        handle:
+          type: string
+          description: Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
+          example: wso2-openai-key
+        name:
+          type: string
+          description: Human-readable display name for list views
+          example: WSO2 OpenAI API Key
+        description:
+          type: string
+          example: Primary API key for WSO2 OpenAI integration
+        value:
+          type: string
+          description: Plaintext secret value — encrypted at rest, never returned in any response
+          example: sk-xxx
+        type:
+          type: string
+          enum: [GENERIC, CERTIFICATE]
+          default: GENERIC
+
+    SecretUpdateRequest:
+      type: object
+      required:
+        - value
+      properties:
+        name:
+          type: string
+          description: Updated display name
+        description:
+          type: string
+        value:
+          type: string
+          description: New plaintext secret value — re-encrypted at rest
+
+    SecretResponse:
+      type: object
+      description: Returned on create (201) and rotate (200). The plaintext value is never included.
+      properties:
+        uuid:
+          type: string
+          description: UUID of the secret
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        handle:
+          type: string
+          example: wso2-openai-key
+        name:
+          type: string
+          example: WSO2 OpenAI API Key
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SecretSummary:
+      type: object
+      description: Secret metadata — never includes the plaintext value.
+      properties:
+        uuid:
+          type: string
+          description: UUID of the secret
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        handle:
+          type: string
+          example: wso2-openai-key
+        name:
+          type: string
+          example: WSO2 OpenAI API Key
+        description:
+          type: string
+        type:
+          type: string
+          enum: [GENERIC, CERTIFICATE]
+        provider:
+          type: string
+          enum: [IN_BUILT]
+        status:
+          type: string
+          enum: [ACTIVE, DEPRECATED]
+        hash:
+          type: string
+          example: hmac-sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576d4b3d4c57e3f428a
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SecretListResponse:
+      type: object
+      required:
+        - list
+        - pagination
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    SecretDeleteConflict:
+      type: object
+      properties:
+        error:
+          type: string
+          example: secret is referenced by active resources
+        references:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: llm_provider
+              handle:
+                type: string
+                example: wso2-openai-provider
+              name:
+                type: string
+                example: WSO2 OpenAI Provider
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -11477,6 +11141,16 @@ components:
             message: Internal Server Error
             description: The server encountered an internal error. Please contact
               administrator.
+    ServiceUnavailable:
+      description: Service Unavailable. The secrets management feature is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 503
+            message: Service Unavailable
+            description: Secrets management is not configured — set PLATFORM_SECRET_ENCRYPTION_KEY
   parameters:
     organizationId:
       name: organizationId
@@ -11665,17 +11339,6 @@ components:
         default: 0
       example: 2
 
-    DevPortalID:
-      name: devportalId
-      in: path
-      required: true
-      description: |
-        **DevPortal ID** consisting of the **UUID** of the DevPortal.
-      schema:
-        type: string
-        format: uuid
-        example: "123e4567-e89b-12d3-a456-426614174000"
-
     deploymentId:
       name: deploymentId
       in: path
@@ -11749,3 +11412,5 @@ tags:
     description: MCP proxy deployment operations
   - name: Deployments
     description: Deployment operations for various artifact types
+  - name: Secrets
+    description: Encrypted secret management — create, rotate, and delete organization-scoped secrets referenced via {{ secret "name" }} placeholders

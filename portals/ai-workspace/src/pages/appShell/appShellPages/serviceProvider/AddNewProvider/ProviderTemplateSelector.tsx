@@ -27,8 +27,10 @@ import {
   FormLabel,
   Grid,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
+import { ChevronDown, ChevronUp } from '@wso2/oxygen-ui-icons-react';
 import type {
   ProviderTemplate,
   ProviderTemplatesResponse,
@@ -42,6 +44,10 @@ import googleGeminiLogo from '../../../../../assets/brands/googlegemini.png';
 import mistralAiLogo from '../../../../../assets/brands/mistralai.png';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
+import {
+  familyHandle,
+  truncateProviderDisplayName,
+} from '../../../../../utils/providerTemplateDisplay';
 
 // Logo mapping for provider templates by name (case-insensitive partial match)
 const getLogoForTemplate = (templateName: string): string | null => {
@@ -75,6 +81,7 @@ type ProviderTemplateSelectorProps = {
   templatesError: Error | null;
   templatesResponse: ProviderTemplatesResponse;
   selectedTemplateId: string | null;
+  selectedTemplateVersion?: string;
   onSelectTemplate: (template: ProviderTemplate) => void;
   onRetryTemplates: () => void | Promise<void>;
 };
@@ -84,9 +91,31 @@ export default function ProviderTemplateSelector({
   templatesError,
   templatesResponse,
   selectedTemplateId,
+  selectedTemplateVersion,
   onSelectTemplate,
   onRetryTemplates,
 }: ProviderTemplateSelectorProps) {
+  const COLLAPSED_COUNT = 8;
+  const [showAll, setShowAll] = React.useState(false);
+  const enabledTemplates = (templatesResponse?.list ?? []).filter(
+    (template) => template.enabled !== false
+  );
+
+  const familyMap = new Map<string, (typeof enabledTemplates)[0]>();
+  for (const t of enabledTemplates) {
+    const key = t.name.toLowerCase();
+    const existing = familyMap.get(key);
+    if (!existing || t.isLatest) familyMap.set(key, t);
+  }
+  const deduplicatedTemplates = Array.from(familyMap.values());
+
+  const hasMore = deduplicatedTemplates.length > COLLAPSED_COUNT;
+  const hiddenCount = deduplicatedTemplates.length - COLLAPSED_COUNT;
+  const visibleTemplates =
+    hasMore && !showAll
+      ? deduplicatedTemplates.slice(0, COLLAPSED_COUNT)
+      : deduplicatedTemplates;
+
   return (
     <Grid size={{ xs: 12 }}>
       <FormControl fullWidth>
@@ -125,9 +154,11 @@ export default function ProviderTemplateSelector({
               },
             }}
           >
-            {templatesResponse?.list?.map((template) => {
+            {visibleTemplates.map((template) => {
               const templateId = (template.id ?? '').toLowerCase();
-              const isComingSoon = COMING_SOON_TEMPLATE_IDS.has(templateId);
+              const isComingSoon = COMING_SOON_TEMPLATE_IDS.has(
+                familyHandle(templateId)
+              );
               const isSelected = !isComingSoon && selectedTemplateId === template.id;
               const logo = getLogoForTemplate(template.name);
               const shortName = getShortNameForTemplate(template.name);
@@ -193,17 +224,26 @@ export default function ProviderTemplateSelector({
                     )}
                   </Box>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography variant="subtitle2">{template.name}</Typography>
-                    {template.description && (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        noWrap
-                      >
-                        {template.description}
-                      </Typography>
-                    )}
+                    <Typography
+                      variant="subtitle2"
+                      noWrap
+                      title={template.name}
+                    >
+                      {truncateProviderDisplayName(template.name)}
+                    </Typography>
                   </Box>
+                  {/* Version chip only on the selected card, in the right corner. */}
+                  {isSelected && selectedTemplateVersion ? (
+                    <Tooltip title="Selected version">
+                      <Chip
+                        label={selectedTemplateVersion}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        sx={{ flexShrink: 0, mr: 1, height: 20 }}
+                      />
+                    </Tooltip>
+                  ) : null}
                   {isComingSoon ? (
                     <Chip
                       label="Coming soon"
@@ -223,6 +263,37 @@ export default function ProviderTemplateSelector({
                 </Form.CardButton>
               );
             })}
+
+            {hasMore && (
+              <Form.CardButton
+                onClick={() => setShowAll((prev) => !prev)}
+                data-cyid="provider-template-see-more"
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1,
+                  py: 1,
+                  border: '1px dashed',
+                  borderColor: 'divider',
+                  cursor: 'pointer',
+                }}
+              >
+                {!showAll && (
+                  <Chip
+                    label={`+${hiddenCount}`}
+                    size="small"
+                    color="primary"
+                    sx={{ height: 24, fontWeight: 600 }}
+                  />
+                )}
+                <Typography variant="body2" color="text.secondary">
+                  {showAll ? 'Show less' : 'See more'}
+                </Typography>
+                {showAll ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </Form.CardButton>
+            )}
           </Box>
         )}
       </FormControl>

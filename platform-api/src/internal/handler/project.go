@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -27,7 +28,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 type ProjectHandler struct {
@@ -43,65 +44,66 @@ func NewProjectHandler(projectService *service.ProjectService, slogger *slog.Log
 }
 
 // CreateProject handles POST /api/v0.9/projects
-func (h *ProjectHandler) CreateProject(c *gin.Context) {
-	organizationID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
+	organizationID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
 	var req api.CreateProjectRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.NewValidationErrorResponse(c, err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 
 	// Validate required fields
 	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project name is required"))
 		return
 	}
 
-	project, err := h.projectService.CreateProject(&req, organizationID)
+	actor, _ := middleware.GetUsernameFromRequest(r)
+	project, err := h.projectService.CreateProject(&req, organizationID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"Project already exists in organization"))
 			return
 		}
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Organization not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidProjectName) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Project name is required"))
 			return
 		}
 		h.slogger.Error("Failed to create project", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to create project"))
 		return
 	}
 
-	c.JSON(http.StatusCreated, project)
+	httputil.WriteJSON(w, http.StatusCreated, project)
 }
 
 // GetProject handles GET /api/v0.9/projects/:projectId
-func (h *ProjectHandler) GetProject(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	projectId := c.Param("projectId")
+	projectId := r.PathValue("projectId")
 	if projectId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
 	}
@@ -109,24 +111,24 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 	project, err := h.projectService.GetProjectByID(projectId, orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Project not found"))
 			return
 		}
 		h.slogger.Error("Failed to get project", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get project"))
 		return
 	}
 
-	c.JSON(http.StatusOK, project)
+	httputil.WriteJSON(w, http.StatusOK, project)
 }
 
 // ListProjects handles GET /api/v0.9/projects
-func (h *ProjectHandler) ListProjects(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
@@ -134,18 +136,18 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	projects, err := h.projectService.GetProjectsByOrganization(orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Organization not found"))
 			return
 		}
 		h.slogger.Error("Failed to list projects", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get projects"))
 		return
 	}
 
 	// Return constitution-compliant list response
-	c.JSON(http.StatusOK, api.ProjectListResponse{
+	httputil.WriteJSON(w, http.StatusOK, api.ProjectListResponse{
 		Count: len(projects),
 		List:  projects,
 		Pagination: api.Pagination{
@@ -157,102 +159,101 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) {
 }
 
 // UpdateProject handles PUT /api/v0.9/projects/:projectId
-func (h *ProjectHandler) UpdateProject(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	projectId := c.Param("projectId")
+	projectId := r.PathValue("projectId")
 	if projectId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
 	}
 
 	var req api.UpdateProjectRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.NewValidationErrorResponse(c, err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 
-	project, err := h.projectService.UpdateProject(projectId, &req, orgID)
+	actor, _ := middleware.GetUsernameFromRequest(r)
+	project, err := h.projectService.UpdateProject(projectId, &req, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Project not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"Project already exists in organization"))
 			return
 		}
 		h.slogger.Error("Failed to update project", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to update project"))
 		return
 	}
 
-	c.JSON(http.StatusOK, project)
+	httputil.WriteJSON(w, http.StatusOK, project)
 }
 
 // DeleteProject handles DELETE /api/v0.9/projects/:projectId
-func (h *ProjectHandler) DeleteProject(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	projectId := c.Param("projectId")
+	projectId := r.PathValue("projectId")
 	if projectId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
 	}
 
-	err := h.projectService.DeleteProject(projectId, orgID)
+	actor, _ := middleware.GetUsernameFromRequest(r)
+	err := h.projectService.DeleteProject(projectId, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Project not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrOrganizationMustHAveAtLeastOneProject) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Organization must have at least one project"))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectHasAssociatedAPIs) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Project has associated APIs"))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectHasAssociatedMCPProxies) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Project has associated MCP proxies"))
 			return
 		}
 		h.slogger.Error("Failed to delete project", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to delete project"))
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	httputil.WriteJSON(w, http.StatusNoContent, nil)
 }
 
-func (h *ProjectHandler) RegisterRoutes(r *gin.Engine) {
-	projectGroup := r.Group(constants.APIBasePath + "/projects")
-	{
-		projectGroup.GET("", h.ListProjects)
-		projectGroup.POST("", h.CreateProject)
-		projectGroup.GET("/:projectId", h.GetProject)
-		projectGroup.PUT("/:projectId", h.UpdateProject)
-		projectGroup.DELETE("/:projectId", h.DeleteProject)
-	}
+func (h *ProjectHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+constants.APIBasePath+"/projects", h.ListProjects)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/projects", h.CreateProject)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/projects/{projectId}", h.GetProject)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/projects/{projectId}", h.UpdateProject)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/projects/{projectId}", h.DeleteProject)
 }

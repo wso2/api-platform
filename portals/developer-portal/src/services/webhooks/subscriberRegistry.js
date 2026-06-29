@@ -23,7 +23,7 @@ const whDao = require('../../dao/webhookSubscriberDao');
  */
 function toRuntimeSubscriber(record) {
     return {
-        id: record.SUBSCRIBER_ID,
+        id: record.UUID,
         url: record.TARGET_URL,
         secret: whDao.decryptSecret(record),
         publicKey: record.PUBLIC_KEY || null,

@@ -16,13 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const constants = require('../utils/constants');
 
 class APIDTO {
     constructor(api) {
-        this.apiID = api.API_ID;
-        this.apiReferenceID = api.REFERENCE_ID;
-        this.apiHandle = api.API_HANDLE;
-        this.provider = api.PROVIDER;
+        this.apiID = api.UUID;
+        this.apiReferenceID = api.REF_ID;
+        this.apiHandle = api.HANDLE;
         this.dataSource = api.DATA_SOURCE;
         this.apiInfo = new APIInfo(api);
         this.endPoints = new Endpoints(api);
@@ -31,7 +31,7 @@ class APIDTO {
             this.subscriptionPlans = api.DP_SUBSCRIPTION_PLANs.map(plan => new APISubscriptionPlan(plan));
         }
         if (api.DP_APPLICATIONs && api.DP_APPLICATIONs.length > 0) {
-            this.planID = api.DP_APPLICATIONs[0]?.DP_API_SUBSCRIPTION?.dataValues?.PLAN_ID;
+            this.planID = api.DP_APPLICATIONs[0]?.DP_SUBSCRIPTION?.dataValues?.PLAN_UUID;
         }
     }
 
@@ -46,14 +46,13 @@ class APIDTO {
 
 class APIInfo {
     constructor(apiInfo) {
-        this.apiName = apiInfo.API_NAME;
+        this.apiName = apiInfo.NAME;
         this.apiTitle = apiInfo.METADATA_SEARCH?.apiInfo?.apiTitle || null;
         this.remotes = apiInfo.METADATA_SEARCH?.apiInfo?.remotes || [];
-        this.apiVersion = apiInfo.API_VERSION;
-        this.apiDescription = apiInfo.API_DESCRIPTION;
-        this.apiType = apiInfo.API_TYPE;
+        this.apiVersion = apiInfo.VERSION;
+        this.apiDescription = apiInfo.DESCRIPTION;
+        this.apiType = apiInfo.TYPE;
         this.apiStatus = apiInfo.STATUS;
-        this.visibility = apiInfo.VISIBILITY;
         this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
         if (apiInfo.addedLabels) {
             this.addedLabels = apiInfo.addedLabels;
@@ -61,33 +60,28 @@ class APIInfo {
         if (apiInfo.removedLabels) {
             this.removedLabels = apiInfo.removedLabels;
         }
-        if (apiInfo.VISIBLE_GROUPS) {
-            this.visibleGroups = apiInfo.VISIBLE_GROUPS.split(" ");
-        }
         if (apiInfo.BUSINESS_OWNER || apiInfo.TECHNICAL_OWNER) {
             this.owners = new Owner(apiInfo);
         }
-        if (apiInfo.DP_API_IMAGEDATA) {
-            this.apiImageMetadata = getAPIImages(apiInfo.DP_API_IMAGEDATA);
-            if (apiInfo.DP_API_IMAGEDATA) {
-                this.apiImageMetadata = getAPIImages(apiInfo.DP_API_IMAGEDATA);
-            }
-            if (apiInfo.TAGS) {
-                this.tags = apiInfo.TAGS.split(" ");
-            }
-            if (apiInfo.DP_LABELs) {
-                this.labels = apiInfo.DP_LABELs.map(label => label.dataValues ? label.dataValues.NAME : label);
-            }
+        if (apiInfo.DP_API_CONTENTs) {
+            const images = apiInfo.DP_API_CONTENTs.filter(content => content.TYPE === constants.DOC_TYPES.IMAGES);
+            this.apiImageMetadata = getAPIImages(images);
+        }
+        if (apiInfo.DP_TAGs) {
+            this.tags = apiInfo.DP_TAGs.map(tag => tag.dataValues ? tag.dataValues.NAME : tag);
+        }
+        if (apiInfo.DP_LABELs) {
+            this.labels = apiInfo.DP_LABELs.map(label => label.dataValues ? label.dataValues.NAME : label);
         }
     }
 }
 
 class APISubscriptionPlan {
     constructor(apiSubscriptionPlan) {
-        this.planName = apiSubscriptionPlan.PLAN_NAME;
-        this.displayName = apiSubscriptionPlan.DISPLAY_NAME;
+        this.planName = apiSubscriptionPlan.HANDLE;
+        this.displayName = apiSubscriptionPlan.NAME;
         this.requestCount = apiSubscriptionPlan.REQUEST_COUNT;
-        this.planID = apiSubscriptionPlan.PLAN_ID;
+        this.planID = apiSubscriptionPlan.UUID;
         this.description = apiSubscriptionPlan.DESCRIPTION;
     }
 }
@@ -121,7 +115,7 @@ class APIImages {
 const getAPIImages = (apiImages) => {
     let images = {}
     apiImages.forEach(element => {
-        images[element.IMAGE_TAG] = element.IMAGE_NAME;
+        images[element.LOOKUP_KEY] = element.FILE_NAME;
     });
     return new APIImages(images);
 }

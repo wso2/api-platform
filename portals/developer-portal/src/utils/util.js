@@ -290,6 +290,23 @@ function toPaginatedList(list, req) {
     };
 }
 
+/**
+ * Resolve the acting user identity from a request for audit columns
+ * (CREATED_BY / UPDATED_BY). Covers every auth mode wired in the portal:
+ *   - OpenAPI router (authResolver): oauth2 / platform-jwt set req.auth.userId
+ *   - enforceSecurity router (e.g. MCP registry): sets req[constants.USER_ID]
+ *   - session/passport users: req.user.sub
+ * Machine credentials (API key, mTLS) carry no user identity, so fall back to
+ * the SYSTEM actor to keep the NOT NULL audit columns satisfiable instead of
+ * throwing a constraint violation.
+ */
+function resolveActor(req) {
+    return req?.auth?.userId
+        || req?.[constants.USER_ID]
+        || req?.user?.[constants.USER_ID]
+        || constants.SYSTEM_ACTOR;
+}
+
 const unzipDirectory = async (zipPath, extractPath) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
@@ -566,23 +583,6 @@ const validateOrganization = () => {
     return validations;
 }
 
-const validateProvider = () => {
-
-    const validations = [
-        body('name')
-            .notEmpty()
-            .escape()
-            .trim(),
-        body('providerURL')
-            .notEmpty()
-            .isURL({
-                protocols: ['http', 'https'], // Allow both http and https
-                require_tld: false
-            }).withMessage('providerUrl must be a valid URL')
-    ]
-    return validations;
-}
-
 const validateRequestParameters = () => {
 
     const validations = [
@@ -728,7 +728,7 @@ function validateScripts(strContent) {
             "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgID for on-demand fetches\n                        window.__subscriptionOrgID = \"{{@root.orgID}}\";\n                    })();\n                </script>",
             // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
-            // API flows JSON data island (pages/api-flows/page.hbs)
+            // API flows JSON data island (pages/api-workflows/page.hbs)
             "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
             "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"apiHandle\":\"{{apiMetadata.apiHandle}}\"}</script>",
@@ -795,7 +795,7 @@ async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
         for (const plan of subscriptionPlans) {
             const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
             if (!subscriptionPlan) {
-                logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
+                logger.warn('Subscription plan not found, skipping', {
                     orgID,
                     planName: plan.planName
                 });
@@ -848,7 +848,6 @@ async function listFiles(path) {
         logger.debug('Files in directory', {
             path: path,
             fileCount: files.length,
-            files: files
         });
     });
     return files;
@@ -914,20 +913,16 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
 
 const enforcePortalMode = async (req, res, next) => {
     const orgDetails = await orgDao.get(req.params.orgName);
-    const portalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const portalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
-    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.API_PROXIES) ||
-        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_ONLY)) {
+    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.APIS_ONLY) ||
+        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_SERVERS_ONLY)) {
         next();
     } else {
-        const templateContent = {
-            errorMessage: constants.ERROR_MESSAGE.COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE,
-            devportalMode: portalMode,
-            baseUrl: '/' + req.params.orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
-        }
-        const html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.send(html);
+        const err = new Error('Page not found');
+        err.status = 404;
+        next(err);
     }
 }
 
@@ -962,7 +957,6 @@ module.exports = {
     validateIDP,
     validateOrganization,
     getErrors,
-    validateProvider,
     validateRequestParameters,
     rejectExtraProperties,
     readFilesInDirectory,
@@ -979,4 +973,5 @@ module.exports = {
     normalizeStringArray,
     resolveApiType,
     toPaginatedList,
+    resolveActor,
 }

@@ -69,7 +69,7 @@ func (s *APIKeyUserService) ListAPIKeysByUser(
 			Issuer:         k.Issuer,
 			AllowedTargets: k.AllowedTargets,
 			ArtifactId:     k.ArtifactHandle,
-			ArtifactType:   api.UserAPIKeyItemArtifactType(k.ArtifactKind),
+			ArtifactType:   api.UserAPIKeyItemArtifactType(k.ArtifactType),
 		}
 		items = append(items, item)
 	}

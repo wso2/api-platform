@@ -49,14 +49,31 @@ module.exports = {
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
     USER_ID: 'sub',
+    SYSTEM_ACTOR: 'system',
     BASIC_HEADER: 'basicAuthHeader',
-    API_VISIBILITY: {
-        PUBLIC: 'PUBLIC',
-        PRIVATE: 'PRIVATE'
-    },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
-        CREATED: "CREATED"
+        DEPRECATED: "DEPRECATED"
+    },
+    API_FLOW_STATUS: {
+        DRAFT: "DRAFT",
+        PUBLISHED: "PUBLISHED",
+    },
+    API_FLOW_CONTENT_TYPE: {
+        ARAZZO: "ARAZZO",
+        MD: "MD",
+    },
+    AGENT_VISIBILITY: {
+        VISIBLE: "VISIBLE",
+        HIDDEN: "HIDDEN",
+    },
+    SUBSCRIPTION_STATUS: {
+        ACTIVE: "ACTIVE",
+        INACTIVE: "INACTIVE",
+    },
+    API_KEY_STATUS: {
+        ACTIVE: "ACTIVE",
+        REVOKED: "REVOKED",
     },
     API_TYPE: {
         REST: "REST",
@@ -68,8 +85,8 @@ module.exports = {
     },
     DEVPORTAL_MODE: {
         DEFAULT: "DEFAULT",
-        MCP_ONLY: "MCPSERVERSONLY",
-        API_PROXIES: "APISONLY",
+        MCP_SERVERS_ONLY: "MCP_SERVERS_ONLY",
+        APIS_ONLY: "APIS_ONLY",
     },
     DOC_TYPES: {
         DOC_ID: 'DOC_',
@@ -151,7 +168,7 @@ module.exports = {
         API_FILE_PATH: '/apis/',
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
-        DEVPORTAL_CONFIGURE: ['/*/configure', '/*/views/*/configure'],
+        DEVPORTAL_CONFIGURE: ['/*/settings', '/*/views/*/settings'],
         DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         DEVPORTAL_API_LISTING: '/*/apis',
         DEVPORTAL_TECHNICAL_PAGES: ['*/application'],
@@ -259,10 +276,6 @@ module.exports = {
         API_NOT_IN_ORG: "API does not belong to given organization",
         UNAUTHENTICATED: "Unauthorized access, please log in again",
         FORBIDDEN: "You do not have permission to access this resource",
-        PROVIDER_CREATE_ERROR: "Error while creating provider",
-        PROVIDER_UPDATE_ERROR: "Error while updating provider",
-        PROVIDER_DELETE_ERROR: "Error while deleting provider",
-        PROVIDER_FETCH_ERROR: "Error while fetching providers",
         LABEL_DELETE_ERROR: "Error while deleting label",
         LABEL_RETRIEVE_ERROR: "Error while deleting label",
         LABEL_CREATE_ERROR: "Error while creating labels",
@@ -320,5 +333,4 @@ module.exports = {
         'llms-txt',
     ],
     DEFAULT_PROFILE_IMAGE_URL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
-    WSO2_DEFAULT_URL: 'https://localhost:9443',
 }

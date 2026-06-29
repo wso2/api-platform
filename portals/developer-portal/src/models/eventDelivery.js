@@ -20,24 +20,24 @@ const sequelize = require('../db/sequelizeConfig');
 const DPEvent = require('./event');
 
 // One delivery row per (event × subscriber). ENCRYPTED_FIELDS holds per-subscriber
-// ciphertext (e.g. encrypted_key for apikey.* events) so plaintext is never in DP_EVENT.
+// ciphertext ({ [fieldName]: envelope }) so plaintext is never in DP_EVENT.
 const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
-    DELIVERY_ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    EVENT_ID: {
-        type: DataTypes.UUID,
+    EVENT_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
-        references: { model: DPEvent, key: 'EVENT_ID' }
+        references: { model: DPEvent, key: 'UUID' }
     },
     SUBSCRIBER_ID: {
         type: DataTypes.STRING(128),
         allowNull: false
     },
     TARGET_URL: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING(1023),
         allowNull: false
     },
     ENCRYPTED_FIELDS: {
@@ -46,26 +46,16 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         defaultValue: null
     },
     STATUS: {
-        type: DataTypes.ENUM('PENDING', 'IN_FLIGHT', 'DELIVERED', 'FAILED', 'DEAD_LETTERED'),
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PENDING'
-    },
-    ATTEMPT_COUNT: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 0
-    },
-    NEXT_ATTEMPT_AT: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW
     },
     LAST_HTTP_STATUS: {
         type: DataTypes.INTEGER,
         allowNull: true
     },
     LAST_ERROR: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING,
         allowNull: true
     },
     LAST_ATTEMPT_AT: {
@@ -81,13 +71,12 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     tableName: 'DP_EVENT_DELIVERY',
     returning: true,
     indexes: [
-        { name: 'IDX_EVENT_DELIVERY_STATUS_NEXT_ATTEMPT', fields: ['STATUS', 'NEXT_ATTEMPT_AT'] },
-        { name: 'IDX_EVENT_DELIVERY_EVENT_ID', fields: ['EVENT_ID'] },
-        { name: 'UQ_EVENT_DELIVERY_EVENT_SUBSCRIBER', unique: true, fields: ['EVENT_ID', 'SUBSCRIBER_ID'] }
+        { name: 'IDX_EVENT_DELIVERY_EVENT_UUID', fields: ['EVENT_UUID'] },
+        { name: 'UQ_EVENT_DELIVERY_EVENT_SUBSCRIBER', unique: true, fields: ['EVENT_UUID', 'SUBSCRIBER_ID'] }
     ]
 });
 
-DPEventDelivery.belongsTo(DPEvent, { foreignKey: 'EVENT_ID' });
-DPEvent.hasMany(DPEventDelivery, { foreignKey: 'EVENT_ID' });
+DPEventDelivery.belongsTo(DPEvent, { foreignKey: 'EVENT_UUID' });
+DPEvent.hasMany(DPEventDelivery, { foreignKey: 'EVENT_UUID' });
 
 module.exports = DPEventDelivery;

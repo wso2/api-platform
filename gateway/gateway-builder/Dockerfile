@@ -37,6 +37,8 @@ WORKDIR /workspace
 
 # Copy common (needed for go.mod replace directive)
 COPY --from=common . /workspace/common
+# httpkit must be present before downloading — common/go.mod has a replace directive pointing to ../httpkit
+COPY --from=httpkit . /workspace/httpkit
 
 # Pre-download Go dependencies for common
 WORKDIR /workspace/common
@@ -95,6 +97,7 @@ COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=python-executor . /api-platform/gateway/gateway-runtime/python-executor
 COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
+COPY --from=httpkit . /api-platform/httpkit
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=sdk-python . /api-platform/sdk-python
 COPY --from=target LICENSE /app/LICENSE

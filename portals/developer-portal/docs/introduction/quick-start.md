@@ -65,7 +65,6 @@ spec:
   displayName: Ping API
   version: v1.0
   description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
-  provider: WSO2
   status: PUBLISHED
   referenceID: ping-api-v1.0
 
@@ -175,7 +174,7 @@ Scripts and CLI tools authenticate with a Bearer token obtained directly from th
 
 ```bash
 # Get a token from the Platform API (runs alongside the devportal)
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
 # Find the org UUID

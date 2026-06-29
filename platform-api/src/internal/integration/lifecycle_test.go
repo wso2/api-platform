@@ -91,21 +91,23 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		t.Fatalf("[%s] create org failed: %v", it.driver, err)
 	}
 
-	exists, err := planRepo.ExistsByNameAndOrg("nope-"+id(), org.ID)
+	exists, err := planRepo.ExistsByHandleAndOrg("nope-"+id(), org.ID)
 	if err != nil {
-		t.Fatalf("[%s] ExistsByNameAndOrg failed: %v", it.driver, err)
+		t.Fatalf("[%s] ExistsByHandleAndOrg failed: %v", it.driver, err)
 	}
 	if exists {
-		t.Fatalf("[%s] ExistsByNameAndOrg: want false for missing plan", it.driver)
+		t.Fatalf("[%s] ExistsByHandleAndOrg: want false for missing plan", it.driver)
 	}
 
 	count := 5
 	for i := range 3 {
-		// Fully populated: the list repository scans billing_plan / throttle
-		// columns into plain (non-nullable) fields (a pre-existing detail).
+		// Fully populated: the throttle fields are persisted as a single
+		// REQUEST_COUNT row in subscription_plan_limits and hydrated back via
+		// the LEFT JOIN in the list/get queries.
+		slug := fmt.Sprintf("plan-%d-%s", i, id()[:6])
 		plan := &model.SubscriptionPlan{
-			UUID: id(), PlanName: fmt.Sprintf("plan-%d-%s", i, id()[:6]),
-			BillingPlan: "free", StopOnQuotaReach: true,
+			UUID: id(), Handle: slug, Name: fmt.Sprintf("Plan %d", i),
+			BillingPlan: "free", StopOnQuotaReach: 1,
 			ThrottleLimitCount: &count, ThrottleLimitUnit: "min",
 			OrganizationUUID: org.ID, Status: model.SubscriptionPlanStatus("ACTIVE"),
 		}
@@ -119,6 +121,40 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 	}
 	if len(plans) != 2 {
 		t.Fatalf("[%s] ListByOrganization(2,0): want 2, got %d", it.driver, len(plans))
+	}
+	// The throttle triple (count/unit + stop_on_quota_reach) is stored as a single
+	// row in subscription_plan_limits; confirm it round-trips through both the list
+	// and single-get paths.
+	for _, p := range plans {
+		if p.ThrottleLimitCount == nil || *p.ThrottleLimitCount != count {
+			t.Fatalf("[%s] list hydrate: ThrottleLimitCount = %v, want %d", it.driver, p.ThrottleLimitCount, count)
+		}
+		if p.ThrottleLimitUnit != "min" || p.StopOnQuotaReach != 1 {
+			t.Fatalf("[%s] list hydrate: unit=%q stop=%d, want unit=min stop=1", it.driver, p.ThrottleLimitUnit, p.StopOnQuotaReach)
+		}
+	}
+	got, err := planRepo.GetByID(plans[0].UUID, org.ID)
+	if err != nil {
+		t.Fatalf("[%s] GetByID failed: %v", it.driver, err)
+	}
+	if got.ThrottleLimitCount == nil || *got.ThrottleLimitCount != count || got.ThrottleLimitUnit != "min" {
+		t.Fatalf("[%s] GetByID hydrate: count=%v unit=%q, want %d/min", it.driver, got.ThrottleLimitCount, got.ThrottleLimitUnit, count)
+	}
+
+	// Update clearing the throttle should delete the limit row; reads then
+	// report no throttle with the default stop_on_quota_reach.
+	got.ThrottleLimitCount = nil
+	got.ThrottleLimitUnit = ""
+	got.StopOnQuotaReach = 1
+	if err := planRepo.Update(got); err != nil {
+		t.Fatalf("[%s] Update (clear throttle) failed: %v", it.driver, err)
+	}
+	cleared, err := planRepo.GetByID(got.UUID, org.ID)
+	if err != nil {
+		t.Fatalf("[%s] GetByID after clear failed: %v", it.driver, err)
+	}
+	if cleared.ThrottleLimitCount != nil || cleared.ThrottleLimitUnit != "" {
+		t.Fatalf("[%s] after clear: want no throttle, got count=%v unit=%q", it.driver, cleared.ThrottleLimitCount, cleared.ThrottleLimitUnit)
 	}
 }
 
@@ -137,7 +173,9 @@ func TestLifecycle_ProjectPagination(t *testing.T) {
 
 	const n = 5
 	for i := range n {
-		p := &model.Project{ID: id(), Name: fmt.Sprintf("proj-%d-%s", i, id()[:6]), OrganizationID: org.ID, Description: "p"}
+		pid := id()
+		pName := fmt.Sprintf("proj-%d-%s", i, pid[:6])
+		p := &model.Project{ID: pid, Handle: pName, Name: pName, OrganizationID: org.ID, Description: "p"}
 		if err := projectRepo.CreateProject(p); err != nil {
 			t.Fatalf("[%s] create project failed: %v", it.driver, err)
 		}
@@ -204,51 +242,6 @@ func TestLifecycle_SubscriptionListByFilters(t *testing.T) {
 	}
 }
 
-// TestLifecycle_DevPortalDefault exercises the devportal default-flag queries
-// (GetDefaultByOrganizationUUID + SetAsDefault). These used the `is_default =
-// TRUE`/`FALSE` boolean literals that are invalid on SQL Server; the fix binds a
-// Go bool instead, which this verifies works on every engine.
-func TestLifecycle_DevPortalDefault(t *testing.T) {
-	it := openITDB(t)
-	defer it.db.Close()
-	orgRepo := repository.NewOrganizationRepo(it.db)
-	dpRepo := repository.NewDevPortalRepository(it.db)
-
-	org := &model.Organization{ID: id(), Handle: "dp-" + id()[:8], Name: "dp org", Region: "us"}
-	if err := orgRepo.CreateOrganization(org); err != nil {
-		t.Fatalf("[%s] create org failed: %v", it.driver, err)
-	}
-
-	dp1 := newDevPortal(org.ID, "dp1", true)
-	dp2 := newDevPortal(org.ID, "dp2", false)
-	if err := dpRepo.Create(dp1); err != nil {
-		t.Fatalf("[%s] create dp1 failed: %v", it.driver, err)
-	}
-	if err := dpRepo.Create(dp2); err != nil {
-		t.Fatalf("[%s] create dp2 failed: %v", it.driver, err)
-	}
-
-	def, err := dpRepo.GetDefaultByOrganizationUUID(org.ID)
-	if err != nil {
-		t.Fatalf("[%s] GetDefaultByOrganizationUUID failed: %v", it.driver, err)
-	}
-	if def == nil || def.UUID != dp1.UUID {
-		t.Fatalf("[%s] default devportal: want dp1, got %+v", it.driver, def)
-	}
-
-	// Switch the default to dp2 (unsets dp1, sets dp2 — the boolean UPDATE path).
-	if err := dpRepo.SetAsDefault(dp2.UUID, org.ID); err != nil {
-		t.Fatalf("[%s] SetAsDefault(dp2) failed: %v", it.driver, err)
-	}
-	def, err = dpRepo.GetDefaultByOrganizationUUID(org.ID)
-	if err != nil {
-		t.Fatalf("[%s] GetDefaultByOrganizationUUID (after switch) failed: %v", it.driver, err)
-	}
-	if def == nil || def.UUID != dp2.UUID {
-		t.Fatalf("[%s] default devportal after switch: want dp2, got %+v", it.driver, def)
-	}
-}
-
 // TestLifecycle_ApplicationByIDOrHandle exercises GetApplicationByIDOrHandle,
 // whose `ORDER BY CASE … FetchFirstClause(1)` query was part of the LIMIT-1 fix
 // (a single-row lookup that resolves by UUID or handle). Verified on every engine.
@@ -263,7 +256,9 @@ func TestLifecycle_ApplicationByIDOrHandle(t *testing.T) {
 	if err := orgRepo.CreateOrganization(org); err != nil {
 		t.Fatalf("[%s] create org failed: %v", it.driver, err)
 	}
-	proj := &model.Project{ID: id(), Name: "p-" + id()[:6], OrganizationID: org.ID}
+	projID := id()
+	projName := "p-" + projID[:6]
+	proj := &model.Project{ID: projID, Handle: projName, Name: projName, OrganizationID: org.ID}
 	if err := projectRepo.CreateProject(proj); err != nil {
 		t.Fatalf("[%s] create project failed: %v", it.driver, err)
 	}
@@ -314,7 +309,9 @@ func TestLifecycle_WebSubAPICreateAndList(t *testing.T) {
 	if err := orgRepo.CreateOrganization(org); err != nil {
 		t.Fatalf("[%s] create org failed: %v", it.driver, err)
 	}
-	proj := &model.Project{ID: id(), Name: "wsub-proj-" + id()[:6], OrganizationID: org.ID}
+	wsubProjID := id()
+	wsubProjName := "wsub-proj-" + wsubProjID[:6]
+	proj := &model.Project{ID: wsubProjID, Handle: wsubProjName, Name: wsubProjName, OrganizationID: org.ID}
 	if err := projectRepo.CreateProject(proj); err != nil {
 		t.Fatalf("[%s] create project failed: %v", it.driver, err)
 	}
@@ -362,14 +359,3 @@ func TestLifecycle_WebSubAPICreateAndList(t *testing.T) {
 	}
 }
 
-func newDevPortal(orgID, name string, isDefault bool) *model.DevPortal {
-	u := id()
-	return &model.DevPortal{
-		UUID: u, OrganizationUUID: orgID, Name: name,
-		Identifier: name + "-" + u[:8],
-		APIUrl:     "http://" + name + "-" + u[:8],
-		Hostname:   name + "-" + u[:8] + ".local",
-		APIKey:     "k", HeaderKeyName: "x-wso2-api-key",
-		IsDefault: isDefault, Visibility: "private",
-	}
-}

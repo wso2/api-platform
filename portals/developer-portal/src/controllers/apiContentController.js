@@ -35,13 +35,13 @@ const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
-const { seedSampleAPIs } = require('../services/sampleSeederService');
+const { seedSampleAPIs, seedSampleMCPs } = require('../services/sampleSeederService');
 const apiFlowService = require('../services/apiFlowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
 const generateArray = (length) => Array.from({ length });
 
-const loadAPIs = async (req, res) => {
+const loadAPIs = async (req, res, next) => {
 
     const { orgName, viewName } = req.params;
     let html;
@@ -62,9 +62,9 @@ const loadAPIs = async (req, res) => {
         html = renderTemplate(layoutPath + listingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
-            const orgID = orgDetails.ORG_ID;
+            const orgID = orgDetails.UUID;
             const searchTerm = req.query.query;
             const tags = req.query.tags;
             let metaDataList = await loadAPIMetaDataListFromAPI(req, orgID, orgName, searchTerm, tags, viewName);
@@ -89,7 +89,7 @@ const loadAPIs = async (req, res) => {
                 try {
                     const createdBy = req.user && req.user.sub;
                     const localSubs = await subDao.list(orgID, { createdBy });
-                    const subscribedApiIds = new Set(localSubs.map(sub => sub.API_ID));
+                    const subscribedApiIds = new Set(localSubs.map(sub => sub.API_UUID));
                     for (const metaData of metaDataList) {
                         const hasPlans = (metaData.subscriptionPlans || []).length > 0;
                         if (hasPlans) {
@@ -113,9 +113,16 @@ const loadAPIs = async (req, res) => {
                     isAdmin: req.user.isAdmin,
                 }
             }
+            const isMcpPage = req.originalUrl.includes("/mcps");
+            const filteredList = metaDataList.filter(api =>
+                isMcpPage
+                    ? api.apiInfo?.apiType === constants.API_TYPE.MCP
+                    : api.apiInfo?.apiType !== constants.API_TYPE.MCP
+            );
+
             const templateContent = {
                 isAuthenticated: req.isAuthenticated(),
-                apiMetadata: metaDataList,
+                apiMetadata: filteredList,
                 tags: apiTags,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 orgID: orgID,
@@ -125,7 +132,7 @@ const loadAPIs = async (req, res) => {
                 applications: []
             };
 
-            if (req.originalUrl.includes("/mcps")) {
+            if (isMcpPage) {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp", viewName);
             } else {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/apis", viewName);
@@ -144,18 +151,18 @@ const loadAPIs = async (req, res) => {
                 logger.warn("User is not authorized to access the API or user session expired, hence redirecting to login page", {
                     orgName: orgName,
                 });
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+                return next(err);
             } else {
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                error.status = 500;
+                return next(error);
             }
         }
     }
     res.send(html);
 }
 
-const loadAPIContent = async (req, res) => {
+const loadAPIContent = async (req, res, next) => {
 
     let html;
     const hbs = exphbs.create({});
@@ -202,7 +209,6 @@ const loadAPIContent = async (req, res) => {
 
         const templateContent = {
             devMode: true,
-            providerUrl: '#subscriptionPlans',
             apiContent: '',
             loadDefault,
             resources: apiDetails,
@@ -219,10 +225,10 @@ const loadAPIContent = async (req, res) => {
         res.send(html);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
             const orgDetails = await orgDao.get(orgName);
-            const orgID = orgDetails.ORG_ID;
+            const orgID = orgDetails.UUID;
             const apiID = await apiDao.getId(orgID, apiHandle);
             const metaData = await loadAPIMetaData(req, orgID, apiID);
             
@@ -234,13 +240,6 @@ const loadAPIContent = async (req, res) => {
             });
             
             let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPlans);
-            let providerUrl;
-            if (metaData.provider === "WSO2") {
-                providerUrl = '#subscriptionPlans';
-            } else {
-                const providerList = await adminService.getAllProviders(orgID);
-                providerUrl = providerList.find(provider => provider.name === metaData.provider)?.providerURL || '#subscriptionPlans';
-            }
             //check whether api content exists
             let loadDefault = false
             let apiDetails = "";
@@ -345,10 +344,14 @@ const loadAPIContent = async (req, res) => {
                     const createdBy = req.user && req.user.sub;
                     const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
-                        subscriptionId: sub.SUB_ID,
-                        subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
+                        subscriptionId: sub.UUID,
+                        // policyName (raw POLICY_NAME) is what isCurrentPlan compares against in the template.
+                        // subscriptionPlanName keeps the human-readable label (DISPLAY_NAME when set).
+                        policyName: sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
+                        subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
                         status: sub.STATUS,
-                        subscriptionToken: sub.SUB_TOKEN,
+                        subscriptionToken: sub.TOKEN,
+                        maskedToken: sub.TOKEN ? sub.TOKEN.slice(0, 4) + '****' + sub.TOKEN.slice(-4) : '',
                         customerName: null
                     }));
                 } catch (err) {
@@ -387,8 +390,6 @@ const loadAPIContent = async (req, res) => {
 
             templateContent = {
                 isAuthenticated: req.isAuthenticated(),
-                provider: metaData.provider,
-                providerUrl: providerUrl,
                 apiMetadata: metaData,
                 subscriptionPlans: subscriptionPlans,
                 subscriptions: subscriptions,
@@ -414,21 +415,16 @@ const loadAPIContent = async (req, res) => {
         } catch (error) {
             logger.error(`Failed to load api content`, {
                 orgName: orgName,
-                error: error.message, 
+                error: error.message,
                 stack: error.stack
             });
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-            }
             if (Number(error?.statusCode) === 401) {
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+                return next(err);
             } else {
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                error.status = 500;
+                return next(error);
             }
-            res.send(html);
         }
         res.send(html);
     }
@@ -487,7 +483,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
     return templateContent;
 }
 
-const loadDocsPage = async (req, res) => {
+const loadDocsPage = async (req, res, next) => {
 
     const { orgName, apiHandle, viewName, docType } = req.params;
     let html = "";
@@ -511,7 +507,7 @@ const loadDocsPage = async (req, res) => {
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         try {
             const orgID = await orgDao.getId(orgName);
@@ -531,10 +527,10 @@ const loadDocsPage = async (req, res) => {
             }
 
             const apiMetadata = await apiDao.get(orgID, apiID);
-            let apiType = apiMetadata[0].dataValues.API_TYPE;
+            let apiType = apiMetadata[0].dataValues.TYPE;
             const metaForNav = {
                 apiInfo: {},
-                apiReferenceID: apiMetadata[0].dataValues.REFERENCE_ID,
+                apiReferenceID: apiMetadata[0].dataValues.REF_ID,
             };
 
             let apiDefinitionForNav = null;
@@ -555,31 +551,26 @@ const loadDocsPage = async (req, res) => {
                 baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
-                apiName: apiMetadata[0].dataValues.API_NAME || '',
+                apiName: apiMetadata[0].dataValues.NAME || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
         } catch (error) {
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
-                errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-                devportalMode: devportalMode,
-            }
             logger.error(`Failed to load api docs`, {
                 orgName: orgName,
-                error: error.message, 
+                error: error.message,
                 stack: error.stack
             });
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
     }
     res.send(html);
 }
 
-const loadDocument = async (req, res) => {
+const loadDocument = async (req, res, next) => {
     const { orgName, apiHandle, viewName, docType, docName } = req.params;
 
     if (config.designMode?.enabled) {
@@ -634,7 +625,7 @@ const loadDocument = async (req, res) => {
     }
 
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let baseDocUrl = '/' + orgName + '/views/' + viewName + "/api/" + apiHandle
     if (req.originalUrl.includes('/mcp')) {
         baseDocUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
@@ -745,8 +736,8 @@ const loadDocument = async (req, res) => {
             const viewName = req.params.viewName;
             let docNames = await apiMetadataService.getAPIDocTypes(orgID, apiID);
             const apiMetadata = await apiDao.get(orgID, apiID);
-            let apiType = apiMetadata[0].dataValues.API_TYPE;
-            const referenceID = apiMetadata[0].dataValues.REFERENCE_ID;
+            let apiType = apiMetadata[0].dataValues.TYPE;
+            const referenceID = apiMetadata[0].dataValues.REF_ID;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
@@ -756,7 +747,7 @@ const loadDocument = async (req, res) => {
             templateContent.docTypes = docNames;
             templateContent.currentDocName = docName || null;
             templateContent.currentDocType = docType || null;
-            templateContent.apiName = apiMetadata[0].dataValues.API_NAME || '';
+            templateContent.apiName = apiMetadata[0].dataValues.NAME || '';
             let profile = null;
             if (req.user) {
                 profile = {
@@ -772,40 +763,27 @@ const loadDocument = async (req, res) => {
             const row = apiMetadata[0].dataValues;
             const metaForNav = {
                 apiInfo: {},
-                apiReferenceID: row.REFERENCE_ID,
+                apiReferenceID: row.REF_ID,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
         } catch (error) {
-            const templateContent = {
-                devportalMode: devportalMode,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                baseDocUrl: baseDocUrl,
-                errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-                profile: req.isAuthenticated() ? req.user : null,
-            }
             logger.error('Failed to load api content', {
                 error: error.message,
                 stack: error.stack
             });
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
         res.send(html);
     } catch (error) {
-        const templateContent = {
-            baseUrl: '/' + orgName + '/views/' + viewName,
-            baseDocUrl: baseDocUrl,
-            devportalMode: orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT,
-            profile: req.isAuthenticated() ? req.user : null,
-        }
         if (Number(error?.statusCode) === 401) {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+            return next(err);
         } else {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
-        res.send(html);
     }
 }
 
@@ -822,17 +800,7 @@ async function loadAPIMetaDataList(samplesPath = config.designMode.apiSamplesPat
 
 async function loadAPIMetaDataListFromAPI(req, orgID, orgName, searchTerm, tags, viewName) {
 
-    let groups = "";
-    let groupList = [];
-    if (req.user && req.user[constants.ROLES.GROUP_CLAIM]) {
-        groups = req.user[constants.ROLES.GROUP_CLAIM];
-    }
-    if (Array.isArray(groups)) {
-        groupList = groups;
-    } else if (groups !== "") {
-        groupList = groups.split(" ");
-    }
-    let metaData = await apiMetadataService.getMetadataListFromDB(orgID, groupList, searchTerm, tags, null, null, viewName);
+    let metaData = await apiMetadataService.getMetadataListFromDB(orgID, searchTerm, tags, null, null, viewName);
     metaData.forEach(element => {
         const randomNumber = Math.floor(Math.random() * 3) + 3;
         element.apiInfo.ratings = generateArray(randomNumber);
@@ -1076,7 +1044,7 @@ const loadAPIContentMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1239,7 +1207,7 @@ const loadLlmsTxt = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         const configAsset = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
@@ -1253,7 +1221,7 @@ const loadLlmsTxt = async (req, res) => {
         }
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgID, orgName, viewName, {
-            orgName: orgDetails.ORG_NAME,
+            orgName: orgDetails.NAME,
             portalName: llmsConfig.portalName || null,
             portalDescription: llmsConfig.portalDescription || null,
         });
@@ -1274,11 +1242,11 @@ const previewLlmsTxt = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
         const { portalName, portalDescription } = req.body;
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgID, orgName, viewName, {
-            orgName: orgDetails.ORG_NAME,
+            orgName: orgDetails.NAME,
             portalName: portalName || null,
             portalDescription: portalDescription || null,
         });
@@ -1300,7 +1268,7 @@ const loadAPIsMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1349,7 +1317,7 @@ const loadMCPsMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1398,7 +1366,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
     const { orgName, apiHandle, viewName, format } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).json({ message: 'Not Found' });
@@ -1464,7 +1432,7 @@ const loadDocumentMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1506,7 +1474,9 @@ const seedSamples = async (req, res) => {
     }
     try {
         const orgDetails = await orgDao.get(orgName);
-        const results = await seedSampleAPIs(orgDetails.ORG_ID);
+        const apiResults = await seedSampleAPIs(orgDetails.UUID);
+        const mcpResults = await seedSampleMCPs(orgDetails.UUID);
+        const results  = [...apiResults, ...mcpResults];
         const deployed = results.filter(r => r.status === 'ok').length;
         const skipped  = results.filter(r => r.status === 'exists').length;
         const failed   = results.filter(r => r.status === 'failed').length;

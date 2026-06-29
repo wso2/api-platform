@@ -19,6 +19,7 @@ const yaml = require('js-yaml');
 const { Sequelize } = require('sequelize');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
+const { SUPPORTED_KM_TYPES } = require('../adapters/keyManager');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
@@ -116,8 +117,13 @@ const createKeyManager = async (req, res) => {
         if (validationError) {
             return res.status(400).json({ error: validationError });
         }
+        const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
+        if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
+            return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
+        }
 
-        const record = await kmDao.create(orgId, payload);
+        const userId = util.resolveActor(req);
+        const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
         const dto = new KeyManagerDTO(record);
         return res.status(201).json(dto);
     } catch (error) {
@@ -139,7 +145,16 @@ const updateKeyManager = async (req, res) => {
         const { kmId } = req.params;
         const payload = _resolvePayload(req);
 
-        const [, updatedRows] = await kmDao.update(kmId, payload);
+        if (payload.type !== undefined) {
+            const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
+            if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
+                return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
+            }
+            payload.type = resolvedType;
+        }
+
+        const userId = util.resolveActor(req);
+        const [, updatedRows] = await kmDao.update(kmId, payload, userId);
         const dto = new KeyManagerDTO(updatedRows[0]);
         return res.status(200).json(dto);
     } catch (error) {

@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/organizations \
 
 ```
 
-Creates a Developer Portal organization and initializes its default portal configuration, default label, default view, default WSO2 provider, and default subscription plans when configured.
+Creates a Developer Portal organization and initializes its default portal configuration, default label, default view, and default subscription plans when configured.
 
 > Payload
 
@@ -292,7 +292,9 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
   "organizationIdentifier": "string",
-  "orgConfiguration": {}
+  "orgConfiguration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
@@ -303,7 +305,8 @@ businessOwnerContact: string
 businessOwnerEmail: user@example.com
 orgHandle: string
 organizationIdentifier: string
-orgConfiguration: {}
+orgConfiguration:
+  devportalMode: DEFAULT
 
 ```
 
