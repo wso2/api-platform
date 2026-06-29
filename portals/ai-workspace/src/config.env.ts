@@ -54,9 +54,12 @@ export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_HANDLE_CLAIM
 export const DEFAULT_ORG_REGION = getEnvOrDefault('VITE_DEFAULT_ORG_REGION', 'us');
 
 // Scopes to request at login — derived from openapi.yaml x-required-scopes (ap: prefix).
+// offline_access is required so the IDP issues a refresh token; without it the
+// BFF cannot silently renew the access token and the user is logged out as soon
+// as it expires. Keep it if you override this scope list.
 export const OIDC_SCOPE = getEnvOrDefault(
   'VITE_OIDC_SCOPE',
-  'openid profile email' +
+  'openid profile email offline_access' +
   ' ap:organization:read ap:organization:manage ap:organization:subscription:read' +
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
   ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +

@@ -176,6 +176,12 @@ For Asgardeo, on the application's **Protocol** tab:
 | PKCE | enabled (the BFF always sends `S256`) |
 | Access Token Type | `JWT` |
 
+The BFF requests the **`offline_access`** scope (included by default) so the IDP returns a
+refresh token. Enabling the Refresh Token *grant* is necessary but not sufficient — without
+the `offline_access` *scope* most IDPs (Asgardeo, WSO2 IS, Okta, Azure AD) return no refresh
+token, and the user is logged out the moment the access token expires. If your IDP gates
+`offline_access` behind a consent/allowed-scope list, make sure it's permitted for this app.
+
 Copy the **Client ID** and **Client Secret** — you'll need both below.
 
 > The redirect URL is the **BFF callback** (`/api/auth/callback`), not the SPA `/signin`
@@ -282,7 +288,8 @@ export OIDC_CLIENT_ID=<your-client-id>
 export OIDC_CLIENT_SECRET=<your-client-secret>
 export OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
 export OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
-export OIDC_SCOPES="openid profile email ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
+# Keep `offline_access` — without it the IDP issues no refresh token and the BFF cannot silently renew the session.
+export OIDC_SCOPES="openid profile email offline_access ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
 make bff-run
 ```
 
@@ -297,8 +304,48 @@ failures, by symptom:
 | Platform API exits at startup with *"auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive"* | Local auth left on alongside the IDP | Compose: uncomment the full `platform-api` OIDC block (it sets `AUTH_JWT_ENABLED=false` + `AUTH_FILE_BASED_ENABLED=false`). Local: set `auth.jwt.enabled=false` and `auth.file_based.enabled=false` (step 3, Option 2) |
 | `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `PLATFORM_API_URL` points at the compose hostname | Set `PLATFORM_API_URL=https://localhost:9243` (step 3, Option 2) |
 | Proxied calls return `authentication_failed` | Platform API still on local JWT/file-based, validating the IDP token with the wrong validator | Switch it to the IDP — compose: uncomment the `platform-api` OIDC block; local: enable `[auth.idp]` (step 3, Option 2) |
+| Proxied calls return `authentication_failed`, Platform API logs `token contains an invalid number of segments` | IDP is issuing **opaque** access tokens — the BFF forwards the access token and the Platform API can only validate a **JWT** via JWKS | Set **Access Token Type = JWT** on the app's Protocol tab (step 1) and re-login |
 | Login works, then proxied calls return `403` | Access token lacks `ap:*` scopes, or Platform API IDP/claim mapping wrong | Grant `ap:*` scopes to the user (step 2); check `[auth.idp]` issuer/JWKS/claim mappings |
+| User shows as a UUID and email is blank in the UI | Token carries no name/email claims — the BFF falls back to the `sub` (user UUID) | Release the `given_name` (or `name`/`preferred_username`) and `email` claims to the app and ensure the user has those attributes set; the `profile` and `email` scopes must be granted (both are in the default request) |
+| Logged out as soon as the access token expires; never silently refreshed | IDP returned no refresh token — `offline_access` scope missing from the request, or not permitted for the app | Keep `offline_access` in `OIDC_SCOPES` (it's in the default); allow it for the app in the IDP (step 1) |
 | Refresh fails minutes after login | **Refresh Token** grant not enabled on the app | Enable it on the Protocol tab (step 1) |
+
+## Session lifetime & token refresh
+
+The browser holds no token — it carries only an HttpOnly session cookie. Tokens live in the
+BFF's server-side session, and the BFF renews them transparently.
+
+**OIDC mode.** When a proxied request arrives with an access token within 60 s of expiry, the
+BFF refreshes it server-side (single-flight per session) before forwarding — invisible to the
+user. The session therefore stays alive as long as the user is active and the refresh token is
+valid. It ends when:
+
+- the **refresh token expires** (set by the IDP) — this is the effective *idle* bound: a user
+  away longer than the refresh-token lifetime is asked to log in again; or
+- the **absolute cap** is reached (`SESSION_ABSOLUTE_TTL`, default `8h`) — a hard ceiling that
+  does *not* slide on refresh, so even a continuously-active session is re-authenticated once
+  per cap window.
+
+Tune the experience with the **access-token lifetime** (shorter = more frequent silent
+refreshes) and the **refresh-token lifetime** (longer = users stay logged in across longer
+idle gaps) in your IDP, plus `SESSION_ABSOLUTE_TTL` on the BFF.
+
+**File-based / quickstart mode** has no refresh token: the session lasts until the issued
+token expires (or the absolute cap), then the user logs in again. This is expected for the
+quickstart and needs no setup.
+
+When a session finally ends, the next API call returns `401` and the UI shows a clear
+"session expired" prompt with a re-login action — it does not silently fail or loop.
+
+> **Note:** `SESSION_IDLE_TIMEOUT` is currently **not enforced** (reserved for future use).
+> The idle bound is the IDP refresh-token lifetime described above, not this setting.
+
+> **High availability (future):** silent refresh is single-flighted per process, which is
+> correct for the single-replica distribution. Before running **multiple BFF replicas**,
+> configure the IDP to issue **non-rotating refresh tokens** for this client (or a short
+> rotation reuse-grace window). Otherwise two replicas refreshing the same session
+> concurrently can rotate each other's refresh token out and drop the session. See the BFF
+> source comments on `refreshSession` for details.
 
 ## Cypress E2E tests
 

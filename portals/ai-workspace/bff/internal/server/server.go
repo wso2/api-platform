@@ -72,7 +72,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			ctx, upstream,
 			cfg.OIDC.Issuer, cfg.OIDC.ClientID, cfg.OIDC.ClientSecret,
 			cfg.OIDC.RedirectURL, cfg.OIDC.PostLogoutRedirectURL, cfg.OIDC.Scopes,
-			oidcClaimMapping(), cfg.Session.AbsoluteTTL,
+			oidcClaimMapping(cfg.OIDC.Claims), cfg.Session.AbsoluteTTL,
 		)
 		if err != nil {
 			return nil, err
@@ -96,12 +96,32 @@ func (s *Server) Close() error {
 	return s.store.Close()
 }
 
-// oidcClaimMapping returns the claim mapping for OIDC tokens. Defaults align with
-// the SPA's previous OIDC defaults; org/user keys can be overridden via the same
-// VITE_* names if needed in a future iteration.
-func oidcClaimMapping() session.ClaimMapping {
+// oidcClaimMapping builds the claim mapping for OIDC tokens from config. Each
+// field overrides the session-package default only when set, so an operator can
+// point a single claim (e.g. the display name) at the right key via the
+// OIDC_CLAIM_* env vars without re-specifying the rest.
+func oidcClaimMapping(c config.ClaimMappingConfig) session.ClaimMapping {
 	m := session.DefaultClaimMapping()
-	m.Username = "given_name"
-	m.OrgID = "org_id"
+	if c.Username != "" {
+		m.Username = c.Username
+	}
+	if c.Email != "" {
+		m.Email = c.Email
+	}
+	if c.Role != "" {
+		m.Role = c.Role
+	}
+	if c.Scope != "" {
+		m.Scope = c.Scope
+	}
+	if c.OrgID != "" {
+		m.OrgID = c.OrgID
+	}
+	if c.OrgName != "" {
+		m.OrgName = c.OrgName
+	}
+	if c.OrgHandle != "" {
+		m.OrgHandle = c.OrgHandle
+	}
 	return m
 }

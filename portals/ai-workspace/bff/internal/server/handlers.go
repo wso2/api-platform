@@ -280,6 +280,10 @@ func (s *Server) refreshSession(ctx context.Context, sess *session.Session) (*se
 	}
 	updated := s.oidc.SessionFromToken(tok, cur)
 	updated.ID = cur.ID
+	// Preserve the original absolute deadline: the hard cap must bound total
+	// session lifetime, not slide forward on every refresh (which would let an
+	// active session live indefinitely and disagree with the cookie's MaxAge).
+	updated.AbsoluteExpiry = cur.AbsoluteExpiry
 	if err := s.store.Put(ctx, updated); err != nil {
 		return nil, err
 	}

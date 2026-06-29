@@ -91,7 +91,71 @@ type OIDCConfig struct {
 	RedirectURL           string // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string
 	Scopes                string // space-separated
+
+	// Claims maps which token claim names carry each user/org field. Override per
+	// IDP when the defaults don't match (e.g. the display name lands on "sub").
+	Claims ClaimMappingConfig
 }
+
+// ClaimMappingConfig configures which claim names the BFF reads for each
+// user/org field from the OIDC tokens. Empty fields fall back to built-in
+// defaults in the session package.
+type ClaimMappingConfig struct {
+	Username  string
+	Email     string
+	Role      string
+	Scope     string
+	OrgID     string
+	OrgName   string
+	OrgHandle string
+}
+
+// defaultOIDCScopes is the full set of scopes the BFF requests in OIDC mode so a
+// logged-in user's access token carries every ap:* permission the Platform API
+// authorizes against. The IDP must still have these scopes registered and granted
+// to the user, otherwise it drops the ungranted ones. Override with OIDC_SCOPES
+// (or VITE_OIDC_SCOPE) to request a narrower set.
+//
+// offline_access is required: without it most IDPs (Asgardeo, WSO2 IS, Okta,
+// Azure AD) issue no refresh token, so the BFF cannot silently renew the access
+// token and the user is logged out the moment it expires. Keep it in any override.
+const defaultOIDCScopes = "openid profile email offline_access" +
+	" ap:organization:read ap:organization:manage ap:organization:subscription:read" +
+	" ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage" +
+	" ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage" +
+	" ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
+	" ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read" +
+	" ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage" +
+	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
+	" ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage" +
+	" ap:gateway:artifact:read ap:gateway:manifest:read" +
+	" ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import" +
+	" ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage" +
+	" ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore" +
+	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
+	" ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete" +
+	" ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage" +
+	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
+	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
+	" ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage" +
+	" ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage" +
+	" ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage" +
+	" ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore" +
+	" ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage" +
+	" ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage" +
+	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore" +
+	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
+	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
+	" ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage" +
+	" ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update" +
+	" ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore" +
+	" ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete" +
+	" ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage" +
+	" ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update" +
+	" ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore" +
+	" ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete" +
+	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
+	" ap:git:read"
 
 // Load resolves configuration from config.toml (if present) and environment
 // variables. Environment variables always win over the config file.
@@ -166,7 +230,19 @@ func Load() (*Config, error) {
 			// default would produce an invalid logout request, so leave it unset
 			// unless an absolute URL is explicitly configured.
 			PostLogoutRedirectURL: getenv("OIDC_POST_LOGOUT_REDIRECT_URL", ""),
-			Scopes:                getenv("OIDC_SCOPES", getenv("VITE_OIDC_SCOPE", "openid profile email")),
+			Scopes:                getenv("OIDC_SCOPES", getenv("VITE_OIDC_SCOPE", defaultOIDCScopes)),
+			// Claim names fall back to the same VITE_OIDC_*_CLAIM vars the SPA reads
+			// (set via config.toml) so one config drives both layers, then to the
+			// built-in defaults.
+			Claims: ClaimMappingConfig{
+				Username:  getenv("OIDC_CLAIM_USERNAME", getenv("VITE_OIDC_USERNAME_CLAIM", "given_name,name,preferred_username,username")),
+				Email:     getenv("OIDC_CLAIM_EMAIL", "email"),
+				Role:      getenv("OIDC_CLAIM_ROLE", "platform_role"),
+				Scope:     getenv("OIDC_CLAIM_SCOPE", "scope"),
+				OrgID:     getenv("OIDC_CLAIM_ORG_ID", getenv("VITE_OIDC_ORG_ID_CLAIM", "org_id")),
+				OrgName:   getenv("OIDC_CLAIM_ORG_NAME", getenv("VITE_OIDC_ORG_NAME_CLAIM", "org_name")),
+				OrgHandle: getenv("OIDC_CLAIM_ORG_HANDLE", getenv("VITE_OIDC_ORG_HANDLE_CLAIM", "org_handle")),
+			},
 		},
 	}
 

@@ -25,6 +25,10 @@ import (
 
 // ClaimMapping configures which claim names carry user/org fields. Defaults
 // match the Platform API file-based JWT and the SPA's OIDC defaults.
+//
+// Username may be a comma-separated list of candidate claims; the first one
+// present (in order) wins, so an IDP that carries the display name under a
+// non-standard claim can be supported via config rather than code.
 type ClaimMapping struct {
 	Username  string
 	Email     string
@@ -40,7 +44,7 @@ type ClaimMapping struct {
 // the IDP.
 func DefaultClaimMapping() ClaimMapping {
 	return ClaimMapping{
-		Username:  "username",
+		Username:  "username,name,preferred_username",
 		Email:     "email",
 		Role:      "platform_role",
 		Scope:     "scope",
@@ -108,8 +112,18 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 		return ""
 	}
 
+	// Resolve a human-friendly display name. Try each configured candidate claim
+	// in order, then email, and only as a last resort the opaque subject id (so
+	// the UI never shows a raw UUID when a readable claim is available).
+	candidates := splitClaims(m.Username)
+	vals := make([]string, 0, len(candidates)+2)
+	for _, key := range candidates {
+		vals = append(vals, get(key))
+	}
+	vals = append(vals, get(m.Email), strClaim(claims, "sub"))
+
 	u := User{
-		Name:   first(get(m.Username), strClaim(claims, "sub")),
+		Name:   first(vals...),
 		Email:  get(m.Email),
 		Role:   strClaim(claims, m.Role),
 		Scopes: scopes(claims, m.Scope),
@@ -158,6 +172,19 @@ func scopes(claims map[string]any, key string) []string {
 		return out
 	}
 	return []string{}
+}
+
+// splitClaims parses a comma-separated list of claim names into a trimmed,
+// non-empty slice. A single name (no commas) yields a one-element slice.
+func splitClaims(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func first(vals ...string) string {

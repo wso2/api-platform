@@ -37,8 +37,16 @@ import (
 	"ai-workspace-bff/internal/tlsutil"
 )
 
+const startupBanner = `
+========================================
+
+         AI Workspace started
+
+========================================
+`
+
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -73,6 +81,7 @@ func main() {
 	httpServer.TLSConfig = tlsConfig
 
 	go func() {
+		fmt.Print(startupBanner)
 		slog.Info("AI Workspace BFF started",
 			"addr", cfg.Addr,
 			"auth_mode", cfg.AuthMode,
