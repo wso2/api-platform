@@ -304,7 +304,7 @@ const getMetadataFromDB = async (orgID, apiID) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
-        const retrievedAPI = await apiDao.getByCondition({ ORG_UUID: orgID, API_UUID: apiID }, t);
+        const retrievedAPI = await apiDao.getByCondition({ ORG_UUID: orgID, UUID: apiID }, t);
         if (retrievedAPI.length > 0) {
             return new APIDTO(retrievedAPI[0]);
         } else {
