@@ -100,10 +100,6 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         allowNull: false,
         defaultValue: 'PRODUCTION'
     },
-    ADDITIONAL_PROPERTIES: {
-        type: DataTypes.JSONB,
-        allowNull: true
-    },
     CREATED_BY: {
         type: DataTypes.STRING,
         allowNull: false

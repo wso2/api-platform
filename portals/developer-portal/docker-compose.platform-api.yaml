@@ -19,9 +19,13 @@
 # Platform API only — for local development with npm start
 #
 # Quick start:
-#   1. docker compose -f docker-compose.platform-api.yaml up -d
-#   2. npm start
-#   3. Open http://localhost:3000
+#   1. Build the Platform API image from source (../../platform-api):
+#        cd ../../platform-api && make build
+#      This is required — the published 0.10.0 image on ghcr.io predates the
+#      /auth/login endpoint that the username/password login form here uses.
+#   2. docker compose -f docker-compose.platform-api.yaml up -d
+#   3. npm start
+#   4. Open http://localhost:3000
 #      Login: admin / admin
 #
 # Set AUTH_JWT_SECRET_KEY in your shell or a .env file to keep sessions alive
@@ -29,7 +33,7 @@
 
 services:
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.10.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]

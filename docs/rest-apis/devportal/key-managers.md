@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-manage
 
 ```
 
-Creates a key manager configuration for the organization. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. The `adminClientId` and `adminClientSecret` are encrypted at rest using AES-256-GCM.
+Creates a key manager configuration for the organization. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_credentials` token requests.
 
 > Payload
 
@@ -28,26 +28,7 @@ Creates a key manager configuration for the organization. Accepts either a `appl
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 ```
 
@@ -56,22 +37,6 @@ name: Asgardeo
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
-clientRegistrationEndpoint: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
-issuer: https://api.asgardeo.io/t/myorg/oauth2/token
-jwksURL: https://api.asgardeo.io/t/myorg/oauth2/jwks
-adminClientId: <client-id>
-adminClientSecret: <client-secret>
-supportedGrantTypes:
-  - client_credentials
-  - authorization_code
-  - refresh_token
-supportedScopes:
-  - openid
-  - profile
-additionalProperties:
-  authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
-  revokeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/revoke
-  logoutEndpoint: https://api.asgardeo.io/t/myorg/oidc/logout
 
 ```
 
@@ -100,24 +65,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 ```
 
@@ -244,24 +192,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "name": "Asgardeo",
       "type": "ASGARDEO",
       "enabled": true,
-      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-      "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-      "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-      "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-      "supportedGrantTypes": [
-        "client_credentials",
-        "authorization_code",
-        "refresh_token"
-      ],
-      "supportedScopes": [
-        "openid",
-        "profile"
-      ],
-      "additionalProperties": {
-        "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-        "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-        "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-      }
+      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
     }
   ],
   "pagination": {
@@ -295,19 +226,13 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)]|false|none|[Key manager configuration. Admin credentials are never included.]|
+|» list|[[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)]|false|none|[Key manager configuration.]|
 |»» id|string|false|none|Key manager UUID.|
 |»» orgId|string|false|none|none|
 |»» name|string|false|none|none|
 |»» type|string|false|none|none|
 |»» enabled|boolean|false|none|none|
 |»» tokenEndpoint|string(uri)|false|none|none|
-|»» clientRegistrationEndpoint|string(uri)|false|none|none|
-|»» issuer|string(uri)¦null|false|none|none|
-|»» jwksURL|string(uri)¦null|false|none|none|
-|»» supportedGrantTypes|[string]|false|none|none|
-|»» supportedScopes|[string]|false|none|none|
-|»» additionalProperties|object|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -367,15 +292,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "km-uuid-12345",
       "name": "Asgardeo",
       "type": "ASGARDEO",
-      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-      "supportedGrantTypes": [
-        "client_credentials",
-        "authorization_code"
-      ],
-      "supportedScopes": [
-        "openid",
-        "profile"
-      ]
+      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
     }
   ],
   "pagination": {
@@ -409,13 +326,11 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)]|false|none|[Minimal developer-facing key manager view. No admin credentials or DCR endpoints.]|
+|» list|[[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)]|false|none|[Minimal developer-facing key manager view.]|
 |»» id|string|false|none|none|
 |»» name|string|false|none|none|
 |»» type|string|false|none|none|
 |»» tokenEndpoint|string(uri)|false|none|none|
-|»» supportedGrantTypes|[string]|false|none|none|
-|»» supportedScopes|[string]|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -474,24 +389,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 ```
 
@@ -551,26 +449,7 @@ Updates an existing key manager configuration. Accepts either a `application/jso
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 ```
 
@@ -579,22 +458,6 @@ name: Asgardeo
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
-clientRegistrationEndpoint: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
-issuer: https://api.asgardeo.io/t/myorg/oauth2/token
-jwksURL: https://api.asgardeo.io/t/myorg/oauth2/jwks
-adminClientId: <client-id>
-adminClientSecret: <client-secret>
-supportedGrantTypes:
-  - client_credentials
-  - authorization_code
-  - refresh_token
-supportedScopes:
-  - openid
-  - profile
-additionalProperties:
-  authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
-  revokeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/revoke
-  logoutEndpoint: https://api.asgardeo.io/t/myorg/oidc/logout
 
 ```
 
@@ -624,24 +487,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 ```
 

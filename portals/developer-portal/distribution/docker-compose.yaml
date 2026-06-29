@@ -155,7 +155,7 @@ services:
       DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
       DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
 
-      # AES-256-GCM key for encrypting subscription tokens and key manager credentials at rest.
+      # AES-256-GCM key for encrypting subscription tokens and webhook secrets at rest.
       # Generate once with: openssl rand -hex 32
       # Store in .env as: DP_ADVANCED_ENCRYPTIONKEY=<64-char hex>
       # Must remain stable across restarts — changing it makes existing encrypted data unreadable.

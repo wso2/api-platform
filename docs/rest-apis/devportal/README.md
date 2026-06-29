@@ -99,11 +99,9 @@ Base URLs:
 
 ### [Application Keys](application-keys.md)
 
-- [Generate OAuth keys for a Developer Portal application](application-keys.md#generate-oauth-keys-for-a-developer-portal-application)
+- [Map an OAuth client_id to a Developer Portal application](application-keys.md#map-an-oauth-clientid-to-a-developer-portal-application)
 - [Generate an OAuth access token](application-keys.md#generate-an-oauth-access-token)
-- [Revoke OAuth keys](application-keys.md#revoke-oauth-keys)
-- [Update OAuth keys](application-keys.md#update-oauth-keys)
-- [Clean up OAuth key artifacts](application-keys.md#clean-up-oauth-key-artifacts)
+- [Remove an OAuth client_id mapping](application-keys.md#remove-an-oauth-clientid-mapping)
 
 ### [API Flows](api-flows.md)
 

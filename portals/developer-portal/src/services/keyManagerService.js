@@ -19,10 +19,16 @@ const yaml = require('js-yaml');
 const { Sequelize } = require('sequelize');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
-const { SUPPORTED_KM_TYPES } = require('../adapters/keyManager');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
+
+/**
+ * Supported key manager types. Every type proxies token requests identically
+ * (a standard OAuth2 client_credentials request), so this list exists purely
+ * to validate the `type` field when an admin configures a key manager.
+ */
+const SUPPORTED_KM_TYPES = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
 
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
@@ -38,14 +44,6 @@ function mapYamlToKeyManager(yamlDoc) {
         type: spec.type,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
-        clientRegistrationEndpoint: spec.clientRegistrationEndpoint,
-        issuer: spec.issuer || null,
-        jwksURL: spec.jwksURL || null,
-        adminClientId: spec.adminClientId || '',
-        adminClientSecret: spec.adminClientSecret || '',
-        supportedGrantTypes: spec.grantTypes || spec.supportedGrantTypes || ['client_credentials'],
-        supportedScopes: spec.scopes || spec.supportedScopes || ['openid'],
-        additionalProperties: spec.additionalProperties || {},
     };
 }
 
@@ -95,8 +93,7 @@ function _resolvePayload(req) {
 }
 
 function _validateRequiredFields(payload) {
-    const missing = ['name', 'type', 'tokenEndpoint', 'clientRegistrationEndpoint',
-        'adminClientId', 'adminClientSecret']
+    const missing = ['name', 'type', 'tokenEndpoint']
         .filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
