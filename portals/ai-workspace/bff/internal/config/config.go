@@ -235,7 +235,7 @@ func Load() (*Config, error) {
 			// (set via config.toml) so one config drives both layers, then to the
 			// built-in defaults.
 			Claims: ClaimMappingConfig{
-				Username:  getenv("OIDC_CLAIM_USERNAME", getenv("VITE_OIDC_USERNAME_CLAIM", "given_name,name,preferred_username,username")),
+				Username:  getenv("OIDC_CLAIM_USERNAME", getenv("VITE_OIDC_USERNAME_CLAIM", "username")),
 				Email:     getenv("OIDC_CLAIM_EMAIL", "email"),
 				Role:      getenv("OIDC_CLAIM_ROLE", "platform_role"),
 				Scope:     getenv("OIDC_CLAIM_SCOPE", "scope"),

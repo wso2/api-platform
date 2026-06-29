@@ -36,7 +36,7 @@ auth_mode = "basic"
 # JWT claim name mappings — which token claim carries each user/org field.
 # Override these only if your IDP uses different claim names. The org_* names
 # must match the [auth.idp] claim names in config-platform-api.toml.
-# oidc_username_claim   = "given_name,name,preferred_username,username"  # comma-separated; first present wins, then email, then sub
+# oidc_username_claim   = "username"  # claim carrying the display name; falls back to email, then sub
 # oidc_email_claim      = "email"
 # oidc_role_claim       = "platform_role"
 # oidc_scope_claim      = "scope"
