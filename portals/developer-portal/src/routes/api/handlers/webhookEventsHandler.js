@@ -19,15 +19,11 @@
 /*
  * Tag: Webhook Events
  *
- * Admin-only endpoints for inspecting and retrying webhook event deliveries.
- * retryWebhookDelivery is CSRF-protected as it mutates delivery state.
+ * Admin-only read-only endpoints for inspecting webhook event deliveries.
  */
 const webhookAdminController = require('../../../controllers/webhookAdminController');
-const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
-const { compose } = require('./compose');
 
 module.exports = {
     listWebhookEvents: webhookAdminController.listEvents,
     getWebhookEvent: webhookAdminController.getEvent,
-    retryWebhookDelivery: compose(requireCsrfForMutatingApi, webhookAdminController.retryDelivery),
 };

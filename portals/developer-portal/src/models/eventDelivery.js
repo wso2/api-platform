@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const DPEvent = require('./event');
 
 // One delivery row per (event × subscriber). ENCRYPTED_FIELDS holds per-subscriber
-// ciphertext (e.g. encrypted_key for apikey.* events) so plaintext is never in DP_EVENT.
+// ciphertext ({ [fieldName]: envelope }) so plaintext is never in DP_EVENT.
 const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     UUID: {
         type: DataTypes.STRING(40),
@@ -41,7 +41,7 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         allowNull: false
     },
     ENCRYPTED_FIELDS: {
-        type: DataTypes.JSONB,
+        type: DataTypes.JSON,
         allowNull: true,
         defaultValue: null
     },
@@ -49,16 +49,6 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PENDING'
-    },
-    ATTEMPT_COUNT: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 0
-    },
-    NEXT_ATTEMPT_AT: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW
     },
     LAST_HTTP_STATUS: {
         type: DataTypes.INTEGER,
@@ -81,7 +71,6 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     tableName: 'DP_EVENT_DELIVERY',
     returning: true,
     indexes: [
-        { name: 'IDX_EVENT_DELIVERY_STATUS_NEXT_ATTEMPT', fields: ['STATUS', 'NEXT_ATTEMPT_AT'] },
         { name: 'IDX_EVENT_DELIVERY_EVENT_UUID', fields: ['EVENT_UUID'] },
         { name: 'UQ_EVENT_DELIVERY_EVENT_SUBSCRIBER', unique: true, fields: ['EVENT_UUID', 'SUBSCRIBER_ID'] }
     ]

@@ -24,7 +24,6 @@ function formatDelivery(d) {
         subscriberId: d.SUBSCRIBER_ID,
         targetUrl: d.TARGET_URL || null,
         status: d.STATUS,
-        attemptCount: d.ATTEMPT_COUNT,
         lastHttpStatus: d.LAST_HTTP_STATUS || null,
         lastError: d.LAST_ERROR || null,
         lastAttemptAt: d.LAST_ATTEMPT_AT || null,
@@ -88,21 +87,4 @@ async function getEvent(req, res) {
     }
 }
 
-/**
- * POST /organizations/:orgId/admin/deliveries/:deliveryId/retry
- * Resets a DEAD_LETTERED / FAILED delivery to PENDING so the worker retries it.
- * Note: for apikey.* events the encrypted_key was already stored in the delivery row,
- * so replay works — only new generate/regenerate events expose a new plaintext key.
- */
-async function retryDelivery(req, res) {
-    try {
-        const ok = await eventDao.retryDelivery(req.params.deliveryId, req.params.orgId);
-        if (!ok) return res.status(404).json({ message: 'Delivery not found or not in a retryable state' });
-        res.json({ message: 'Delivery queued for retry' });
-    } catch (err) {
-        logger.error('Failed to retry delivery', { error: err.message });
-        res.status(500).json({ message: err.message });
-    }
-}
-
-module.exports = { listEvents, getEvent, retryDelivery };
+module.exports = { listEvents, getEvent };

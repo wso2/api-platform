@@ -65,7 +65,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
           "subscriberId": "sub-xyz789",
           "targetUrl": "https://example.com/webhook",
           "status": "DELIVERED",
-          "attemptCount": 1,
           "lastHttpStatus": 200,
           "lastError": "string",
           "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -129,7 +128,6 @@ Status Code **200**
 |»»» subscriberId|string|false|none|none|
 |»»» targetUrl|string¦null|false|none|none|
 |»»» status|string|false|none|none|
-|»»» attemptCount|integer|false|none|none|
 |»»» lastHttpStatus|integer¦null|false|none|none|
 |»»» lastError|string¦null|false|none|none|
 |»»» lastAttemptAt|string(date-time)¦null|false|none|none|
@@ -151,7 +149,6 @@ Status Code **200**
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|
 
 ## Get a webhook event
 
@@ -205,7 +202,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "subscriberId": "sub-xyz789",
       "targetUrl": "https://example.com/webhook",
       "status": "DELIVERED",
-      "attemptCount": 1,
       "lastHttpStatus": 200,
       "lastError": "string",
       "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -253,93 +249,3 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-## Retry a failed webhook delivery
-
-<a id="opIdretryWebhookDelivery"></a>
-
-`POST /o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry`
-
-> Code samples
-
-```shell
-
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
-
-```
-
-Resets a `DEAD_LETTERED` or `FAILED` delivery back to `PENDING` so the delivery worker retries it immediately. Requires dp:delivery_manage scope.
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="retry-a-failed-webhook-delivery-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|orgId|path|string|true|none|
-|deliveryId|path|string|true|Webhook delivery identifier.|
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "message": "Delivery queued for retry"
-}
-```
-
-> 403 Response
-
-```json
-{
-  "status": "error",
-  "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
-}
-```
-
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
-}
-```
-
-> 500 Response
-
-```json
-{
-  "status": "error",
-  "code": "INTERNAL_SERVER_ERROR",
-  "message": "An unexpected error occurred."
-}
-```
-
-<h3 id="retry-a-failed-webhook-delivery-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Delivery queued for retry.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="retry-a-failed-webhook-delivery-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» message|string|false|none|none|

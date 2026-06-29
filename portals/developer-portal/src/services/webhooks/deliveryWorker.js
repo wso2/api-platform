@@ -24,22 +24,30 @@ const DPEvent = require('../../models/event');
 const { Organization } = require('../../models/organization');
 const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
-const { nextAttemptAt, getMaxAttempts } = require('./backoff');
 const logger = require('../../config/logger');
 
 let running = false;
 let intervalHandle = null;
 
-/** Determine if an HTTP status warrants immediate dead-lettering (not retryable). */
-function isNotRetryable(status) {
-    // 4xx except 408 (Request Timeout) and 429 (Too Many Requests)
-    return status >= 400 && status < 500 && status !== 408 && status !== 429;
-}
-
 /**
- * POST a single delivery. Returns { ok, status, error }.
+ * POST a single delivery to the subscriber's target URL.
+ *
+ * Payload shape:
+ * {
+ *   event_id, event_type, occurred_at,
+ *   org: { ref_id },          — CP_REF_ID, falls back to internal ORG_UUID
+ *   encrypted_fields: [],     — names of fields in `data` that carry an encrypted envelope
+ *   data: {
+ *     ...event payload,
+ *     [fieldName]: { wrappedKey, iv, tag, ciphertext }  — per encrypted field
+ *   }
+ * }
+ *
+ * event.CP_REF_ID must be set by the caller (runBatch) before calling this function.
+ *
+ * Returns { ok, status, error }.
  */
-async function post(delivery, event, orgCpRefId) {
+async function post(delivery, event) {
     const sub = await getSubscriber(delivery.SUBSCRIBER_ID);
     if (!sub) {
         return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found` };
@@ -48,19 +56,15 @@ async function post(delivery, event, orgCpRefId) {
     const deliveryId = delivery.UUID;
     const timeoutMs = (sub && sub.timeoutMs) || 5000;
 
-    // Build the outgoing payload: base event payload + per-subscriber encrypted fields.
-    // org_id is the control-plane reference for the org, falling back to the internal
-    // UUID when the org hasn't been linked to a control-plane org yet.
+    const encryptedFields = delivery.ENCRYPTED_FIELDS || {};
     const outgoing = {
         event_id: event.UUID,
         event_type: event.TYPE,
         occurred_at: event.OCCURRED_AT,
-        org_id: orgCpRefId || event.ORG_UUID,
-        data: { ...(event.PAYLOAD || {}) }
+        org: { ref_id: event.CP_REF_ID || event.ORG_UUID },
+        encrypted_fields: Object.keys(encryptedFields),
+        data: { ...(event.PAYLOAD || {}), ...encryptedFields }
     };
-    if (delivery.ENCRYPTED_FIELDS) {
-        outgoing.data.encrypted_key = delivery.ENCRYPTED_FIELDS;
-    }
 
     const body = JSON.stringify(outgoing);
 
@@ -120,28 +124,18 @@ async function runBatch() {
             logger.warn('Event not found for delivery', { deliveryId: delivery.UUID });
             continue;
         }
+        event.CP_REF_ID = orgCpRefIdMap[event.ORG_UUID] ?? null;
 
         let result;
         try {
-            result = await post(delivery, event, orgCpRefIdMap[event.ORG_UUID]);
+            result = await post(delivery, event);
         } catch (postErr) {
-            const newAttemptCount = delivery.ATTEMPT_COUNT + 1;
-            const deadLetter = newAttemptCount >= getMaxAttempts();
-            const nextAt = deadLetter ? new Date() : nextAttemptAt(newAttemptCount - 1);
-            await eventDao.markFailed(delivery.UUID, {
-                httpStatus: 0,
-                error: postErr.message,
-                attemptCount: newAttemptCount,
-                nextAttemptAt: nextAt,
-                deadLetter
-            });
+            await eventDao.markFailed(delivery.UUID, { httpStatus: 0, error: postErr.message });
             logger.error('Post threw unexpectedly', {
                 deliveryId: delivery.UUID, error: postErr.message
             });
             continue;
         }
-
-        const newAttemptCount = delivery.ATTEMPT_COUNT + 1;
 
         if (result.ok) {
             await eventDao.markDelivered(delivery.UUID, result.status);
@@ -150,30 +144,11 @@ async function runBatch() {
                 eventType: event.TYPE, status: result.status
             });
         } else {
-            const deadLetter = isNotRetryable(result.status) || newAttemptCount >= getMaxAttempts();
-            const nextAt = deadLetter ? new Date() : nextAttemptAt(newAttemptCount - 1);
-
-            await eventDao.markFailed(delivery.UUID, {
-                httpStatus: result.status,
-                error: result.error,
-                attemptCount: newAttemptCount,
-                nextAttemptAt: nextAt,
-                deadLetter
+            await eventDao.markFailed(delivery.UUID, { httpStatus: result.status, error: result.error });
+            logger.warn('[deliveryWorker] failed', {
+                deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
+                eventType: event.TYPE, status: result.status, error: result.error
             });
-
-            if (deadLetter) {
-                logger.error('Dead-lettered', {
-                    deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
-                    eventType: event.TYPE, attempts: newAttemptCount,
-                    status: result.status, error: result.error
-                });
-            } else {
-                logger.warn('Will retry', {
-                    deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
-                    eventType: event.TYPE, attempts: newAttemptCount,
-                    nextAttemptAt: nextAt, error: result.error || result.status
-                });
-            }
         }
     }
 }

@@ -126,7 +126,6 @@ function _formatDeliverySummary(delivery) {
         eventType: event ? event.TYPE : null,
         occurredAt: event ? event.OCCURRED_AT : null,
         status: delivery.STATUS,
-        attemptCount: delivery.ATTEMPT_COUNT,
         lastHttpStatus: delivery.LAST_HTTP_STATUS || null,
         lastError: delivery.LAST_ERROR || null,
         lastAttemptAt: delivery.LAST_ATTEMPT_AT || null,

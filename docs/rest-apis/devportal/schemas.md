@@ -1561,7 +1561,6 @@ Webhook subscriber configuration. The secret is never included.
   "eventType": "apikey.generated",
   "occurredAt": "2019-08-24T14:15:22Z",
   "status": "DELIVERED",
-  "attemptCount": 1,
   "lastHttpStatus": 200,
   "lastError": "string",
   "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -1580,7 +1579,6 @@ A single delivery attempt made to a webhook subscriber.
 |eventType|string¦null|false|none|none|
 |occurredAt|string(date-time)¦null|false|none|none|
 |status|string|false|none|none|
-|attemptCount|integer|false|none|none|
 |lastHttpStatus|integer¦null|false|none|none|
 |lastError|string¦null|false|none|none|
 |lastAttemptAt|string(date-time)¦null|false|none|none|
@@ -1594,7 +1592,6 @@ A single delivery attempt made to a webhook subscriber.
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|
 
 <h2 id="tocS_AppKeyMappingRequest">AppKeyMappingRequest</h2>
 
@@ -2188,7 +2185,6 @@ continued
   "subscriberId": "sub-xyz789",
   "targetUrl": "https://example.com/webhook",
   "status": "DELIVERED",
-  "attemptCount": 1,
   "lastHttpStatus": 200,
   "lastError": "string",
   "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -2207,7 +2203,6 @@ A single webhook delivery attempt.
 |subscriberId|string|false|none|none|
 |targetUrl|string¦null|false|none|none|
 |status|string|false|none|none|
-|attemptCount|integer|false|none|none|
 |lastHttpStatus|integer¦null|false|none|none|
 |lastError|string¦null|false|none|none|
 |lastAttemptAt|string(date-time)¦null|false|none|none|
@@ -2221,7 +2216,6 @@ A single webhook delivery attempt.
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|
 
 <h2 id="tocS_WebhookEvent">WebhookEvent</h2>
 
@@ -2245,7 +2239,6 @@ A single webhook delivery attempt.
       "subscriberId": "sub-xyz789",
       "targetUrl": "https://example.com/webhook",
       "status": "DELIVERED",
-      "attemptCount": 1,
       "lastHttpStatus": 200,
       "lastError": "string",
       "lastAttemptAt": "2019-08-24T14:15:22Z",

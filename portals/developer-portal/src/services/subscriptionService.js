@@ -40,6 +40,7 @@ async function safePublish(eventType, payload, opts) {
 function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
         subscription_id: sub.UUID,
+        subscriber_id: sub.CREATED_BY,
         subscription_plan: {
             ref_id: plan ? (plan.REF_ID || null) : null,
             name: plan ? (plan.NAME || null) : null,
@@ -112,7 +113,7 @@ const createSubscription = async (req, res) => {
                 orgId: orgID,
                 aggregateType: 'subscription',
                 aggregateId: newSub.UUID,
-                plaintextKey: newSub.TOKEN,
+                secretFields: { token: newSub.TOKEN },
             });
         });
 
@@ -202,6 +203,18 @@ const updateSubscription = async (req, res) => {
             });
         }
         const sub = await subDao.get(orgID, subscriptionId, req.user.sub);
+        try {
+            await sequelize.transaction(async (t) => {
+                await safePublish('subscription.updated', buildWebhookPayload(existing, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN), {
+                    transaction: t,
+                    orgId: orgID,
+                    aggregateType: 'subscription',
+                    aggregateId: subscriptionId,
+                });
+            });
+        } catch (pubErr) {
+            logger.warn('Failed to publish subscription.updated event', { orgId: orgID, subscriptionId, error: pubErr.message });
+        }
         return res.status(200).json(formatSubscriptionResponse(sub));
     } catch (error) {
         logger.error('Error updating subscription', {

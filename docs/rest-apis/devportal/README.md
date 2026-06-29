@@ -133,7 +133,6 @@ Base URLs:
 
 - [List webhook events](webhook-events.md#list-webhook-events)
 - [Get a webhook event](webhook-events.md#get-a-webhook-event)
-- [Retry a failed webhook delivery](webhook-events.md#retry-a-failed-webhook-delivery)
 
 ### [Webhook Subscribers](webhook-subscribers.md)
 
