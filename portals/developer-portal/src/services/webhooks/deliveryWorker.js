@@ -30,7 +30,22 @@ let running = false;
 let intervalHandle = null;
 
 /**
- * POST a single delivery. Returns { ok, status, error }.
+ * POST a single delivery to the subscriber's target URL.
+ *
+ * Payload shape:
+ * {
+ *   event_id, event_type, occurred_at,
+ *   org: { ref_id },          — CP_REF_ID, falls back to internal ORG_UUID
+ *   encrypted_fields: [],     — names of fields in `data` that carry an encrypted envelope
+ *   data: {
+ *     ...event payload,
+ *     [fieldName]: { wrappedKey, iv, tag, ciphertext }  — per encrypted field
+ *   }
+ * }
+ *
+ * event.CP_REF_ID must be set by the caller (runBatch) before calling this function.
+ *
+ * Returns { ok, status, error }.
  */
 async function post(delivery, event) {
     const sub = await getSubscriber(delivery.SUBSCRIBER_ID);
@@ -41,16 +56,15 @@ async function post(delivery, event) {
     const deliveryId = delivery.UUID;
     const timeoutMs = (sub && sub.timeoutMs) || 5000;
 
+    const encryptedFields = delivery.ENCRYPTED_FIELDS || {};
     const outgoing = {
         event_id: event.UUID,
         event_type: event.TYPE,
         occurred_at: event.OCCURRED_AT,
         org: { ref_id: event.CP_REF_ID || event.ORG_UUID },
-        data: { ...(event.PAYLOAD || {}) }
+        encrypted_fields: Object.keys(encryptedFields),
+        data: { ...(event.PAYLOAD || {}), ...encryptedFields }
     };
-    if (delivery.ENCRYPTED_FIELDS) {
-        outgoing.data.encrypted_key = delivery.ENCRYPTED_FIELDS;
-    }
 
     const body = JSON.stringify(outgoing);
 
@@ -110,7 +124,7 @@ async function runBatch() {
             logger.warn('Event not found for delivery', { deliveryId: delivery.UUID });
             continue;
         }
-        event.CP_REF_ID = orgCpRefIdMap[event.ORG_UUID];
+        event.CP_REF_ID = orgCpRefIdMap[event.ORG_UUID] ?? null;
 
         let result;
         try {

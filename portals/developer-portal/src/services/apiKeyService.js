@@ -186,7 +186,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
                     ...(application && { application })
                 },
                 { transaction: t, orgId,
-                  aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
+                  aggregateType: 'apikey', aggregateId: keyId, secretFields: { key: plaintext } }
             );
 
             if (application) {
@@ -230,7 +230,7 @@ async function regenerate({ orgId, keyId, actor }) {
                     ...(application && { application })
                 },
                 { transaction: t, orgId,
-                  aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
+                  aggregateType: 'apikey', aggregateId: keyId, secretFields: { key: plaintext } }
             );
         });
     } catch (err) {

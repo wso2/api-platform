@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const DPEvent = require('./event');
 
 // One delivery row per (event × subscriber). ENCRYPTED_FIELDS holds per-subscriber
-// ciphertext (e.g. encrypted_key for apikey.* events) so plaintext is never in DP_EVENT.
+// ciphertext ({ [fieldName]: envelope }) so plaintext is never in DP_EVENT.
 const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     UUID: {
         type: DataTypes.STRING(40),
@@ -41,7 +41,7 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         allowNull: false
     },
     ENCRYPTED_FIELDS: {
-        type: DataTypes.JSONB,
+        type: DataTypes.JSON,
         allowNull: true,
         defaultValue: null
     },

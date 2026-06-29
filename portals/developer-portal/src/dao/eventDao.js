@@ -34,7 +34,9 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
 
 /**
  * Write delivery rows for a set of subscribers, within the caller's transaction.
- * perSubscriberEncrypted: { [subscriberId]: { ...encryptedFields } }
+ * perSubscriberEncrypted: { [subscriberId]: { [fieldName]: encryptedEnvelope } }
+ * The per-subscriber map is stored as-is in ENCRYPTED_FIELDS and merged into
+ * the webhook payload's `data` by the delivery worker.
  */
 async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, transaction) {
     const rows = subscribers.map(sub => ({
