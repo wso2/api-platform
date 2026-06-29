@@ -25,24 +25,24 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // CreateLLMProviderTemplate implements ServerInterface.CreateLLMProviderTemplate
 // (POST /llm-provider-templates)
-func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Request) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -51,7 +51,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 
 	storedTemplate, err := s.llmDeploymentService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
 		Spec:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -59,21 +59,21 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, utils.ErrLLMTemplateValidation) {
 			log.Warn("Template configuration invalid", slog.Any("error", err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 			return
 		}
 		if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 			return
 		}
 		log.Error("Failed to create LLM provider template", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to create LLM provider template",
 		})
@@ -84,12 +84,12 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 		slog.String("uuid", storedTemplate.UUID),
 		slog.String("handle", storedTemplate.GetHandle()))
 
-	c.JSON(http.StatusCreated, buildTemplateResourceResponse(storedTemplate))
+	httputil.WriteJSON(w, http.StatusCreated, buildTemplateResourceResponse(storedTemplate))
 }
 
 // ListLLMProviderTemplates implements ServerInterface.ListLLMProviderTemplates
 // (GET /llm-providers/templates)
-func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMProviderTemplatesParams) {
+func (s *APIServer) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Request, params api.ListLLMProviderTemplatesParams) {
 	templates := s.llmDeploymentService.ListLLMProviderTemplates(params.DisplayName)
 
 	items := make([]any, 0, len(templates))
@@ -97,7 +97,7 @@ func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMP
 		items = append(items, buildTemplateResourceResponse(tmpl))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":    "success",
 		"count":     len(items),
 		"templates": items,
@@ -106,41 +106,41 @@ func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMP
 
 // GetLLMProviderTemplateById implements ServerInterface.GetLLMProviderTemplateById
 // (GET /llm-provider-templates/{id})
-func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) GetLLMProviderTemplateById(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
 
 	template, err := s.llmDeploymentService.GetLLMProviderTemplateByHandle(id)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			log.Warn("LLM provider template not found", slog.String("handle", id))
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("Template with id '%s' not found", id),
 			})
 			return
 		}
 		log.Error("Failed to get LLM provider template", slog.String("handle", id), slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to get LLM provider template",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, buildTemplateResourceResponse(template))
+	httputil.WriteJSON(w, http.StatusOK, buildTemplateResourceResponse(template))
 }
 
 // UpdateLLMProviderTemplate implements ServerInterface.UpdateLLMProviderTemplate
 // (PUT /llm-provider-templates/{id})
-func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -149,13 +149,13 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 
 	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(id, utils.LLMTemplateParams{
 		Spec:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
 	if err != nil {
 		if errors.Is(err, utils.ErrLLMTemplateNotFound) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("Template with id '%s' not found", id),
 			})
@@ -163,14 +163,14 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 		}
 		if errors.Is(err, utils.ErrLLMTemplateValidation) {
 			log.Warn("Template configuration invalid", slog.Any("error", err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 			return
 		}
 		log.Error("Failed to update LLM provider template", slog.String("id", id), slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to update LLM provider template",
 		})
@@ -181,27 +181,27 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 		slog.String("uuid", updated.UUID),
 		slog.String("handle", updated.GetHandle()))
 
-	c.JSON(http.StatusOK, buildTemplateResourceResponse(updated))
+	httputil.WriteJSON(w, http.StatusOK, buildTemplateResourceResponse(updated))
 }
 
 // DeleteLLMProviderTemplate implements ServerInterface.DeleteLLMProviderTemplate
 // (DELETE /llm-provider-templates/{id})
-func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) DeleteLLMProviderTemplate(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 
 	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, log)
 	if err != nil {
 		if errors.Is(err, utils.ErrLLMTemplateNotFound) {
 			log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("Template with id '%s' not found", id),
 			})
 			return
 		}
 		log.Error("Failed to delete LLM provider template", slog.String("id", id), slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to delete LLM provider template",
 		})
@@ -212,7 +212,7 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 		slog.String("uuid", deleted.UUID),
 		slog.String("handle", deleted.GetHandle()))
 
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "LLM provider template deleted successfully",
 		"id":      deleted.GetHandle(),

@@ -32,6 +32,7 @@ import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
 import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
 import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
+import { forceLogoutAndRedirect } from './auth/logout';
 import { DEFAULT_ORG_REGION } from './config.env';
 
 // App Shell Pages
@@ -58,6 +59,10 @@ import EditLLMProxy from './pages/appShell/appShellPages/proxies/EditLLMProxy';
 import ServiceProviderLayout from './pages/appShell/appShellPages/serviceProvider/ServiceProviderLayout';
 import ServiceProviders from './pages/appShell/appShellPages/serviceProvider/ProvidersList';
 import ServiceProviderNew from './pages/appShell/appShellPages/serviceProvider/ServiceProviderNew';
+import CreateProviderTemplate from './pages/appShell/appShellPages/providerTemplate/CreateProviderTemplate';
+import ProviderTemplateOverview from './pages/appShell/appShellPages/providerTemplate/ProviderTemplateOverview';
+import EditProviderTemplate from './pages/appShell/appShellPages/providerTemplate/EditProviderTemplate';
+import CreateProviderTemplateVersion from './pages/appShell/appShellPages/providerTemplate/CreateProviderTemplateVersion';
 import ServiceProviderOverview from './pages/appShell/appShellPages/serviceProvider/ServiceProviderOverview';
 import ServiceProviderDeploy from './pages/appShell/appShellPages/serviceProvider/ServiceProviderDeploy';
 import EditServiceProvider from './pages/appShell/appShellPages/serviceProvider/EditServiceProvider';
@@ -67,6 +72,7 @@ import OrgRegisterPage from './pages/register/OrgRegisterPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
 import Settings from './pages/appShell/appShellPages/settings/Main';
+import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
 import ExternalServersList from './pages/appShell/appShellPages/externalServers/ExternalServersList';
 import ExternalServersNew from './pages/appShell/appShellPages/externalServers/ExternalServersNew';
 import ExternalServersOverview from './pages/appShell/appShellPages/externalServers/ExternalServersOverview';
@@ -174,6 +180,7 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
   const initiated = useRef(false);
   const [orgState, setOrgState] = useState<OrgInitState>('checking');
   const [orgError, setOrgError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   React.useEffect(() => {
     if (initiated.current) return;
@@ -202,6 +209,13 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
         setOrgState('done');
       })
       .catch((err: unknown) => {
+        // A 401 means the session is invalid/expired — retrying won't help.
+        // Surface a "session expired" screen with a logout action instead.
+        if ((err as { status?: number })?.status === 401) {
+          setSessionExpired(true);
+          setOrgState('error');
+          return;
+        }
         setOrgError(err instanceof Error ? err.message : 'Failed to set up workspace');
         setOrgState('error');
       });
@@ -220,7 +234,9 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
     return (
       <OrgProvisioningPage
         orgName={user?.org?.name ?? undefined}
-        error={orgError}
+        error={sessionExpired ? null : orgError}
+        isSessionExpired={sessionExpired}
+        onLogout={() => { void forceLogoutAndRedirect(); }}
         onRetry={() => { initiated.current = false; setOrgState('checking'); }}
       />
     );
@@ -525,14 +541,54 @@ export default function App() {
                 </WithPageBoundary>
               }
             />
-            <Route
-              path="settings"
-              element={
-                <WithPageBoundary>
-                  <Settings />
-                </WithPageBoundary>
-              }
-            />
+            <Route path="settings" element={<ServiceProviderLayout />}>
+              <Route element={<Settings />}>
+                <Route
+                  index
+                  element={<Navigate to="llm-provider-templates" replace />}
+                />
+                <Route
+                  path="llm-provider-templates"
+                  element={
+                    <WithPageBoundary>
+                      <ProviderTemplatesList />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/new"
+                  element={
+                    <WithPageBoundary>
+                      <CreateProviderTemplate />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/:templateId"
+                  element={
+                    <WithPageBoundary>
+                      <ProviderTemplateOverview />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/:templateId/edit"
+                  element={
+                    <WithPageBoundary>
+                      <EditProviderTemplate />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/:templateId/new-version"
+                  element={
+                    <WithPageBoundary>
+                      <CreateProviderTemplateVersion />
+                    </WithPageBoundary>
+                  }
+                />
+              </Route>
+            </Route>
             <Route path="projects/:projectSlug" element={<ProjectShell />}>
               <Route index element={<Navigate to="home" replace />} />
               <Route
@@ -732,14 +788,18 @@ export default function App() {
                   </WithPageBoundary>
                 }
               />
-              <Route
-                path="settings"
-                element={
-                  <WithPageBoundary>
-                    <Settings />
-                  </WithPageBoundary>
-                }
-              />
+              <Route path="settings" element={<ServiceProviderLayout />}>
+                <Route element={<Settings />}>
+                  <Route
+                    index
+                    element={
+                      <WithPageBoundary>
+                        <ProviderTemplatesList />
+                      </WithPageBoundary>
+                    }
+                  />
+                </Route>
+              </Route>
             </Route>
           </Route>
         </Route>

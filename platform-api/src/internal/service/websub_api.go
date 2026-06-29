@@ -37,10 +37,10 @@ type WebSubAPIService struct {
 	repo                 repository.WebSubAPIRepository
 	projectRepo          repository.ProjectRepository
 	gatewayRepo          repository.GatewayRepository
-	devPortalService     *DevPortalService
 	gatewayEventsService *GatewayEventsService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
 // NewWebSubAPIService creates a new WebSubAPIService instance
@@ -48,19 +48,19 @@ func NewWebSubAPIService(
 	repo repository.WebSubAPIRepository,
 	projectRepo repository.ProjectRepository,
 	gatewayRepo repository.GatewayRepository,
-	devPortalService *DevPortalService,
 	gatewayEventsService *GatewayEventsService,
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
+	auditRepo repository.AuditRepository,
 ) *WebSubAPIService {
 	return &WebSubAPIService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
-		devPortalService:     devPortalService,
 		gatewayEventsService: gatewayEventsService,
 		apiUtil:              apiUtil,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
 }
 
@@ -137,11 +137,12 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
-		Transport:        transport,
+		Origin: constants.OriginCP,
 		Configuration: model.WebSubAPIConfiguration{
 			Name:              req.Name,
 			Version:           req.Version,
 			Context:           req.Context,
+			Transport:         transport,
 			Channels:          mapWebSubChannelsAPIToModel(&req.Channels),
 			Upstream:          *mapUpstreamAPIToModel(req.Upstream),
 			AllChannels:       mapWebSubAllChannelPoliciesAPIToModel(req.AllChannels),
@@ -156,6 +157,9 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		return nil, fmt.Errorf("failed to create WebSub API: %w", err)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", m.UUID, "websub_api", orgUUID, createdBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
@@ -211,7 +215,7 @@ func (s *WebSubAPIService) List(orgUUID, projectUUID string, limit, offset int) 
 }
 
 // Update updates an existing WebSub API
-func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
+func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -229,8 +233,12 @@ func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*
 	if existing == nil {
 		return nil, constants.ErrWebSubAPINotFound
 	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
 
-	transport := existing.Transport
+	transport := existing.Configuration.Transport
 	if req.Transport != nil && len(*req.Transport) > 0 {
 		transport = make([]string, 0, len(*req.Transport))
 		for _, t := range *req.Transport {
@@ -251,12 +259,13 @@ func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*
 	existing.Name = req.Name
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
+	existing.UpdatedBy = updatedBy
 	existing.LifeCycleStatus = lifeCycleStatus
-	existing.Transport = transport
 	existing.Configuration = model.WebSubAPIConfiguration{
 		Name:              req.Name,
 		Version:           req.Version,
 		Context:           req.Context,
+		Transport:         transport,
 		Channels:          mapWebSubChannelsAPIToModel(&req.Channels),
 		Upstream:          *mapUpstreamAPIToModel(req.Upstream),
 		AllChannels:       mapWebSubAllChannelPoliciesAPIToModel(req.AllChannels),
@@ -270,11 +279,14 @@ func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*
 		return nil, fmt.Errorf("failed to update WebSub API: %w", err)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("UPDATE", existing.UUID, "websub_api", orgUUID, updatedBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
 // Delete deletes a WebSub API by its handle
-func (s *WebSubAPIService) Delete(orgUUID, handle string) error {
+func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
@@ -286,6 +298,10 @@ func (s *WebSubAPIService) Delete(orgUUID, handle string) error {
 	}
 	if websubAPI == nil {
 		return constants.ErrWebSubAPINotFound
+	}
+	// DP-originated artifacts are read-only in the control plane and cannot be deleted from the CP.
+	if err := ensureOriginMutable(websubAPI.Origin); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event
@@ -306,6 +322,9 @@ func (s *WebSubAPIService) Delete(orgUUID, handle string) error {
 		return fmt.Errorf("failed to delete WebSub API: %w", err)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", websubAPI.UUID, "websub_api", orgUUID, deletedBy)
+	}
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -323,58 +342,9 @@ func (s *WebSubAPIService) Delete(orgUUID, handle string) error {
 	return nil
 }
 
-// PublishToDevPortal publishes a WebSub API to a DevPortal
-func (s *WebSubAPIService) PublishToDevPortal(orgUUID, handle string, req *api.PublishToDevPortalRequest) error {
-	websubAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebSub API: %w", err)
-	}
-	if websubAPI == nil {
-		return constants.ErrWebSubAPINotFound
-	}
-
-	// Build a RESTAPI adapter for the devportal service
-	restAPIAdapter := websubAPIModelToRESTAPIAdapter(websubAPI)
-	return s.devPortalService.PublishAPIToDevPortal(websubAPI.UUID, restAPIAdapter, req, orgUUID)
-}
-
-// UnpublishFromDevPortal unpublishes a WebSub API from a DevPortal
-func (s *WebSubAPIService) UnpublishFromDevPortal(orgUUID, handle, devPortalUUID string) error {
-	websubAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebSub API: %w", err)
-	}
-	if websubAPI == nil {
-		return constants.ErrWebSubAPINotFound
-	}
-
-	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgUUID, websubAPI.UUID)
-}
-
 // Count returns the total number of WebSub APIs for an organization
 func (s *WebSubAPIService) Count(orgUUID string) (int, error) {
 	return s.repo.Count(orgUUID)
-}
-
-// websubAPIModelToRESTAPIAdapter creates a minimal api.RESTAPI from model.WebSubAPI for DevPortal operations
-func websubAPIModelToRESTAPIAdapter(m *model.WebSubAPI) *api.RESTAPI {
-	handle := m.Handle
-	desc := m.Description
-	createdBy := m.CreatedBy
-	ctx := ""
-	if m.Configuration.Context != nil {
-		ctx = *m.Configuration.Context
-	}
-	return &api.RESTAPI{
-		Id:          &handle,
-		Name:        m.Name,
-		Version:     m.Version,
-		Context:     ctx,
-		Description: &desc,
-		CreatedBy:   &createdBy,
-		CreatedAt:   utils.TimePtrIfNotZero(m.CreatedAt),
-		UpdatedAt:   utils.TimePtrIfNotZero(m.UpdatedAt),
-	}
 }
 
 // mapWebSubAPIModelToAPI converts a model.WebSubAPI to api.WebSubAPI
@@ -389,9 +359,9 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 	lifeCycleStatus := api.WebSubAPILifeCycleStatus(m.LifeCycleStatus)
 
 	var transport *[]api.WebSubAPITransport
-	if len(m.Transport) > 0 {
-		items := make([]api.WebSubAPITransport, 0, len(m.Transport))
-		for _, t := range m.Transport {
+	if len(m.Configuration.Transport) > 0 {
+		items := make([]api.WebSubAPITransport, 0, len(m.Configuration.Transport))
+		for _, t := range m.Configuration.Transport {
 			items = append(items, api.WebSubAPITransport(t))
 		}
 		transport = &items
@@ -417,6 +387,7 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 		Channels:          *mapWebSubChannelsModelToAPI(m.Configuration.Channels),
 		AllChannels:       mapWebSubAllChannelPoliciesModelToAPI(m.Configuration.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
+		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
@@ -563,6 +534,7 @@ func mapWebSubAPIModelToListItem(m *model.WebSubAPI) *api.WebSubAPIListItem {
 		ProjectId:       utils.StringPtrIfNotEmpty(m.ProjectUUID),
 		Context:         m.Configuration.Context,
 		LifeCycleStatus: &lifeCycleStatus,
+		ReadOnly:        utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:       utils.TimePtr(m.CreatedAt),
 		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
 	}

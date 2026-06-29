@@ -74,12 +74,12 @@ func NewWebSubAPIDeploymentService(
 }
 
 // DeployWebSubAPIByHandle creates a new immutable deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.deployWebSubAPI(apiUUID, req, orgUUID)
+	return s.deployWebSubAPI(apiUUID, req, orgUUID, createdBy)
 }
 
 // RestoreWebSubAPIDeploymentByHandle restores a previous deployment using WebSub API handle
@@ -138,9 +138,13 @@ func (s *WebSubAPIDeploymentService) GetWebSubAPIDeploymentsByHandle(apiHandle, 
 }
 
 // deployWebSubAPI deploys a WebSub API to a gateway
-func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.DeployRequest, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
+	}
+	// DP-originated artifacts are read-only in the control plane; deployment cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		return nil, err
 	}
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
@@ -204,6 +208,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
+		CreatedBy:        createdBy,
 	}
 
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
@@ -259,6 +264,21 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 
 // undeployWebSubAPIDeployment undeploys a WebSub API from a gateway
 func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
+	// lifecycle is owned by the data-plane gateway, so the control plane must not
+	// initiate an undeployment for them.
+	if s.artifactRepo != nil {
+		artifact, err := s.artifactRepo.GetByUUID(apiUUID, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to look up artifact origin: %w", err)
+		}
+		if artifact != nil {
+			if err := ensureOriginMutable(artifact.Origin); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	websubAPI, err := s.websubAPIRepo.GetByUUID(apiUUID, orgID)
 	if err != nil {
 		return nil, err
@@ -344,6 +364,12 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 
 // restoreWebSubAPIDeployment restores a previously undeployed WebSub API deployment
 func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane; their deployment
+	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		return nil, err
+	}
+
 	targetDeployment, err := s.deploymentRepo.GetWithContent(*deploymentId, apiUUID, orgID)
 	if err != nil {
 		return nil, err
@@ -541,18 +567,17 @@ func (s *WebSubAPIDeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewa
 		return err
 	}
 	for _, assoc := range associations {
-		if assoc.ResourceID == gatewayID {
+		if assoc.GatewayID == gatewayID {
 			s.slogger.Info("API-gateway association already exists, skipping", "apiUUID", apiUUID, "gatewayID", gatewayID)
 			return nil
 		}
 	}
 	association := &model.APIAssociation{
-		ArtifactID:      apiUUID,
-		OrganizationID:  orgUUID,
-		ResourceID:      gatewayID,
-		AssociationType: constants.AssociationTypeGateway,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+		ArtifactID:     apiUUID,
+		OrganizationID: orgUUID,
+		GatewayID:      gatewayID,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 		s.slogger.Error("Failed to create API-gateway association", "apiUUID", apiUUID, "gatewayID", gatewayID, "orgUUID", orgUUID, "error", err)

@@ -251,7 +251,7 @@ const handleLocalLogin = async (req, res) => {
     let platformToken;
     try {
         const response = await axios.post(
-            `${platformApiUrl}/api/portal/v1/auth/login`,
+            `${platformApiUrl}/api/portal/v0.9/auth/login`,
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

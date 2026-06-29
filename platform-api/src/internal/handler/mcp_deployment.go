@@ -20,6 +20,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -49,241 +50,250 @@ func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentServic
 }
 
 // RegisterRoutes registers all MCP proxy deployment-related routes
-func (h *MCPProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
-	proxyGroup := r.Group(constants.APIBasePath + "/mcp-proxies/:id")
-	{
-		proxyGroup.POST("/deployments", h.DeployMCPProxy)
-		proxyGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployMCPProxyDeployment)
-		proxyGroup.POST("/deployments/:deploymentId/restore", h.RestoreMCPProxyDeployment)
-		proxyGroup.GET("/deployments", h.GetMCPProxyDeployments)
-		proxyGroup.GET("/deployments/:deploymentId", h.GetMCPProxyDeployment)
-		proxyGroup.DELETE("/deployments/:deploymentId", h.DeleteMCPProxyDeployment)
-	}
+func (h *MCPProxyDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{id}/deployments", h.DeployMCPProxy)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}/undeploy", h.UndeployMCPProxyDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}/restore", h.RestoreMCPProxyDeployment)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{id}/deployments", h.GetMCPProxyDeployments)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}", h.GetMCPProxyDeployment)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}", h.DeleteMCPProxyDeployment)
 }
 
 // DeployMCPProxy handles POST /api/v0.9/mcp-proxies/:id/deployments
-func (h *MCPProxyDeploymentHandler) DeployMCPProxy(c *gin.Context) {
-	orgId, ok := middleware.GetOrganizationFromContext(c)
+func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *http.Request) {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	proxyId := c.Param("id")
+	proxyId := r.PathValue("id")
 	if proxyId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))
 		return
 	}
 
 	var req api.DeployRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
 	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"name is required"))
 		return
 	}
 	if req.Base == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
 	if req.GatewayId == (openapi_types.UUID{}) {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"gatewayId is required"))
 		return
 	}
 
-	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId)
+	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId, createdBy)
 	if err != nil {
+		if respondArtifactGuardError(w, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		case errors.Is(err, constants.ErrBaseDeploymentNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Base deployment not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentNameRequired):
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Deployment name is required"))
 			return
 		case errors.Is(err, constants.ErrDeploymentBaseRequired):
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Base is required"))
 			return
 		case errors.Is(err, constants.ErrDeploymentGatewayIDRequired):
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Gateway ID is required"))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid input"))
 			return
 		default:
 			h.slogger.Error("Failed to deploy MCP proxy", "proxyId", proxyId, "error", err)
-			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 				"Failed to deploy MCP proxy"))
 			return
 		}
 	}
 
-	c.JSON(http.StatusCreated, deployment)
+	httputil.WriteJSON(w, http.StatusCreated, deployment)
 }
 
 // UndeployMCPProxyDeployment handles POST /api/v0.9/mcp-proxies/:id/deployments/:deploymentId/undeploy
-func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
-	orgId, ok := middleware.GetOrganizationFromContext(c)
+func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	proxyId := c.Param("id")
-	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	proxyId := r.PathValue("id")
+	deploymentId := r.PathValue("deploymentId")
+	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"gatewayId is required"))
 		return
 	}
 
 	if proxyId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))
 		return
 	}
 
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
+		if respondArtifactGuardError(w, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Deployment not found"))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotActive):
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"No active deployment found for this MCP proxy on the gateway"))
 			return
 		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Deployment is bound to a different gateway"))
 			return
 		default:
 			h.slogger.Error("Failed to undeploy MCP proxy", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, deployment)
+	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
 // RestoreMCPProxyDeployment handles POST /api/v0.9/mcp-proxies/:id/deployments/:deploymentId/restore
-func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
-	orgId, ok := middleware.GetOrganizationFromContext(c)
+func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	proxyId := c.Param("id")
-	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	proxyId := r.PathValue("id")
+	deploymentId := r.PathValue("deploymentId")
+	gatewayId := r.URL.Query().Get("gatewayId")
 
 	if deploymentId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"gatewayId is required"))
 		return
 	}
 	if proxyId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))
 		return
 	}
 
 	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
+		if respondArtifactGuardError(w, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Deployment not found"))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentAlreadyDeployed):
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"Cannot restore currently deployed deployment"))
 			return
 		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Deployment is bound to a different gateway"))
 			return
 		default:
 			h.slogger.Error("Failed to restore MCP proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, deployment)
+	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
 // DeleteMCPProxyDeployment handles DELETE /api/v0.9/mcp-proxies/:id/deployments/:deploymentId
-func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(c *gin.Context) {
-	orgId, ok := middleware.GetOrganizationFromContext(c)
+func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	proxyId := c.Param("id")
-	deploymentId := c.Param("deploymentId")
+	proxyId := r.PathValue("id")
+	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Deployment ID is required"))
 		return
 	}
@@ -292,46 +302,46 @@ func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Deployment not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentIsDeployed):
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"Cannot delete an active deployment - undeploy it first"))
 			return
 		default:
 			h.slogger.Error("Failed to delete MCP proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "error", err)
-			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete deployment"))
 			return
 		}
 	}
 
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetMCPProxyDeployment handles GET /api/v0.9/mcp-proxies/:id/deployments/:deploymentId
-func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployment(c *gin.Context) {
-	orgId, ok := middleware.GetOrganizationFromContext(c)
+func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	proxyId := c.Param("id")
-	deploymentId := c.Param("deploymentId")
+	proxyId := r.PathValue("id")
+	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Deployment ID is required"))
 		return
 	}
@@ -340,44 +350,48 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployment(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Deployment not found"))
 			return
 		default:
 			h.slogger.Error("Failed to get MCP proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "error", err)
-			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 				"Failed to retrieve deployment"))
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, deployment)
+	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
 // GetMCPProxyDeployments handles GET /api/v0.9/mcp-proxies/:id/deployments
-func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(c *gin.Context) {
-	orgId, ok := middleware.GetOrganizationFromContext(c)
+func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(w http.ResponseWriter, r *http.Request) {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	proxyId := c.Param("id")
+	proxyId := r.PathValue("id")
 	if proxyId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))
 		return
 	}
 
 	var params api.GetMCPProxyDeploymentsParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	if v := r.URL.Query().Get("gatewayId"); v != "" {
+		gid := api.GatewayIdQ(v)
+		params.GatewayId = &gid
+	}
+	if v := r.URL.Query().Get("status"); v != "" {
+		st := api.GetMCPProxyDeploymentsParamsStatus(v)
+		params.Status = &st
 	}
 
 	gatewayVal := ""
@@ -394,20 +408,20 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		case errors.Is(err, constants.ErrInvalidDeploymentStatus):
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid deployment status"))
 			return
 		default:
 			h.slogger.Error("Failed to get MCP proxy deployments", "proxyId", proxyId, "error", err)
-			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 				"Failed to retrieve deployments"))
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, deployments)
+	httputil.WriteJSON(w, http.StatusOK, deployments)
 }

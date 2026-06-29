@@ -18,12 +18,12 @@
 package utils
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -46,13 +46,12 @@ func NewErrorResponse(code int, message string, description ...string) ErrorResp
 	return resp
 }
 
-// NewValidationErrorResponse creates a new error response for validation errors
-func NewValidationErrorResponse(c *gin.Context, err error) {
+// NewValidationErrorResponse writes a 400 JSON error response for validation errors.
+func NewValidationErrorResponse(w http.ResponseWriter, err error) {
+	w.Header().Set("Content-Type", "application/json")
 	var ve validator.ValidationErrors
-
 	if errors.As(err, &ve) {
-		errorsList := make([]map[string]string, 0)
-
+		errorsList := make([]map[string]string, 0, len(ve))
 		for _, fe := range ve {
 			errorsList = append(errorsList, map[string]string{
 				"field":   fe.Field(),
@@ -60,8 +59,8 @@ func NewValidationErrorResponse(c *gin.Context, err error) {
 				"message": fmt.Sprintf("The field %s is %s", fe.Field(), fe.Tag()),
 			})
 		}
-
-		c.JSON(http.StatusBadRequest, gin.H{
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"code":    400,
 			"title":   "Bad Request",
 			"details": "Validation failed for the request parameters",
@@ -69,10 +68,9 @@ func NewValidationErrorResponse(c *gin.Context, err error) {
 		})
 		return
 	}
-
-	// Non validation error
 	log.Printf("[ERROR] Request validation fallback error: %v", err)
-	c.JSON(http.StatusBadRequest, gin.H{
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"code":    400,
 		"title":   "Bad Request",
 		"details": "Invalid input",

@@ -58,9 +58,6 @@ path = "/app/data/api_platform.db"
 # max_idle_conns    = 10    # maximum idle connections in the pool
 # conn_max_lifetime = 300   # seconds before a connection is recycled
 
-# Schema management
-# execute_schema_ddl = true   # set to false if you manage migrations yourself
-
 # Encryption key for subscription tokens stored in the database (32-byte hex string).
 # Required when subscription tokens are used; auto-generated if left empty.
 # subscription_token_encryption_key = ""
@@ -118,7 +115,7 @@ region = "us"
 username      = "admin"
 password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # Full scope set — trim to restrict permissions for this user.
-scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read"
+scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage"
 
 # Additional users — uncomment and repeat this block as needed
 # [[auth.file_based.users]]

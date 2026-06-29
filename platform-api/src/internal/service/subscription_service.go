@@ -30,16 +30,20 @@ import (
 // SubscriptionService handles application-level subscription business logic
 type SubscriptionService struct {
 	apiRepo          repository.APIRepository
+	artifactRepo     repository.ArtifactRepository
 	subscriptionRepo repository.SubscriptionRepository
 	gatewayEvents    *GatewayEventsService
+	auditRepo        repository.AuditRepository
 	slogger          *slog.Logger
 }
 
 // NewSubscriptionService creates a new subscription service
 func NewSubscriptionService(
 	apiRepo repository.APIRepository,
+	artifactRepo repository.ArtifactRepository,
 	subscriptionRepo repository.SubscriptionRepository,
 	gatewayEvents *GatewayEventsService,
+	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
 ) *SubscriptionService {
 	if slogger == nil {
@@ -47,8 +51,10 @@ func NewSubscriptionService(
 	}
 	return &SubscriptionService{
 		apiRepo:          apiRepo,
+		artifactRepo:     artifactRepo,
 		subscriptionRepo: subscriptionRepo,
 		gatewayEvents:    gatewayEvents,
+		auditRepo:        auditRepo,
 		slogger:          slogger,
 	}
 }
@@ -67,7 +73,7 @@ func (s *SubscriptionService) resolveAPIUUID(apiId, orgUUID string) (string, err
 		return apiModel.ID, nil
 	}
 
-	metadata, err := s.apiRepo.GetAPIMetadataByHandle(apiId, orgUUID)
+	metadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiId, orgUUID)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			return "", constants.ErrAPINotFound
@@ -132,29 +138,38 @@ func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, subscrib
 	}
 
 	sub := &model.Subscription{
-		APIUUID:            apiUUID,
+		ArtifactUUID:       apiUUID,
 		SubscriberID:       subscriberID,
 		ApplicationID:      applicationId,
 		SubscriptionPlanID: subscriptionPlanId,
 		OrganizationUUID:   orgUUID,
 		Status:             st,
+		CreatedBy:          subscriberID,
+		UpdatedBy:          subscriberID,
 	}
 	if err := s.subscriptionRepo.Create(sub); err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("CREATE", sub.UUID, "subscription", sub.OrganizationUUID, subscriberID)
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 		if err != nil {
-			s.slogger.Warn("Failed to load gateways for subscription.created broadcast",
-				"apiId", apiUUID, "subscriptionId", sub.UUID, "error", err)
+			s.slogger.Warn("Failed to load gateways for subscription.created broadcast", "apiUUID", apiUUID, "error", err)
 		} else {
+			var planID, appID string
+			if sub.SubscriptionPlanID != nil {
+				planID = *sub.SubscriptionPlanID
+			}
+			if sub.ApplicationID != nil {
+				appID = *sub.ApplicationID
+			}
 			event := &model.SubscriptionCreatedEvent{
-				ApiId:              apiUUID,
+				ApiId:              sub.ArtifactUUID,
 				SubscriptionId:     sub.UUID,
-				ApplicationId:      derefString(sub.ApplicationID),
+				ApplicationId:      appID,
 				SubscriptionToken:  sub.SubscriptionToken,
-				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
+				SubscriptionPlanId: planID,
 				Status:             string(sub.Status),
 			}
 			for _, gw := range gateways {
@@ -233,22 +248,30 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 			return nil, fmt.Errorf("invalid status: %s", status)
 		}
 	}
+	sub.UpdatedBy = subscriberID
 	if err := s.subscriptionRepo.Update(sub); err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, subscriberID)
 
 	if s.gatewayEvents != nil {
-		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.APIUUID, orgUUID)
+		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
 		if err != nil {
-			s.slogger.Warn("Failed to load gateways for subscription.updated broadcast",
-				"apiId", sub.APIUUID, "subscriptionId", sub.UUID, "error", err)
+			s.slogger.Warn("Failed to load gateways for subscription.updated broadcast", "apiUUID", sub.ArtifactUUID, "error", err)
 		} else {
+			var planID, appID string
+			if sub.SubscriptionPlanID != nil {
+				planID = *sub.SubscriptionPlanID
+			}
+			if sub.ApplicationID != nil {
+				appID = *sub.ApplicationID
+			}
 			event := &model.SubscriptionUpdatedEvent{
-				ApiId:              sub.APIUUID,
+				ApiId:              sub.ArtifactUUID,
 				SubscriptionId:     sub.UUID,
-				ApplicationId:      derefString(sub.ApplicationID),
+				ApplicationId:      appID,
 				SubscriptionToken:  sub.SubscriptionToken,
-				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
+				SubscriptionPlanId: planID,
 				Status:             string(sub.Status),
 			}
 			for _, gw := range gateways {
@@ -285,16 +308,17 @@ func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscr
 	if err := s.subscriptionRepo.Delete(subscriptionId, orgUUID); err != nil {
 		return err
 	}
+	_ = s.auditRepo.Record("DELETE", subscriptionId, "subscription", orgUUID, subscriberID)
 
 	if s.gatewayEvents != nil {
-		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.APIUUID, orgUUID)
+		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
 		if err != nil {
 			s.slogger.Warn("Failed to load gateways for subscription.deleted event",
-				"apiId", sub.APIUUID, "subscriptionId", sub.UUID, "error", err)
+				"apiId", sub.ArtifactUUID, "subscriptionId", sub.UUID, "error", err)
 			return nil
 		}
 		event := &model.SubscriptionDeletedEvent{
-			ApiId:             sub.APIUUID,
+			ApiId:             sub.ArtifactUUID,
 			SubscriptionId:    sub.UUID,
 			ApplicationId:     derefString(sub.ApplicationID),
 			SubscriptionToken: sub.SubscriptionToken,

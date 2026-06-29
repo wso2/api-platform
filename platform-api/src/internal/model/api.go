@@ -30,20 +30,22 @@ type API struct {
 	Description     string           `json:"description,omitempty" db:"description"`
 	Version         string           `json:"version" db:"version"`
 	CreatedBy       string           `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy       string           `json:"updatedBy,omitempty" db:"updated_by"`
 	ProjectID       string           `json:"projectId" db:"project_uuid"`           // FK to Project.ID
 	OrganizationID  string           `json:"organizationId" db:"organization_uuid"` // FK to Organization.ID
 	CreatedAt       time.Time        `json:"createdAt,omitempty" db:"created_at"`
 	UpdatedAt       time.Time        `json:"updatedAt,omitempty" db:"updated_at"`
 	LifeCycleStatus string          `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`
-	Transport       []string        `json:"transport,omitempty" db:"transport"`
 	Channels        []Channel       `json:"channels,omitempty"`
 	Configuration   RestAPIConfig    `json:"configuration" db:"-"`
+	Origin          string        `json:"origin,omitempty" db:"origin"`
 }
 
 type RestAPIConfig struct {
 	Name              string         `json:"name,omitempty"`
 	Version           string         `json:"version,omitempty"`
 	Context           *string        `json:"context,omitempty"`
+	Transport         []string       `json:"transport,omitempty"`
 	Upstream          UpstreamConfig `json:"upstream,omitempty"`
 	Policies          []Policy       `json:"policies,omitempty"`
 	Operations        []Operation    `json:"operations,omitempty"`
@@ -103,16 +105,14 @@ type Policy struct {
 
 // APIAssociation represents the association between an API and a resource (gateway or dev portal)
 type APIAssociation struct {
-	ID              int64     `json:"id" db:"id"`
-	ArtifactID      string    `json:"artifactId" db:"artifact_uuid"`
-	OrganizationID  string    `json:"organizationId" db:"organization_uuid"`
-	ResourceID      string    `json:"resourceId" db:"resource_uuid"`
-	AssociationType string    `json:"associationType" db:"association_type"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+	ArtifactID     string    `json:"artifactId" db:"artifact_uuid"`
+	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
+	GatewayID      string    `json:"gatewayId" db:"gateway_uuid"`
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // TableName returns the table name for the APIAssociation model
 func (APIAssociation) TableName() string {
-	return "association_mappings"
+	return "artifact_gateway_mappings"
 }

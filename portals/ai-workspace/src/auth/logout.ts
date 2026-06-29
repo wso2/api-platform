@@ -50,3 +50,49 @@ export const clearAuthData = (): void => {
   clearBasicAuthSession();
   AUTH_SESSION_KEYS.forEach((key) => sessionStorage.removeItem(key));
 };
+
+/**
+ * Best-effort wipe of the browser's Cache Storage ("site cache").
+ * Used when forcing a logout after an expired/invalid session so a stale
+ * cached response can't keep the user in a broken authenticated state.
+ */
+const clearSiteCache = async (): Promise<void> => {
+  try {
+    if (typeof caches !== 'undefined') {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch (error) {
+    logger.warn('Failed to clear site cache:', error);
+  }
+};
+
+/**
+ * Force a logout without an IDP round-trip and redirect to the login page.
+ *
+ * Used when the platform API rejects a request with 401 (expired/invalid
+ * session): retrying is futile, so we clear all client-side session state and
+ * the site cache, then do a full-page redirect to /login. The full reload
+ * (rather than a router navigation) also discards any in-memory React state
+ * tied to the dead session.
+ */
+export const forceLogoutAndRedirect = async (): Promise<void> => {
+  // Each cleanup step is isolated so a failure in one doesn't skip the rest;
+  // the redirect below must happen regardless of what was wiped successfully.
+  const runStep = (label: string, step: () => void): void => {
+    try {
+      step();
+    } catch (error) {
+      logger.warn(`Force logout: failed to ${label}:`, error);
+    }
+  };
+
+  runStep('clear auth data', clearAuthData);
+  // Wipe any remaining client-side state so nothing carries over the session.
+  runStep('clear sessionStorage', () => sessionStorage.clear());
+  runStep('clear localStorage', () => localStorage.clear());
+  await clearSiteCache();
+
+  // Replace (not assign) so the broken page isn't left in history.
+  window.location.replace('/login');
+};

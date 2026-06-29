@@ -227,14 +227,14 @@ Get a Bearer token first, then pass it via `DEVPORTAL_TOKEN`:
 
 **npm start (HTTP):**
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 DEVPORTAL_URL=http://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
 ```
 
 **Docker Compose (HTTPS):**
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 DEVPORTAL_URL=https://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
 ```
@@ -423,7 +423,7 @@ paths:
 
 ```bash
 # Get a Bearer token
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
 # Get the default org UUID

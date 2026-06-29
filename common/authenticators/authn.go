@@ -18,34 +18,56 @@
 package authenticators
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 var (
 	ErrNoAuthenticator = errors.New("no suitable authenticator found")
 )
 
-// AuthMiddleware creates a unified authentication middleware supporting both Basic and Bearer auth
-func AuthMiddleware(config models.AuthConfig, logger *slog.Logger) (gin.HandlerFunc, error) {
-	// Initialize authenticators once at startup (middleware creation time).
-	// Any configuration errors (e.g., JWT JWKS init failures) should fail fast here
-	// rather than per-request.
-	authenticators := []Authenticator{}
+// unexported context key types prevent collisions across packages.
+type authContextKeyType struct{}
+type authzSkipKeyType struct{}
 
-	// Add Basic authenticator if configured
+// GetAuthContext retrieves the AuthContext stored by AuthMiddleware.
+func GetAuthContext(r *http.Request) (models.AuthContext, bool) {
+	ac, ok := r.Context().Value(authContextKeyType{}).(models.AuthContext)
+	return ac, ok
+}
+
+// WithAuthContext returns a new context with the provided AuthContext stored
+// under the same key used by AuthMiddleware. This is intended for use in tests
+// and other contexts where the auth middleware has not run.
+func WithAuthContext(ctx context.Context, authCtx models.AuthContext) context.Context {
+	return context.WithValue(ctx, authContextKeyType{}, authCtx)
+}
+
+// GetAuthzSkip returns true when the authz middleware should skip role checks.
+func GetAuthzSkip(r *http.Request) bool {
+	skip, _ := r.Context().Value(authzSkipKeyType{}).(bool)
+	return skip
+}
+
+// AuthMiddleware creates a unified authentication middleware supporting both Basic and Bearer auth.
+// Initialize authenticators once at startup (middleware creation time).
+// Any configuration errors (e.g., JWT JWKS init failures) should fail fast here
+// rather than per-request.
+func AuthMiddleware(config models.AuthConfig, logger *slog.Logger) (func(http.Handler) http.Handler, error) {
+	var authenticators []Authenticator
+
 	if config.BasicAuth != nil && config.BasicAuth.Enabled && len(config.BasicAuth.Users) > 0 {
 		authenticators = append(authenticators, NewBasicAuthenticator(config, logger))
 	}
 
-	// Add JWT authenticator if configured
 	if config.JWTConfig != nil && config.JWTConfig.Enabled {
 		jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
 		if err != nil {
@@ -55,84 +77,81 @@ func AuthMiddleware(config models.AuthConfig, logger *slog.Logger) (gin.HandlerF
 	}
 
 	// No authenticators configured => run in no-auth mode.
-	// This disables both authentication and authorization (via AuthzSkipKey).
+	// This disables both authentication and authorization (via authzSkipKey).
 	if len(authenticators) == 0 {
-		return func(c *gin.Context) {
-			authCtx := models.AuthContext{
-				Authenticated: true,
-				UserID:        "sys_noauth_user",
-				Roles:         []string{},
-				Claims:        map[string]any{},
-			}
-			c.Set(constants.AuthContextKey, authCtx)
-			c.Set(constants.AuthzSkipKey, true)
-			c.Next()
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authCtx := models.AuthContext{
+					Authenticated: true,
+					UserID:        "sys_noauth_user",
+					Roles:         []string{},
+					Claims:        map[string]any{},
+				}
+				ctx := context.WithValue(r.Context(), authContextKeyType{}, authCtx)
+				ctx = context.WithValue(ctx, authzSkipKeyType{}, true)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			})
 		}, nil
 	}
 
-	return func(c *gin.Context) {
-		// Skip authentication for specified paths
-		for _, path := range config.SkipPaths {
-			if strings.HasPrefix(c.Request.URL.Path, path) {
-				c.Set(constants.AuthzSkipKey, true)
-				c.Next()
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip authentication for specified paths
+			for _, path := range config.SkipPaths {
+				if strings.HasPrefix(r.URL.Path, path) {
+					ctx := context.WithValue(r.Context(), authzSkipKeyType{}, true)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+			}
+
+			// Find suitable authenticator
+			var selectedAuth Authenticator
+			for _, auth := range authenticators {
+				if auth.CanHandle(r) {
+					selectedAuth = auth
+					break
+				}
+			}
+
+			if selectedAuth == nil {
+				httputil.WriteError(w, http.StatusUnauthorized, constants.AuthzSkipKey, "no valid authentication credentials provided")
 				return
 			}
-		}
 
-		// Find suitable authenticator
-		var selectedAuth Authenticator
-		for _, auth := range authenticators {
-			if auth.CanHandle(c) {
-				selectedAuth = auth
-				break
+			result, err := selectedAuth.Authenticate(r)
+			if err != nil {
+				logger.Info("authentication failed",
+					slog.String("authenticator", selectedAuth.Name()),
+					slog.String("method", r.Method),
+					slog.String("path", r.URL.Path),
+					slog.String("client_ip", r.RemoteAddr),
+				)
+				logger.Debug("authentication failure detail",
+					slog.String("authenticator", selectedAuth.Name()),
+					slog.Any("error", err),
+				)
+				httputil.WriteError(w, http.StatusUnauthorized, "authentication_failed", "authentication failed")
+				return
 			}
-		}
+			logger.Debug("Authentication result", slog.Any("result", result))
+			logger.Debug("Authentication roles", slog.Any("roles", result.Roles))
 
-		if selectedAuth == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "no valid authentication credentials provided",
-			})
-			c.Abort()
-			return
-		}
-
-		// Authenticate
-		result, err := selectedAuth.Authenticate(c)
-		if err != nil {
-			logger.Info("authentication failed",
-				slog.String("authenticator", selectedAuth.Name()),
-				slog.String("method", c.Request.Method),
-				slog.String("path", c.Request.URL.Path),
-				slog.String("client_ip", c.ClientIP()),
-			)
-			// Keep details for debug only.
-			logger.Debug("authentication failure detail",
-				slog.String("authenticator", selectedAuth.Name()),
-				slog.Any("error", err),
-			)
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "authentication failed",
-			})
-			c.Abort()
-			return
-		}
-		logger.Debug("Authentication result", slog.Any("result", result))
-		logger.Debug("Authentication roles", slog.Any("roles", result.Roles))
-
-		claims := result.Claims
-		if claims == nil {
-			claims = map[string]any{}
-		}
-		// Set authentication context
-		authCtx := models.AuthContext{
-			Authenticated: result.Success,
-			UserID:        result.UserID,
-			Roles:         result.Roles,
-			Claims:        claims,
-		}
-		c.Set(constants.AuthContextKey, authCtx)
-
-		c.Next()
+			claims := result.Claims
+			if claims == nil {
+				claims = map[string]any{}
+			}
+			authCtx := models.AuthContext{
+				Authenticated: result.Success,
+				UserID:        result.UserID,
+				Roles:         result.Roles,
+				Claims:        claims,
+			}
+			ctx := context.WithValue(r.Context(), authContextKeyType{}, authCtx)
+			if result.SkipAuthorization {
+				ctx = context.WithValue(ctx, authzSkipKeyType{}, true)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}, nil
 }

@@ -26,7 +26,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wso2/api-platform/common/constants"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -91,13 +90,13 @@ func TestListAPIKeysSuccess(t *testing.T) {
 	server.db.(*MockStorage).apiKeys["0000-key1-0000-000000000000"] = key1
 	server.db.(*MockStorage).apiKeys["0000-key2-0000-000000000000"] = key2
 
-	c, w := createTestContext("GET", "/rest-apis/test-handle/api-keys", nil)
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	w, r := createTestContext("GET", "/rest-apis/test-handle/api-keys", nil)
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
 
-	server.ListAPIKeys(c, "0000-test-handle-0000-000000000000")
+	server.ListAPIKeys(w, r, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -111,13 +110,13 @@ func TestListAPIKeysSuccess(t *testing.T) {
 func TestListAPIKeysAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/rest-apis/nonexistent/api-keys", nil)
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	w, r := createTestContext("GET", "/rest-apis/nonexistent/api-keys", nil)
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
 
-	server.ListAPIKeys(c, "nonexistent")
+	server.ListAPIKeys(w, r, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
@@ -131,8 +130,8 @@ func TestListAPIKeysAPINotFound(t *testing.T) {
 func TestListLLMProviderTemplatesEmpty(t *testing.T) {
 	server := createTestServerWithLLM()
 
-	c, w := createTestContext("GET", "/llm-provider-templates", nil)
-	server.ListLLMProviderTemplates(c, api.ListLLMProviderTemplatesParams{})
+	w, r := createTestContext("GET", "/llm-provider-templates", nil)
+	server.ListLLMProviderTemplates(w, r, api.ListLLMProviderTemplatesParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -179,8 +178,8 @@ func TestListLLMProviderTemplatesWithData(t *testing.T) {
 	require.NoError(t, server.db.SaveLLMProviderTemplate(template1))
 	require.NoError(t, server.db.SaveLLMProviderTemplate(template2))
 
-	c, w := createTestContext("GET", "/llm-provider-templates", nil)
-	server.ListLLMProviderTemplates(c, api.ListLLMProviderTemplatesParams{})
+	w, r := createTestContext("GET", "/llm-provider-templates", nil)
+	server.ListLLMProviderTemplates(w, r, api.ListLLMProviderTemplatesParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -216,8 +215,8 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 	require.NoError(t, server.db.SaveLLMProviderTemplate(template))
 	require.NoError(t, server.store.AddTemplate(template))
 
-	c, w := createTestContext("GET", "/llm-provider-templates/template1", nil)
-	server.GetLLMProviderTemplateById(c, "0000-template1-0000-000000000000")
+	w, r := createTestContext("GET", "/llm-provider-templates/template1", nil)
+	server.GetLLMProviderTemplateById(w, r, "0000-template1-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -239,8 +238,8 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 func TestListLLMProvidersEmpty(t *testing.T) {
 	server := createTestServerWithLLM()
 
-	c, w := createTestContext("GET", "/llm-providers", nil)
-	server.ListLLMProviders(c, api.ListLLMProvidersParams{})
+	w, r := createTestContext("GET", "/llm-providers", nil)
+	server.ListLLMProviders(w, r, api.ListLLMProvidersParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -287,8 +286,8 @@ func TestListLLMProvidersWithData(t *testing.T) {
 	require.NoError(t, server.store.Add(provider))
 	require.NoError(t, server.db.SaveConfig(provider))
 
-	c, w := createTestContext("GET", "/llm-providers", nil)
-	server.ListLLMProviders(c, api.ListLLMProvidersParams{})
+	w, r := createTestContext("GET", "/llm-providers", nil)
+	server.ListLLMProviders(w, r, api.ListLLMProvidersParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -306,8 +305,8 @@ func TestListLLMProvidersWithData(t *testing.T) {
 func TestListLLMProxiesEmpty(t *testing.T) {
 	server := createTestServerWithLLM()
 
-	c, w := createTestContext("GET", "/llm-proxies", nil)
-	server.ListLLMProxies(c, api.ListLLMProxiesParams{})
+	w, r := createTestContext("GET", "/llm-proxies", nil)
+	server.ListLLMProxies(w, r, api.ListLLMProxiesParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -352,8 +351,8 @@ func TestListLLMProxiesWithData(t *testing.T) {
 	require.NoError(t, server.store.Add(proxy))
 	require.NoError(t, server.db.SaveConfig(proxy))
 
-	c, w := createTestContext("GET", "/llm-proxies", nil)
-	server.ListLLMProxies(c, api.ListLLMProxiesParams{})
+	w, r := createTestContext("GET", "/llm-proxies", nil)
+	server.ListLLMProxies(w, r, api.ListLLMProxiesParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 

@@ -91,6 +91,17 @@ const parseErrorMessage = async (res: Response): Promise<string> => {
   }
 };
 
+/**
+ * Build an Error that carries the originating HTTP status, so callers can
+ * branch on it (e.g. surface a "session expired" logout flow on 401) instead
+ * of string-matching the message.
+ */
+const httpError = (message: string, status: number): Error & { status: number } => {
+  const err = new Error(message) as Error & { status: number };
+  err.status = status;
+  return err;
+};
+
 // ============================================================================
 // Organization API Functions
 // ============================================================================
@@ -119,12 +130,12 @@ export async function registerOrganization(
     logger.error('registerOrganization failed:', response.status, message);
 
     if (response.status === 409) {
-      throw new Error(`Organization with handle "${org.handle}" already exists.`);
+      throw httpError(`Organization with handle "${org.handle}" already exists.`, 409);
     }
     if (response.status === 400) {
-      throw new Error(`Invalid organization data: ${message}`);
+      throw httpError(`Invalid organization data: ${message}`, 400);
     }
-    throw new Error(`Failed to register organization: ${message}`);
+    throw httpError(`Failed to register organization: ${message}`, response.status);
   }
 
   const created: PlatformOrganization = await response.json();
@@ -223,5 +234,5 @@ export async function checkOrganizationExists(
   if (response.ok) return true;
 
   const message = await parseErrorMessage(response);
-  throw new Error(`Failed to check organization: ${message}`);
+  throw httpError(`Failed to check organization: ${message}`, response.status);
 }

@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"platform-api/src/api"
@@ -26,7 +27,7 @@ import (
 	"platform-api/src/internal/service"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 type GitHandler struct {
@@ -43,29 +44,29 @@ func NewGitHandler(gitService service.GitService, slogger *slog.Logger) *GitHand
 }
 
 // FetchRepoBranches handles POST /git/repo/fetch-branches
-func (h *GitHandler) FetchRepoBranches(c *gin.Context) {
+func (h *GitHandler) FetchRepoBranches(w http.ResponseWriter, r *http.Request) {
 	// Extract organization from JWT token
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
 		errorResponse := api.GitRepoError{
 			Error:   "UNAUTHORIZED",
 			Code:    "GIT_401",
 			Message: "Organization claim not found in token",
 		}
-		c.JSON(http.StatusUnauthorized, errorResponse)
+		httputil.WriteJSON(w, http.StatusUnauthorized, errorResponse)
 		return
 	}
 
 	var request api.GitRepoBranchesRequest
 
 	// Bind and validate request payload
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		errorResponse := api.GitRepoError{
 			Error:   "INVALID_REQUEST",
 			Code:    "GIT_001",
 			Message: "Invalid request payload: " + err.Error(),
 		}
-		c.JSON(http.StatusBadRequest, errorResponse)
+		httputil.WriteJSON(w, http.StatusBadRequest, errorResponse)
 		return
 	}
 
@@ -76,7 +77,7 @@ func (h *GitHandler) FetchRepoBranches(c *gin.Context) {
 			Code:    "GIT_002",
 			Message: "Repository URL cannot be empty",
 		}
-		c.JSON(http.StatusBadRequest, errorResponse)
+		httputil.WriteJSON(w, http.StatusBadRequest, errorResponse)
 		return
 	}
 
@@ -131,38 +132,38 @@ func (h *GitHandler) FetchRepoBranches(c *gin.Context) {
 			Code:    errorCode,
 			Message: errorMessage,
 		}
-		c.JSON(statusCode, errorResponse)
+		httputil.WriteJSON(w, statusCode, errorResponse)
 		return
 	}
 
 	// Return successful response
-	c.JSON(http.StatusOK, repoBranches)
+	httputil.WriteJSON(w, http.StatusOK, repoBranches)
 }
 
 // FetchRepoContent handles POST /git/repo/branch/fetch-content
-func (h *GitHandler) FetchRepoContent(c *gin.Context) {
+func (h *GitHandler) FetchRepoContent(w http.ResponseWriter, r *http.Request) {
 	// Extract organization from JWT token
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
 		errorResponse := api.GitRepoError{
 			Error:   "UNAUTHORIZED",
 			Code:    "GIT_401",
 			Message: "Organization claim not found in token",
 		}
-		c.JSON(http.StatusUnauthorized, errorResponse)
+		httputil.WriteJSON(w, http.StatusUnauthorized, errorResponse)
 		return
 	}
 
 	var request api.GitRepoContentRequest
 
 	// Bind and validate request payload
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		errorResponse := api.GitRepoError{
 			Error:   "INVALID_REQUEST",
 			Code:    "GIT_001",
 			Message: "Invalid request payload: " + err.Error(),
 		}
-		c.JSON(http.StatusBadRequest, errorResponse)
+		httputil.WriteJSON(w, http.StatusBadRequest, errorResponse)
 		return
 	}
 
@@ -173,7 +174,7 @@ func (h *GitHandler) FetchRepoContent(c *gin.Context) {
 			Code:    "GIT_002",
 			Message: "Repository URL cannot be empty",
 		}
-		c.JSON(http.StatusBadRequest, errorResponse)
+		httputil.WriteJSON(w, http.StatusBadRequest, errorResponse)
 		return
 	}
 
@@ -184,7 +185,7 @@ func (h *GitHandler) FetchRepoContent(c *gin.Context) {
 			Code:    "GIT_007",
 			Message: "Branch name cannot be empty",
 		}
-		c.JSON(http.StatusBadRequest, errorResponse)
+		httputil.WriteJSON(w, http.StatusBadRequest, errorResponse)
 		return
 	}
 
@@ -241,19 +242,16 @@ func (h *GitHandler) FetchRepoContent(c *gin.Context) {
 			Code:    errorCode,
 			Message: errorMessage,
 		}
-		c.JSON(statusCode, errorResponse)
+		httputil.WriteJSON(w, statusCode, errorResponse)
 		return
 	}
 
 	// Return successful response
-	c.JSON(http.StatusOK, repoContent)
+	httputil.WriteJSON(w, http.StatusOK, repoContent)
 }
 
 // RegisterRoutes registers Git-related routes
-func (h *GitHandler) RegisterRoutes(router *gin.Engine) {
-	gitRoutes := router.Group(constants.APIBasePath + "/git")
-	{
-		gitRoutes.POST("/repo/fetch-branches", h.FetchRepoBranches)
-		gitRoutes.POST("/repo/branch/fetch-content", h.FetchRepoContent)
-	}
+func (h *GitHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/git/repo/fetch-branches", h.FetchRepoBranches)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/git/repo/branch/fetch-content", h.FetchRepoContent)
 }

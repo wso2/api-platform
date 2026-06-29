@@ -132,8 +132,9 @@ func buildCreateRequest() *api.WebSubAPI {
 
 func buildService(repo *mockWebSubAPIRepository) *WebSubAPIService {
 	return &WebSubAPIService{
-		repo:    repo,
-		apiUtil: &utils.APIUtil{},
+		repo:      repo,
+		apiUtil:   &utils.APIUtil{},
+		auditRepo: &noopAuditRepo{},
 	}
 }
 
@@ -280,7 +281,7 @@ func TestWebSubAPI_UpdateAllChannels(t *testing.T) {
 		OnMessageDelivery: nil,
 	}
 
-	_, err = svc.Update("org-uuid", "repo-watcher-v1-0", updateReq)
+	_, err = svc.Update("org-uuid", "repo-watcher-v1-0", "test-user", updateReq)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -315,7 +316,7 @@ func TestWebSubAPI_Delete(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	err = svc.Delete("org-uuid", "repo-watcher-v1-0")
+	err = svc.Delete("org-uuid", "repo-watcher-v1-0", "alice")
 	if err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}

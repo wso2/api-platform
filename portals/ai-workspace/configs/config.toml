@@ -20,7 +20,10 @@ domain = "localhost:5380"
 auth_mode = "basic"
 
 # Platform API base URL — used by the UI to make API calls.
-platform_api_base_url = "https://localhost:9243/api/v0.9"
+# Relative path routed through nginx (/api-proxy → platform-api:9243) so the
+# browser only talks to the app origin and never hits the platform-api self-signed
+# cert directly. Use an absolute URL only when calling the platform API directly.
+platform_api_base_url = "/api-proxy/api/v0.9"
 
 # Control-plane host — the externally reachable address gateways use to reach
 # the Platform API. Shown in gateway setup instructions (keys.env, helm values).
@@ -35,4 +38,4 @@ platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel
 # oidc_org_id_claim     = "org_id"
 # oidc_org_name_claim   = "org_name"
 # oidc_org_handle_claim = "org_handle"
-# oidc_scope = "openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read"
+# oidc_scope = "openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:secret:manage"

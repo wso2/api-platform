@@ -452,13 +452,13 @@ func TestClient_calculateNextRetryDelay(t *testing.T) {
 	}
 }
 
-func TestClient_PushAPIDeployment_NotConnected(t *testing.T) {
+func TestClient_PushArtifact_NotConnected(t *testing.T) {
 	client := createTestClient(t)
 
 	// When not connected, should return nil without error
-	err := client.PushAPIDeployment("api-123", nil, "deployment-1")
+	err := client.PushArtifact("api-123", nil, "deployment-1")
 	if err != nil {
-		t.Errorf("PushAPIDeployment() error = %v, want nil when not connected", err)
+		t.Errorf("PushArtifact() error = %v, want nil when not connected", err)
 	}
 }
 
@@ -557,7 +557,6 @@ func TestClient_handleMessage_UnknownType(t *testing.T) {
 	msg := `{"type": "unknown.event", "payload": {}}`
 	client.handleMessage(1, []byte(msg))
 }
-
 
 func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *testing.T) {
 	client := createTestClient(t)

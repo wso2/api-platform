@@ -1131,3 +1131,60 @@ func TestResolveVhostSentinels_NilRouterCfgNoOp(t *testing.T) {
 	var cfg any = api.RestAPI{Kind: api.RestAPIKindRestApi}
 	require.NoError(t, resolveVhostSentinels(&cfg, nil)) // should not panic
 }
+
+// TestDeployAPIConfiguration_PreservesControlPlaneUUID verifies the CP->DP flow:
+// when the control plane deploys an artifact, the gateway preserves the CP-generated
+// UUID (passed as params.APIID) as the StoredConfig.UUID. This identity is required
+// for API keys, which are keyed by artifact UUID across both planes.
+func TestDeployAPIConfiguration_PreservesControlPlaneUUID(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	validator := config.NewAPIValidator()
+	routerConfig := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "api.example.com"},
+			Sandbox: config.VHostEntry{Default: "sandbox.example.com"},
+		},
+	}
+	service := newTestAPIDeploymentService(store, db, nil, validator, routerConfig)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	const cpUUID = "cp-generated-0000-0000-000000000001"
+	deployedAt := time.Now()
+	params := APIDeploymentParams{
+		Data: []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: cp-rest-api
+spec:
+  displayName: CP Rest API
+  version: "1.0.0"
+  context: /cp
+  upstream:
+    main:
+      url: https://example.com
+  operations:
+    - method: GET
+      path: /items
+`),
+		ContentType:   "application/yaml",
+		APIID:         cpUUID, // control-plane generated UUID
+		DeploymentID:  "cp-deployment-1",
+		Origin:        models.OriginControlPlane,
+		DeployedAt:    &deployedAt,
+		CorrelationID: "test-corr",
+		Logger:        logger,
+	}
+
+	result, err := service.DeployAPIConfiguration(params)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, cpUUID, result.StoredConfig.UUID,
+		"CP-generated UUID must be preserved on the gateway during CP->DP deploy")
+
+	// And it must be retrievable locally under the same UUID.
+	stored, err := db.GetConfig(cpUUID)
+	require.NoError(t, err)
+	assert.Equal(t, cpUUID, stored.UUID)
+}

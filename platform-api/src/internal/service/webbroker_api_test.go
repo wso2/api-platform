@@ -173,8 +173,9 @@ func buildWebBrokerCreateRequest() *api.WebBrokerAPI {
 
 func buildWebBrokerService(repo *mockWebBrokerAPIRepository) *WebBrokerAPIService {
 	return &WebBrokerAPIService{
-		repo:    repo,
-		apiUtil: &utils.APIUtil{},
+		repo:      repo,
+		apiUtil:   &utils.APIUtil{},
+		auditRepo: &noopAuditRepo{},
 	}
 }
 
@@ -239,7 +240,7 @@ func TestWebBrokerAPI_Update(t *testing.T) {
 
 	updateReq := buildWebBrokerCreateRequest()
 	updateReq.Name = "updated-trading"
-	_, err = svc.Update("org-uuid", "stock-trading-v1-0", updateReq)
+	_, err = svc.Update("org-uuid", "stock-trading-v1-0", "test-user", updateReq)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -264,7 +265,7 @@ func TestWebBrokerAPI_Delete(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	err = svc.Delete("org-uuid", "stock-trading-v1-0")
+	err = svc.Delete("org-uuid", "stock-trading-v1-0", "alice")
 	if err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
@@ -452,7 +453,7 @@ func TestWebBrokerAPI_UpdateBrokerProperties(t *testing.T) {
 		"compression.type":  "gzip",
 	}
 
-	_, err = svc.Update("org-uuid", "stock-trading-v1-0", updateReq)
+	_, err = svc.Update("org-uuid", "stock-trading-v1-0", "test-user", updateReq)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -592,7 +593,7 @@ func TestWebBrokerAPI_UpdateAllChannels(t *testing.T) {
 		OnConsume:        nil,
 	}
 
-	_, err = svc.Update("org-uuid", "stock-trading-v1-0", updateReq)
+	_, err = svc.Update("org-uuid", "stock-trading-v1-0", "test-user", updateReq)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -927,7 +928,7 @@ func TestWebBrokerAPI_UpdateReceiverProperties(t *testing.T) {
 		"pingInterval":   "60s",
 	}
 
-	_, err = svc.Update("org-uuid", "stock-trading-v1-0", updateReq)
+	_, err = svc.Update("org-uuid", "stock-trading-v1-0", "test-user", updateReq)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}

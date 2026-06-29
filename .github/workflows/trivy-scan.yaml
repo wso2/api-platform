@@ -92,18 +92,9 @@ jobs:
 
       - name: Build & push event-gateway-controller
         run: |
-          cd gateway/gateway-controller && \
-          docker buildx build -f Dockerfile \
-            --build-context sdk=../../sdk \
-            --build-context sdk-core=../../sdk/core \
-            --build-context common=../../common \
-            --build-context build-manifest=.. \
-            --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION=trivy \
-            --target production \
-            -t localhost:5000/event-gateway-controller:trivy \
-            --push \
-            .
+          make -C event-gateway build-and-push-multiarch-event-gateway-controller \
+          EVENT_GATEWAY_CONTROLLER_IMAGE=localhost:5000/event-gateway-controller \
+          VERSION=trivy
 
       - name: Trivy scan event-gateway-controller
         uses: aquasecurity/trivy-action@master

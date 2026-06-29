@@ -37,10 +37,10 @@ type WebBrokerAPIService struct {
 	repo                 repository.WebBrokerAPIRepository
 	projectRepo          repository.ProjectRepository
 	gatewayRepo          repository.GatewayRepository
-	devPortalService     *DevPortalService
 	gatewayEventsService *GatewayEventsService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
 // NewWebBrokerAPIService creates a new WebBrokerAPIService instance
@@ -48,19 +48,19 @@ func NewWebBrokerAPIService(
 	repo repository.WebBrokerAPIRepository,
 	projectRepo repository.ProjectRepository,
 	gatewayRepo repository.GatewayRepository,
-	devPortalService *DevPortalService,
 	gatewayEventsService *GatewayEventsService,
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
+	auditRepo repository.AuditRepository,
 ) *WebBrokerAPIService {
 	return &WebBrokerAPIService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
-		devPortalService:     devPortalService,
 		gatewayEventsService: gatewayEventsService,
 		apiUtil:              apiUtil,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
 }
 
@@ -137,17 +137,18 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
-		Transport:        transport,
 		Configuration: model.WebBrokerAPIConfiguration{
 			Name:              req.Name,
 			Version:           req.Version,
 			Context:           req.Context,
+			Transport:         transport,
 			Channels:          mapWebBrokerChannelsAPIToModel(req.Channels),
 			Receiver:          mapWebBrokerReceiverAPIToModel(req.Receiver),
 			Broker:            mapWebBrokerBrokerAPIToModel(req.Broker),
 			AllChannels:       mapWebBrokerAllChannelPoliciesAPIToModel(req.AllChannels),
 			SubscriptionPlans: subscriptionPlans,
 		},
+		Origin: constants.OriginCP,
 	}
 
 	if err := s.repo.Create(m); err != nil {
@@ -157,6 +158,9 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		return nil, fmt.Errorf("failed to create WebBroker API: %w", err)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", m.UUID, "webbroker_api", orgUUID, createdBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
@@ -212,7 +216,7 @@ func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset in
 }
 
 // Update updates an existing WebBroker API
-func (s *WebBrokerAPIService) Update(orgUUID, handle string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
+func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -230,8 +234,12 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle string, req *api.WebBrokerA
 	if existing == nil {
 		return nil, constants.ErrWebBrokerAPINotFound
 	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
 
-	transport := existing.Transport
+	transport := existing.Configuration.Transport
 	if req.Transport != nil && len(*req.Transport) > 0 {
 		transport = make([]string, 0, len(*req.Transport))
 		for _, t := range *req.Transport {
@@ -252,12 +260,13 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle string, req *api.WebBrokerA
 	existing.Name = req.Name
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
+	existing.UpdatedBy = updatedBy
 	existing.LifeCycleStatus = lifeCycleStatus
-	existing.Transport = transport
 	existing.Configuration = model.WebBrokerAPIConfiguration{
 		Name:              req.Name,
 		Version:           req.Version,
 		Context:           req.Context,
+		Transport:         transport,
 		Channels:          mapWebBrokerChannelsAPIToModel(req.Channels),
 		Receiver:          mapWebBrokerReceiverAPIToModel(req.Receiver),
 		Broker:            mapWebBrokerBrokerAPIToModel(req.Broker),
@@ -272,11 +281,14 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle string, req *api.WebBrokerA
 		return nil, fmt.Errorf("failed to update WebBroker API: %w", err)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("UPDATE", existing.UUID, "webbroker_api", orgUUID, updatedBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
 // Delete deletes a WebBroker API by its handle
-func (s *WebBrokerAPIService) Delete(orgUUID, handle string) error {
+func (s *WebBrokerAPIService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
@@ -288,6 +300,10 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle string) error {
 	}
 	if webbrokerAPI == nil {
 		return constants.ErrWebBrokerAPINotFound
+	}
+	// DP-originated artifacts are read-only in the control plane and cannot be deleted from the CP.
+	if err := ensureOriginMutable(webbrokerAPI.Origin); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event
@@ -308,6 +324,9 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle string) error {
 		return fmt.Errorf("failed to delete WebBroker API: %w", err)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", webbrokerAPI.UUID, "webbroker_api", orgUUID, deletedBy)
+	}
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -325,58 +344,9 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle string) error {
 	return nil
 }
 
-// PublishToDevPortal publishes a WebBroker API to a DevPortal
-func (s *WebBrokerAPIService) PublishToDevPortal(orgUUID, handle string, req *api.PublishToDevPortalRequest) error {
-	webbrokerAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebBroker API: %w", err)
-	}
-	if webbrokerAPI == nil {
-		return constants.ErrWebBrokerAPINotFound
-	}
-
-	// Build a RESTAPI adapter for the devportal service
-	restAPIAdapter := webbrokerAPIModelToRESTAPIAdapter(webbrokerAPI)
-	return s.devPortalService.PublishAPIToDevPortal(webbrokerAPI.UUID, restAPIAdapter, req, orgUUID)
-}
-
-// UnpublishFromDevPortal unpublishes a WebBroker API from a DevPortal
-func (s *WebBrokerAPIService) UnpublishFromDevPortal(orgUUID, handle, devPortalUUID string) error {
-	webbrokerAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebBroker API: %w", err)
-	}
-	if webbrokerAPI == nil {
-		return constants.ErrWebBrokerAPINotFound
-	}
-
-	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgUUID, webbrokerAPI.UUID)
-}
-
 // Count returns the total number of WebBroker APIs for an organization
 func (s *WebBrokerAPIService) Count(orgUUID string) (int, error) {
 	return s.repo.Count(orgUUID)
-}
-
-// webbrokerAPIModelToRESTAPIAdapter creates a minimal api.RESTAPI from model.WebBrokerAPI for DevPortal operations
-func webbrokerAPIModelToRESTAPIAdapter(m *model.WebBrokerAPI) *api.RESTAPI {
-	handle := m.Handle
-	desc := m.Description
-	createdBy := m.CreatedBy
-	ctx := ""
-	if m.Configuration.Context != nil {
-		ctx = *m.Configuration.Context
-	}
-	return &api.RESTAPI{
-		Id:          &handle,
-		Name:        m.Name,
-		Version:     m.Version,
-		Context:     ctx,
-		Description: &desc,
-		CreatedBy:   &createdBy,
-		CreatedAt:   utils.TimePtrIfNotZero(m.CreatedAt),
-		UpdatedAt:   utils.TimePtrIfNotZero(m.UpdatedAt),
-	}
 }
 
 // mapWebBrokerAPIModelToAPI converts a model.WebBrokerAPI to api.WebBrokerAPI
@@ -391,9 +361,9 @@ func mapWebBrokerAPIModelToAPI(m *model.WebBrokerAPI, apiUtil *utils.APIUtil) *a
 	lifeCycleStatus := api.WebBrokerAPILifeCycleStatus(m.LifeCycleStatus)
 
 	var transport *[]api.WebBrokerAPITransport
-	if len(m.Transport) > 0 {
-		items := make([]api.WebBrokerAPITransport, 0, len(m.Transport))
-		for _, t := range m.Transport {
+	if len(m.Configuration.Transport) > 0 {
+		items := make([]api.WebBrokerAPITransport, 0, len(m.Configuration.Transport))
+		for _, t := range m.Configuration.Transport {
 			items = append(items, api.WebBrokerAPITransport(t))
 		}
 		transport = &items
@@ -420,6 +390,7 @@ func mapWebBrokerAPIModelToAPI(m *model.WebBrokerAPI, apiUtil *utils.APIUtil) *a
 		Channels:          mapWebBrokerChannelsModelToAPI(m.Configuration.Channels),
 		AllChannels:       mapWebBrokerAllChannelPoliciesModelToAPI(m.Configuration.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
+		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
@@ -620,6 +591,7 @@ func mapWebBrokerAPIModelToListItem(m *model.WebBrokerAPI) *api.WebBrokerAPIList
 		ProjectId:       utils.StringPtrIfNotEmpty(m.ProjectUUID),
 		Context:         m.Configuration.Context,
 		LifeCycleStatus: &lifeCycleStatus,
+		ReadOnly:        utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:       utils.TimePtr(m.CreatedAt),
 		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
 	}

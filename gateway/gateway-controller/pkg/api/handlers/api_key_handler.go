@@ -24,25 +24,25 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // CreateAPIKey implements ServerInterface.CreateAPIKey
 // (POST /apis/{id}/api-keys)
 // Handles both local key generation and external key injection based on request payload
-func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
+func (s *APIServer) CreateAPIKey(w http.ResponseWriter, r *http.Request, id string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "CreateAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "CreateAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
@@ -54,12 +54,12 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 
 	// Parse and validate request body
 	var request api.APIKeyCreationRequest
-	if err := s.bindRequestBody(c, &request); err != nil {
+	if err := s.bindRequestBody(r, &request); err != nil {
 		log.Error("Failed to parse request body for API key creation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Invalid request body: %v", err),
 		})
@@ -80,12 +80,12 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-			c.JSON(http.StatusConflict, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -94,7 +94,7 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 				slog.Any("error", err),
 				slog.String("handle", handle),
 				slog.String("correlation_id", correlationID))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "internal server error",
 			})
@@ -109,19 +109,19 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
-	c.JSON(http.StatusCreated, result.Response)
+	httputil.WriteJSON(w, http.StatusCreated, result.Response)
 }
 
 // RevokeAPIKey implements ServerInterface.RevokeAPIKey
 // (DELETE /apis/{id}/api-keys/{apiKeyName})
-func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
+func (s *APIServer) RevokeAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "RevokeAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "RevokeAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
@@ -144,7 +144,7 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -153,7 +153,7 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 				slog.Any("error", err),
 				slog.String("handle", handle),
 				slog.String("correlation_id", correlationID))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "internal server error",
 			})
@@ -168,19 +168,19 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // UpdateAPIKey implements ServerInterface.UpdateAPIKey
 // (PUT /apis/{id}/api-keys/{apiKeyName})
-func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
+func (s *APIServer) UpdateAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "UpdateAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "UpdateAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
@@ -193,12 +193,12 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 
 	// Parse and validate request body
 	var request api.APIKeyCreationRequest
-	if err := s.bindRequestBody(c, &request); err != nil {
+	if err := s.bindRequestBody(r, &request); err != nil {
 		log.Warn("Invalid request body for API key update",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Invalid request body: %v", err),
 		})
@@ -207,7 +207,7 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 
 	// If plain-text API key is not provided, return an error
 	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "apiKey is required",
 		})
@@ -229,17 +229,17 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if storage.IsOperationNotAllowedError(err) {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 		} else if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-			c.JSON(http.StatusConflict, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -248,7 +248,7 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 				slog.Any("error", err),
 				slog.String("handle", handle),
 				slog.String("correlation_id", correlationID))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "internal server error",
 			})
@@ -262,19 +262,19 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", correlationID))
 
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // RegenerateAPIKey implements ServerInterface.RegenerateAPIKey
 // (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
-func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName string) {
+func (s *APIServer) RegenerateAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "RegenerateAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "RegenerateAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
@@ -287,12 +287,12 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 
 	// Parse and validate request body
 	var request api.APIKeyRegenerationRequest
-	if err := s.bindRequestBody(c, &request); err != nil {
+	if err := s.bindRequestBody(r, &request); err != nil {
 		log.Warn("Invalid request body for API key rotation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Invalid request body: %v", err),
 		})
@@ -313,7 +313,7 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -322,7 +322,7 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 				slog.Any("error", err),
 				slog.String("handle", handle),
 				slog.String("correlation_id", correlationID))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "internal server error",
 			})
@@ -336,19 +336,19 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", correlationID))
 
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // ListAPIKeys implements ServerInterface.ListAPIKeys
 // (GET /apis/{id}/api-keys)
-func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
+func (s *APIServer) ListAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "ListAPIKeys", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "ListAPIKeys", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
@@ -370,7 +370,7 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -379,7 +379,7 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 				slog.Any("error", err),
 				slog.String("handle", handle),
 				slog.String("correlation_id", correlationID))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "internal server error",
 			})
@@ -393,13 +393,13 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // resolveAPIIDByHandle resolves an API identifier (deployment ID or handle) to the internal deployment ID.
 // It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
 // Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
-func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slog.Logger) (string, error) {
+func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request, handle string, log *slog.Logger) (string, error) {
 	// First, try treating the input as a deployment ID.
 	cfgByID, err := s.db.GetConfig(handle)
 	if err != nil {
@@ -407,7 +407,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 			log.Error("Failed to look up API configuration by ID",
 				slog.String("id", handle),
 				slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to resolve API identifier",
 			})
@@ -418,7 +418,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 			log.Warn("Configuration is not a REST API",
 				slog.String("id", handle),
 				slog.String("kind", cfgByID.Kind))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
 			})
@@ -432,7 +432,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			log.Warn("API configuration not found", slog.String("handle_or_id", handle))
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
 			})
@@ -441,7 +441,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 		log.Error("Failed to look up API configuration by handle",
 			slog.String("handle", handle),
 			slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to resolve API identifier",
 		})
@@ -449,7 +449,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 	}
 	if cfg == nil {
 		log.Warn("API configuration not found", slog.String("handle_or_id", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
 		})
