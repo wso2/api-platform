@@ -301,32 +301,3 @@ export async function updateProviderTemplate(
   }
 }
 
-/**
- * Delete a Provider Template
- * 
- * @param templateId - The provider template ID
- * @param organizationId - The organization ID
- * @returns Promise that resolves when the template is deleted
- * 
- * @example
- * ```ts
- * await deleteProviderTemplate('openai', 'org-uuid');
- * console.log('Template deleted successfully');
- * ```
- */
-export async function deleteProviderTemplate(
-  templateId: string,
-  organizationId: string,
-  baseUrl: string
-): Promise<void> {
-  try {
-    await del<void>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}`,
-      undefined,
-      baseUrl
-    );
-  } catch (error) {
-    logger.error(`Failed to delete provider template ${templateId}:`, error);
-    throw error;
-  }
-}

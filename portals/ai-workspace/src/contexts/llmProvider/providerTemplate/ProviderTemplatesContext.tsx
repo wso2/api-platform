@@ -46,7 +46,6 @@ type ProviderTemplatesContextValue = {
   error: Error | null;
   createTemplate: (template: CreateProviderTemplateRequest) => Promise<ProviderTemplate>;
   updateTemplate: (templateId: string, updates: UpdateProviderTemplateRequest) => Promise<ProviderTemplate>;
-  deleteTemplate: (templateId: string) => Promise<void>;
   refreshTemplates: () => Promise<void>;
   getTemplateById: (templateId: string) => ProviderTemplate | undefined;
 };
@@ -59,9 +58,6 @@ const ProviderTemplatesContext = createContext<ProviderTemplatesContextValue>({
     throw new Error('ProviderTemplatesContext not initialized');
   },
   updateTemplate: async () => {
-    throw new Error('ProviderTemplatesContext not initialized');
-  },
-  deleteTemplate: async () => {
     throw new Error('ProviderTemplatesContext not initialized');
   },
   refreshTemplates: async () => {
@@ -160,24 +156,6 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
     }
   }, [organizationId, PLATFORM_API_BASE_URL]);
 
-  const deleteTemplate = useCallback(async (templateId: string): Promise<void> => {
-    if (!organizationId) {
-      throw new Error('Organization ID is missing');
-    }
-    try {
-      await providerTemplateApis.deleteProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL);
-      setTemplatesResponse((prev) => ({
-        ...prev,
-        count: Math.max(0, prev.count - 1),
-        list: prev.list.filter((template) => template.id !== templateId),
-        pagination: { ...prev.pagination, total: Math.max(0, prev.pagination.total - 1) },
-      }));
-    } catch (err) {
-      logger.error('Failed to delete provider template:', err);
-      throw err;
-    }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
-
   const refreshTemplates = useCallback(async (): Promise<void> => {
     await fetchTemplates();
   }, [fetchTemplates]);
@@ -193,11 +171,10 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       error,
       createTemplate,
       updateTemplate,
-      deleteTemplate,
       refreshTemplates,
       getTemplateById,
     }),
-    [templatesResponse, isLoading, error, createTemplate, updateTemplate, deleteTemplate, refreshTemplates, getTemplateById]
+    [templatesResponse, isLoading, error, createTemplate, updateTemplate, refreshTemplates, getTemplateById]
   );
 
   return (

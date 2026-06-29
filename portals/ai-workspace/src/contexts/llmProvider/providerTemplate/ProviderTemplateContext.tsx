@@ -32,7 +32,6 @@ type ProviderTemplateContextValue = {
   isLoading: boolean;
   error: Error | null;
   updateTemplate: (updates: UpdateProviderTemplateRequest) => Promise<ProviderTemplate>;
-  deleteTemplate: () => Promise<void>;
   refetch: () => Promise<void>;
 };
 
@@ -41,9 +40,6 @@ const ProviderTemplateContext = createContext<ProviderTemplateContextValue>({
   isLoading: false,
   error: null,
   updateTemplate: async () => {
-    throw new Error('ProviderTemplateContext not initialized');
-  },
-  deleteTemplate: async () => {
     throw new Error('ProviderTemplateContext not initialized');
   },
   refetch: async () => {
@@ -108,19 +104,6 @@ export function ProviderTemplateProvider({ children, handle, groupId, version }:
     }
   }, [handle, organizationId, PLATFORM_API_BASE_URL]);
 
-  const deleteTemplate = useCallback(async (): Promise<void> => {
-    if (!handle || !organizationId) {
-      throw new Error('Template ID or Organization ID is missing');
-    }
-    try {
-      await providerTemplateApis.deleteProviderTemplate(handle, organizationId, PLATFORM_API_BASE_URL);
-      setTemplate(null);
-    } catch (err) {
-      logger.error('Failed to delete provider template:', err);
-      throw err;
-    }
-  }, [handle, organizationId, PLATFORM_API_BASE_URL]);
-
   const refetch = useCallback(async (): Promise<void> => {
     await fetchTemplate();
   }, [fetchTemplate]);
@@ -131,10 +114,9 @@ export function ProviderTemplateProvider({ children, handle, groupId, version }:
       isLoading,
       error,
       updateTemplate,
-      deleteTemplate,
       refetch,
     }),
-    [template, isLoading, error, updateTemplate, deleteTemplate, refetch]
+    [template, isLoading, error, updateTemplate, refetch]
   );
 
   return (

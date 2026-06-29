@@ -61,7 +61,6 @@ func (h *LLMHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}/versions/{version}", h.SetLLMProviderTemplateVersionEnabled)
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}/versions/{version}", h.DeleteLLMProviderTemplateVersion)
 	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.UpdateLLMProviderTemplate)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.DeleteLLMProviderTemplate)
 
 	// LLM Providers
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers", h.CreateLLMProvider)
@@ -316,6 +315,9 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter,
 		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
 			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot disable template version while providers are using it"))
 			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotToggleable):
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only built-in templates can be enabled or disabled"))
+			return
 		default:
 			h.slogger.Error("Failed to set LLM provider template version enabled", "organizationId", orgID, "templateId", id, "version", version, "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update template version"))
@@ -368,42 +370,6 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
-}
-
-func (h *LLMHandler) DeleteLLMProviderTemplate(w http.ResponseWriter, r *http.Request) {
-	orgID, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-	id := r.PathValue("llmProviderTemplateId")
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
-
-	if err := h.templateService.Delete(orgID, id, deletedBy); err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
-		}
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
-			return
-		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Template cannot be deleted while providers are using it"))
-			return
-		case errors.Is(err, constants.ErrLLMProviderTemplateReadOnly):
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Built-in templates are read-only and cannot be deleted"))
-			return
-		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id"))
-			return
-		default:
-			h.slogger.Error("Failed to delete LLM provider template", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete LLM provider template"))
-			return
-		}
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // DeleteLLMProviderTemplateVersion removes a single version of a template.

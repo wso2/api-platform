@@ -118,9 +118,7 @@ export default function ProviderTemplatesList({
     );
   }, [templates, searchQuery]);
 
-  // Paginate the custom templates ~2 rows at a time. Clamp the page so it stays
-  // valid when the filtered list shrinks (e.g. while searching).
-  const CUSTOM_PAGE_SIZE = 6;
+  const CUSTOM_PAGE_SIZE = 8;
   const [customPage, setCustomPage] = useState(1);
   const customTotalPages = Math.max(
     1,

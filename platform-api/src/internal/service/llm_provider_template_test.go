@@ -78,9 +78,6 @@ type mockLLMProviderTemplateCRUDRepo struct {
 	countProvidersUsingTemplateCalled  bool
 	countProvidersUsingTemplateVersion string
 
-	deleteErr    error
-	deleteCalled bool
-
 	deleteVersionErr    error
 	deleteVersionCalled bool
 }
@@ -164,20 +161,19 @@ func (m *mockLLMProviderTemplateCRUDRepo) CountProvidersUsingTemplate(templateID
 	return m.countProvidersUsingTemplateResult, m.countProvidersUsingTemplateErr
 }
 
-func (m *mockLLMProviderTemplateCRUDRepo) Delete(templateID, orgUUID string) error {
-	m.deleteCalled = true
-	return m.deleteErr
-}
-
 func (m *mockLLMProviderTemplateCRUDRepo) DeleteVersion(templateID, orgUUID, version string) error {
 	m.deleteVersionCalled = true
 	return m.deleteVersionErr
 }
 
 func validTemplateRequest(name string) *api.LLMProviderTemplate {
+	endpoint := "https://api.example.com"
 	return &api.LLMProviderTemplate{
 		DisplayName:    name,
 		Version: "v1.0",
+		Metadata: &api.LLMProviderTemplateMetadata{
+			EndpointUrl: &endpoint,
+		},
 	}
 }
 
@@ -199,6 +195,31 @@ func TestLLMProviderTemplateServiceCreate_Success(t *testing.T) {
 	}
 	if repo.created.ManagedBy != "customer" {
 		t.Fatalf("expected default managedBy 'customer', got: %q", repo.created.ManagedBy)
+	}
+}
+
+func TestLLMProviderTemplateServiceCreate_RejectsMissingEndpoint(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
+
+	// No metadata at all.
+	req := &api.LLMProviderTemplate{Name: "No Endpoint", Version: "v1.0"}
+	if _, err := svc.Create("org-1", "alice", req); !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput when endpoint is missing, got: %v", err)
+	}
+
+	// Metadata present but endpointUrl blank.
+	blank := "   "
+	req2 := &api.LLMProviderTemplate{
+		Name:     "Blank Endpoint",
+		Version:  "v1.0",
+		Metadata: &api.LLMProviderTemplateMetadata{EndpointUrl: &blank},
+	}
+	if _, err := svc.Create("org-1", "alice", req2); !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput when endpoint is blank, got: %v", err)
+	}
+	if repo.created != nil {
+		t.Fatalf("did not expect repository create to be called")
 	}
 }
 
@@ -522,12 +543,12 @@ func TestLLMProviderTemplateServiceGetVersion_NormalizesVersionCasing(t *testing
 func TestLLMProviderTemplateServiceSetVersionEnabled_Success(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, Version: version, Enabled: false}, nil
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "wso2", Enabled: false}, nil
 		},
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	resp, err := svc.SetVersionEnabled("org-1", "mistralai", "v1.0", false)
+	resp, err := svc.SetVersionEnabled("org-1", "openai", "v1.0", false)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -552,10 +573,13 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_NotFound(t *testing.T) {
 func TestLLMProviderTemplateServiceSetVersionEnabled_DisableBlocksWhenInUse(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		countProvidersUsingTemplateResult: 1,
+		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "wso2"}, nil
+		},
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	_, err := svc.SetVersionEnabled("org-1", "mistralai", "v1.0", false)
+	_, err := svc.SetVersionEnabled("org-1", "openai", "v1.0", false)
 	if !errors.Is(err, constants.ErrLLMProviderTemplateInUse) {
 		t.Fatalf("expected ErrLLMProviderTemplateInUse, got: %v", err)
 	}
@@ -571,12 +595,12 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_EnableIgnoresUsage(t *testi
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		countProvidersUsingTemplateResult: 5,
 		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, Version: version, Enabled: true}, nil
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "wso2", Enabled: true}, nil
 		},
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	resp, err := svc.SetVersionEnabled("org-1", "mistralai", "v1.0", true)
+	resp, err := svc.SetVersionEnabled("org-1", "openai", "v1.0", true)
 	if err != nil {
 		t.Fatalf("expected no error on enable regardless of usage, got: %v", err)
 	}
@@ -588,70 +612,22 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_EnableIgnoresUsage(t *testi
 	}
 }
 
-// ---- Delete (whole template family) ----
-
-func TestLLMProviderTemplateServiceDelete_BlocksReadOnlyBuiltin(t *testing.T) {
+func TestLLMProviderTemplateServiceSetVersionEnabled_RejectsCustomTemplate(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, ManagedBy: "wso2"}, nil
+		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "customer"}, nil
 		},
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	err := svc.Delete("org-1", "openai", "alice")
-	if !errors.Is(err, constants.ErrLLMProviderTemplateReadOnly) {
-		t.Fatalf("expected ErrLLMProviderTemplateReadOnly, got: %v", err)
+	// Enable/disable is reserved for built-in ('wso2') templates; a custom
+	// ('customer') template must be rejected and never touch SetEnabled.
+	_, err := svc.SetVersionEnabled("org-1", "openai", "v2.0", false)
+	if !errors.Is(err, constants.ErrLLMProviderTemplateNotToggleable) {
+		t.Fatalf("expected ErrLLMProviderTemplateNotToggleable, got: %v", err)
 	}
-	if repo.deleteCalled || repo.countProvidersUsingTemplateCalled {
-		t.Fatalf("did not expect usage check or delete to be called for a read-only template")
-	}
-}
-
-func TestLLMProviderTemplateServiceDelete_NotFound(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{managedByForHandleResult: ""}
-	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
-
-	err := svc.Delete("org-1", "does-not-exist", "alice")
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
-		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
-	}
-}
-
-func TestLLMProviderTemplateServiceDelete_BlocksWhenInUse(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{
-		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, ManagedBy: "customer"}, nil
-		},
-		countProvidersUsingTemplateResult: 2,
-	}
-	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
-
-	err := svc.Delete("org-1", "mistralai", "alice")
-	if !errors.Is(err, constants.ErrLLMProviderTemplateInUse) {
-		t.Fatalf("expected ErrLLMProviderTemplateInUse, got: %v", err)
-	}
-	if repo.countProvidersUsingTemplateVersion != "" {
-		t.Fatalf("expected usage check to span the whole family (empty version), got: %q", repo.countProvidersUsingTemplateVersion)
-	}
-	if repo.deleteCalled {
-		t.Fatalf("did not expect repository delete to be called while template is in use")
-	}
-}
-
-func TestLLMProviderTemplateServiceDelete_Success(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{
-		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, ManagedBy: "customer"}, nil
-		},
-		countProvidersUsingTemplateResult: 0,
-	}
-	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
-
-	if err := svc.Delete("org-1", "mistralai", "alice"); err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if !repo.deleteCalled {
-		t.Fatalf("expected repository delete to be called")
+	if repo.setEnabledCalled || repo.countProvidersUsingTemplateCalled {
+		t.Fatalf("did not expect SetEnabled or usage check for a non-toggleable custom template")
 	}
 }
 

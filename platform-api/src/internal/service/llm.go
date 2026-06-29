@@ -138,6 +138,9 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if req.Metadata == nil || strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl)) == "" {
+		return nil, constants.ErrInvalidInput
+	}
 
 	baseHandle, err := utils.GenerateHandle(req.DisplayName, nil)
 	if err != nil || baseHandle == "" {
@@ -524,6 +527,22 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 		return nil, constants.ErrInvalidInput
 	}
 	v = normalized
+
+	target, err := s.repo.GetByVersion(groupID, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template version: %w", err)
+	}
+	if target == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	// Enable/disable is reserved for built-in ('wso2') templates only. Custom
+	// templates are managed via update/delete and cannot be toggled.
+	if target.ManagedBy != constants.PolicyManagedByWSO2 {
+		return nil, constants.ErrLLMProviderTemplateNotToggleable
+	}
+	if err := ensureOriginMutable(target.Origin); err != nil {
+		return nil, err
+	}
 	if !enabled {
 		inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
 		if err != nil {
@@ -532,21 +551,6 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 		if inUse > 0 {
 			return nil, constants.ErrLLMProviderTemplateInUse
 		}
-	}
-	// Read-only versions (built-in 'wso2'-managed or DP-imported) cannot be toggled, matching
-	// the guard applied by Update/Delete/DeleteVersion.
-	target, err := s.repo.GetByVersion(groupID, orgUUID, v)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve template version: %w", err)
-	}
-	if target == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
-	}
-	if target.ManagedBy == "wso2" {
-		return nil, constants.ErrLLMProviderTemplateReadOnly
-	}
-	if err := ensureOriginMutable(target.Origin); err != nil {
-		return nil, err
 	}
 	if err := s.repo.SetEnabled(groupID, orgUUID, v, enabled); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -562,42 +566,6 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
 	return mapTemplateModelToAPI(m), nil
-}
-
-func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) error {
-	if handle == "" {
-		return constants.ErrInvalidInput
-	}
-	tpl, err := s.repo.GetByID(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve template: %w", err)
-	}
-	if tpl == nil {
-		return constants.ErrLLMProviderTemplateNotFound
-	}
-	if tpl.ManagedBy == "wso2" {
-		return constants.ErrLLMProviderTemplateReadOnly
-	}
-	if err := ensureOriginMutable(tpl.Origin); err != nil {
-		return err
-	}
-	// Block deletion while any provider (built from any version) still depends on it.
-	inUse, err := s.repo.CountProvidersUsingTemplate(tpl.GroupID, orgUUID, "")
-	if err != nil {
-		return fmt.Errorf("failed to check template usage: %w", err)
-	}
-	if inUse > 0 {
-		return constants.ErrLLMProviderTemplateInUse
-	}
-	if err := s.repo.Delete(handle, orgUUID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrLLMProviderTemplateNotFound
-		}
-		return fmt.Errorf("failed to delete template: %w", err)
-	}
-	// Family-level delete: log the stable handle rather than a single version's UUID.
-	_ = s.auditRepo.Record("DELETE", handle, "llm_provider_template", orgUUID, deletedBy)
-	return nil
 }
 
 func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version string) error {

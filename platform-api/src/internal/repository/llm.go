@@ -471,58 +471,6 @@ func (r *LLMProviderTemplateRepo) RenameFamily(baseHandle, orgUUID, name string)
 	return err
 }
 
-func (r *LLMProviderTemplateRepo) Delete(templateID, orgUUID string) error {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return err
-	}
-	if base == "" {
-		return sql.ErrNoRows
-	}
-
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	result, err := tx.Exec(r.db.Rebind(`
-		DELETE FROM llm_provider_templates
-		WHERE group_id = ? AND organization_uuid = ? AND managed_by != ?
-	`), base, orgUUID, "wso2")
-	if err != nil {
-		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return sql.ErrNoRows
-	}
-
-	var remaining, latestCount int
-	if err := tx.QueryRow(r.db.Rebind(`
-		SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_latest = 1 THEN 1 ELSE 0 END), 0)
-		FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ?
-	`), base, orgUUID).Scan(&remaining, &latestCount); err != nil {
-		return err
-	}
-	if remaining > 0 && latestCount == 0 {
-		if _, err := tx.Exec(r.db.Rebind(`
-			UPDATE llm_provider_templates SET is_latest = ?
-			WHERE uuid = (
-				SELECT uuid FROM llm_provider_templates
-				WHERE group_id = ? AND organization_uuid = ?
-				ORDER BY created_at DESC `+r.db.FetchFirstClause(1)+`
-			)
-		`), 1, base, orgUUID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
 func (r *LLMProviderTemplateRepo) SetEnabled(groupID, orgUUID, version string, enabled bool) error {
 	result, err := r.db.Exec(r.db.Rebind(`
 		UPDATE llm_provider_templates SET enabled = ?, updated_at = ?
