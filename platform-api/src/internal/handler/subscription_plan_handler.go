@@ -52,7 +52,7 @@ func NewSubscriptionPlanHandler(planService *service.SubscriptionPlanService, sl
 }
 
 // validateThrottleLimitPair ensures throttleLimitCount and throttleLimitUnit are provided together,
-// count is at least 1, and unit is one of Min, Hour, Day, Month.
+// count is at least 1, and unit is one of the accepted throttle limit units.
 func validateThrottleLimitPair(count *int, unit *string) string {
 	if (count != nil && unit == nil) || (count == nil && unit != nil) {
 		return "throttleLimitCount and throttleLimitUnit must be provided together"
@@ -61,10 +61,8 @@ func validateThrottleLimitPair(count *int, unit *string) string {
 		if *count < 1 {
 			return "throttleLimitCount must be at least 1"
 		}
-		switch *unit {
-		case "Min", "Hour", "Day", "Month":
-		default:
-			return "throttleLimitUnit must be one of: Min, Hour, Day, Month"
+		if !constants.ValidThrottleLimitUnits[*unit] {
+			return "throttleLimitUnit must be one of: MINUTE, HOUR, DAY, MONTH"
 		}
 	}
 	return ""
