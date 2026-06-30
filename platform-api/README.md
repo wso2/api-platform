@@ -206,6 +206,11 @@ AUTH_IDP_ENABLED=false (default)  →  Local JWT mode  (HMAC signature verificat
 AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
+> **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
+> production-grade startup checks. With demo mode off, the server will not fall back to an
+> ephemeral secret encryption key (set `PLATFORM_SECRET_ENCRYPTION_KEY` or
+> `DATABASE_ENCRYPTION_KEY`) and warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
+
 ---
 
 #### Local JWT Mode (default)

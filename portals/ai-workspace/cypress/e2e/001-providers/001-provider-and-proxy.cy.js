@@ -39,7 +39,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.login();
     cy.request({
       method: 'POST',
-      url: '/api-proxy/api/portal/v0.9/auth/login',
+      url: '/api/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -52,7 +52,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
         expect(authToken).to.not.equal('');
 
         return cy.request({
-          url: '/api-proxy/api/v0.9/organizations',
+          url: '/api/proxy/api/v0.9/organizations',
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
@@ -211,7 +211,7 @@ function deleteLinkedProxies(authToken, organizationId, providerId) {
     return cy.wrap(null);
   }
   return requestWithAuth(authToken, {
-    url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 404]);
@@ -228,7 +228,7 @@ function deleteLinkedProxies(authToken, organizationId, providerId) {
     return cy.wrap(proxies).each((proxy) =>
       requestWithAuth(authToken, {
         method: 'DELETE',
-        url: `/api-proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/api/proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(organizationId)}`,
         failOnStatusCode: false,
       }).then((deleteResponse) => {
         expect(deleteResponse.status).to.be.oneOf([200, 204, 404]);
@@ -239,7 +239,7 @@ function deleteLinkedProxies(authToken, organizationId, providerId) {
 
 function deleteProjectByName(authToken, targetProjectName, fallbackProjectName) {
   return requestWithAuth(authToken, {
-    url: '/api-proxy/api/v0.9/projects',
+    url: '/api/proxy/api/v0.9/projects',
   }).then((response) => {
     expect(response.status).to.eq(200);
 
@@ -265,7 +265,7 @@ function deleteProjectByName(authToken, targetProjectName, fallbackProjectName) 
 function ensureFallbackProject(authToken, fallbackProjectName) {
   return requestWithAuth(authToken, {
     method: 'POST',
-    url: '/api-proxy/api/v0.9/projects',
+    url: '/api/proxy/api/v0.9/projects',
     body: {
       name: fallbackProjectName,
       description: 'Reserved project to satisfy E2E cleanup invariants.',
@@ -279,7 +279,7 @@ function ensureFallbackProject(authToken, fallbackProjectName) {
 function deleteProject(authToken, projectId) {
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api-proxy/api/v0.9/projects/${encodeURIComponent(projectId)}`,
+    url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(projectId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 204, 404]);
@@ -292,7 +292,7 @@ function deleteProvider(authToken, organizationId, providerId) {
   }
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 204, 404]);

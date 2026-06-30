@@ -37,7 +37,10 @@ export interface AppAuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: AppUser | null;
-  accessToken: string | null;
+  // Fetches the current raw JWT on demand. Unlike a cached snapshot, this stays
+  // correct after the BFF proxy rotates the cookie token, so call-sites that
+  // need the raw token always get the live value.
+  getAccessToken: () => Promise<string | null>;
   hasPermission: (scope: string) => boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
@@ -47,7 +50,7 @@ export const AppAuthContext = createContext<AppAuthContextType>({
   isAuthenticated: false,
   isLoading: true,
   user: null,
-  accessToken: null,
+  getAccessToken: async () => null,
   hasPermission: () => false,
   login: async () => {},
   logout: async () => {},
