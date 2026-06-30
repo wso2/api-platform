@@ -150,37 +150,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /organizations/{organizationId}/subscription:
-    get:
-      summary: Get organization subscription quotas
-      description: |
-        Returns the current organization subscription view with resource quota usage.
-        The organization ID in the path must match the JWT token's organization claim.
-      operationId: GetOrganizationSubscription
-      security:
-        - OAuth2Security:
-            - ap:organization:subscription:read
-            - ap:organization:manage
-      tags:
-        - Organizations
-      parameters:
-        - $ref: '#/components/parameters/organizationId'
-      responses:
-        '200':
-          description: Organization subscription quotas retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationSubscription'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /projects:
     post:
       summary: Create a new project
@@ -345,87 +314,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /api-projects/validate:
-    post:
-      summary: Validate API project
-      description: |
-        Validates an API project into the platform from a provided Git Repository URL.
-        This endpoint checks the validity of the API project definitions and the overall validity of the API.
-        Returns the metadata of the API and the resources if the API project is valid.
-      operationId: ValidateAPIProject
-      security:
-        - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-      requestBody:
-        description: API project validation details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ValidateAPIProjectRequest'
-      responses:
-        '201':
-          description: API project is valid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIProjectValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api-projects/import:
-    post:
-      summary: Import API project
-      description: |
-        Imports an API project into the platform from a provided Git Repository URL.
-        A REST API is created from the imported API project and is associated with a specified project within the
-        organization in the JWT token.
-      operationId: ImportAPIProject
-      security:
-        - OAuth2Security:
-            - ap:rest_api:import
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - Imports
-      requestBody:
-        description: API project import details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ImportAPIProjectRequest'
-      responses:
-        '201':
-          description: API project imported successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPI'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /rest-apis:
     get:
       summary: Get all REST APIs for an organization
@@ -482,58 +370,6 @@ paths:
       responses:
         '201':
           description: API created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPI'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /rest-apis/import-openapi:
-    post:
-      summary: Import and create API from OpenAPI definition
-      description: |
-        Imports an OpenAPI definition into the platform from a provided URL or file upload.
-        A REST API is created from the imported OpenAPI definition and is associated with a specified project within the
-        organization in the JWT token.
-      operationId: ImportOpenAPI
-      security:
-        - OAuth2Security:
-            - ap:rest_api:import
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - Imports
-      requestBody:
-        description: OpenAPI import details
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ImportOpenAPIRequest'
-            encoding:
-              url:
-                contentType: text/plain
-                style: form
-              definition:
-                contentType: application/octet-stream, application/json, application/yaml, text/yaml
-                style: form
-              api:
-                contentType: application/json
-                style: form
-      responses:
-        '201':
-          description: OpenAPI imported successfully
           content:
             application/json:
               schema:
@@ -6052,138 +5888,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /git/repo/fetch-branches:
-    post:
-      summary: Fetch Git repository branches
-      description: |
-        Fetches and returns the list of branches from a specified public Git repository.
-        This endpoint supports multiple Git providers including GitHub, GitLab, and Bitbucket.
-        The provider can be specified explicitly or will be auto-detected from the repository URL.
-        This endpoint is used to verify repository accessibility and display branch options in the API Platform UI
-        for API import functionality. Only public repositories are supported.
-      operationId: FetchGitRepoBranches
-      security:
-        - OAuth2Security:
-            - ap:git:read
-      tags:
-        - Git Operations
-      requestBody:
-        description: Git repository URL to fetch branches from
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GitRepoBranchesRequest'
-      responses:
-        '200':
-          description: Repository branches fetched successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoBranchesResponse'
-        '400':
-          description: Invalid repository URL or request payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Repository not found or is private
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '429':
-          description: Rate limit exceeded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '502':
-          description: Failed to fetch repository branches from Git provider
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /git/repo/branch/fetch-content:
-    post:
-      summary: Fetch Git repository content
-      description: |
-        Fetches and returns the directory and file structure of a specified public Git repository with depth-based pagination.
-        This endpoint supports multiple Git providers including GitHub, GitLab, and Bitbucket.
-        The provider can be specified explicitly or will be auto-detected from the repository URL.
-        
-        **Depth-Based Pagination:**
-        Use the optional `depth` query parameter to limit repository traversal depth. For example:
-        - `depth=1`: Returns only root-level files and directories
-        - `depth=2`: Returns files and directories within two levels from the root
-        - `depth=0` or omitted: Returns all content (default behavior)
-        
-        This approach helps balance data completeness and performance by allowing incremental loading of deeper structures.
-        The response includes directories (both empty and non-empty) and files at the specified depth levels.
-        
-        This endpoint is used to verify repository accessibility and display its structure in the API Platform UI
-        for API import functionality. Only public repositories are supported.
-      operationId: FetchGitRepoContent
-      security:
-        - OAuth2Security:
-            - ap:git:read
-      tags:
-        - Git Operations
-      parameters:
-        - $ref: '#/components/parameters/depth-Q'
-      requestBody:
-        description: Git repository URL to fetch content from
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GitRepoContentRequest'
-      responses:
-        '200':
-          description: Repository content fetched successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoContentResponse'
-        '400':
-          description: Invalid repository URL or request payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Repository not found or is private
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '429':
-          description: Rate limit exceeded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '502':
-          description: Failed to fetch repository content from Git provider
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GitRepoError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /me/api-keys:
     get:
       summary: List API keys for the current user
@@ -6477,7 +6181,6 @@ components:
             ap:gateway:token:manage: Full access to gateway tokens
             ap:gateway:token:read: Read gateway tokens
             ap:gateway:update: Update a gateway
-            ap:git:read: Read Git repository data
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
@@ -6527,7 +6230,6 @@ components:
             ap:organization:create: Create an organization
             ap:organization:manage: Full access to an organization
             ap:organization:read: Read an organization
-            ap:organization:subscription:read: Read an organization's subscription
             ap:project:create: Create a project
             ap:project:delete: Delete a project
             ap:project:manage: Full access to projects
@@ -6548,7 +6250,6 @@ components:
             ap:rest_api:gateway:create: Add gateways to a REST API
             ap:rest_api:gateway:manage: Full access to a REST API's gateways
             ap:rest_api:gateway:read: Read a REST API's gateways
-            ap:rest_api:import: Import a REST API
             ap:rest_api:manage: Full access to REST APIs
             ap:rest_api:read: Read REST APIs
             ap:rest_api:update: Update a REST API
@@ -6739,67 +6440,6 @@ components:
           description: Timestamp when the organization was last updated
           readOnly: true
           example: "2023-10-12T10:30:00Z"
-
-    OrganizationSubscription:
-      type: object
-      required:
-        - plan
-        - quotas
-      properties:
-        plan:
-          type: string
-          description: Effective subscription plan for the organization
-          example: "free"
-        quotas:
-          $ref: '#/components/schemas/OrganizationSubscriptionQuotas'
-
-    OrganizationSubscriptionQuotas:
-      type: object
-      required:
-        - llmProviders
-        - llmProxies
-        - applications
-        - mcpProxies
-        - gateways
-        - apis
-      properties:
-        llmProviders:
-          $ref: '#/components/schemas/OrganizationQuota'
-        llmProxies:
-          $ref: '#/components/schemas/OrganizationQuota'
-        applications:
-          $ref: '#/components/schemas/OrganizationQuota'
-        mcpProxies:
-          $ref: '#/components/schemas/OrganizationQuota'
-        gateways:
-          $ref: '#/components/schemas/OrganizationQuota'
-        apis:
-          $ref: '#/components/schemas/OrganizationQuota'
-        websubApis:
-          $ref: '#/components/schemas/OrganizationQuota'
-
-    OrganizationQuota:
-      type: object
-      required:
-        - used
-      properties:
-        used:
-          type: integer
-          minimum: 0
-          description: Number of currently used resources
-          example: 3
-        limit:
-          type: integer
-          minimum: 0
-          nullable: true
-          description: Maximum resources allowed, null when no limit is configured
-          example: 5
-        remaining:
-          type: integer
-          minimum: 0
-          nullable: true
-          description: Remaining resources before limit is reached, null when no limit is configured
-          example: 2
 
     CreateProjectRequest:
       description: |
@@ -7891,157 +7531,6 @@ components:
           description: Informational message about token rotation
           example: "New token generated successfully. Old token remains active until revoked."
 
-    GitRepoBranchesRequest:
-      type: object
-      required:
-        - repoUrl
-      properties:
-        repoUrl:
-          type: string
-          format: uri
-          description: URL of the public Git repository to fetch branches from
-          example: "https://github.com/example-org/sample-api"
-        provider:
-          type: string
-          enum: ["github", "gitlab", "bitbucket"]
-          description: Git provider (optional - will be auto-detected if not provided)
-          example: "github"
-
-    GitRepoBranchesResponse:
-        type: object
-        required:
-          - repoUrl
-          - branches
-        properties:
-          repoUrl:
-            type: string
-            format: uri
-            description: URL of the repository that was fetched
-            example: "https://github.com/example-org/sample-api"
-          branches:
-            type: array
-            items:
-              $ref: '#/components/schemas/GitRepoBranch'
-
-    GitRepoBranch:
-      type: object
-      required:
-        - name
-        - isDefault
-      properties:
-        name:
-          type: string
-          description: Name of the branch
-          example: "main"
-        isDefault:
-          type: string
-          description: Whether this branch is the default branch
-          example: "true"
-
-    GitRepoContentRequest:
-      type: object
-      required:
-        - repoUrl
-        - branch
-      properties:
-        repoUrl:
-          type: string
-          format: uri
-          description: URL of the public Git repository to fetch content from
-          example: "https://github.com/example-org/sample-api"
-        branch:
-          type: string
-          description: Branch of the repository to fetch content from
-          example: "main"
-        provider:
-          type: string
-          enum: ["github", "gitlab", "bitbucket"]
-          description: Git provider (optional - will be auto-detected if not provided)
-          example: "github"
-
-    GitRepoContentResponse:
-      type: object
-      required:
-        - repoUrl
-        - branch
-        - items
-        - totalItems
-        - maxDepth
-        - requestedDepth
-      properties:
-        repoUrl:
-          type: string
-          format: uri
-          description: URL of the repository that was fetched
-          example: "https://github.com/example-org/sample-api"
-        branch:
-          type: string
-          description: Branch of the repository that was fetched
-          example: "main"
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/GitRepoItem'
-          description: List of files and directories in the repository
-        totalItems:
-          type: integer
-          description: Total number of items returned
-          example: 15
-        maxDepth:
-          type: integer
-          description: Maximum depth level that was actually traversed
-          example: 2
-        requestedDepth:
-          type: integer
-          description: Requested depth level (0 = unlimited)
-          example: 2
-
-    GitRepoItem:
-      type: object
-      required:
-        - path
-        - subPath
-        - children
-        - type
-      properties:
-        path:
-          type: string
-          description: Full path of the item within the repository
-          example: "docs/README.md"
-        subPath:
-          type: string
-          description: Name of the item (file or directory)
-          example: "README.md"
-        children:
-          type: array
-          items:
-            $ref: '#/components/schemas/GitRepoItem'
-        type:
-          type: string
-          description: Type of the item (file or directory)
-          enum: [ tree, blob, EOF ]
-          example: "tree"
-
-    GitRepoError:
-      type: object
-      required:
-        - error
-        - code
-        - message
-      properties:
-        error:
-          type: string
-          description: High-level error type
-          example: "FETCH_FAILED"
-        code:
-          type: string
-          description: Specific error code for programmatic handling
-          example: "GIT_003"
-        message:
-          type: string
-          description: Human-readable error message
-          example: "Repository not found or is private"
-
     TokenInfoResponse:
       type: object
       properties:
@@ -8659,32 +8148,6 @@ components:
           description: Timestamp when API was unpublished
           example: "2025-10-29T21:08:59.834784232+05:30"
 
-    ValidateAPIProjectRequest:
-      type: object
-      required:
-        - repoUrl
-        - branch
-        - path
-      properties:
-        repoUrl:
-          type: string
-          format: uri
-          description: URL of the public Git repository
-          example: "https://github.com/example-org/sample-api"
-        provider:
-          type: string
-          enum: [ "github", "gitlab", "bitbucket" ]
-          description: Git provider (optional - will be auto-detected if not provided)
-          example: "github"
-        branch:
-          type: string
-          description: Branch of the repository to import from
-          example: "main"
-        path:
-          type: string
-          description: Path within the repository where the API project is located
-          example: "apis/inventory-api"
-
     ValidateOpenAPIRequest:
       type: object
       description: |
@@ -8703,88 +8166,6 @@ components:
       anyOf:
         - required: [url]
         - required: [definition]
-
-    ImportOpenAPIRequest:
-      type: object
-      required:
-        - api
-      description: |
-        Multipart form data request for importing OpenAPI definition. All fields are provided as form data.
-        Either 'url' or 'definition' must be provided to specify the OpenAPI source, and 'api' is required
-        to provide the API details for creation. If the OpenAPI definition is valid and successfully imported,
-        and the api details are valid an API will be created.
-      properties:
-        url:
-          type: string
-          format: uri
-          description: |
-            Form field containing URL to fetch the OpenAPI definition from.
-          example: "https://petstore3.swagger.io/api/v3/openapi.json"
-        definition:
-          type: string
-          format: binary
-          description: |
-            Form field for OpenAPI definition file upload (YAML or JSON).
-            This should be provided as a file upload in the multipart form.
-        api:
-          type: string
-          description: |
-            Form field containing JSON-encoded API details for the imported OpenAPI.
-            This must be a JSON string containing the API configuration.
-            Required fields within the JSON: name, context, version, projectId.
-          example: |
-            {
-              "id": "petstore-api-1"
-              "name": "PetStore API",
-              "description": "This is a sample Pet Store Server",
-              "context": "/petstore",
-              "version": "1.0.0",
-              "provider": "PetStore Inc",
-              "projectId": "550e8400-e29b-41d4-a716-446655440000",
-              "type": "HTTP",
-              "transport": ["http", "https"]
-            }
-      anyOf:
-        - required: [ url ]
-        - required: [ definition ]
-
-    RESTAPIProjectValidationResponse:
-      type: object
-      required:
-        - isRESTAPIProjectValid
-        - isAPIConfigValid
-        - isRESTAPIDefinitionValid
-      properties:
-        isRESTAPIProjectValid:
-          type: boolean
-          description: Indicates if the API project structure is valid
-          example: true
-        isAPIConfigValid:
-          type: boolean
-          description: Indicates if the API configuration file is valid
-          example: true
-        isRESTAPIDefinitionValid:
-          type: boolean
-          description: Indicates if the API definition file is valid
-          example: true
-        errors:
-          type: array
-          description: List of validation errors encountered
-          items:
-            type: string
-          example: [ "Missing API definition file", "Invalid API configuration format" ]
-        api:
-          allOf:
-            - $ref: '#/components/schemas/RESTAPI'
-            - type: object
-              description: Details for the validated API project
-              required:
-                - name
-                - description
-                - context
-                - version
-                - projectId
-                - operations
 
     OpenAPIValidationResponse:
       type: object
@@ -8811,43 +8192,6 @@ components:
                 - version
                 - operations
     
-    ImportAPIProjectRequest:
-        type: object
-        required:
-            - repoUrl
-            - branch
-            - path
-            - api
-        properties:
-          repoUrl:
-            type: string
-            format: uri
-            description: URL of the public Git repository
-            example: "https://github.com/example-org/sample-api"
-          provider:
-            type: string
-            enum: [ "github", "gitlab", "bitbucket" ]
-            description: Git provider (optional - will be auto-detected if not provided)
-            example: "github"
-          branch:
-            type: string
-            description: Branch of the repository to import from
-            example: "main"
-          path:
-            type: string
-            description: Path within the repository where the API project is located
-            example: "apis/inventory-api"
-          api:
-            allOf:
-              - $ref: '#/components/schemas/RESTAPI'
-              - type: object
-                description: API details for the imported project
-                required:
-                  - name
-                  - context
-                  - version
-                  - projectId
-
     RESTAPIValidationResponse:
       type: object
       required:
@@ -11322,23 +10666,6 @@ components:
         enum: ["REST_API", "MCP", "API_PRODUCT"]
       example: "REST_API"
 
-    depth-Q:
-      name: depth
-      in: query
-      required: false
-      description: |
-        Limits the depth of directory traversal when fetching Git repository content.
-        - `0` or omitted: Returns all content (unlimited depth)
-        - `1`: Returns only root-level files and directories
-        - `2`: Returns content within two levels from the root
-        - Maximum allowed depth is 10 for performance reasons
-      schema:
-        type: integer
-        minimum: 0
-        maximum: 10
-        default: 0
-      example: 2
-
     deploymentId:
       name: deploymentId
       in: path
@@ -11394,8 +10721,6 @@ tags:
     description: Gateway registration and management operations
   - name: Gateway Tokens
     description: Gateway token rotation and revocation operations
-  - name: Imports
-    description: Operations related to importing
   - name: LLM Providers
     description: LLM provider management operations
   - name: LLM Proxies

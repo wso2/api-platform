@@ -98,25 +98,25 @@ const authedFetch = async (path: string, init?: RequestInit) => {
 /** ----- Hook ----- */
 
 export const useGithubProjectValidation = () => {
-  /** POST: /api/v0.9/api-projects/validate */
+  /**
+   * No longer supported: /api/v0.9/api-projects/validate
+   * Validating API projects from a Git repository has been removed from the
+   * platform. Instead of calling the backend, return a "not supported"
+   * validation response.
+   */
   const validateGithubApiProject = useCallback(
     async (
-      payload: GithubProjectValidationRequest,
-      opts?: { signal?: AbortSignal }
+      _payload: GithubProjectValidationRequest,
+      _opts?: { signal?: AbortSignal }
     ): Promise<GithubProjectValidationResponse> => {
-      const res = await authedFetch(`/api/v0.9/api-projects/validate`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-        signal: opts?.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Failed to validate API project: ${await parseError(res)}`
-        );
-      }
-
-      return (await res.json()) as GithubProjectValidationResponse;
+      return {
+        isAPIProjectValid: false,
+        isAPIConfigValid: false,
+        isAPIDefinitionValid: false,
+        errors: [
+          "Validating API projects from a Git repository is no longer supported.",
+        ],
+      };
     },
     []
   );

@@ -130,44 +130,6 @@ const (
 	GatewayResponseFunctionalityTypeRegular GatewayResponseFunctionalityType = "regular"
 )
 
-// Defines values for GitRepoBranchesRequestProvider.
-const (
-	GitRepoBranchesRequestProviderBitbucket GitRepoBranchesRequestProvider = "bitbucket"
-	GitRepoBranchesRequestProviderGithub    GitRepoBranchesRequestProvider = "github"
-	GitRepoBranchesRequestProviderGitlab    GitRepoBranchesRequestProvider = "gitlab"
-)
-
-// Defines values for GitRepoContentRequestProvider.
-const (
-	GitRepoContentRequestProviderBitbucket GitRepoContentRequestProvider = "bitbucket"
-	GitRepoContentRequestProviderGithub    GitRepoContentRequestProvider = "github"
-	GitRepoContentRequestProviderGitlab    GitRepoContentRequestProvider = "gitlab"
-)
-
-// Defines values for GitRepoItemType.
-const (
-	Blob GitRepoItemType = "blob"
-	EOF  GitRepoItemType = "EOF"
-	Tree GitRepoItemType = "tree"
-)
-
-// Defines values for ImportAPIProjectRequestApiLifeCycleStatus.
-const (
-	ImportAPIProjectRequestApiLifeCycleStatusBLOCKED    ImportAPIProjectRequestApiLifeCycleStatus = "BLOCKED"
-	ImportAPIProjectRequestApiLifeCycleStatusCREATED    ImportAPIProjectRequestApiLifeCycleStatus = "CREATED"
-	ImportAPIProjectRequestApiLifeCycleStatusDEPRECATED ImportAPIProjectRequestApiLifeCycleStatus = "DEPRECATED"
-	ImportAPIProjectRequestApiLifeCycleStatusPUBLISHED  ImportAPIProjectRequestApiLifeCycleStatus = "PUBLISHED"
-	ImportAPIProjectRequestApiLifeCycleStatusRETIRED    ImportAPIProjectRequestApiLifeCycleStatus = "RETIRED"
-	ImportAPIProjectRequestApiLifeCycleStatusSTAGED     ImportAPIProjectRequestApiLifeCycleStatus = "STAGED"
-)
-
-// Defines values for ImportAPIProjectRequestProvider.
-const (
-	ImportAPIProjectRequestProviderBitbucket ImportAPIProjectRequestProvider = "bitbucket"
-	ImportAPIProjectRequestProviderGithub    ImportAPIProjectRequestProvider = "github"
-	ImportAPIProjectRequestProviderGitlab    ImportAPIProjectRequestProvider = "gitlab"
-)
-
 // Defines values for LLMAccessControlMode.
 const (
 	AllowAll LLMAccessControlMode = "allow_all"
@@ -275,16 +237,6 @@ const (
 	Ai      RESTAPIGatewayResponseFunctionalityType = "ai"
 	Event   RESTAPIGatewayResponseFunctionalityType = "event"
 	Regular RESTAPIGatewayResponseFunctionalityType = "regular"
-)
-
-// Defines values for RESTAPIProjectValidationResponseApiLifeCycleStatus.
-const (
-	RESTAPIProjectValidationResponseApiLifeCycleStatusBLOCKED    RESTAPIProjectValidationResponseApiLifeCycleStatus = "BLOCKED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusCREATED    RESTAPIProjectValidationResponseApiLifeCycleStatus = "CREATED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusDEPRECATED RESTAPIProjectValidationResponseApiLifeCycleStatus = "DEPRECATED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusPUBLISHED  RESTAPIProjectValidationResponseApiLifeCycleStatus = "PUBLISHED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusRETIRED    RESTAPIProjectValidationResponseApiLifeCycleStatus = "RETIRED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusSTAGED     RESTAPIProjectValidationResponseApiLifeCycleStatus = "STAGED"
 )
 
 // Defines values for RateLimitResetWindowUnit.
@@ -406,13 +358,6 @@ const (
 	Active  UserAPIKeyItemStatus = "active"
 	Expired UserAPIKeyItemStatus = "expired"
 	Revoked UserAPIKeyItemStatus = "revoked"
-)
-
-// Defines values for ValidateAPIProjectRequestProvider.
-const (
-	ValidateAPIProjectRequestProviderBitbucket ValidateAPIProjectRequestProvider = "bitbucket"
-	ValidateAPIProjectRequestProviderGithub    ValidateAPIProjectRequestProvider = "github"
-	ValidateAPIProjectRequestProviderGitlab    ValidateAPIProjectRequestProvider = "gitlab"
 )
 
 // Defines values for WebBrokerAPIBrokerType.
@@ -1353,197 +1298,6 @@ type GatewayStatusResponse struct {
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
-// GitRepoBranch defines model for GitRepoBranch.
-type GitRepoBranch struct {
-	// IsDefault Whether this branch is the default branch
-	IsDefault string `binding:"required" json:"isDefault" yaml:"isDefault"`
-
-	// Name Name of the branch
-	Name string `binding:"required" json:"name" yaml:"name"`
-}
-
-// GitRepoBranchesRequest defines model for GitRepoBranchesRequest.
-type GitRepoBranchesRequest struct {
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *GitRepoBranchesRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository to fetch branches from
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// GitRepoBranchesRequestProvider Git provider (optional - will be auto-detected if not provided)
-type GitRepoBranchesRequestProvider string
-
-// GitRepoBranchesResponse defines model for GitRepoBranchesResponse.
-type GitRepoBranchesResponse struct {
-	Branches []GitRepoBranch `binding:"required" json:"branches" yaml:"branches"`
-
-	// RepoUrl URL of the repository that was fetched
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// GitRepoContentRequest defines model for GitRepoContentRequest.
-type GitRepoContentRequest struct {
-	// Branch Branch of the repository to fetch content from
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *GitRepoContentRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository to fetch content from
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// GitRepoContentRequestProvider Git provider (optional - will be auto-detected if not provided)
-type GitRepoContentRequestProvider string
-
-// GitRepoContentResponse defines model for GitRepoContentResponse.
-type GitRepoContentResponse struct {
-	// Branch Branch of the repository that was fetched
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Items List of files and directories in the repository
-	Items []GitRepoItem `binding:"required" json:"items" yaml:"items"`
-
-	// MaxDepth Maximum depth level that was actually traversed
-	MaxDepth int `binding:"required" json:"maxDepth" yaml:"maxDepth"`
-
-	// RepoUrl URL of the repository that was fetched
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-
-	// RequestedDepth Requested depth level (0 = unlimited)
-	RequestedDepth int `binding:"required" json:"requestedDepth" yaml:"requestedDepth"`
-
-	// TotalItems Total number of items returned
-	TotalItems int `binding:"required" json:"totalItems" yaml:"totalItems"`
-}
-
-// GitRepoError defines model for GitRepoError.
-type GitRepoError struct {
-	// Code Specific error code for programmatic handling
-	Code string `binding:"required" json:"code" yaml:"code"`
-
-	// Error High-level error type
-	Error string `binding:"required" json:"error" yaml:"error"`
-
-	// Message Human-readable error message
-	Message string `binding:"required" json:"message" yaml:"message"`
-}
-
-// GitRepoItem defines model for GitRepoItem.
-type GitRepoItem struct {
-	Children []GitRepoItem `binding:"required" json:"children" yaml:"children"`
-
-	// Path Full path of the item within the repository
-	Path string `binding:"required" json:"path" yaml:"path"`
-
-	// SubPath Name of the item (file or directory)
-	SubPath string `binding:"required" json:"subPath" yaml:"subPath"`
-
-	// Type Type of the item (file or directory)
-	Type GitRepoItemType `binding:"required" json:"type" yaml:"type"`
-}
-
-// GitRepoItemType Type of the item (file or directory)
-type GitRepoItemType string
-
-// ImportAPIProjectRequest defines model for ImportAPIProjectRequest.
-type ImportAPIProjectRequest struct {
-	Api struct {
-		// Channels List of channels exposed by this API
-		Channels *[]Channel `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context  string     `binding:"required" json:"context" yaml:"context"`
-
-		// CreatedAt Timestamp when the api was created
-		CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-		// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
-		CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-		// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
-		Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-		// Kind Kind of the API based on its communication protocol or architectural style
-		Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-		// LifeCycleStatus Current lifecycle status of the API
-		LifeCycleStatus *ImportAPIProjectRequestApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-		// Name Display name of the API
-		Name string `binding:"required" json:"name" yaml:"name"`
-
-		// Operations List of operations exposed by this API
-		Operations *[]Operation `json:"operations,omitempty" yaml:"operations,omitempty"`
-
-		// Policies List of policies to be applied on the API
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-
-		// ProjectId ID of the project this API belongs to
-		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
-
-		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
-		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-		// When set, only these plans can be used when subscribing to the API.
-		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-		// Transport Supported transports for the API (http and/or https)
-		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
-
-		// UpdatedAt Timestamp when the api was last updated
-		UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-		// Upstream Upstream backend configuration with main and sandbox endpoints
-		Upstream Upstream `json:"upstream" yaml:"upstream"`
-		Version  string   `binding:"required" json:"version" yaml:"version"`
-	} `binding:"required" json:"api" yaml:"api"`
-
-	// Branch Branch of the repository to import from
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Path Path within the repository where the API project is located
-	Path string `binding:"required" json:"path" yaml:"path"`
-
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *ImportAPIProjectRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// ImportAPIProjectRequestApiLifeCycleStatus Current lifecycle status of the API
-type ImportAPIProjectRequestApiLifeCycleStatus string
-
-// ImportAPIProjectRequestProvider Git provider (optional - will be auto-detected if not provided)
-type ImportAPIProjectRequestProvider string
-
-// ImportOpenAPIRequest Multipart form data request for importing OpenAPI definition. All fields are provided as form data.
-// Either 'url' or 'definition' must be provided to specify the OpenAPI source, and 'api' is required
-// to provide the API details for creation. If the OpenAPI definition is valid and successfully imported,
-// and the api details are valid an API will be created.
-type ImportOpenAPIRequest struct {
-	// Api Form field containing JSON-encoded API details for the imported OpenAPI.
-	// This must be a JSON string containing the API configuration.
-	// Required fields within the JSON: name, context, version, projectId.
-	Api string `binding:"required" json:"api" yaml:"api"`
-
-	// Definition Form field for OpenAPI definition file upload (YAML or JSON).
-	// This should be provided as a file upload in the multipart form.
-	Definition *openapi_types.File `json:"definition,omitempty" yaml:"definition,omitempty"`
-
-	// Url Form field containing URL to fetch the OpenAPI definition from.
-	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
-	union json.RawMessage
-}
-
-// ImportOpenAPIRequest0 defines model for .
-type ImportOpenAPIRequest0 = interface{}
-
-// ImportOpenAPIRequest1 defines model for .
-type ImportOpenAPIRequest1 = interface{}
-
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
 	// Exceptions Path exceptions to the access control mode
@@ -2257,36 +2011,6 @@ type Organization struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
-// OrganizationQuota defines model for OrganizationQuota.
-type OrganizationQuota struct {
-	// Limit Maximum resources allowed, null when no limit is configured
-	Limit *int `json:"limit" yaml:"limit"`
-
-	// Remaining Remaining resources before limit is reached, null when no limit is configured
-	Remaining *int `json:"remaining" yaml:"remaining"`
-
-	// Used Number of currently used resources
-	Used int `binding:"required" json:"used" yaml:"used"`
-}
-
-// OrganizationSubscription defines model for OrganizationSubscription.
-type OrganizationSubscription struct {
-	// Plan Effective subscription plan for the organization
-	Plan   string                         `binding:"required" json:"plan" yaml:"plan"`
-	Quotas OrganizationSubscriptionQuotas `json:"quotas" yaml:"quotas"`
-}
-
-// OrganizationSubscriptionQuotas defines model for OrganizationSubscriptionQuotas.
-type OrganizationSubscriptionQuotas struct {
-	Apis         OrganizationQuota  `json:"apis" yaml:"apis"`
-	Applications OrganizationQuota  `json:"applications" yaml:"applications"`
-	Gateways     OrganizationQuota  `json:"gateways" yaml:"gateways"`
-	LlmProviders OrganizationQuota  `json:"llmProviders" yaml:"llmProviders"`
-	LlmProxies   OrganizationQuota  `json:"llmProxies" yaml:"llmProxies"`
-	McpProxies   OrganizationQuota  `json:"mcpProxies" yaml:"mcpProxies"`
-	WebsubApis   *OrganizationQuota `json:"websubApis,omitempty" yaml:"websubApis,omitempty"`
-}
-
 // Owners API ownership information
 type Owners struct {
 	// BusinessOwner Business owner of the API
@@ -2541,75 +2265,6 @@ type RESTAPIListResponse struct {
 	List       []RESTAPI  `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
 }
-
-// RESTAPIProjectValidationResponse defines model for RESTAPIProjectValidationResponse.
-type RESTAPIProjectValidationResponse struct {
-	Api *struct {
-		// Channels List of channels exposed by this API
-		Channels *[]Channel `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context  string     `binding:"required" json:"context" yaml:"context"`
-
-		// CreatedAt Timestamp when the api was created
-		CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-		// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
-		CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description string  `json:"description" yaml:"description"`
-
-		// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
-		Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-		// Kind Kind of the API based on its communication protocol or architectural style
-		Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-		// LifeCycleStatus Current lifecycle status of the API
-		LifeCycleStatus *RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-		// Name Display name of the API
-		Name string `binding:"required" json:"name" yaml:"name"`
-
-		// Operations List of operations exposed by this API
-		Operations []Operation `json:"operations" yaml:"operations"`
-
-		// Policies List of policies to be applied on the API
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-
-		// ProjectId ID of the project this API belongs to
-		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
-
-		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
-		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-		// When set, only these plans can be used when subscribing to the API.
-		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-		// Transport Supported transports for the API (http and/or https)
-		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
-
-		// UpdatedAt Timestamp when the api was last updated
-		UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-		// Upstream Upstream backend configuration with main and sandbox endpoints
-		Upstream Upstream `json:"upstream" yaml:"upstream"`
-		Version  string   `binding:"required" json:"version" yaml:"version"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-
-	// Errors List of validation errors encountered
-	Errors *[]string `json:"errors,omitempty" yaml:"errors,omitempty"`
-
-	// IsAPIConfigValid Indicates if the API configuration file is valid
-	IsAPIConfigValid bool `binding:"required" json:"isAPIConfigValid" yaml:"isAPIConfigValid"`
-
-	// IsRESTAPIDefinitionValid Indicates if the API definition file is valid
-	IsRESTAPIDefinitionValid bool `binding:"required" json:"isRESTAPIDefinitionValid" yaml:"isRESTAPIDefinitionValid"`
-
-	// IsRESTAPIProjectValid Indicates if the API project structure is valid
-	IsRESTAPIProjectValid bool `binding:"required" json:"isRESTAPIProjectValid" yaml:"isRESTAPIProjectValid"`
-}
-
-// RESTAPIProjectValidationResponseApiLifeCycleStatus Current lifecycle status of the API
-type RESTAPIProjectValidationResponseApiLifeCycleStatus string
 
 // RESTAPIValidationResponse defines model for RESTAPIValidationResponse.
 type RESTAPIValidationResponse struct {
@@ -3114,24 +2769,6 @@ type UserAPIKeyListResponse struct {
 	Items []UserAPIKeyItem `binding:"required" json:"items" yaml:"items"`
 }
 
-// ValidateAPIProjectRequest defines model for ValidateAPIProjectRequest.
-type ValidateAPIProjectRequest struct {
-	// Branch Branch of the repository to import from
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Path Path within the repository where the API project is located
-	Path string `binding:"required" json:"path" yaml:"path"`
-
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *ValidateAPIProjectRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// ValidateAPIProjectRequestProvider Git provider (optional - will be auto-detected if not provided)
-type ValidateAPIProjectRequestProvider string
-
 // ValidateOpenAPIRequest Request for validating OpenAPI definition. Can include either a URL, a file upload,
 // or both. If both are provided, the validation service can choose which to prioritize.
 type ValidateOpenAPIRequest struct {
@@ -3490,9 +3127,6 @@ type DeploymentIdQ = string
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
 
-// DepthQ defines model for depth-Q.
-type DepthQ = int
-
 // EntityIDQ defines model for entityID-Q.
 type EntityIDQ = string
 
@@ -3597,16 +3231,6 @@ type GetGatewayArtifactsParams struct {
 
 // GetGatewayArtifactsParamsArtifactType defines parameters for GetGatewayArtifacts.
 type GetGatewayArtifactsParamsArtifactType string
-
-// FetchGitRepoContentParams defines parameters for FetchGitRepoContent.
-type FetchGitRepoContentParams struct {
-	// Depth Limits the depth of directory traversal when fetching Git repository content.
-	// - `0` or omitted: Returns all content (unlimited depth)
-	// - `1`: Returns only root-level files and directories
-	// - `2`: Returns content within two levels from the root
-	// - Maximum allowed depth is 10 for performance reasons
-	Depth *DepthQ `form:"depth,omitempty" json:"depth,omitempty" yaml:"depth,omitempty"`
-}
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
@@ -3901,12 +3525,6 @@ type UndeployWebSubAPIParams struct {
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
-// ImportAPIProjectJSONRequestBody defines body for ImportAPIProject for application/json ContentType.
-type ImportAPIProjectJSONRequestBody = ImportAPIProjectRequest
-
-// ValidateAPIProjectJSONRequestBody defines body for ValidateAPIProject for application/json ContentType.
-type ValidateAPIProjectJSONRequestBody = ValidateAPIProjectRequest
-
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest
 
@@ -3924,12 +3542,6 @@ type CreateGatewayJSONRequestBody = CreateGatewayRequest
 
 // UpdateGatewayJSONRequestBody defines body for UpdateGateway for application/json ContentType.
 type UpdateGatewayJSONRequestBody = UpdateGatewayRequest
-
-// FetchGitRepoContentJSONRequestBody defines body for FetchGitRepoContent for application/json ContentType.
-type FetchGitRepoContentJSONRequestBody = GitRepoContentRequest
-
-// FetchGitRepoBranchesJSONRequestBody defines body for FetchGitRepoBranches for application/json ContentType.
-type FetchGitRepoBranchesJSONRequestBody = GitRepoBranchesRequest
 
 // CreateLLMProviderTemplateJSONRequestBody defines body for CreateLLMProviderTemplate for application/json ContentType.
 type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
@@ -3990,9 +3602,6 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 
 // CreateRESTAPIJSONRequestBody defines body for CreateRESTAPI for application/json ContentType.
 type CreateRESTAPIJSONRequestBody = CreateRESTAPIRequest
-
-// ImportOpenAPIMultipartRequestBody defines body for ImportOpenAPI for multipart/form-data ContentType.
-type ImportOpenAPIMultipartRequestBody = ImportOpenAPIRequest
 
 // ValidateOpenAPIMultipartRequestBody defines body for ValidateOpenAPI for multipart/form-data ContentType.
 type ValidateOpenAPIMultipartRequestBody = ValidateOpenAPIRequest
@@ -4065,128 +3674,6 @@ type CreateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRequest
 
 // RegenerateWebSubAPISecretJSONRequestBody defines body for RegenerateWebSubAPISecret for application/json ContentType.
 type RegenerateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRegenerateRequest
-
-// AsImportOpenAPIRequest0 returns the union data inside the ImportOpenAPIRequest as a ImportOpenAPIRequest0
-func (t ImportOpenAPIRequest) AsImportOpenAPIRequest0() (ImportOpenAPIRequest0, error) {
-	var body ImportOpenAPIRequest0
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromImportOpenAPIRequest0 overwrites any union data inside the ImportOpenAPIRequest as the provided ImportOpenAPIRequest0
-func (t *ImportOpenAPIRequest) FromImportOpenAPIRequest0(v ImportOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeImportOpenAPIRequest0 performs a merge with any union data inside the ImportOpenAPIRequest, using the provided ImportOpenAPIRequest0
-func (t *ImportOpenAPIRequest) MergeImportOpenAPIRequest0(v ImportOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsImportOpenAPIRequest1 returns the union data inside the ImportOpenAPIRequest as a ImportOpenAPIRequest1
-func (t ImportOpenAPIRequest) AsImportOpenAPIRequest1() (ImportOpenAPIRequest1, error) {
-	var body ImportOpenAPIRequest1
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromImportOpenAPIRequest1 overwrites any union data inside the ImportOpenAPIRequest as the provided ImportOpenAPIRequest1
-func (t *ImportOpenAPIRequest) FromImportOpenAPIRequest1(v ImportOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeImportOpenAPIRequest1 performs a merge with any union data inside the ImportOpenAPIRequest, using the provided ImportOpenAPIRequest1
-func (t *ImportOpenAPIRequest) MergeImportOpenAPIRequest1(v ImportOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t ImportOpenAPIRequest) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	object := make(map[string]json.RawMessage)
-	if t.union != nil {
-		err = json.Unmarshal(b, &object)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	object["api"], err = json.Marshal(t.Api)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling 'api': %w", err)
-	}
-
-	if t.Definition != nil {
-		object["definition"], err = json.Marshal(t.Definition)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'definition': %w", err)
-		}
-	}
-
-	if t.Url != nil {
-		object["url"], err = json.Marshal(t.Url)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'url': %w", err)
-		}
-	}
-	b, err = json.Marshal(object)
-	return b, err
-}
-
-func (t *ImportOpenAPIRequest) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	if err != nil {
-		return err
-	}
-	object := make(map[string]json.RawMessage)
-	err = json.Unmarshal(b, &object)
-	if err != nil {
-		return err
-	}
-
-	if raw, found := object["api"]; found {
-		err = json.Unmarshal(raw, &t.Api)
-		if err != nil {
-			return fmt.Errorf("error reading 'api': %w", err)
-		}
-	}
-
-	if raw, found := object["definition"]; found {
-		err = json.Unmarshal(raw, &t.Definition)
-		if err != nil {
-			return fmt.Errorf("error reading 'definition': %w", err)
-		}
-	}
-
-	if raw, found := object["url"]; found {
-		err = json.Unmarshal(raw, &t.Url)
-		if err != nil {
-			return fmt.Errorf("error reading 'url': %w", err)
-		}
-	}
-
-	return err
-}
 
 // AsRateLimitingScopeConfig0 returns the union data inside the RateLimitingScopeConfig as a RateLimitingScopeConfig0
 func (t RateLimitingScopeConfig) AsRateLimitingScopeConfig0() (RateLimitingScopeConfig0, error) {
