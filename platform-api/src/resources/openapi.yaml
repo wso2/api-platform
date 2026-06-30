@@ -6393,11 +6393,14 @@ components:
           description: Handle (URL-friendly slug) for the organization
           pattern: '^[a-z0-9-]+$'
           minLength: 1
+          maxLength: 63
           readOnly: true
           example: "acme"
         displayName:
           type: string
-          description: Display name of the organization
+          description: Human-readable name for the organization
+          minLength: 1
+          maxLength: 128
           example: "Acme Corporation"
         region:
           type: string
@@ -6434,6 +6437,7 @@ components:
           type: string
           description: Human-readable name for the project
           minLength: 1
+          maxLength: 128
           example: "Default Project"
         description:
           type: string
@@ -6447,12 +6451,15 @@ components:
       properties:
         id:
           type: string
-          description: Handle of the project — must match the existing handle (immutable)
+          description: Handle of the project — must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
+          minLength: 1
+          maxLength: 63
           example: "default-project"
         displayName:
           type: string
-          description: Updated human-readable name for the project
+          description: Human-readable name for the project
           minLength: 1
+          maxLength: 128
           example: "Updated Project Name"
         description:
           type: string
@@ -6469,12 +6476,15 @@ components:
         id:
           type: string
           description: Handle (URL-friendly slug) for the project
+          minLength: 1
+          maxLength: 63
           readOnly: true
           example: "default-project"
         displayName:
           type: string
           description: Human-readable name for the project
           minLength: 1
+          maxLength: 128
           example: "Default Project"
         uuid:
           type: string
@@ -6523,11 +6533,14 @@ components:
         id:
           type: string
           description: Unique handle/identifier for the application. Can be provided during creation or auto-generated.
+          minLength: 1
+          maxLength: 63
           example: my-app-handle
         displayName:
           type: string
+          description: Human-readable name for the application
           minLength: 1
-          description: Display name of the application
+          maxLength: 128
           example: "GenAI Demo App"
         projectId:
           type: string
@@ -6552,12 +6565,15 @@ components:
       properties:
         id:
           type: string
-          description: Application handle/identifier. Immutable; must match the application being updated.
+          description: Application handle/identifier. Immutable; must match the path parameter — returns 400 if they differ.
+          minLength: 1
+          maxLength: 63
           example: "my-app-handle"
         displayName:
           type: string
+          description: Human-readable name for the application
           minLength: 1
-          description: Display name of the application
+          maxLength: 128
           example: "Updated GenAI App"
         description:
           type: string
@@ -6577,10 +6593,14 @@ components:
         id:
           type: string
           description: Application handle/identifier
+          minLength: 1
+          maxLength: 63
           example: "my-app-handle"
         displayName:
           type: string
-          description: Display name of the application
+          description: Human-readable name for the application
+          minLength: 1
+          maxLength: 128
           example: "GenAI Demo App"
         projectId:
           type: string
@@ -6657,6 +6677,8 @@ components:
         id:
           type: string
           description: ID or handle of the association target
+          minLength: 1
+          maxLength: 63
           example: provider-handle
         kind:
           type: string
@@ -6678,6 +6700,8 @@ components:
         id:
           type: string
           description: Handle/ID of the associated target
+          minLength: 1
+          maxLength: 63
           example: provider-handle
         uuid:
           type: string
@@ -6686,7 +6710,9 @@ components:
           example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
         displayName:
           type: string
-          description: Display name of the associated target
+          description: Human-readable name for the associated target
+          minLength: 1
+          maxLength: 128
           example: "OpenAI Provider"
         version:
           type: string
@@ -6829,13 +6855,16 @@ components:
       properties:
         id:
           type: string
-          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated.
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+          minLength: 1
+          maxLength: 63
           example: my-rest-api-handle
         displayName:
-          minLength: 1
-          description: Display name of the API
+          description: Human-readable name for the API
           pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
           type: string
+          minLength: 1
+          maxLength: 128
           example: PizzaShackAPI
         description:
           maxLength: 32766
@@ -7313,6 +7342,8 @@ components:
         id:
           type: string
           description: Handle (URL-friendly slug) for the gateway
+          minLength: 1
+          maxLength: 63
           readOnly: true
           example: "prod-gateway-01"
         organizationId:
@@ -7323,6 +7354,8 @@ components:
         displayName:
           type: string
           description: Human-readable gateway name
+          minLength: 1
+          maxLength: 128
           example: "Production Gateway 01"
         description:
           type: string
@@ -7372,7 +7405,9 @@ components:
       properties:
         id:
           type: string
-          description: Handle of the gateway — must match the existing handle (immutable)
+          description: Handle of the gateway — must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
+          minLength: 1
+          maxLength: 63
           example: "prod-gateway-01"
         displayName:
           type: string
@@ -7572,6 +7607,9 @@ components:
     UpdateRESTAPIRequest:
       allOf:
         - $ref: '#/components/schemas/RESTAPI'
+      description: |
+        Full replacement request for a REST API. All required fields from the API schema must be
+        provided. If `id` is included, it must match the path parameter — returns 400 if they differ.
 
     TimeUnit:
       type: string
@@ -7612,7 +7650,9 @@ components:
           example: "production-key-01"
         displayName:
           type: string
-          description: Display name of the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production API Key"
         apiKey:
           type: string
@@ -7670,7 +7710,9 @@ components:
           example: "production-key-01"
         displayName:
           type: string
-          description: Display name of the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production API Key (Updated)"
         apiKey:
           type: string
@@ -7796,8 +7838,13 @@ components:
         id:
           type: string
           description: Handle (slug) for the subscription plan
+          minLength: 1
+          maxLength: 63
         displayName:
           type: string
+          description: Human-readable name for the subscription plan
+          minLength: 1
+          maxLength: 128
         billingPlan:
           type: string
         stopOnQuotaReach:
@@ -7961,6 +8008,8 @@ components:
         id:
           type: string
           description: Handle of the artifact
+          minLength: 1
+          maxLength: 63
           example: "inventory-api"
         name:
           type: string
@@ -8572,6 +8621,8 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: openai
         groupId:
           type: string
@@ -8583,6 +8634,9 @@ components:
           example: openai
         displayName:
           type: string
+          description: Human-readable name for the LLM provider template
+          minLength: 1
+          maxLength: 128
           example: OpenAI
         managedBy:
           type: string
@@ -8948,6 +9002,8 @@ components:
         id:
           type: string
           description: Unique handle for the provider
+          minLength: 1
+          maxLength: 63
           example: wso2-openai-provider
         displayName:
           type: string
@@ -9093,9 +9149,14 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: wso2-openai-provider
         displayName:
           type: string
+          description: Human-readable name for the LLM provider
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI Provider
         description:
           type: string
@@ -9137,10 +9198,14 @@ components:
         id:
           type: string
           description: Unique model provider identifier
+          minLength: 1
+          maxLength: 63
           example: claude
         displayName:
           type: string
           description: Human-readable model provider name
+          minLength: 1
+          maxLength: 128
           example: Claude
         models:
           type: array
@@ -9156,10 +9221,14 @@ components:
         id:
           type: string
           description: Unique model identifier
+          minLength: 1
+          maxLength: 63
           example: claude-3-5-sonnet
         displayName:
           type: string
           description: Human-readable model name
+          minLength: 1
+          maxLength: 128
           example: Claude 3.5 Sonnet
         description:
           type: string
@@ -9195,6 +9264,8 @@ components:
         id:
           type: string
           description: Unique handle for the proxy
+          minLength: 1
+          maxLength: 63
           example: wso2-con-assistant
         displayName:
           type: string
@@ -9303,9 +9374,14 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: wso2-con-assistant
         displayName:
           type: string
+          description: Human-readable name for the LLM proxy
+          minLength: 1
+          maxLength: 128
           example: WSO2 Con Assistant
         description:
           type: string
@@ -9373,6 +9449,8 @@ components:
         id:
           type: string
           description: Unique id of a deployed llm provider
+          minLength: 1
+          maxLength: 63
           example: wso2-openai-provider
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
@@ -9389,7 +9467,9 @@ components:
           example: "production-key"
         displayName:
           type: string
-          description: User-friendly name for the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production Key"
         expiresAt:
           type: string
@@ -9444,7 +9524,9 @@ components:
           example: "production-key"
         displayName:
           type: string
-          description: User-friendly name for the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production Key"
         expiresAt:
           type: string
@@ -9499,6 +9581,8 @@ components:
         id:
           type: string
           description: Unique handle for the proxy
+          minLength: 1
+          maxLength: 63
           example: weather-mcp-proxy
         displayName:
           type: string
@@ -9599,9 +9683,14 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: weather-mcp-proxy
         displayName:
           type: string
+          description: Human-readable name for the MCP proxy
+          minLength: 1
+          maxLength: 128
           example: Weather Server
         description:
           type: string
@@ -9733,6 +9822,8 @@ components:
         id:
           type: string
           description: Unique handle for the WebSub API
+          minLength: 1
+          maxLength: 63
           example: my-websub-api
         displayName:
           type: string
@@ -9821,9 +9912,14 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: my-websub-api
         displayName:
           type: string
+          description: Human-readable name for the WebSub API
+          minLength: 1
+          maxLength: 128
           example: My WebSub API
         version:
           type: string
@@ -9915,6 +10011,8 @@ components:
         displayName:
           type: string
           description: Human-readable label for the HMAC secret (used to derive the URL-safe name/slug).
+          minLength: 1
+          maxLength: 128
           example: GitHub Webhook
         secret:
           type: string
@@ -9954,7 +10052,9 @@ components:
           example: github-webhook
         displayName:
           type: string
-          description: Human-readable label.
+          description: Human-readable name for the HMAC secret
+          minLength: 1
+          maxLength: 128
           example: GitHub Webhook
         status:
           type: string
@@ -10009,6 +10109,8 @@ components:
         id:
           type: string
           description: Unique handle for the WebBroker API
+          minLength: 1
+          maxLength: 63
           example: my-webbroker-api
         displayName:
           type: string
@@ -10131,9 +10233,14 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: my-webbroker-api
         displayName:
           type: string
+          description: Human-readable name for the WebBroker API
+          minLength: 1
+          maxLength: 128
           example: My WebBroker API
         version:
           type: string
@@ -10236,10 +10343,14 @@ components:
         id:
           type: string
           description: Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
+          minLength: 1
+          maxLength: 63
           example: wso2-openai-key
         displayName:
           type: string
-          description: Human-readable display name for list views
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI API Key
         description:
           type: string
@@ -10258,9 +10369,17 @@ components:
       required:
         - value
       properties:
+        id:
+          type: string
+          description: Secret handle — if provided, must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
+          minLength: 1
+          maxLength: 63
+          example: "wso2-openai-key"
         displayName:
           type: string
-          description: Updated display name
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
         description:
           type: string
         value:
@@ -10277,9 +10396,14 @@ components:
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: wso2-openai-key
         displayName:
           type: string
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI API Key
         createdAt:
           type: string
@@ -10298,9 +10422,14 @@ components:
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
         id:
           type: string
+          minLength: 1
+          maxLength: 63
           example: wso2-openai-key
         displayName:
           type: string
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI API Key
         description:
           type: string
