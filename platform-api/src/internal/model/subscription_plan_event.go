@@ -20,12 +20,15 @@ package model
 import "time"
 
 // SubscriptionPlanCreatedEvent represents the payload for a subscriptionPlan.created event.
+//
+// StopOnQuotaReach is sent as a boolean to match the gateway-controller's payload
+// contract; the platform-api stores it as a SMALLINT (0/1) and converts at this boundary.
 type SubscriptionPlanCreatedEvent struct {
 	PlanId             string     `json:"planId"`
 	Handle             string     `json:"handle"`
-	Name               string     `json:"name"`
+	PlanName           string     `json:"planName"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   int        `json:"stopOnQuotaReach"`
+	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
@@ -33,12 +36,15 @@ type SubscriptionPlanCreatedEvent struct {
 }
 
 // SubscriptionPlanUpdatedEvent represents the payload for a subscriptionPlan.updated event.
+//
+// StopOnQuotaReach is sent as a boolean to match the gateway-controller's payload
+// contract; the platform-api stores it as a SMALLINT (0/1) and converts at this boundary.
 type SubscriptionPlanUpdatedEvent struct {
 	PlanId             string     `json:"planId"`
 	Handle             string     `json:"handle"`
-	Name               string     `json:"name"`
+	PlanName           string     `json:"planName"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   int        `json:"stopOnQuotaReach"`
+	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
@@ -47,7 +53,7 @@ type SubscriptionPlanUpdatedEvent struct {
 
 // SubscriptionPlanDeletedEvent represents the payload for a subscriptionPlan.deleted event.
 type SubscriptionPlanDeletedEvent struct {
-	PlanId string `json:"planId"`
-	Handle string `json:"handle"`
-	Name   string `json:"name"`
+	PlanId   string `json:"planId"`
+	Handle   string `json:"handle"`
+	PlanName string `json:"planName"`
 }

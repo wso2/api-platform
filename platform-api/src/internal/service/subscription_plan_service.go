@@ -92,9 +92,9 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 	s.broadcastPlanEvent(orgUUID, "created", &model.SubscriptionPlanCreatedEvent{
 		PlanId:             plan.UUID,
 		Handle:             plan.Handle,
-		Name:               plan.Name,
+		PlanName:           plan.Name,
 		BillingPlan:        plan.BillingPlan,
-		StopOnQuotaReach:   plan.StopOnQuotaReach,
+		StopOnQuotaReach:   plan.StopOnQuotaReach != 0,
 		ThrottleLimitCount: plan.ThrottleLimitCount,
 		ThrottleLimitUnit:  plan.ThrottleLimitUnit,
 		ExpiryTime:         plan.ExpiryTime,
@@ -200,9 +200,9 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 	s.broadcastPlanEvent(orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
 		PlanId:             existing.UUID,
 		Handle:             existing.Handle,
-		Name:               existing.Name,
+		PlanName:           existing.Name,
 		BillingPlan:        existing.BillingPlan,
-		StopOnQuotaReach:   existing.StopOnQuotaReach,
+		StopOnQuotaReach:   existing.StopOnQuotaReach != 0,
 		ThrottleLimitCount: existing.ThrottleLimitCount,
 		ThrottleLimitUnit:  existing.ThrottleLimitUnit,
 		ExpiryTime:         existing.ExpiryTime,
@@ -233,9 +233,9 @@ func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) erro
 	}
 
 	s.broadcastPlanEvent(orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{
-		PlanId: existing.UUID,
-		Handle: existing.Handle,
-		Name:   existing.Name,
+		PlanId:   existing.UUID,
+		Handle:   existing.Handle,
+		PlanName: existing.Name,
 	})
 
 	return nil
