@@ -289,8 +289,31 @@ func (s *Server) refreshByToken(ctx context.Context, jwt string) (*session.Sessi
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Re-read under the lock: a concurrent request may have already refreshed (and
-	// thus deleted) this entry while we waited.
+	// A concurrent caller that shared this old token already performed the
+	// refresh; hand them the same rotated result rather than re-reading the
+	// store (whose old entry it has since deleted), which would otherwise turn a
+	// successful rotation into a spurious session-expired error.
+	if mu.done {
+		return mu.result, mu.err
+	}
+
+	mu.result, mu.err = s.doRefresh(ctx, jwt)
+	mu.done = true
+
+	// The single-flight owner always drops the lock entry, on every exit path, so
+	// the map cannot leak. Waiters already hold the mu pointer and read the
+	// cached result above even after the map entry is gone.
+	s.refreshMu.Lock()
+	delete(s.refreshLocks, jwt)
+	s.refreshMu.Unlock()
+
+	return mu.result, mu.err
+}
+
+// doRefresh rotates the stored token set for the given access JWT and re-keys
+// the store entry to the new access token. It is invoked exactly once per
+// single-flight group by refreshByToken, which handles locking and cleanup.
+func (s *Server) doRefresh(ctx context.Context, jwt string) (*session.Session, error) {
 	cur, ok, _ := s.store.Get(ctx, jwt)
 	if !ok {
 		return nil, errors.New("session no longer exists")
@@ -315,11 +338,8 @@ func (s *Server) refreshByToken(ctx context.Context, jwt string) (*session.Sessi
 	if err := s.store.Put(ctx, updated); err != nil {
 		return nil, err
 	}
-	// Drop the old entry and its single-flight lock now that the token rotated.
+	// Drop the old entry now that the token rotated.
 	_ = s.store.Delete(ctx, jwt)
-	s.refreshMu.Lock()
-	delete(s.refreshLocks, jwt)
-	s.refreshMu.Unlock()
 	return updated, nil
 }
 

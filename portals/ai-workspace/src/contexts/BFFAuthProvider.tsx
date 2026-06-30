@@ -75,7 +75,6 @@ function bffHeaders(): Record<string, string> {
 
 export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -85,27 +84,37 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch(SESSION_URL, { credentials: 'include', headers: bffHeaders() });
         if (!cancelled && res.ok) {
           const body = (await res.json()) as SessionResponse;
-          if (body.authenticated) {
-            setUser(toAppUser(body.user));
-            setAccessToken(body.accessToken ?? null);
-          } else {
-            setUser(null);
-            setAccessToken(null);
-          }
+          setUser(body.authenticated ? toAppUser(body.user) : null);
         } else if (!cancelled) {
           setUser(null);
-          setAccessToken(null);
         }
       } catch {
-        if (!cancelled) {
-          setUser(null);
-          setAccessToken(null);
-        }
+        if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // Fetch the current JWT fresh from the session endpoint rather than returning
+  // a value captured at hydrate time: the BFF proxy rotates the cookie token
+  // near expiry, so a cached snapshot would go stale. We also re-sync the user
+  // in case claims changed across the rotation.
+  const getAccessToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch(SESSION_URL, { credentials: 'include', headers: bffHeaders() });
+      if (!res.ok) return null;
+      const body = (await res.json()) as SessionResponse;
+      if (!body.authenticated) {
+        setUser(null);
+        return null;
+      }
+      setUser(toAppUser(body.user));
+      return body.accessToken ?? null;
+    } catch {
+      return null;
+    }
   }, []);
 
   const login = useCallback(async () => {
@@ -146,12 +155,12 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: user !== null,
       isLoading: loading,
       user,
-      accessToken, // full JWT surfaced from the BFF session (also injected by the proxy)
+      getAccessToken, // fresh JWT from the BFF session (also injected by the proxy)
       hasPermission,
       login,
       logout,
     }),
-    [user, accessToken, loading, hasPermission, login, logout],
+    [user, loading, getAccessToken, hasPermission, login, logout],
   );
 
   return <AppAuthContext.Provider value={value}>{children}</AppAuthContext.Provider>;

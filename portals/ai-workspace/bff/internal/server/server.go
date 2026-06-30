@@ -32,7 +32,16 @@ import (
 	"ai-workspace-bff/internal/session"
 )
 
-type refreshLock struct{ sync.Mutex }
+// refreshLock is the single-flight coordinator for refreshing one access JWT.
+// The first caller performs the refresh and records the outcome; concurrent
+// waiters keyed by the same (old) JWT read the cached result instead of
+// re-reading the store, whose old entry has since been re-keyed/deleted.
+type refreshLock struct {
+	sync.Mutex
+	done   bool
+	result *session.Session
+	err    error
+}
 
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {

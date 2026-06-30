@@ -40,7 +40,9 @@ import (
 const startupBanner = `
 ========================================
 
-         AI Workspace started
+
+          AI Workspace started
+
 
 ========================================
 `

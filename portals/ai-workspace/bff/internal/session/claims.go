@@ -117,7 +117,7 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	// then email, and only as a last resort the opaque subject id (so the UI
 	// never shows a raw UUID when a readable claim is available).
 	u := User{
-		Name:   first(get(m.Username), get(m.Email), strClaim(claims, "sub")),
+		Name:   first(get(m.Username), get(m.Email), get("sub")),
 		Email:  get(m.Email),
 		Role:   strClaim(claims, m.Role),
 		Scopes: scopes(claims, m.Scope),
