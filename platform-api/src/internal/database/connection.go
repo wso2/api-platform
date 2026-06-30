@@ -275,48 +275,42 @@ func splitSQLStatements(sql string) []string {
 	inString := false
 	inLineComment := false
 	escapeNext := false
+	var prevRune rune
 
 	runes := []rune(sql)
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 
-		if inLineComment {
+		switch {
+		// A pending escape: copy the escaped rune verbatim.
+		case escapeNext:
+			current.WriteRune(r)
+			escapeNext = false
+
+		// Inside a line comment: copy verbatim until the newline ends it.
+		case inLineComment:
 			current.WriteRune(r)
 			if r == '\n' {
 				inLineComment = false
 			}
-			continue
-		}
-
-		if escapeNext {
-			current.WriteRune(r)
-			escapeNext = false
-			continue
-		}
 
 		// Handle escape sequences
-		if r == '\\' {
+		case r == '\\':
 			escapeNext = true
 			current.WriteRune(r)
-			continue
-		}
-
-		// Start of a -- line comment (only when not inside a string literal)
-		if !inString && r == '-' && i+1 < len(runes) && runes[i+1] == '-' {
-			inLineComment = true
-			current.WriteRune(r)
-			continue
-		}
 
 		// Track string literals - everything inside single quotes is literal
-		if r == '\'' {
+		case r == '\'':
 			inString = !inString
 			current.WriteRune(r)
-			continue
-		}
 
-		// Only split on semicolons that are outside of string literals
-		if !inString && r == ';' {
+		// Start of a "--" line comment (outside string literals)
+		case !inString && r == '-' && prevRune == '-':
+			inLineComment = true
+			current.WriteRune(r)
+
+		// Only split on semicolons that are outside of string literals and comments
+		case !inString && r == ';':
 			stmt := strings.TrimSpace(current.String())
 			// Only add non-empty statements that aren't pure comments
 			if stmt != "" {
@@ -327,10 +321,11 @@ func splitSQLStatements(sql string) []string {
 				}
 			}
 			current.Reset()
-			continue
-		}
 
-		current.WriteRune(r)
+		default:
+			current.WriteRune(r)
+		}
+		prevRune = r
 	}
 
 	// Handle remaining statement (if any)

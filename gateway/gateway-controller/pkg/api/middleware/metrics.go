@@ -19,55 +19,80 @@
 package middleware
 
 import (
+	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 )
 
-// MetricsMiddleware returns a Gin middleware that records HTTP request metrics
-func MetricsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Track concurrent requests
-		metrics.ConcurrentRequests.Inc()
-		defer metrics.ConcurrentRequests.Dec()
+// metricsResponseWriter wraps http.ResponseWriter to capture status code and
+// response body size after the downstream handler has written the response.
+type metricsResponseWriter struct {
+	http.ResponseWriter
+	status int
+	size   int
+}
 
-		// Start timer
-		startTime := time.Now()
+func (rw *metricsResponseWriter) WriteHeader(status int) {
+	rw.status = status
+	rw.ResponseWriter.WriteHeader(status)
+}
 
-		// Get request size
-		requestSize := c.Request.ContentLength
-		if requestSize < 0 {
-			requestSize = 0
-		}
+func (rw *metricsResponseWriter) Write(b []byte) (int, error) {
+	if rw.status == 0 {
+		rw.status = http.StatusOK
+	}
+	n, err := rw.ResponseWriter.Write(b)
+	rw.size += n
+	return n, err
+}
 
-		// Process request
-		c.Next()
+// MetricsMiddleware records HTTP request metrics via Prometheus.
+//
+// When registered as a per-route middleware (inside the mux, via
+// StdHTTPServerOptions.Middlewares), r.Pattern carries the route template
+// (e.g. "GET /api/llm-providers/{id}"), giving low-cardinality labels.
+// When registered as outer middleware, r.Pattern is empty and r.URL.Path is
+// used as a fallback.
+func MetricsMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			metrics.ConcurrentRequests.Inc()
+			defer metrics.ConcurrentRequests.Dec()
 
-		// Calculate duration
-		duration := time.Since(startTime)
+			startTime := time.Now()
 
-		// Get response status and size
-		status := c.Writer.Status()
-		responseSize := c.Writer.Size()
-		if responseSize < 0 {
-			responseSize = 0
-		}
+			requestSize := r.ContentLength
+			if requestSize < 0 {
+				requestSize = 0
+			}
 
-		// Get endpoint pattern (use FullPath for route pattern, fallback to path)
-		endpoint := c.FullPath()
-		if endpoint == "" {
-			endpoint = c.Request.URL.Path
-		}
+			rw := &metricsResponseWriter{ResponseWriter: w, status: 0}
+			next.ServeHTTP(rw, r)
 
-		// Record metrics
-		statusStr := strconv.Itoa(status)
-		method := c.Request.Method
+			duration := time.Since(startTime)
 
-		metrics.HTTPRequestsTotal.WithLabelValues(method, endpoint, statusStr).Inc()
-		metrics.HTTPRequestDurationSeconds.WithLabelValues(method, endpoint).Observe(duration.Seconds())
-		metrics.HTTPRequestSizeBytes.WithLabelValues(endpoint).Observe(float64(requestSize))
-		metrics.HTTPResponseSizeBytes.WithLabelValues(endpoint).Observe(float64(responseSize))
+			status := rw.status
+			if status == 0 {
+				status = http.StatusOK
+			}
+			responseSize := rw.size
+
+			// r.Pattern is set when running as per-route middleware (inside mux).
+			// Fall back to URL path when running as outer middleware.
+			endpoint := r.Pattern
+			if endpoint == "" {
+				endpoint = r.URL.Path
+			}
+
+			statusStr := strconv.Itoa(status)
+			method := r.Method
+
+			metrics.HTTPRequestsTotal.WithLabelValues(method, endpoint, statusStr).Inc()
+			metrics.HTTPRequestDurationSeconds.WithLabelValues(method, endpoint).Observe(duration.Seconds())
+			metrics.HTTPRequestSizeBytes.WithLabelValues(endpoint).Observe(float64(requestSize))
+			metrics.HTTPResponseSizeBytes.WithLabelValues(endpoint).Observe(float64(responseSize))
+		})
 	}
 }

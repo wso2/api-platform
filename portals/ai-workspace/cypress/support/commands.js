@@ -129,7 +129,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
   return cy
     .request({
       method: 'POST',
-      url: '/api-proxy/api/portal/v1/auth/login',
+      url: '/api-proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),

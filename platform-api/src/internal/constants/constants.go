@@ -74,12 +74,22 @@ const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 
 // Kinds of artifacts
 const (
-	RestApi      = "RestApi"
-	WebSubApi    = "WebSubApi"
-	WebBrokerApi = "WebBrokerApi"
-	LLMProvider  = "LlmProvider"
-	LLMProxy     = "LlmProxy"
-	MCPProxy     = "Mcp"
+	RestApi             = "RestApi"
+	WebSubApi           = "WebSubApi"
+	WebBrokerApi        = "WebBrokerApi"
+	LLMProvider         = "LlmProvider"
+	LLMProviderTemplate = "LlmProviderTemplate"
+	LLMProxy            = "LlmProxy"
+	MCPProxy            = "Mcp"
+)
+
+// Artifact origin values. Origin distinguishes control-plane created artifacts
+// (control_plane) from artifacts pushed up by a data-plane gateway (gateway_api).
+// gateway_api artifacts are read-only in the control plane. The values match the
+// gateway's origin naming (see gateway-controller models.Origin).
+const (
+	OriginCP = "control_plane"
+	OriginDP = "gateway_api"
 )
 
 // API Type Constants
@@ -220,7 +230,17 @@ const (
 	ThrottleLimitUnitYear   = "YEAR"
 )
 
-// ValidThrottleLimitUnits holds accepted values for subscription_plans.throttle_limit_unit
+// Subscription plan limit type constants (subscription_plan_limits.limit_type).
+// NOTE: only LimitTypeRequestCount is currently produced/consumed; BANDWIDTH and
+// token-based types exist in the schema but are not yet wired through the
+// platform-api, gateway events or gateway-controller.
+const (
+	LimitTypeRequestCount = "REQUEST_COUNT"
+	LimitTypeBandwidth    = "BANDWIDTH"
+	LimitTypeTotalToken   = "TOTAL_TOKEN_COUNT"
+)
+
+// ValidThrottleLimitUnits holds accepted values for subscription_plan_limits.time_unit
 var ValidThrottleLimitUnits = map[string]bool{
 	ThrottleLimitUnitSecond: true,
 	ThrottleLimitUnitMinute: true,

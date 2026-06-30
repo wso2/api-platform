@@ -402,7 +402,7 @@ func (r *ApplicationRepo) GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgI
 func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT ak.uuid, ak.name, ak.artifact_uuid, src.handle, art.type, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
-		FROM application_api_keys aak
+		FROM application_api_key_mappings aak
 		INNER JOIN api_keys ak ON ak.uuid = aak.api_key_id
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
 		INNER JOIN (
@@ -436,7 +436,7 @@ func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.Ap
 func (r *ApplicationRepo) ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT art.uuid, src.handle, src.name, src.version, art.type, aa.created_at
-		FROM application_artifacts aa
+		FROM application_artifact_mappings aa
 		INNER JOIN artifacts art ON art.uuid = aa.artifact_uuid
 		INNER JOIN (
 			SELECT uuid, handle, name, version FROM rest_apis
@@ -475,7 +475,7 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 
 	existingRows, err := tx.Query(r.db.Rebind(`
 		SELECT api_key_id
-		FROM application_api_keys
+		FROM application_api_key_mappings
 		WHERE application_uuid = ?
 	`), applicationUUID)
 	if err != nil {
@@ -505,7 +505,7 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 		}
 		now := time.Now()
 		if _, err = tx.Exec(r.db.Rebind(`
-			INSERT INTO application_api_keys (application_uuid, api_key_id, created_at)
+			INSERT INTO application_api_key_mappings (application_uuid, api_key_id, created_at)
 			VALUES (?, ?, ?)
 		`), applicationUUID, apiKeyID, now); err != nil {
 			return err
@@ -525,7 +525,7 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	for _, targetUUID := range uniqueStrings(targetUUIDs) {
 		now := time.Now()
 		if _, err = tx.Exec(r.db.Rebind(`
-			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at)
+			INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid, created_at)
 			VALUES (?, ?, ?)
 		`), applicationUUID, targetUUID, now); err != nil {
 			if r.db.IsDuplicateKeyError(err) {
@@ -541,7 +541,7 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 
 func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`
-		DELETE FROM application_api_keys
+		DELETE FROM application_api_key_mappings
 		WHERE application_uuid = ? AND api_key_id = ?
 	`), applicationUUID, apiKeyID)
 	return err
@@ -549,7 +549,7 @@ func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID stri
 
 func (r *ApplicationRepo) RemoveApplicationAssociation(applicationUUID, targetUUID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`
-		DELETE FROM application_artifacts
+		DELETE FROM application_artifact_mappings
 		WHERE application_uuid = ? AND artifact_uuid = ?
 	`), applicationUUID, targetUUID)
 	return err

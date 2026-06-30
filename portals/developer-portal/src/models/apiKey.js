@@ -19,31 +19,26 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
-const { Application, SubscriptionMapping } = require('./application');
+const { SubscriptionMapping } = require('./application');
 
 const APIKey = sequelize.define('DP_API_KEY', {
-    KEY_ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    API_ID: {
-        type: DataTypes.UUID,
+    API_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
-        references: { model: APIMetadata, key: 'API_ID' }
+        references: { model: APIMetadata, key: 'UUID' }
     },
-    SUBSCRIPTION_ID: {
-        type: DataTypes.UUID,
+    SUBSCRIPTION_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: true,
-        references: { model: SubscriptionMapping, key: 'SUB_ID' }
+        references: { model: SubscriptionMapping, key: 'UUID' }
     },
-    APP_ID: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: { model: Application, key: 'APP_ID' }
-    },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
@@ -51,7 +46,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
         allowNull: false
     },
     STATUS: {
-        type: DataTypes.ENUM('ACTIVE', 'REVOKED'),
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'ACTIVE'
     },
@@ -63,28 +58,41 @@ const APIKey = sequelize.define('DP_API_KEY', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
     REVOKED_AT: {
         type: DataTypes.DATE,
+        allowNull: true
+    },
+    REVOKED_BY: {
+        type: DataTypes.STRING(200),
         allowNull: true
     }
 }, {
     timestamps: true,
     createdAt: 'CREATED_AT',
-    updatedAt: false,
+    updatedAt: 'UPDATED_AT',
     tableName: 'DP_API_KEY',
     returning: true,
+    checks: [
+        {
+            name: 'chk_api_key_revoked',
+            sql: `(("REVOKED_AT" IS NULL AND "STATUS" != 'REVOKED') OR ("REVOKED_AT" IS NOT NULL AND "STATUS" = 'REVOKED'))`
+        }
+    ],
     indexes: [
-        { name: 'IDX_API_KEY_ORG_API_ID', fields: ['ORG_ID', 'API_ID'] },
-        { name: 'IDX_API_KEY_ORG_APP_ID', fields: ['ORG_ID', 'APP_ID'] },
+        { name: 'IDX_API_KEY_ORG_API_UUID', fields: ['ORG_UUID', 'API_UUID'] },
+        { name: 'IDX_API_KEY_SUBSCRIPTION_UUID', fields: ['SUBSCRIPTION_UUID'] },
+        { name: 'IDX_API_KEY_STATUS', fields: ['STATUS'] },
     ],
 });
 
-APIKey.belongsTo(Organization, { foreignKey: 'ORG_ID' });
-Organization.hasMany(APIKey, { foreignKey: 'ORG_ID' });
-APIKey.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
-APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
-SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
-APIKey.belongsTo(Application, { foreignKey: 'APP_ID', onDelete: 'SET NULL' });
-Application.hasMany(APIKey, { foreignKey: 'APP_ID', onDelete: 'SET NULL' });
+APIKey.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
+Organization.hasMany(APIKey, { foreignKey: 'ORG_UUID' });
+APIKey.belongsTo(APIMetadata, { foreignKey: 'API_UUID', as: 'DP_API_METADATA' });
+APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_UUID', onDelete: 'SET NULL' });
+SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_UUID', onDelete: 'SET NULL' });
 
 module.exports = APIKey;

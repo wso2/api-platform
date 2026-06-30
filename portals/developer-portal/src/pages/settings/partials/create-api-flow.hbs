@@ -1,0 +1,543 @@
+<div class="af-wizard">
+
+    {{!-- Hidden fields --}}
+    <input type="hidden" id="editingApiFlowId" value="" />
+    <input type="hidden" id="editingApiFlowAgentVisibility" value="VISIBLE" />
+
+    {{!-- Hidden radio inputs for agentVisibility (keep IDs/names intact for JS) --}}
+    <div style="display:none;">
+        <input type="radio" class="btn-check" name="apiFlowAgentVisibility" id="agentVisibilityVisible" value="VISIBLE"
+            autocomplete="off" checked />
+        <input type="radio" class="btn-check" name="apiFlowAgentVisibility" id="agentVisibilityHidden" value="HIDDEN"
+            autocomplete="off" />
+    </div>
+
+    {{!-- ── Wizard Header ── --}}
+    <div class="af-wizard-header">
+        <a href="#" class="cfg-wizard-back" id="afBackToListBtn">
+            <i class="bi bi-arrow-left"></i> Back to API Workflows
+        </a>
+        <div class="cfg-stepper">
+            <div class="cfg-step cfg-step--active" data-step="1">
+                <span class="cfg-step-circle">1</span><span class="cfg-step-label">Basic info</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="2">
+                <span class="cfg-step-circle">2</span><span class="cfg-step-label">API workflow</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="3">
+                <span class="cfg-step-circle">3</span><span class="cfg-step-label">Agent prompt</span>
+            </div>
+        </div>
+    </div>
+
+    {{!-- ── Two-pane body ── --}}
+    <div class="af-wizard-body">
+
+        {{!-- LEFT PANE --}}
+        <div class="af-pane-left">
+
+            {{!-- ══ STEP 1: Basic Information ══ --}}
+            <div class="af-step-panel" id="afStep1">
+                <div class="af-section-header">
+                    <div class="af-step-badge">1</div>
+                    <div class="flex-grow-1">
+                        <div class="af-section-title">Basic information</div>
+                        <div class="af-section-subtitle">Name, describe, and configure access for your API workflow
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="apiFlowName" class="form-label fw-semibold d-flex align-items-center gap-2">
+                        <span>Name <span class="text-danger">*</span></span>
+                        <span class="af-field-status d-none" id="afNameStatus"
+                            data-bs-toggle="tooltip" data-bs-placement="right" data-bs-trigger="hover focus"
+                            data-bs-title="">
+                            <i class="bi af-fsi" id="afNameStatusIcon"></i>
+                        </span>
+                    </label>
+                    <input type="text" class="form-control" id="apiFlowName" placeholder="e.g. User Onboarding Flow"
+                        maxlength="120" />
+                    <div class="invalid-feedback">Name is required.</div>
+                </div>
+
+                <div class="mb-4">
+                    <label for="apiFlowDescription" class="form-label fw-semibold d-flex align-items-center gap-2">
+                        <span>Description <span class="text-danger">*</span></span>
+                        <span class="af-field-status d-none" id="afDescStatus"
+                            data-bs-toggle="tooltip" data-bs-placement="right" data-bs-trigger="hover focus"
+                            data-bs-title="">
+                            <i class="bi af-fsi" id="afDescStatusIcon"></i>
+                        </span>
+                    </label>
+                    <textarea class="form-control" id="apiFlowDescription" rows="4"
+                        placeholder="e.g. Orchestrates a multi-step patient booking workflow across appointment scheduling and healthcare provider systems…"></textarea>
+                    <div class="invalid-feedback">Description is required.</div>
+                </div>
+
+                {{!-- Agent visibility --}}
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2 d-block">Agent visibility</label>
+                    <div class="af-visibility-cards">
+                        <div class="af-visibility-card af-visibility-card--active" id="agentVisibleCard"
+                            data-value="VISIBLE" role="button" tabindex="0" aria-pressed="true">
+                            <div class="af-visibility-card-icon"><i class="bi bi-eye"></i></div>
+                            <div class="af-visibility-card-content">
+                                <div class="af-visibility-card-title">Visible to agents</div>
+                                <div class="af-visibility-card-desc">Appears in <code>llms.txt</code> · agents can
+                                    discover it.</div>
+                            </div>
+                            <i class="bi bi-check-circle-fill af-visibility-card-check" aria-hidden="true"></i>
+                        </div>
+                        <div class="af-visibility-card" id="agentHiddenCard" data-value="HIDDEN" role="button"
+                            tabindex="0" aria-pressed="false">
+                            <div class="af-visibility-card-icon"><i class="bi bi-eye-slash"></i></div>
+                            <div class="af-visibility-card-content">
+                                <div class="af-visibility-card-title">Hidden from agents</div>
+                                <div class="af-visibility-card-desc">Excluded from agent discovery — humans only.</div>
+                            </div>
+                            <i class="bi bi-check-circle-fill af-visibility-card-check" aria-hidden="true"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>{{!-- end afStep1 --}}
+
+            {{!-- ══ STEP 2: Define the API Workflow ══ --}}
+            <div class="af-step-panel d-none" id="afStep2">
+                <div class="af-section-header">
+                    <div class="af-step-badge">2</div>
+                    <div class="flex-grow-1">
+                        <div class="af-section-title">Define the API workflow</div>
+                        <div class="af-section-subtitle">Define your API workflow as a structured Arazzo spec or as
+                            natural language instructions for AI agents</div>
+                    </div>
+                </div>
+
+                {{!-- Path Chooser --}}
+                <div class="af-path-chooser mb-4">
+                                        <div class="af-path-card af-path-card--active" id="pathUploadCard" data-path="upload" role="button" tabindex="0"
+                        aria-pressed="true">
+                        <div class="af-path-card-icon-wrap">
+                            <i class="bi bi-cloud-upload-fill af-path-card-icon"></i>
+                        </div>
+                        <div class="af-path-card-content">
+                            <div class="af-path-card-title">Upload file</div>
+                            <div class="af-path-card-desc">Drop in a <code>.yaml</code>, <code>.yml</code>,
+                                <code>.json</code>, or <code>.md</code> file</div>
+                        </div>
+                        <i class="bi bi-check-circle-fill af-path-card-check" aria-hidden="true"></i>
+                    </div>
+                    <div class="af-path-card" id="pathCreateCard" data-path="create" role="button"
+                        tabindex="0" aria-pressed="false">
+                        <div class="af-path-card-icon-wrap">
+                            <i class="bi bi-stars af-path-card-icon"></i>
+                        </div>
+                        <div class="af-path-card-content">
+                            <div class="af-path-card-title">
+                                From template
+                            </div>
+                            <div class="af-path-card-desc">Select APIs, generate a starter template, then refine it with
+                                Claude or edit visually in VS Code</div>
+                        </div>
+                        <i class="bi bi-check-circle-fill af-path-card-check" aria-hidden="true"></i>
+                    </div>
+                </div>
+
+                {{!-- ══ UPLOAD PATH ══ --}}
+                <div id="uploadPathContent">
+
+                    {{!-- Drag-drop Zone --}}
+                    <div class="af-upload-zone" id="arazzoDropZone" role="button" tabindex="0"
+                        aria-label="Workflow file upload area — click or drag a file here">
+                        <div class="af-upload-zone-inner">
+                            <i class="bi bi-file-earmark-arrow-up af-upload-zone-icon" aria-hidden="true"></i>
+                            <div class="af-upload-zone-title">Drop your workflow file here</div>
+                            <div class="af-upload-zone-sub">
+                                <span class="af-upload-format-hint">
+                                    <span class="af-upload-format-pill af-upload-format-pill--arazzo">Arazzo</span>
+                                    <code>.yaml</code> · <code>.yml</code> · <code>.json</code>
+                                </span>
+                                <span class="af-upload-format-sep">or</span>
+                                <span class="af-upload-format-hint">
+                                    <span class="af-upload-format-pill af-upload-format-pill--md">Markdown</span>
+                                    <code>.md</code>
+                                </span>
+                                &emsp;
+                                <button type="button" class="af-upload-browse-btn" id="uploadBrowseBtn">browse
+                                    files</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{!-- Post-upload: file strip + per-format detail panel --}}
+                    <div id="uploadValidationPanel" class="d-none mt-3">
+
+                        <div class="af-upload-file-strip" id="uploadFileStrip">
+                            <i class="bi bi-file-earmark-check-fill af-upload-file-strip-icon" aria-hidden="true"></i>
+                            <span class="af-upload-file-name" id="uploadFileName"></span>
+                            <span class="af-upload-type-badge" id="uploadTypeBadge"></span>
+                            <button type="button" class="af-upload-file-remove" id="removeUploadBtn"
+                                title="Remove file and upload a different one" aria-label="Remove uploaded file">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+
+                        {{!-- Arazzo: source description validation --}}
+                        <div class="af-sd-validation mt-2 d-none" id="sdValidationContainer">
+                            <button type="button" class="af-sd-validation-header" id="sdValidationToggle"
+                                aria-expanded="true" aria-controls="sdValidationItems"
+                                aria-describedby="sdInfoTip">
+                                <span class="d-flex align-items-center gap-1">
+                                    <i class="bi bi-link-45deg" aria-hidden="true"></i>Source Descriptions
+                                    <span class="af-sd-validation-hint" id="sdValidationHint"></span>
+                                    <span class="af-info-tip af-info-tip--right ms-1">
+                                        <i class="bi bi-info-circle" aria-hidden="true"></i>
+                                        <span class="af-info-tip-content" id="sdInfoTip" role="tooltip">
+                                            Use <strong>Create from Template</strong> to auto-populate source descriptions
+                                            with raw OpenAPI specs from APIs published in this developer portal.
+                                        </span>
+                                    </span>
+                                </span>
+                                <i class="bi bi-chevron-down af-sd-chevron" aria-hidden="true"></i>
+                            </button>
+                            <div id="sdValidationItems"></div>
+                        </div>
+
+                        {{!-- Markdown: summary strip --}}
+                        <div class="af-md-summary mt-2 d-none" id="mdSummaryPanel">
+                            <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+                            <span id="mdSummaryText"></span>
+                        </div>
+
+                    </div>
+
+                    <input type="file" id="arazoFileInput" accept=".yaml,.yml,.json,.md" style="display:none"
+                        aria-hidden="true" />
+                </div>
+
+                {{!-- ══ CREATE FROM TEMPLATE PATH ══ --}}
+                <div id="createPathContent" class="d-none">
+
+                    {{!-- API Selection --}}
+                    {{#if orgAPIs.length}}
+
+                    <div class="mb-1">
+                        <div class="fw-semibold small">Select APIs for this workflow</div>
+                        <div class="text-muted small mt-1 mb-3">
+                            Choose APIs that participate in this flow — their specs drive the generated Arazzo template
+                        </div>
+                    </div>
+
+                    {{!-- Hidden checkboxes — source of truth for selection --}}
+                    <div style="display:none;" id="apiCheckboxStore">
+                        {{#each orgAPIs}}
+                        <input type="checkbox" class="api-flow-api-checkbox" value="{{this.apiId}}"
+                            data-api-name="{{this.apiName}}" data-api-handle="{{this.apiHandle}}"
+                            data-api-description="{{this.apiDescription}}" data-api-type="{{this.apiType}}"
+                            data-production-url="{{this.productionUrl}}"
+                            data-agent-visibility="{{this.agentVisibility}}" />
+                        {{/each}}
+                    </div>
+
+                    <div class="af-api-chips-row mb-3" id="apiSelectedChips" style="display:none;"></div>
+
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-end-0">
+                                <i class="bi bi-search text-muted" style="font-size: 0.85rem;"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0 border-end-0" id="apiCardSearch"
+                                placeholder="Filter APIs by name, type, or description…" autocomplete="off" />
+                            <div class="af-api-filter-dropdown-wrap">
+                                <button type="button" class="btn btn-sm common-btn-outlined af-api-filter-toggle"
+                                    id="apiFilterDropdownBtn" aria-expanded="false" aria-controls="apiFilterMenu">
+                                    <i class="bi bi-funnel me-1"></i> Filter
+                                    <span class="af-api-filter-badge d-none" id="apiFilterBadge"></span>
+                                </button>
+                                <div class="af-api-filter-menu" id="apiFilterMenu" role="group" aria-labelledby="apiFilterDropdownBtn">
+                                    <label class="af-api-filter-option">
+                                        <input type="checkbox" class="af-api-filter-check" data-af-filter="selectedOnly" />
+                                        <span>Selected only</span>
+                                    </label>
+                                    <div class="af-api-filter-divider"></div>
+                                    <label class="af-api-filter-option">
+                                        <input type="checkbox" class="af-api-filter-check" data-af-filter="aiReady" />
+                                        <i class="bi bi-robot"></i>
+                                        <span>AI Ready</span>
+                                    </label>
+                                    <label class="af-api-filter-option">
+                                        <input type="checkbox" class="af-api-filter-check" data-af-filter="aiRestricted" />
+                                        <i class="bi bi-slash-circle"></i>
+                                        <span>AI Restricted</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="af-api-grid mb-2" id="apiCardGrid"></div>
+
+                    {{else}}
+                    <div class="text-muted small fst-italic border rounded p-3 mb-4">
+                        No APIs found in this organization. <a href="apis">Add APIs</a> first.
+                    </div>
+                    {{/if}}
+
+                </div>{{!-- end createPathContent --}}
+
+            </div>{{!-- end afStep2 --}}
+
+            {{!-- ══ STEP 3: Agent Prompt ══ --}}
+            <div class="af-step-panel d-none" id="afStep3">
+                <div class="af-section-header">
+                    <div class="af-step-badge">3</div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <div class="af-section-title">
+                                <i class="bi bi-eye-slash af-agent-hidden-icon d-none" id="tabVisualHiddenIcon"
+                                    aria-hidden="true"></i>
+                                Agent Prompt
+                            </div>
+                        </div>
+                        <div class="af-section-subtitle">Auto-generated from your workflow. Fully customizable —
+                            regenerate any time.</div>
+                    </div>
+                </div>
+
+                {{!-- Hidden-from-agents warning --}}
+                <div class="af-agent-hidden-banner d-none" id="agentHiddenBanner" role="status" aria-live="polite">
+                    <div class="af-agent-hidden-banner-body">
+                        <i class="bi bi-exclamation-triangle-fill af-agent-hidden-banner-icon" aria-hidden="true"></i>
+                        <div class="af-agent-hidden-banner-text">
+                            <strong>This flow is hidden from agents.</strong>
+                            <span>Agents won't use this prompt until you change Agent Visibility to Visible.</span>
+                        </div>
+                        <button type="button" class="af-agent-hidden-banner-action" id="changeVisibilityBtn">
+                            Change visibility <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+
+                {{!-- Action toolbar --}}
+                <div class="af-prompt-action-toolbar">
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="button" class="af-regen-all-btn" id="regeneratePromptBtn"
+                            title="Regenerate agent prompt from workflow">
+                            <i class="bi bi-magic me-1"></i> Regenerate
+                        </button>
+                        <button type="button" class="common-btn-outlined" id="copyFieldPromptBtn"
+                            title="Copy prompt to clipboard">
+                            <i class="bi bi-clipboard me-1"></i> Copy prompt
+                        </button>
+                    </div>
+                </div>
+
+                {{!-- Agent prompt textarea --}}
+                <textarea class="form-control api-flow-prompt-editor" id="agentPromptField" rows="14"
+                    placeholder="Click 'Regenerate' to create your agent prompt, or write one manually…"></textarea>
+                <div class="invalid-feedback">Agent prompt is required.</div>
+
+            </div>{{!-- end afStep3 --}}
+
+        </div>{{!-- end af-pane-left --}}
+
+        {{!-- RIGHT PANE --}}
+        <div class="af-pane-right">
+
+            {{!-- RIGHT PANEL — Step 1: Agent Preview --}}
+            <div class="af-right-panel" id="afRight1">
+                <div class="af-rp-section-card">
+                    <div class="af-rp-header">
+                        <span>Agent Preview</span>
+                    </div>
+                    <p class="af-agent-preview-label">What agents will see in discovery:</p>
+                    <div class="af-preview-name-row">
+                        <i class="bi bi-robot" style="font-size:1rem; color:var(--bs-secondary);"></i>
+                        <strong id="afPreviewName"></strong>
+                        <span class="af-preview-empty" id="afPreviewNameEmpty">— enter a name above</span>
+                    </div>
+                    <p class="af-preview-desc" id="afPreviewDesc"></p>
+                </div>
+            </div>
+
+            {{!-- RIGHT PANEL — Step 2: Arazzo Spec Editor --}}
+            <div class="af-right-panel d-none" id="afRight2">
+                <div class="af-rp-header">
+                    <span>API Flow Definition</span>
+                </div>
+
+                {{!-- Action buttons row --}}
+                <div class="af-rp-actions">
+                    <button type="button" class="af-generate-claude-btn" id="generateWithClaudeBtn" disabled
+                        aria-describedby="specActionsTip">
+                        <svg class="af-btn-icon" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+                            aria-label="Claude">
+                            <path fill="currentColor"
+                                d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" />
+                        </svg>
+                        Open in Claude
+                    </button>
+                    <button type="button" class="af-vscode-btn" id="openInVSCodeBtn" disabled
+                        aria-describedby="specActionsTip">
+                        <svg class="af-btn-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true">
+                            <path
+                                d="M23.15 2.587L18.21.21a1.494 1.494 0 00-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 00-1.276.057L.327 7.261A1 1 0 00.326 8.74L3.9 12 .326 15.26a1 1 0 00.001 1.479L1.65 17.94a.999.999 0 001.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 001.704.29l4.942-2.377A1.5 1.5 0 0024 19.06V4.94a1.5 1.5 0 00-.85-1.353zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"
+                                fill="currentColor" />
+                        </svg>
+                        Open in VS Code
+                    </button>
+                    <button type="button" class="af-rp-outlined-btn af-copy-prompt-btn" id="copyPromptSpecBtn" disabled
+                        aria-describedby="specActionsTip">
+                        <i class="bi bi-clipboard me-1" aria-hidden="true"></i> Copy Prompt
+                    </button>
+                    <span id="specActionsTip" role="tooltip" class="visually-hidden">Select at least one API to
+                        enable</span>
+                </div>
+
+                {{!-- ══ SPEC EDITOR CARD (moved from left pane) ══ --}}
+                <div id="specEditorCard" class="af-spec-editor-card d-none">
+
+                    {{!-- Format selector --}}
+                    <div class="af-spec-format-row" id="specFormatTabs">
+                        <span class="af-spec-format-label">Format</span>
+                        <div class="af-create-format-toggle" role="group" aria-label="Workflow format">
+                            <button type="button" class="af-create-format-btn af-create-format-btn--active"
+                                id="createFormatArazzo" data-format="arazzo">
+                                <i class="bi bi-code-slash" aria-hidden="true"></i> Arazzo Spec
+                            </button>
+                            <button type="button" class="af-create-format-btn" id="createFormatMarkdown"
+                                data-format="markdown">
+                                <i class="bi bi-markdown" aria-hidden="true"></i> Markdown
+                            </button>
+                        </div>
+                        {{!-- Bring it back: re-import affordance --}}
+                        <div class="af-bring-back-group">
+                            <span class="af-bring-back-hint" aria-hidden="true">Edited in Claude or VS Code?</span>
+                            <button type="button" class="af-bring-back-btn" id="bringBackBtn"
+                                title="Upload edited file"
+                                aria-label="Upload edited template from Claude or VS Code">
+                                <i class="bi bi-upload" aria-hidden="true"></i>
+                                Upload
+                            </button>
+                            <input type="file" id="bringBackFileInput" accept=".yaml,.yml,.json,.md"
+                                aria-hidden="true" tabindex="-1" style="display:none;">
+                            <span class="af-bring-back-feedback" id="bringBackFeedback"
+                                role="status" aria-live="polite"></span>
+                        </div>
+                    </div>
+
+                    {{!-- Arazzo editor pane --}}
+                    <div id="apiFlowDefinitionWrapper" class="d-none">
+                        <div class="af-editor-bar">
+                            <span class="af-editor-filename">workflow.arazzo.yaml</span>
+                            <span class="af-editor-linecount" id="arazoLineCount">0 lines</span>
+                        </div>
+                        <div class="af-editor-cm-wrap">
+                            <div id="arazoEditorHost" class="af-cm-host"></div>
+                            <div class="af-editor-empty-state" id="arazoEmptyState" aria-hidden="false">
+                                <p class="af-editor-empty-title">No specification yet</p>
+                                <p class="af-editor-empty-body">Select one or more APIs above and click <strong>Generate
+                                        with Claude</strong> to create the Arazzo spec.</p>
+                            </div>
+                        </div>
+                        <textarea id="apiFlowDefinition" style="display:none;"
+                            placeholder="arazzo: '1.0.0'&#10;info:&#10;  title: My Flow&#10;  version: 1.0.0&#10;workflows:&#10;  - workflowId: my-flow&#10;    steps: []"></textarea>
+                        <div id="apiFlowDefinitionInvalid" class="invalid-feedback" style="display:none;">Arazzo
+                            Specification is required.</div>
+                    </div>
+
+                    {{!-- Markdown editor pane --}}
+                    <div id="markdownContentWrapper" class="d-none">
+                        <div class="af-editor-bar">
+                            <span class="af-editor-filename">workflow.md</span>
+                            <span class="af-md-word-count" id="mdWordCount"></span>
+                        </div>
+                        <label for="markdownContent" class="visually-hidden">Workflow Description</label>
+                        <textarea class="form-control af-md-editor" id="markdownContent" rows="16"
+                            placeholder="# My Workflow&#10;&#10;Describe what this workflow does in plain language…&#10;&#10;## Steps&#10;1. Call the authentication API with the user credentials&#10;2. Use the returned token to fetch the user profile…"></textarea>
+                        <div class="invalid-feedback">Workflow description is required.</div>
+                    </div>
+
+                    {{!-- Shared footer: status text + copy button --}}
+                    <div class="af-editor-footer">
+                        <span class="af-editor-status" id="editorStatusText">Editor is empty</span>
+                        <button type="button" class="common-btn-outlined af-editor-copy-btn" id="copySpecBtn" disabled
+                            title="Generate a spec first">
+                            <i class="bi bi-clipboard me-1" aria-hidden="true"></i>
+                            <span id="copySpecBtnLabel">Copy Arazzo spec</span>
+                        </button>
+                    </div>
+                </div>{{!-- end specEditorCard --}}
+
+            </div>{{!-- end afRight2 --}}
+
+            {{!-- RIGHT PANEL — Step 3: Terminal Preview + Readiness --}}
+            <div class="af-right-panel d-none" id="afRight3">
+
+                {{!-- Workflow .md preview card --}}
+                <div class="af-rp-section-card">
+                    <div class="af-rp-section-card-title">Workflow File Preview</div>
+                    <pre class="af-workflow-md-preview"
+                        id="afWorkflowMdPreview">Fill in name and description to see a preview.</pre>
+                </div>
+
+                {{!-- Not visible for agents notice --}}
+                <div class="af-rp-section-card af-agent-hidden-notice d-none" id="afAgentHiddenNotice">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-eye-slash" style="font-size:1.25rem; color:var(--bs-secondary);" aria-hidden="true"></i>
+                        <div>
+                            <div class="fw-semibold" style="font-size:0.875rem;">Not visible for agents</div>
+                            <div class="text-muted" style="font-size:0.8125rem;">This workflow won't appear in agent discovery. Change Agent Visibility to make it available.</div>
+                        </div>
+                    </div>
+                </div>
+
+                {{!-- Readiness card --}}
+                <div class="af-rp-section-card">
+                    <div class="af-rp-header">Readiness</div>
+                    <ul class="af-checklist">
+                        <li class="af-checklist-item is-warn" id="afReady1">Name and description set</li>
+                        <li class="af-checklist-item is-warn" id="afReady2">API workflow defined</li>
+                        <li class="af-checklist-item is-warn" id="afReady3">Agent prompt generated</li>
+                    </ul>
+                </div>
+
+            </div>{{!-- end afRight3 --}}
+
+        </div>{{!-- end af-pane-right --}}
+
+    </div>{{!-- end af-wizard-body --}}
+
+    {{!-- ── Wizard Footer ── --}}
+    <div class="cfg-wizard-actions">
+        <div class="cfg-wizard-actions-right">
+            <button type="button" class="cfg-btn-ghost" id="cancelApiFlowBtn2">Cancel</button>
+            <button type="button" class="cfg-btn-ghost d-none" id="afBackBtn">Back</button>
+            <button type="button" class="cfg-btn-primary" id="afContinueBtn">Next</button>
+            <div class="btn-group d-none" id="saveApiFlowGroup">
+                <button type="button" class="cfg-btn-primary af-save-main" id="saveApiFlowBtn"
+                    data-status="PUBLISHED">
+                    <i class="bi bi-send me-1"></i> Publish Flow
+                </button>
+                <button type="button" class="cfg-btn-primary af-save-toggle dropdown-toggle dropdown-toggle-split"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+                    <span class="visually-hidden">More save options</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end af-save-dropdown">
+                    <li>
+                        <button type="button" class="dropdown-item af-save-dropdown-item" id="saveDraftBtn"
+                            data-status="DRAFT">
+                            <i class="bi bi-file-earmark-text me-2"></i>
+                            <span class="fw-semibold">Save as Draft</span>
+                            <div class="af-save-dropdown-hint">Save without making it visible to consumers</div>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</div>{{!-- end af-wizard --}}

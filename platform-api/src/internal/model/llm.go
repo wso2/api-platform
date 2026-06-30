@@ -190,6 +190,7 @@ type LLMProviderTemplate struct {
 	ResponseModel    *ExtractionIdentifier        `json:"responseModel,omitempty" db:"-"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" db:"-"`
 	OpenAPISpec      string                               `json:"openapi,omitempty" db:"openapi_spec"`
+	Origin           string                               `json:"origin,omitempty" db:"origin"`
 	CreatedAt        time.Time                            `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time                            `json:"updatedAt" db:"updated_at"`
 }
@@ -210,6 +211,7 @@ type LLMProvider struct {
 	CreatedAt        time.Time          `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProviderConfig  `json:"configuration" db:"configuration"`
+	Origin           string             `json:"origin,omitempty" db:"origin"`
 	// AssociatedGateways carries resolved gateway associations to be persisted in
 	// the artifact_gateway_mappings table within the same create transaction.
 	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
@@ -252,6 +254,7 @@ type LLMProxy struct {
 	CreatedAt        time.Time      `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time      `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProxyConfig `json:"configuration" db:"configuration"`
+	Origin           string         `json:"origin,omitempty" db:"origin"`
 	// AssociatedGateways carries resolved gateway associations to be persisted in the
 	// artifact_gateway_mappings table within the same create transaction.
 	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`

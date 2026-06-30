@@ -18,15 +18,16 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
+const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
-    SUBSCRIBER_ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
@@ -34,32 +35,56 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
         allowNull: false
     },
     TARGET_URL: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING(1023),
         allowNull: false
     },
     SECRET_ENC: {
-        type: DataTypes.TEXT,
-        allowNull: true
+        type: DataTypes.BLOB,
+        allowNull: true,
+        get() {
+            return bufferToUtf8(this.getDataValue('SECRET_ENC'));
+        }
     },
     PUBLIC_KEY: {
-        type: DataTypes.TEXT,
-        allowNull: true
+        type: DataTypes.BLOB,
+        allowNull: true,
+        get() {
+            return bufferToUtf8(this.getDataValue('PUBLIC_KEY'));
+        }
     },
     EVENT_PATTERNS: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: true,
         defaultValue: []
     },
     ENABLED: {
-        type: DataTypes.BOOLEAN,
+        type: DataTypes.SMALLINT,
         allowNull: false,
-        defaultValue: true
+        defaultValue: 1
     },
     TIMEOUT_MS: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 5000
-    }
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
     tableName: 'DP_WEBHOOK_SUBSCRIBER',
@@ -68,21 +93,16 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
         {
             name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_NAME',
             unique: true,
-            fields: ['ORG_ID', 'NAME']
-        },
-        {
-            name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_URL',
-            unique: true,
-            fields: ['ORG_ID', 'TARGET_URL']
+            fields: ['ORG_UUID', 'NAME']
         }
     ]
 });
 
 WebhookSubscriber.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'ORG_UUID'
 });
 Organization.hasMany(WebhookSubscriber, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'ORG_UUID',
     onDelete: 'CASCADE'
 });
 

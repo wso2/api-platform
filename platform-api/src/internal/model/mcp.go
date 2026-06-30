@@ -34,6 +34,7 @@ type MCPProxy struct {
 	CreatedAt        time.Time             `json:"createdAt" db:"-"`
 	UpdatedAt        time.Time             `json:"updatedAt" db:"-"`
 	Configuration    MCPProxyConfiguration `json:"configuration" db:"-"`
+	Origin           string                `json:"origin,omitempty" db:"origin"`
 	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
 	ReplaceAssociatedGateways bool `json:"-" db:"-"`
 }

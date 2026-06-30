@@ -185,7 +185,7 @@ const SAMPLES = [
     ['createAPIFlow', 201, { apiFlowId: 'f1', name: 'flow1', status: 'PUBLISHED' }],
     ['getAllAPIFlows', 200, [{
         apiFlowId: 'f1', name: 'flow1', handle: 'flow-1', description: 'desc',
-        agentPrompt: 'prompt', status: 'PUBLISHED', visibility: 'PUBLIC',
+        agentPrompt: 'prompt', status: 'PUBLISHED',
         agentVisibility: 'VISIBLE', contentType: 'ARAZZO',
         apiFlowDefinition: '{}', markdownContent: null,
         createdAt: 'May 7, 2026', updatedAt: '2026-05-07T08:30:00Z',
@@ -232,7 +232,7 @@ const SAMPLES = [
             deliveries: [{
                 deliveryId: 'del-abc123', subscriberId: 'sub-1',
                 targetUrl: 'https://example.com/webhook',
-                status: 'DELIVERED', attemptCount: 1,
+                status: 'DELIVERED',
                 lastHttpStatus: 200, lastError: null,
                 lastAttemptAt: '2026-05-07T08:30:01.000Z', deliveredAt: '2026-05-07T08:30:01.000Z',
             }],
@@ -246,13 +246,11 @@ const SAMPLES = [
         deliveries: [{
             deliveryId: 'del-abc123', subscriberId: 'sub-1',
             targetUrl: 'https://example.com/webhook',
-            status: 'DELIVERED', attemptCount: 1,
+            status: 'DELIVERED',
             lastHttpStatus: 200, lastError: null,
             lastAttemptAt: '2026-05-07T08:30:01.000Z', deliveredAt: '2026-05-07T08:30:01.000Z',
         }],
     }],
-    // retryDelivery res.json({ message })
-    ['retryWebhookDelivery', 200, { message: 'Delivery queued for retry' }],
 ];
 
 const drifts = [];

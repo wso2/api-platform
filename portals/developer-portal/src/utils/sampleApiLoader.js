@@ -93,8 +93,6 @@ function parseApiYaml(apiHandle, samplesDir) {
             apiDescription: spec.description || '',
             apiType: spec.type || 'REST',
             apiStatus: spec.status || 'PUBLISHED',
-            visibility: spec.visibility || 'PUBLIC',
-            visibleGroups: spec.visibleGroups || [],
             tags: spec.tags || [],
             labels: spec.labels || [],
             owners: spec.businessInformation ? {

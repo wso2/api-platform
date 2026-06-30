@@ -16,46 +16,190 @@
  * under the License.
  */
 
-let pendingDeleteOrgID = null;
-let pendingDeleteSubID = null;
+/* ── State ─────────────────────────────────────────────────────── */
+const tokenCache = {};
+let _manageSub = null;
+let _manageRevealed = false;
+let _manageCopyTimer = null;
 
-function prepareDeleteSubscription(orgID, subID) {
-    pendingDeleteOrgID = orgID;
-    pendingDeleteSubID = subID;
+/* ── Open / close manage modal ─────────────────────────────────── */
+function openSubManage(subId) {
+    const row = document.getElementById('sub-row-' + subId);
+    if (!row) return;
+    _manageSub = {
+        id: subId,
+        apiName: row.dataset.apiName || '',
+        planName: row.dataset.planName || '',
+        status: row.dataset.status || 'ACTIVE',
+    };
+    _manageRevealed = false;
 
-    if (typeof openWarningModal === 'function') {
-        openWarningModal('DeleteTokenBasedSubscription', '', '', '', '', '', '');
-        return;
-    }
-
-    // openWarningModal unavailable — execute directly (should not happen in normal usage)
-    executeDeleteSubscription();
+    document.getElementById('subManageApiName').textContent = _manageSub.apiName;
+    document.getElementById('subManagePlanName').textContent = _manageSub.planName;
+    updateSubManageStatus(_manageSub.status);
+    document.getElementById('subManageTokenVal').textContent = '•'.repeat(28);
+    const revealIcon = document.getElementById('subManageRevealIcon');
+    if (revealIcon) revealIcon.className = 'bi bi-eye';
+    resetSubManageCopyBtn();
+    document.getElementById('subManageModal').style.display = 'flex';
 }
 
-async function executeDeleteSubscription() {
+function closeSubManage() {
+    const modal = document.getElementById('subManageModal');
+    if (modal) modal.style.display = 'none';
+    _manageSub = null;
+    _manageRevealed = false;
+}
+
+function updateSubManageStatus(status) {
+    const isSuspended = status === 'INACTIVE';
+    const badge = document.getElementById('subManageStatusBadge');
+    if (badge) {
+        badge.textContent = isSuspended ? 'Suspended' : 'Active';
+        badge.className = 'mc-manage-status-badge ' + (isSuspended ? 'mc-manage-status-badge--suspended' : 'mc-manage-status-badge--active');
+    }
+    const btn = document.getElementById('subManageSuspendBtn');
+    if (btn) {
+        btn.querySelector('i').className = 'bi bi-' + (isSuspended ? 'play-circle' : 'pause-circle');
+        btn.querySelector('.sub-suspend-label').textContent = isSuspended ? 'Resume' : 'Suspend';
+        btn.className = 'dp-btn mc-manage-action-btn ' + (isSuspended ? 'mc-manage-action-btn--resume' : 'mc-manage-action-btn--suspend');
+    }
+}
+
+function resetSubManageCopyBtn() {
+    const btn = document.getElementById('subManageCopyBtn');
+    if (btn) btn.classList.remove('copy-btn--copied');
+}
+
+/* ── Token fetch / reveal / copy ───────────────────────────────── */
+async function fetchSubToken(subId) {
+    if (tokenCache[subId]) return tokenCache[subId];
+    const orgID = window.__subscriptionOrgID;
+    if (!orgID) return null;
+    try {
+        const resp = await fetch(
+            devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subId)}`),
+            { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
+        );
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const token = data.subscriptionToken || null;
+        if (token) tokenCache[subId] = token;
+        return token;
+    } catch (_) { return null; }
+}
+
+async function revealSubToken() {
+    if (!_manageSub) return;
+    if (_manageRevealed) {
+        _manageRevealed = false;
+        document.getElementById('subManageTokenVal').textContent = '•'.repeat(28);
+        const ri = document.getElementById('subManageRevealIcon');
+        if (ri) ri.className = 'bi bi-eye';
+        return;
+    }
+    const token = await fetchSubToken(_manageSub.id);
+    if (!token) return;
+    _manageRevealed = true;
+    document.getElementById('subManageTokenVal').textContent = token;
+    const ri = document.getElementById('subManageRevealIcon');
+    if (ri) ri.className = 'bi bi-eye-slash';
+}
+
+async function copySubToken() {
+    if (!_manageSub) return;
+    const token = await fetchSubToken(_manageSub.id);
+    if (!token) return;
+    try {
+        await navigator.clipboard.writeText(token);
+    } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = token;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    }
+    const btn = document.getElementById('subManageCopyBtn');
+    if (btn) btn.classList.add('copy-btn--copied');
+    if (_manageCopyTimer) clearTimeout(_manageCopyTimer);
+    _manageCopyTimer = setTimeout(resetSubManageCopyBtn, 1600);
+}
+
+/* ── Suspend / Resume ───────────────────────────────────────────── */
+async function toggleSubSuspend() {
+    if (!_manageSub) return;
+    const newStatus = _manageSub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+        const resp = await fetch(
+            devportalApi.org(window.__subscriptionOrgID, `/subscriptions/${encodeURIComponent(_manageSub.id)}`),
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+                body: JSON.stringify({ status: newStatus }),
+            }
+        );
+        if (resp.ok) {
+            _manageSub.status = newStatus;
+            updateSubManageStatus(newStatus);
+            // Sync the status pill and data attribute in the table row
+            const row = document.getElementById('sub-row-' + _manageSub.id);
+            if (row) {
+                row.dataset.status = newStatus;
+                const pill = row.querySelector('.sub-status-pill');
+                if (pill) {
+                    pill.className = 'sub-status-pill ' + (newStatus === 'ACTIVE' ? 'sub-status-pill--active' : 'sub-status-pill--inactive');
+                    pill.innerHTML = '<span class="sub-status-dot"></span>' + newStatus;
+                }
+            }
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            await showAlert('Failed to update subscription: ' + (data.description || 'Unknown error'), 'error');
+        }
+    } catch (e) {
+        await showAlert('Error: ' + e.message, 'error');
+    }
+}
+
+/* ── Unsubscribe ────────────────────────────────────────────────── */
+function askSubUnsub() {
+    if (!_manageSub) return;
+    const title = document.getElementById('subUnsubTitle');
+    if (title) title.textContent = 'Unsubscribe from ' + (_manageSub.planName || 'this plan') + '?';
+    const dialog = document.getElementById('subUnsubDialog');
+    if (dialog) dialog.style.display = 'flex';
+}
+
+function closeSubUnsub() {
+    const dialog = document.getElementById('subUnsubDialog');
+    if (dialog) dialog.style.display = 'none';
+}
+
+async function confirmSubUnsub() {
+    if (!_manageSub) return;
+    closeSubUnsub();
+    await executeDeleteSubscription(_manageSub.id);
+}
+
+/* ── Delete / unsubscribe (API call) ────────────────────────────── */
+async function executeDeleteSubscription(subscriptionId) {
     try {
         const response = await fetch(
-            devportalApi.org(pendingDeleteOrgID, `/subscriptions/${encodeURIComponent(pendingDeleteSubID)}`),
+            devportalApi.org(window.__subscriptionOrgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
 
         if (response.ok) {
+            closeSubManage();
             await showAlert('Subscription removed successfully!', 'success');
-            const row = document.getElementById('sub-row-' + pendingDeleteSubID);
-            if (row) {
-                row.remove();
-            }
-            // Check if table is now empty
+            const row = document.getElementById('sub-row-' + subscriptionId);
+            if (row) row.remove();
             const tbody = document.querySelector('#subscriptions-table tbody');
             if (tbody && tbody.children.length === 0) {
-                const tableContainer = document.getElementById('subscriptions-table')?.closest('.table-responsive');
-                if (tableContainer) {
-                    tableContainer.remove();
-                }
+                document.getElementById('subscriptions-table')?.closest('.sub-scroll')?.remove();
                 const noSubs = document.getElementById('no-subscriptions');
-                if (noSubs) {
-                    noSubs.style.display = 'block';
-                }
+                if (noSubs) noSubs.style.display = 'block';
             }
         } else {
             let message = 'Unknown error';
@@ -72,84 +216,22 @@ async function executeDeleteSubscription() {
     }
 }
 
-async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
-    try {
-        const response = await fetch(
-            devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
-            {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
-                body: JSON.stringify({ status: newStatus }),
-            }
-        );
-
-        if (response.ok) {
-            await showAlert(`Subscription ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'}!`, 'success');
-            window.location.reload();
-        } else {
-            let message = 'Unknown error';
-            try {
-                const data = await response.json();
-                message = data.description || message;
-            } catch (_) {
-                message = await response.text().catch(() => response.statusText || message);
-            }
-            await showAlert(`Failed: ${message}`, 'error');
-        }
-    } catch (error) {
-        await showAlert(`Error: ${error.message}`, 'error');
-    }
-}
-
-const tokenCache = {};
-
-async function toggleListTokenVisibility(subscriptionId) {
-    const tokenEl = document.getElementById('list-token-' + subscriptionId);
-    if (!tokenEl) return;
-
-    // If currently revealed, hide and restore masked value (keep tail if available)
-    if (tokenEl.dataset.revealed === 'true') {
-        // try to reuse stored tail or cached full token to rebuild masked suffix
-        const tail = tokenEl.dataset.tail || (tokenCache[subscriptionId] ? String(tokenCache[subscriptionId]).slice(-4) : null);
-        if (tail) {
-            tokenEl.textContent = '****' + tail;
-        } else {
-            tokenEl.textContent = '****';
-        }
-        tokenEl.dataset.revealed = 'false';
-        return;
+/* ── Wire modals ────────────────────────────────────────────────── */
+(function wireSubModals() {
+    const manageModal = document.getElementById('subManageModal');
+    if (manageModal) {
+        document.getElementById('subManageClose')?.addEventListener('click', closeSubManage);
+        document.getElementById('subManageRevealBtn')?.addEventListener('click', revealSubToken);
+        document.getElementById('subManageCopyBtn')?.addEventListener('click', copySubToken);
+        document.getElementById('subManageSuspendBtn')?.addEventListener('click', toggleSubSuspend);
+        document.getElementById('subManageUnsubBtn')?.addEventListener('click', askSubUnsub);
+        manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeSubManage(); });
     }
 
-    // Reveal path: fetch token if needed, then store masked tail for future hides
-    let fullToken = tokenCache[subscriptionId];
-    if (!fullToken) {
-        const orgID = window.__subscriptionOrgID;
-        if (!orgID) return;
-        try {
-            const response = await fetch(
-                devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
-                { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
-            );
-            if (!response.ok) return;
-            const data = await response.json();
-            fullToken = data.subscriptionToken;
-            if (!fullToken) return;
-            tokenCache[subscriptionId] = fullToken;
-            window.__tokenMap = window.__tokenMap || {};
-            window.__tokenMap[subscriptionId] = fullToken;
-        } catch (_) {
-            return;
-        }
+    const unsubDialog = document.getElementById('subUnsubDialog');
+    if (unsubDialog) {
+        document.getElementById('subUnsubCancelBtn')?.addEventListener('click', closeSubUnsub);
+        document.getElementById('subUnsubConfirmBtn')?.addEventListener('click', confirmSubUnsub);
+        unsubDialog.addEventListener('click', function (e) { if (e.target === unsubDialog) closeSubUnsub(); });
     }
-
-    // store the full token and the tail on the element for future toggles
-    try {
-        tokenEl.dataset.full = fullToken;
-        tokenEl.dataset.tail = String(fullToken).slice(-4);
-    } catch (e) {
-        // ignore dataset write errors
-    }
-
-    tokenEl.textContent = fullToken;
-    tokenEl.dataset.revealed = 'true';
-}
+})();

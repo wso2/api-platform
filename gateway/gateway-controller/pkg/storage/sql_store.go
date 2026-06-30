@@ -285,6 +285,8 @@ func kindToResourceTable(kind string) (string, error) {
 		return "webbroker_apis", nil
 	case "LlmProvider":
 		return "llm_providers", nil
+	case "LlmProviderTemplate":
+		return "llm_provider_templates", nil
 	case "LlmProxy":
 		return "llm_proxies", nil
 	case "Mcp":
@@ -319,6 +321,13 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		var config api.WebBrokerApi
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case "LlmProviderTemplate":
+		var config api.LLMProviderTemplate
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
 		cfg.Configuration = config
@@ -1133,6 +1142,36 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 	}
 	defer rows.Close()
 
+	return scanArtifactMetadataRows(rows)
+}
+
+// GetPendingCPSyncArtifacts returns artifacts-table metadata for all gateway-originated
+// artifacts whose control-plane sync is incomplete (cp_sync_status IN ('pending','failed')).
+func (s *sqlStore) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	query := `
+		SELECT uuid, kind, handle, display_name, version, desired_state,
+			deployment_id, origin, created_at, updated_at, deployed_at,
+			cp_sync_status, cp_sync_info, cp_artifact_id
+		FROM artifacts
+		WHERE gateway_id = ? AND origin = ? AND cp_sync_status IN (?, ?)
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.query(query, s.gatewayId, string(models.OriginGatewayAPI),
+		string(models.CPSyncStatusPending), string(models.CPSyncStatusFailed))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pending CP-sync artifacts: %w", err)
+	}
+	defer rows.Close()
+
+	return scanArtifactMetadataRows(rows)
+}
+
+// scanArtifactMetadataRows scans rows from a query selecting the artifacts-table metadata
+// columns (no resource-table JOIN, so Configuration is left nil): uuid, kind, handle,
+// display_name, version, desired_state, deployment_id, origin, created_at, updated_at,
+// deployed_at, cp_sync_status, cp_sync_info, cp_artifact_id.
+func scanArtifactMetadataRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 	for rows.Next() {
 		var cfg models.StoredConfig
@@ -1499,7 +1538,9 @@ func (s *sqlStore) resolveProviderUUID(tx *sqlStoreTx, providerHandle string) (s
 	return uuid, nil
 }
 
-// SaveLLMProviderTemplate persists a new LLM provider template
+// SaveLLMProviderTemplate persists a new LLM provider template. It writes both the
+// llm_provider_templates row (the configuration) and an artifacts tracking row (for DP->CP
+// sync) in a single transaction.
 func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error {
 	// Serialize configuration to JSON
 	configJSON, err := json.Marshal(template.Configuration)
@@ -1509,35 +1550,84 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 
 	handle := template.GetHandle()
 
-	query := `
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now()
+
+	if err := s.insertTemplateArtifactRow(tx, template.UUID, handle, now); err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
+		}
+		return fmt.Errorf("failed to insert template artifact row: %w", err)
+	}
+
+	templateQuery := `
 		INSERT INTO llm_provider_templates (
 			uuid, gateway_id, handle, configuration, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?)
 	`
-
-	now := time.Now()
-	_, err = s.exec(query,
-		template.UUID,
-		s.gatewayId,
-		handle,
-		string(configJSON),
-		now,
-		now,
-	)
-
-	if err != nil {
-		// Check for unique constraint violation
+	if _, err := tx.ExecQ(templateQuery, template.UUID, s.gatewayId, handle, string(configJSON), now, now); err != nil {
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit template transaction: %w", err)
+	}
+	committed = true
+
 	s.logger.Info("LLM provider template saved",
 		slog.String("uuid", template.UUID),
 		slog.String("handle", handle))
 
 	return nil
+}
+
+// insertTemplateArtifactRow inserts the artifacts-table tracking row for an LLM provider
+// template within the given transaction. Templates are organization-level and always
+// gateway-originated, so the row is marked origin gateway_api with cp_sync_status pending.
+// This makes templates participate in DP->CP sync tracking and the connect/reconnect retry,
+// mirroring how LLM providers and other deployable artifacts are tracked. Templates carry no
+// version, so version is stored empty and display_name mirrors the handle. The template is not
+// a deployable runtime artifact and has no row in any of the type tables joined by
+// GetAllConfigs, so it never enters the runtime/xDS hydration path.
+func (s *sqlStore) insertTemplateArtifactRow(tx *sqlStoreTx, uuid, handle string, now time.Time) error {
+	query := `
+		INSERT INTO artifacts (
+			uuid, gateway_id, display_name, version, kind, handle,
+			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+			cp_sync_status, cp_sync_info, cp_artifact_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := tx.ExecQ(query,
+		uuid,
+		s.gatewayId,
+		handle, // display_name
+		"",     // version (templates are unversioned)
+		string(models.KindLlmProviderTemplate),
+		handle,
+		string(models.StateDeployed),
+		nil, // deployment_id
+		string(models.OriginGatewayAPI),
+		now,
+		now,
+		nil, // deployed_at
+		string(models.CPSyncStatusPending),
+		nil, // cp_sync_info
+		nil, // cp_artifact_id
+	)
+	return err
 }
 
 // UpdateLLMProviderTemplate updates an existing LLM provider template
@@ -1559,35 +1649,63 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 
 	handle := template.GetHandle()
 
-	query := `
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now()
+
+	result, err := tx.ExecQ(`
 		UPDATE llm_provider_templates
 		SET handle = ?, configuration = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
-	`
-
-	result, err := s.exec(query,
-		handle,
-		string(configJSON),
-		time.Now(),
-		template.UUID,
-		s.gatewayId,
-	)
-
+	`, handle, string(configJSON), now, template.UUID, s.gatewayId)
 	if err != nil {
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to update template: %w", err)
 	}
-
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
 	if rows == 0 {
 		return fmt.Errorf("%w: uuid=%s", ErrNotFound, template.UUID)
 	}
+
+	// Reset the tracking row's CP sync state to pending so the change re-syncs to the control
+	// plane (and is retried on reconnect). Insert the row if it is missing, which covers
+	// templates created before artifacts-table tracking existed.
+	artResult, err := tx.ExecQ(`
+		UPDATE artifacts
+		SET display_name = ?, updated_at = ?, cp_sync_status = ?, cp_sync_info = NULL
+		WHERE uuid = ? AND gateway_id = ? AND kind = ?
+	`, handle, now, string(models.CPSyncStatusPending), template.UUID, s.gatewayId, string(models.KindLlmProviderTemplate))
+	if err != nil {
+		return fmt.Errorf("failed to update template artifact row: %w", err)
+	}
+	artRows, err := artResult.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if artRows == 0 {
+		if err := s.insertTemplateArtifactRow(tx, template.UUID, handle, now); err != nil {
+			return fmt.Errorf("failed to insert template artifact row: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit template transaction: %w", err)
+	}
+	committed = true
 
 	s.logger.Info("LLM provider template updated",
 		slog.String("uuid", template.UUID),
@@ -1596,23 +1714,43 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 	return nil
 }
 
-// DeleteLLMProviderTemplate removes an LLM provider template by UUID
+// DeleteLLMProviderTemplate removes an LLM provider template by UUID, deleting both the
+// llm_provider_templates row and its artifacts tracking row in a single transaction.
 func (s *sqlStore) DeleteLLMProviderTemplate(id string) error {
-	query := `DELETE FROM llm_provider_templates WHERE uuid = ? AND gateway_id = ?`
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
 
-	result, err := s.exec(query, id, s.gatewayId)
+	result, err := tx.ExecQ(`DELETE FROM llm_provider_templates WHERE uuid = ? AND gateway_id = ?`, id, s.gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to delete template: %w", err)
 	}
-
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
 	if rows == 0 {
 		return fmt.Errorf("%w: uuid=%s", ErrNotFound, id)
 	}
+
+	// Remove the tracking row too. Best-effort row count: templates created before
+	// artifacts-table tracking existed may not have one, which is not an error.
+	if _, err := tx.ExecQ(`DELETE FROM artifacts WHERE uuid = ? AND gateway_id = ? AND kind = ?`,
+		id, s.gatewayId, string(models.KindLlmProviderTemplate)); err != nil {
+		return fmt.Errorf("failed to delete template artifact row: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit template transaction: %w", err)
+	}
+	committed = true
 
 	s.logger.Info("LLM provider template deleted", slog.String("uuid", id))
 

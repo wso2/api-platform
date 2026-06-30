@@ -23,6 +23,13 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 
+/**
+ * Supported key manager types. Every type proxies token requests identically
+ * (a standard OAuth2 client_credentials request), so this list exists purely
+ * to validate the `type` field when an admin configures a key manager.
+ */
+const SUPPORTED_KM_TYPES = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
+
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
 // ---------------------------------------------------------------------------
@@ -37,14 +44,6 @@ function mapYamlToKeyManager(yamlDoc) {
         type: spec.type,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
-        clientRegistrationEndpoint: spec.clientRegistrationEndpoint,
-        issuer: spec.issuer || null,
-        jwksURL: spec.jwksURL || null,
-        adminClientId: spec.adminClientId || '',
-        adminClientSecret: spec.adminClientSecret || '',
-        supportedGrantTypes: spec.grantTypes || spec.supportedGrantTypes || ['client_credentials'],
-        supportedScopes: spec.scopes || spec.supportedScopes || ['openid'],
-        additionalProperties: spec.additionalProperties || {},
     };
 }
 
@@ -94,11 +93,19 @@ function _resolvePayload(req) {
 }
 
 function _validateRequiredFields(payload) {
-    const missing = ['name', 'type', 'tokenEndpoint', 'clientRegistrationEndpoint',
-        'adminClientId', 'adminClientSecret']
+    const missing = ['name', 'type', 'tokenEndpoint']
         .filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
+    }
+    const endpoint = payload.tokenEndpoint.trim();
+    if (!endpoint) {
+        return 'tokenEndpoint must not be blank';
+    }
+    try {
+        new URL(endpoint);
+    } catch {
+        return 'tokenEndpoint must be a valid URL';
     }
     return null;
 }
@@ -116,8 +123,13 @@ const createKeyManager = async (req, res) => {
         if (validationError) {
             return res.status(400).json({ error: validationError });
         }
+        const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
+        if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
+            return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
+        }
 
-        const record = await kmDao.create(orgId, payload);
+        const userId = util.resolveActor(req);
+        const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
         const dto = new KeyManagerDTO(record);
         return res.status(201).json(dto);
     } catch (error) {
@@ -139,7 +151,16 @@ const updateKeyManager = async (req, res) => {
         const { kmId } = req.params;
         const payload = _resolvePayload(req);
 
-        const [, updatedRows] = await kmDao.update(kmId, payload);
+        if (payload.type !== undefined) {
+            const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
+            if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
+                return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
+            }
+            payload.type = resolvedType;
+        }
+
+        const userId = util.resolveActor(req);
+        const [, updatedRows] = await kmDao.update(kmId, payload, userId);
         const dto = new KeyManagerDTO(updatedRows[0]);
         return res.status(200).json(dto);
     } catch (error) {

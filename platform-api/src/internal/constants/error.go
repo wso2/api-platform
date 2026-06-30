@@ -105,6 +105,14 @@ var (
 	ErrArtifactNotFound    = errors.New("artifact not found")
 	ErrArtifactExists      = errors.New("artifact already exists")
 	ErrArtifactInvalidKind = errors.New("invalid artifact kind")
+	// ErrArtifactReadOnly is returned when a mutating control-plane operation is
+	// attempted on a data-plane-originated (origin=DP) artifact. Such artifacts are
+	// read-only in the control plane; only documentation/OpenAPI updates are allowed.
+	ErrArtifactReadOnly = errors.New("artifact is read-only: it originated from a data-plane gateway")
+	// ErrArtifactDeployed is returned when a DP-originated artifact is deleted from the
+	// control plane while still deployed on one or more gateways. It can only be deleted
+	// once it is undeployed on all gateways it was deployed to.
+	ErrArtifactDeployed = errors.New("artifact is still deployed on a gateway and cannot be deleted")
 )
 
 var (
@@ -146,10 +154,10 @@ var (
 )
 
 var (
-	ErrHmacSecretNotFound              = errors.New("hmac secret not found")
-	ErrHmacSecretAlreadyExists         = errors.New("hmac secret with this name already exists")
-	ErrHmacSecretEncryptionKeyMissing  = errors.New("hmac secret encryption key is not configured")
-	ErrHmacSecretInvalidValue          = errors.New("secret value must be at least 32 characters")
+	ErrHmacSecretNotFound             = errors.New("hmac secret not found")
+	ErrHmacSecretAlreadyExists        = errors.New("hmac secret with this name already exists")
+	ErrHmacSecretEncryptionKeyMissing = errors.New("hmac secret encryption key is not configured")
+	ErrHmacSecretInvalidValue         = errors.New("secret value must be at least 32 characters")
 )
 
 var (
@@ -157,6 +165,7 @@ var (
 	ErrWebBrokerAPINotFound              = errors.New("webbroker api not found")
 	ErrWebBrokerAPILimitReached          = errors.New("webbroker api limit reached for organization")
 	ErrProjectHasAssociatedWebBrokerAPIs = errors.New("project has associated WebBroker APIs")
+	ErrDevPortalNotFound                 = errors.New("dev portal not found")
 )
 
 var (

@@ -351,15 +351,11 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "visibility": "string",
-    "agentVisibility": "string",
+    "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
     ],
     "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
       "string"
     ],
     "owners": {
@@ -434,15 +430,11 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "visibility": "string",
-    "agentVisibility": "string",
+    "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
     ],
     "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
       "string"
     ],
     "owners": {
@@ -512,15 +504,11 @@ xor
   "apiStatus": "PUBLISHED",
   "apiDescription": "string",
   "apiType": "string",
-  "visibility": "string",
-  "agentVisibility": "string",
+  "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
   ],
   "removedLabels": [
-    "string"
-  ],
-  "visibleGroups": [
     "string"
   ],
   "owners": {
@@ -551,18 +539,25 @@ xor
 |apiTitle|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
 |apiVersion|string|false|none|none|
-|apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
+|apiStatus|string|false|none|API lifecycle status.|
 |apiDescription|string|false|none|none|
 |apiType|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
-|visibleGroups|[string]|false|none|none|
 |owners|[ApiOwnersResponse](#schemaapiownersresponse)|false|none|none|
 |apiImageMetadata|[ApiImageMetadataResponse](#schemaapiimagemetadataresponse)|false|none|none|
 |tags|[string]|false|none|none|
 |labels|[string]|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiStatus|PUBLISHED|
+|apiStatus|DEPRECATED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 
 <h2 id="tocS_ApiOwnersResponse">ApiOwnersResponse</h2>
 
@@ -721,13 +716,7 @@ continued
     {
       "appRefID": "asgardeo-client-abc123",
       "kmID": "km-uuid-12345",
-      "keyType": "PRODUCTION",
-      "additionalProperties": {
-        "client_name": "my-app",
-        "grant_types": [
-          "client_credentials"
-        ]
-      }
+      "keyType": "PRODUCTION"
     }
   ]
 }
@@ -742,7 +731,7 @@ continued
 |name|string|false|none|none|
 |description|string|false|none|none|
 |type|string|false|none|none|
-|appMap|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth key mapping entry attached to an application.]|
+|appMap|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 
 <h2 id="tocS_ApplicationKeyMappingSummary">ApplicationKeyMappingSummary</h2>
 
@@ -755,27 +744,20 @@ continued
 {
   "appRefID": "asgardeo-client-abc123",
   "kmID": "km-uuid-12345",
-  "keyType": "PRODUCTION",
-  "additionalProperties": {
-    "client_name": "my-app",
-    "grant_types": [
-      "client_credentials"
-    ]
-  }
+  "keyType": "PRODUCTION"
 }
 
 ```
 
-OAuth key mapping entry attached to an application.
+OAuth client ID mapping entry attached to an application.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|appRefID|string|false|none|Authorization Server client ID registered via DCR.|
-|kmID|string|false|none|UUID of the key manager that issued credentials for this mapping.|
+|appRefID|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|kmID|string|false|none|UUID of the key manager this client ID is linked to.|
 |keyType|string|false|none|Key type for this mapping.|
-|additionalProperties|object|false|none|AS-specific extra properties returned during DCR.|
 
 #### Enumerated Values
 
@@ -793,8 +775,8 @@ OAuth key mapping entry attached to an application.
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -807,8 +789,8 @@ OAuth key mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|handle|string|true|none|none|
 |name|string|true|none|none|
-|displayName|string|true|none|none|
 |labels|[string]|true|none|none|
 
 <h2 id="tocS_OrganizationCreateRequest">OrganizationCreateRequest</h2>
@@ -856,7 +838,9 @@ OAuth key mapping entry attached to an application.
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
   "organizationIdentifier": "string",
-  "orgConfiguration": {}
+  "orgConfiguration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 
 ```
@@ -871,7 +855,16 @@ OAuth key mapping entry attached to an application.
 |businessOwnerEmail|string(email)|false|none|none|
 |orgHandle|string|true|none|none|
 |organizationIdentifier|string|true|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|orgConfiguration|object|false|none|none|
+|» devportalMode|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 <h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 
@@ -1241,26 +1234,7 @@ and
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
@@ -1272,15 +1246,7 @@ and
 |name|string|true|none|Unique name within the organization.|
 |type|string|true|none|none|
 |enabled|boolean|false|none|none|
-|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. Used to obtain admin tokens and proxy developer token requests.|
-|clientRegistrationEndpoint|string(uri)|true|none|DCR endpoint used to create, update, and delete OAuth clients on behalf of developers.|
-|issuer|string(uri)|false|none|Issuer identifier. Used as a string to validate the `iss` claim in tokens issued by this KM. For Asgardeo and WSO2 IS this is the same URL as `tokenEndpoint`.|
-|jwksURL|string(uri)|false|none|JWKS endpoint. Consumers and gateways fetch public keys from here to verify token signatures.|
-|adminClientId|string|true|none|Client ID of the admin application used for DCR operations. Stored encrypted.|
-|adminClientSecret|string|true|none|Client secret of the admin application. Stored encrypted; never returned in responses.|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
-|additionalProperties|object|false|none|AS-specific extra configuration. For Asgardeo: `authorizeEndpoint`, `revokeEndpoint`, `logoutEndpoint`. For Keycloak: `realm`, `revokeEndpoint`, `logoutEndpoint`.|
+|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_credentials` token requests to this endpoint.|
 
 #### Enumerated Values
 
@@ -1303,26 +1269,7 @@ and
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
@@ -1336,15 +1283,7 @@ Partial update payload for a key manager. All fields are optional; only supplied
 |name|string|false|none|Unique name within the organization.|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
-|tokenEndpoint|string(uri)|false|none|OAuth2 token endpoint. Used to obtain admin tokens and proxy developer token requests.|
-|clientRegistrationEndpoint|string(uri)|false|none|DCR endpoint used to create, update, and delete OAuth clients on behalf of developers.|
-|issuer|string(uri)|false|none|Issuer identifier. Used as a string to validate the `iss` claim in tokens issued by this KM. For Asgardeo and WSO2 IS this is the same URL as `tokenEndpoint`.|
-|jwksURL|string(uri)|false|none|JWKS endpoint. Consumers and gateways fetch public keys from here to verify token signatures.|
-|adminClientId|string|false|none|Client ID of the admin application used for DCR operations. Stored encrypted.|
-|adminClientSecret|string|false|none|Client secret of the admin application. Stored encrypted; never returned in responses.|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
-|additionalProperties|object|false|none|AS-specific extra configuration. For Asgardeo: `authorizeEndpoint`, `revokeEndpoint`, `logoutEndpoint`. For Keycloak: `realm`, `revokeEndpoint`, `logoutEndpoint`.|
+|tokenEndpoint|string(uri)|false|none|none|
 
 #### Enumerated Values
 
@@ -1369,29 +1308,12 @@ Partial update payload for a key manager. All fields are optional; only supplied
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
 
-Key manager configuration. Admin credentials are never included.
+Key manager configuration.
 
 ### Properties
 
@@ -1403,12 +1325,6 @@ Key manager configuration. Admin credentials are never included.
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
-|clientRegistrationEndpoint|string(uri)|false|none|none|
-|issuer|string(uri)¦null|false|none|none|
-|jwksURL|string(uri)¦null|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
-|additionalProperties|object|false|none|none|
 
 #### Enumerated Values
 
@@ -1431,20 +1347,12 @@ Key manager configuration. Admin credentials are never included.
   "id": "km-uuid-12345",
   "name": "Asgardeo",
   "type": "ASGARDEO",
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ]
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
 
-Minimal developer-facing key manager view. No admin credentials or DCR endpoints.
+Minimal developer-facing key manager view.
 
 ### Properties
 
@@ -1454,8 +1362,6 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 |name|string|false|none|none|
 |type|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
 
 #### Enumerated Values
 
@@ -1555,7 +1461,6 @@ Webhook subscriber configuration. The secret is never included.
   "eventType": "apikey.generated",
   "occurredAt": "2019-08-24T14:15:22Z",
   "status": "DELIVERED",
-  "attemptCount": 1,
   "lastHttpStatus": 200,
   "lastError": "string",
   "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -1574,7 +1479,6 @@ A single delivery attempt made to a webhook subscriber.
 |eventType|string¦null|false|none|none|
 |occurredAt|string(date-time)¦null|false|none|none|
 |status|string|false|none|none|
-|attemptCount|integer|false|none|none|
 |lastHttpStatus|integer¦null|false|none|none|
 |lastError|string¦null|false|none|none|
 |lastAttemptAt|string(date-time)¦null|false|none|none|
@@ -1588,7 +1492,6 @@ A single delivery attempt made to a webhook subscriber.
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|
 
 <h2 id="tocS_AppKeyMappingRequest">AppKeyMappingRequest</h2>
 
@@ -1601,18 +1504,7 @@ A single delivery attempt made to a webhook subscriber.
 {
   "keyManager": "Resident Key Manager",
   "keyType": "PRODUCTION",
-  "grantTypesToBeSupported": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/callback",
-  "scopes": [
-    "default"
-  ],
-  "additionalProperties": {
-    "application_access_token_expiry_time": "3600",
-    "user_access_token_expiry_time": "3600"
-  }
+  "consumerKey": "consumer-key-123"
 }
 
 ```
@@ -1622,11 +1514,8 @@ A single delivery attempt made to a webhook subscriber.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyManager|string|true|none|none|
-|keyType|string|true|none|none|
-|grantTypesToBeSupported|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
-|scopes|[string]|false|none|none|
-|additionalProperties|object|false|none|none|
+|keyType|string|false|none|none|
+|consumerKey|string|true|none|The OAuth client_id, created directly in the key manager. The portal does not store or persist the client secret — it is supplied per-request when generating a token and is only seen transiently during that request.|
 
 #### Enumerated Values
 
@@ -1644,8 +1533,8 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -1658,8 +1547,8 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
-|displayName|string|false|none|Optional display name. Defaults to `name` when omitted.|
+|handle|string|true|none|none|
+|name|string|false|none|Optional display name. Defaults to `handle` when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
@@ -1671,7 +1560,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "displayName": "Partner and Public APIs",
+  "name": "Partner and Public APIs",
   "addedLabels": [
     "premium"
   ],
@@ -1686,7 +1575,7 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|displayName|string|false|none|none|
+|name|string|false|none|none|
 |addedLabels|[string]|false|none|Label names to attach to the view.|
 |removedLabels|[string]|false|none|Label names to detach from the view.|
 
@@ -1718,66 +1607,6 @@ OAuth access token generation payload. `consumerSecret` is required — the port
 |scopes|[string]|false|none|none|
 |validityPeriod|integer|false|none|none|
 
-<h2 id="tocS_OAuthKeyUpdateRequest">OAuthKeyUpdateRequest</h2>
-
-<a id="schemaoauthkeyupdaterequest"></a>
-<a id="schema_OAuthKeyUpdateRequest"></a>
-<a id="tocSoauthkeyupdaterequest"></a>
-<a id="tocsoauthkeyupdaterequest"></a>
-
-```json
-{
-  "supportedGrantTypes": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/new-callback",
-  "additionalProperties": {}
-}
-
-```
-
-OAuth key update payload.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|supportedGrantTypes|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
-|additionalProperties|object|false|none|none|
-
-<h2 id="tocS_OAuthKeyCleanUpRequest">OAuthKeyCleanUpRequest</h2>
-
-<a id="schemaoauthkeycleanuprequest"></a>
-<a id="schema_OAuthKeyCleanUpRequest"></a>
-<a id="tocSoauthkeycleanuprequest"></a>
-<a id="tocsoauthkeycleanuprequest"></a>
-
-```json
-{
-  "keyType": "PRODUCTION",
-  "keyManager": "Resident Key Manager"
-}
-
-```
-
-OAuth cleanup payload.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|keyType|string|false|none|none|
-|keyManager|string|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
-
 <h2 id="tocS_ApplicationOAuthKeyResponse">ApplicationOAuthKeyResponse</h2>
 
 <a id="schemaapplicationoauthkeyresponse"></a>
@@ -1791,17 +1620,12 @@ OAuth cleanup payload.
   "keyManager": "Resident Key Manager",
   "keyType": "PRODUCTION",
   "consumerKey": "consumer-key-123",
-  "consumerSecret": "consumer-secret-abc",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/callback"
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
 
-OAuth key payload.
+OAuth key mapping payload.
 
 ### Properties
 
@@ -1811,9 +1635,7 @@ OAuth key payload.
 |keyManager|string|false|none|none|
 |keyType|string|false|none|none|
 |consumerKey|string|false|none|none|
-|consumerSecret|string|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
+|tokenEndpoint|string(uri)|false|none|none|
 
 <h2 id="tocS_OAuthTokenResponse">OAuthTokenResponse</h2>
 
@@ -1865,6 +1687,13 @@ OAuth key payload.
 |name|string|false|none|none|
 |status|string|false|none|none|
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+
 <h2 id="tocS_APIFlowResponse">APIFlowResponse</h2>
 
 <a id="schemaapiflowresponse"></a>
@@ -1880,7 +1709,6 @@ OAuth key payload.
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": "string",
@@ -1901,7 +1729,6 @@ OAuth key payload.
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|string¦null|false|none|none|
@@ -1913,6 +1740,10 @@ OAuth key payload.
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
@@ -1970,7 +1801,6 @@ OAuth key payload.
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": {},
@@ -1988,7 +1818,6 @@ OAuth key payload.
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
@@ -2015,6 +1844,10 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
@@ -2032,7 +1865,6 @@ continued
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": {},
@@ -2050,7 +1882,6 @@ continued
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|any|false|none|none|
@@ -2077,6 +1908,10 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
@@ -2169,7 +2004,6 @@ continued
   "subscriberId": "sub-xyz789",
   "targetUrl": "https://example.com/webhook",
   "status": "DELIVERED",
-  "attemptCount": 1,
   "lastHttpStatus": 200,
   "lastError": "string",
   "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -2188,7 +2022,6 @@ A single webhook delivery attempt.
 |subscriberId|string|false|none|none|
 |targetUrl|string¦null|false|none|none|
 |status|string|false|none|none|
-|attemptCount|integer|false|none|none|
 |lastHttpStatus|integer¦null|false|none|none|
 |lastError|string¦null|false|none|none|
 |lastAttemptAt|string(date-time)¦null|false|none|none|
@@ -2202,7 +2035,6 @@ A single webhook delivery attempt.
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|
 
 <h2 id="tocS_WebhookEvent">WebhookEvent</h2>
 
@@ -2226,7 +2058,6 @@ A single webhook delivery attempt.
       "subscriberId": "sub-xyz789",
       "targetUrl": "https://example.com/webhook",
       "status": "DELIVERED",
-      "attemptCount": 1,
       "lastHttpStatus": 200,
       "lastError": "string",
       "lastAttemptAt": "2019-08-24T14:15:22Z",

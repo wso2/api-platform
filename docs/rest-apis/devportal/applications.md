@@ -50,8 +50,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
         {
           "appRefID": "asgardeo-client-abc123",
           "kmID": "km-uuid-12345",
-          "keyType": "PRODUCTION",
-          "additionalProperties": {}
+          "keyType": "PRODUCTION"
         }
       ]
     }
@@ -92,11 +91,10 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» description|string|false|none|none|
 |»» type|string|false|none|none|
-|»» appMap|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth key mapping entry attached to an application.]|
-|»»» appRefID|string|false|none|Authorization Server client ID registered via DCR.|
-|»»» kmID|string|false|none|UUID of the key manager that issued credentials for this mapping.|
+|»» appMap|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
+|»»» appRefID|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|»»» kmID|string|false|none|UUID of the key manager this client ID is linked to.|
 |»»» keyType|string|false|none|Key type for this mapping.|
-|»»» additionalProperties|object|false|none|AS-specific extra properties returned during DCR.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

@@ -74,14 +74,19 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 		return fmt.Errorf("failed to create artifact: %w", err)
 	}
 
+	origin := p.Origin
+	if origin == "" {
+		origin = constants.OriginCP
+	}
+
 	// Insert into mcp_proxies table
 	query := `
 		INSERT INTO mcp_proxies (
-			uuid, handle, name, version, project_uuid, description, created_by, configuration, created_at, updated_at, organization_uuid
+			uuid, handle, name, version, project_uuid, description, created_by, configuration, origin, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, configurationJSON, p.CreatedAt, p.UpdatedAt,
+		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -107,7 +112,7 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE handle = ? AND organization_uuid = ?`
@@ -117,7 +122,7 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 	var createdBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
+		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
 		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -148,7 +153,7 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE uuid = ? AND organization_uuid = ?`
@@ -158,7 +163,7 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 	var createdBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
+		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
 		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -184,7 +189,7 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ?
@@ -202,7 +207,7 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 		var createdBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
 			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 		)
 		if err != nil {
@@ -230,7 +235,7 @@ func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
 func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
@@ -248,7 +253,7 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 		var createdBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
 			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 		)
 		if err != nil {

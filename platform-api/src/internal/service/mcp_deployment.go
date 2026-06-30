@@ -169,6 +169,12 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, constants.ErrMCPProxyNotFound
 	}
 
+	// DP-originated artifacts are read-only in the control plane and cannot be
+	// (re)deployed from the CP.
+	if err := ensureOriginMutable(mcpProxy.Origin); err != nil {
+		return nil, err
+	}
+
 	// Ensure a gateway association exists for the target gateway before deploying, and
 	// resolve the deployment metadata. The first deployment to a gateway creates the
 	// association and seeds its metadata from this deployment. For an existing
@@ -321,6 +327,12 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 
 // UndeployMCPProxyDeployment undeploys an MCP proxy from a gateway
 func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane; their deployment
+	// lifecycle is owned by the data-plane gateway, so undeploy cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
+		return nil, err
+	}
+
 	// Verify MCP proxy exists
 	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
@@ -416,6 +428,12 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 
 // restoreMCPProxyDeployment restores a previously undeployed MCP proxy deployment
 func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane; their deployment
+	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
+		return nil, err
+	}
+
 	// Verify target deployment exists and belongs to the API
 	targetDeployment, err := s.deploymentRepo.GetWithContent(*deploymentId, proxyUUID, orgId)
 	if err != nil {

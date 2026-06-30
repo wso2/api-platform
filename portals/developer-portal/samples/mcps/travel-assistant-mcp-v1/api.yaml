@@ -6,7 +6,7 @@ metadata:
 
 spec:
   type: MCP
-  displayName: TravelAssistantMCP
+  displayName: Travel Assistant MCP
   version: 1.0.0
   description: MCP server for travel planning tools.
   status: PUBLISHED
@@ -23,9 +23,7 @@ spec:
     - Gold
     - Bronze
 
-  visibility: PUBLIC
   agentVisibility: VISIBLE
-  visibleGroups: []
 
   businessInformation:
     businessOwner: API Team

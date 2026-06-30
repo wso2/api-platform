@@ -17,63 +17,67 @@
  */
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
-const { Organization } = require('./organization');
 const View = require('./view');
 const Labels = require('./label');
 
 
-const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
-    ID: {
-        type: DataTypes.UUID,
+const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
-        allowNull: false
-    },
-    VIEW_ID: {
-        type: DataTypes.UUID,
+    VIEW_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: View,
-            key: 'VIEW_ID',
+            key: 'UUID',
         },
     },
-    LABEL_ID: {
-        type: DataTypes.UUID,
+    LABEL_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: Labels,
-            key: 'LABEL_ID',
+            key: 'UUID',
         }
-    }
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_VIEW_LABELS',
+    tableName: 'DP_VIEW_LABEL_MAPPING',
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEW_LABELS_LABEL_VIEW_ORG',
+            name: 'UQ_VIEW_LABEL_MAPPING_LABEL_VIEW',
             unique: true,
-            fields: ['LABEL_ID', 'VIEW_ID', 'ORG_ID']
+            fields: ['LABEL_UUID', 'VIEW_UUID']
+        },
+        {
+            name: 'IDX_VIEW_LABEL_MAPPING_VIEW_UUID',
+            fields: ['VIEW_UUID']
         }
     ]
 });
 
-ViewLabels.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
-});
-
 View.belongsToMany(Labels, {
     through: ViewLabels,
-    foreignKey: "VIEW_ID",
-    otherKey: "LABEL_ID",
+    foreignKey: "VIEW_UUID",
+    otherKey: "LABEL_UUID",
 });
 Labels.belongsToMany(View, {
     through: ViewLabels,
-    foreignKey: "LABEL_ID",
-    otherKey: "VIEW_ID",
+    foreignKey: "LABEL_UUID",
+    otherKey: "VIEW_UUID",
 });
 
 module.exports = ViewLabels;

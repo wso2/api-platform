@@ -18,7 +18,9 @@
 const apiKeyService = require('../services/apiKeyService');
 const applicationDao = require('../dao/applicationDao');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 const util = require('../utils/util');
+const constants = require('../utils/constants');
 
 function errorStatus(err) {
     return err.status || 500;
@@ -35,17 +37,17 @@ function normalizeOptionalId(value) {
 }
 
 function mapKey(k) {
-    const app = k.DP_APPLICATION;
+    const app = k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION;
     return {
-        keyId: k.KEY_ID,
+        keyId: k.UUID,
         name: k.NAME,
         status: k.STATUS,
         expiresAt: k.EXPIRES_AT,
         createdAt: k.CREATED_AT,
         revokedAt: k.REVOKED_AT || undefined,
-        apiId: k.API_ID,
-        appId: app ? app.APP_ID : undefined,
-        appName: app ? app.NAME : undefined
+        apiId: k.API_UUID,
+        appId: app ? app.UUID : null,
+        appName: app ? app.NAME : null
     };
 }
 
@@ -70,9 +72,10 @@ async function generateApiKey(req, res) {
             orgId, apiId: apiId.trim(), subscriptionId, appId: appIdResult.value, name, expiresAt,
             actor: req.user.sub, userToken: req.user.accessToken,
         });
+        logUserAction('API_KEY_GENERATED', req, { orgId, apiId, keyId: result.keyId });
         return res.status(201).json(result);
     } catch (err) {
-        logger.error('[apiKeyController] generate failed', { error: err.message, orgId, apiId });
+        logger.error('Failed to generate API key', { error: err.message, orgId, apiId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
@@ -98,6 +101,12 @@ async function listApiKeys(req, res) {
             errors: [{ field: 'appId', message: 'appId must be a non-empty string' }],
         });
     }
+    if (status && !Object.values(constants.API_KEY_STATUS).includes(status)) {
+        return res.status(400).json({
+            status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
+            errors: [{ field: 'status', message: `status must be one of: ${Object.values(constants.API_KEY_STATUS).join(', ')}` }],
+        });
+    }
 
     try {
         const keys = await apiKeyService.list(orgId, {
@@ -106,9 +115,10 @@ async function listApiKeys(req, res) {
             appId: appIdResult.value,
             status: status || undefined
         });
-        return res.status(200).json(util.toPaginatedList(keys.map(mapKey), req));
+        const mapped = keys.map(k => mapKey(k));
+        return res.status(200).json(util.toPaginatedList(mapped, req));
     } catch (err) {
-        logger.error('[apiKeyController] list failed', { error: err.message, orgId });
+        logger.error('Failed to list API keys', { error: err.message, orgId });
         return res.status(errorStatus(err)).json({
             status: 'error',
             code: 'INTERNAL_SERVER_ERROR',
@@ -128,9 +138,10 @@ async function regenerateApiKey(req, res) {
         const result = await apiKeyService.regenerate({
             orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken,
         });
+        logUserAction('API_KEY_REGENERATED', req, { orgId, apiKeyId });
         return res.status(200).json(result);
     } catch (err) {
-        logger.error('[apiKeyController] regenerate failed', { error: err.message, orgId, apiKeyId });
+        logger.error('Failed to regenerate API key', { error: err.message, orgId, apiKeyId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
@@ -143,9 +154,10 @@ async function revokeApiKey(req, res) {
 
     try {
         await apiKeyService.revoke({ orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken });
+        logUserAction('API_KEY_REVOKED', req, { orgId, apiKeyId });
         return res.status(204).send();
     } catch (err) {
-        logger.error('[apiKeyController] revoke failed', { error: err.message, orgId, apiKeyId });
+        logger.error('Failed to revoke API key', { error: err.message, orgId, apiKeyId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
@@ -166,9 +178,10 @@ async function associateApiKeyApplication(req, res) {
         const result = await apiKeyService.associateApplication({
             orgId, keyId: apiKeyId, appId: appId.trim(), actor: req.user.sub,
         });
+        logUserAction('API_KEY_APP_ASSOCIATED', req, { orgId, apiKeyId, appId });
         return res.status(200).json(result);
     } catch (err) {
-        logger.error('[apiKeyController] associate application failed', { error: err.message, orgId, apiKeyId });
+        logger.error('Failed to associate application with API key', { error: err.message, orgId, apiKeyId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
@@ -181,9 +194,10 @@ async function removeApiKeyApplication(req, res) {
 
     try {
         await apiKeyService.removeApplicationAssociation({ orgId, keyId: apiKeyId, actor: req.user.sub });
+        logUserAction('API_KEY_APP_DISASSOCIATED', req, { orgId, apiKeyId });
         return res.status(204).send();
     } catch (err) {
-        logger.error('[apiKeyController] remove application association failed', { error: err.message, orgId, apiKeyId });
+        logger.error('Failed to remove application association from API key', { error: err.message, orgId, apiKeyId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
@@ -203,7 +217,7 @@ async function listApplicationApiKeys(req, res) {
         const keys = await apiKeyService.list(orgId, { appId: applicationId });
         return res.status(200).json(util.toPaginatedList(keys.map(mapKey), req));
     } catch (err) {
-        logger.error('[apiKeyController] list application api keys failed', { error: err.message, orgId, applicationId });
+        logger.error('Failed to list application API keys', { error: err.message, orgId, applicationId });
         return res.status(errorStatus(err)).json({
             status: 'error',
             code: 'INTERNAL_SERVER_ERROR',

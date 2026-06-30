@@ -20,7 +20,9 @@ const subDao = require('../dao/subscriptionDao');
 const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
+const constants = require('../utils/constants');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 
 // Logs context before rethrowing so the caller's transaction rolls back instead of
 // silently committing the subscription change without its webhook event.
@@ -28,7 +30,7 @@ async function safePublish(eventType, payload, opts) {
     try {
         await publishWebhookEvent(eventType, payload, opts);
     } catch (err) {
-        logger.error('[subscriptionService] webhook publish failed', {
+        logger.error('Failed to publish webhook event', {
             eventType, error: err.message,
         });
         throw err;
@@ -37,15 +39,17 @@ async function safePublish(eventType, payload, opts) {
 
 function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
-        subscription_id: sub.SUB_ID,
+        subscription_id: sub.UUID,
+        subscriber_id: sub.CREATED_BY,
+        status: sub.STATUS,
         subscription_plan: {
             ref_id: plan ? (plan.REF_ID || null) : null,
-            name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null,
+            name: plan ? (plan.NAME || null) : null,
         },
         api: {
-            name: apiMetadata ? apiMetadata.API_NAME : null,
-            version: apiMetadata ? apiMetadata.API_VERSION : null,
-            ref_id: apiMetadata ? (apiMetadata.REFERENCE_ID || '') : '',
+            name: apiMetadata ? apiMetadata.NAME : null,
+            version: apiMetadata ? apiMetadata.VERSION : null,
+            ref_id: apiMetadata ? (apiMetadata.REF_ID || '') : '',
         },
     };
 }
@@ -53,11 +57,11 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
 function formatSubscriptionResponse(sub) {
     const plan = sub.DP_SUBSCRIPTION_PLAN || {};
     return {
-        subscriptionId: sub.SUB_ID,
-        subscriptionToken: sub.SUB_TOKEN,
+        subscriptionId: sub.UUID,
+        subscriptionToken: sub.TOKEN,
         status: sub.STATUS,
-        apiId: sub.API_ID,
-        subscriptionPlanName: plan.PLAN_NAME || null,
+        apiId: sub.API_UUID,
+        subscriptionPlanName: plan.NAME || null,
         createdBy: sub.CREATED_BY || null,
         createdAt: sub.CREATED_AT || null,
     };
@@ -90,14 +94,14 @@ const createSubscription = async (req, res) => {
         let matchedPlan = null;
 
         if (reqPlanId) {
-            matchedPlan = plans.find(p => p.PLAN_ID === reqPlanId);
+            matchedPlan = plans.find(p => p.UUID === reqPlanId);
             if (!matchedPlan) {
                 return res.status(400).json({
                     code: '400', message: 'Bad Request',
                     description: `Subscription plan not found for this API`,
                 });
             }
-            planId = matchedPlan.PLAN_ID;
+            planId = matchedPlan.UUID;
         }
 
         let newSub;
@@ -109,12 +113,13 @@ const createSubscription = async (req, res) => {
                 transaction: t,
                 orgId: orgID,
                 aggregateType: 'subscription',
-                aggregateId: newSub.SUB_ID,
-                plaintextKey: newSub.SUB_TOKEN,
+                aggregateId: newSub.UUID,
+                secretFields: { token: newSub.TOKEN },
             });
         });
 
-        const created = await subDao.get(orgID, newSub.SUB_ID, createdBy);
+        const created = await subDao.get(orgID, newSub.UUID, createdBy);
+        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgID, apiId, subscriptionId: newSub.UUID });
         return res.status(201).json(formatSubscriptionResponse(created));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -178,6 +183,9 @@ const updateSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const subscriptionId = req.params.subId;
     const { status } = req.body;
+    if (!Object.values(constants.SUBSCRIPTION_STATUS).includes(status)) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: `Invalid status. Must be one of: ${Object.values(constants.SUBSCRIPTION_STATUS).join(', ')}.` });
+    }
 
     try {
         const existing = await subDao.get(orgID, subscriptionId, req.user.sub);
@@ -187,17 +195,24 @@ const updateSubscription = async (req, res) => {
             });
         }
 
-        const updated = await subDao.updateStatus(
-            orgID, subscriptionId, status, req.user.sub
-        );
-        if (!updated) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
-        }
-        const sub = await subDao.get(orgID, subscriptionId, req.user.sub);
+        let sub;
+        await sequelize.transaction(async (t) => {
+            const updated = await subDao.updateStatus(orgID, subscriptionId, status, req.user.sub, t);
+            if (!updated) {
+                const err = new Error('Subscription not found');
+                err.status = 404;
+                throw err;
+            }
+            await publishWebhookEvent('subscription.updated',
+                buildWebhookPayload({ ...existing.get({ plain: true }), STATUS: status }, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN),
+                { transaction: t, orgId: orgID, aggregateType: 'subscription', aggregateId: subscriptionId });
+        });
+        sub = await subDao.get(orgID, subscriptionId, req.user.sub);
         return res.status(200).json(formatSubscriptionResponse(sub));
     } catch (error) {
+        if (error.status === 404) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
+        }
         logger.error('Error updating subscription', {
             error: error.message, subscriptionId, status,
         });
@@ -231,6 +246,7 @@ const deleteSubscription = async (req, res) => {
             });
         });
 
+        logUserAction('SUBSCRIPTION_DELETED', req, { orgId: orgID, subscriptionId });
         return res.status(200).json({ message: 'Subscription deleted successfully' });
     } catch (error) {
         if (error.statusCode === 404) {

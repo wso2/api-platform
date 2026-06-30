@@ -17,36 +17,34 @@ Your webhook subscriber endpoint
   Gateway enforces new state on next request
 ```
 
-The portal fires events in the background via a delivery worker with automatic retries. Your subscriber endpoint never needs a reverse connection into the portal — it just needs to be a reachable HTTPS endpoint that accepts the POST and does whatever is appropriate on your side (e.g. registering the change with your gateway).
+The portal fires events in the background via a delivery worker. Each delivery is attempted exactly once — there is no retry. Your subscriber endpoint never needs a reverse connection into the portal — it just needs to be a reachable HTTPS endpoint that accepts the POST and does whatever is appropriate on your side (e.g. registering the change with your gateway).
 
 ## Webhook Events
 
 | Event | Description | Sensitive field |
 |---|---|---|
-| `apikey.generated` | A new API key was generated for a subscription | API key secret (`encrypted_key`) |
-| `apikey.regenerated` | An existing API key was rotated | New API key secret (`encrypted_key`) |
+| `apikey.generated` | A new API key was generated for a subscription | API key secret (`key`) |
+| `apikey.regenerated` | An existing API key was rotated | New API key secret (`key`) |
 | `apikey.revoked` | An API key was revoked | — |
 | `apikey.application_updated` | A key's application association changed | — |
-| `subscription.created` | A developer subscribed to an API | Subscription token (`encrypted_key`) |
-| `subscription.plan_changed` | A subscription's plan changed | — |
+| `subscription.created` | A developer subscribed to an API | Subscription token (`token`) |
+| `subscription.updated` | A subscription's status changed, or its token was regenerated | Subscription token (`token`, only on token regeneration) |
 | `subscription.deleted` | A developer unsubscribed | — |
 | `application.created` | A developer created an application | — |
 | `application.updated` | An application was renamed or its details changed | — |
 | `application.deleted` | An application was deleted | — |
 
-For events that carry a sensitive field (`apikey.generated`, `apikey.regenerated`, `subscription.created`), the value is **envelope-encrypted** with the subscriber's RSA-2048 public key and delivered in `data.encrypted_key`. It is never included in plaintext.
+For events that carry a sensitive field, the value is **envelope-encrypted** with the subscriber's RSA-2048 public key and placed directly in `data` under its field name (e.g. `data.key`, `data.token`). It is never included in plaintext. The top-level `encrypted_fields` array always lists which `data` fields are encrypted.
 
 ## Configure a Webhook Subscriber
 
 Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.yaml`. Each organization registers its own endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
 
-Only delivery (retry/backoff) tuning, which applies globally across all organizations, remains in `config.yaml`:
+Only delivery tuning, which applies globally across all organizations, remains in `config.yaml`. Each delivery is attempted exactly once — there is no retry:
 
 ```yaml
 webhooks:
   delivery:
-    maxAttempts: 8
-    backoff: [60, 300, 900, 1800, 3600, 7200, 14400, 28800]  # seconds: 1m 5m 15m 30m 1h 2h 4h 8h
     pollIntervalMs: 2000
     batchSize: 50
     signatureToleranceSec: 300
@@ -76,7 +74,7 @@ The response never includes the secret. To set a public key for envelope-encrypt
 | `name` | Yes | Unique within the organization |
 | `url` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
 | `secret` | No | Minimum 32-character string used to sign each event with HMAC-SHA256. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) |
-| `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, and `subscription.created` events |
+| `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.updated` events |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit or leave empty to receive all events |
 | `enabled` | No | Defaults to `true`. Disable a subscriber without deleting it |
 | `timeoutMs` | No | HTTP request timeout in milliseconds (default: 5000) |
@@ -123,10 +121,16 @@ All events share this top-level shape:
   "event_id": "a1b2c3d4-...",
   "event_type": "apikey.generated",
   "occurred_at": "2026-05-29T10:00:00.000Z",
-  "org_id": "1ba42a09-...",
+  "org": {
+    "ref_id": "cp-org-ref-id"
+  },
+  "encrypted_fields": ["key"],
   "data": { ... }
 }
 ```
+
+- `org.ref_id` is the control-plane reference for the organisation; falls back to the internal org UUID when the org has not yet been linked to the control plane.
+- `encrypted_fields` lists the names of fields within `data` that carry an encrypted envelope. Always present — empty (`[]`) for events with no sensitive fields.
 
 The `data` field varies by event type and is described below.
 
@@ -143,7 +147,8 @@ Fired when a developer generates a new API key for an API.
   "event_id": "a1b2c3d4-...",
   "event_type": "apikey.generated",
   "occurred_at": "2026-05-29T10:00:00.000Z",
-  "org_id": "1ba42a09-...",
+  "org": { "ref_id": "cp-org-ref-id" },
+  "encrypted_fields": ["key"],
   "data": {
     "key_id": "key-uuid",
     "name": "my-key",
@@ -162,7 +167,7 @@ Fired when a developer generates a new API key for an API.
       "id": "app-uuid",
       "name": "My Mobile App"
     },
-    "encrypted_key": {
+    "key": {
       "wrappedKey": "<base64>",
       "iv": "<base64>",
       "tag": "<base64>",
@@ -172,18 +177,18 @@ Fired when a developer generates a new API key for an API.
 }
 ```
 
-- `subscription` is present only when the key is bound to a subscription
-- `application` is present only when the key is associated with an application (see [`apikey.application_updated`](#apikeyapplication_updated) below) — for analytics attribution only, it has no bearing on the key's validity
-- `encrypted_key` is present only when a public key is configured for the subscriber (see [Envelope Encryption](#envelope-encryption))
+- `subscription` and `application` are absent when the key is not bound to one
+- `key` and its entry in `encrypted_fields` are present only when a public key is configured for the subscriber (see [Envelope Encryption](#envelope-encryption)); if no public key is configured, the secret is not delivered
 - `expires_at` is `null` for non-expiring keys
 
 ### `apikey.regenerated`
 
-Fired when a developer rotates an existing key. The `key_id` is unchanged; the old secret is invalidated and replaced by the new one in `encrypted_key`.
+Fired when a developer rotates an existing key. The `key_id` and `name` are unchanged; the new secret is delivered in `key`.
 
 ```json
 {
   "event_type": "apikey.regenerated",
+  "encrypted_fields": ["key"],
   "data": {
     "key_id": "key-uuid",
     "name": "my-key",
@@ -193,21 +198,17 @@ Fired when a developer rotates an existing key. The `key_id` is unchanged; the o
       "version": "v1.0",
       "ref_id": "cp-api-uuid"
     },
-    "subscription": {
-      "ref_id": "sub-uuid",
-      "plan_ref_id": "plan-uuid",
-      "plan_name": "Gold"
-    },
-    "application": {
-      "id": "app-uuid",
-      "name": "My Mobile App"
-    },
-    "encrypted_key": { "wrappedKey": "...", "iv": "...", "tag": "...", "ciphertext": "..." }
+    "key": {
+      "wrappedKey": "<base64>",
+      "iv": "<base64>",
+      "tag": "<base64>",
+      "ciphertext": "<base64>"
+    }
   }
 }
 ```
 
-- `application` is present only when the key is currently associated with an application
+- `subscription` and `application` are absent when the key is not bound to one
 
 ### `apikey.revoked`
 
@@ -216,6 +217,7 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
 ```json
 {
   "event_type": "apikey.revoked",
+  "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
     "name": "my-key",
@@ -233,8 +235,7 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
 }
 ```
 
-- `subscription` is present only when the key was bound to a subscription
-- No `encrypted_key` is included — your subscriber only needs the `key_id` to revoke access.
+- `subscription` is absent when the key was not bound to a subscription
 
 ### `apikey.application_updated`
 
@@ -243,6 +244,7 @@ Fired whenever a single key's application association changes: the key is associ
 ```json
 {
   "event_type": "apikey.application_updated",
+  "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
     "application": {
@@ -256,17 +258,18 @@ Fired whenever a single key's application association changes: the key is associ
 - `application` is `null` when the key's association was removed, or when the key's app was deleted
 - Renaming an app fires this event once per key currently associated with it, each with the app's new `name`
 - Deleting an app fires this event once per key currently associated with it, each with `application: null` — there is no separate "deleted" variant
-- No `encrypted_key` is included — no secret material is involved
 
 ### `subscription.created`
 
-Fired when a developer subscribes to an API. The subscription token is delivered in `encrypted_key` — it is never included in plaintext.
+Fired when a developer subscribes to an API. The subscription token is delivered in `token` — it is never included in plaintext.
 
 ```json
 {
   "event_type": "subscription.created",
+  "encrypted_fields": ["token"],
   "data": {
     "subscription_id": "sub-uuid",
+    "subscriber_id": "user@example.com",
     "subscription_plan": {
       "ref_id": "plan-uuid",
       "name": "Gold"
@@ -276,7 +279,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
       "version": "v1.0",
       "ref_id": "cp-api-uuid"
     },
-    "encrypted_key": {
+    "token": {
       "wrappedKey": "<base64>",
       "iv": "<base64>",
       "tag": "<base64>",
@@ -286,30 +289,41 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 }
 ```
 
-- `encrypted_key` decrypts to the subscription token — the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement
-- `encrypted_key` is present only when a public key is configured for the subscriber; if no public key is configured, the token is not delivered
+- `subscriber_id` is the identity of the user who created the subscription
+- `token` decrypts to the subscription token — the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement
+- `token` and its entry in `encrypted_fields` are present only when a public key is configured for the subscriber; if no public key is configured, the token is not delivered
 
-### `subscription.plan_changed`
+### `subscription.updated`
 
-> **Not yet emitted.** This event type is reserved in the event-type registry but no code path currently publishes it — plan changes don't fire a webhook event today. The shape below is illustrative and subject to change once it's implemented.
+Fired when a subscription's status changes, or when the subscription token is regenerated. When the token is regenerated, `token` carries the new value encrypted using the subscriber's RSA public key — use the same decryption steps as `subscription.created`.
 
 ```json
 {
-  "event_type": "subscription.plan_changed",
+  "event_type": "subscription.updated",
+  "encrypted_fields": ["token"],
   "data": {
-    "subscription": {
-      "plan_name": "Bronze",
-      "plan_ref_id": "plan-uuid",
-      "status": "ACTIVE"
+    "subscription_id": "sub-uuid",
+    "subscriber_id": "user@example.com",
+    "subscription_plan": {
+      "ref_id": "plan-uuid",
+      "name": "Gold"
     },
     "api": {
       "name": "Order API",
       "version": "v1.0",
       "ref_id": "cp-api-uuid"
+    },
+    "token": {
+      "wrappedKey": "<base64>",
+      "iv": "<base64>",
+      "tag": "<base64>",
+      "ciphertext": "<base64>"
     }
   }
 }
 ```
+
+- `token` and its entry in `encrypted_fields` are absent when the update did not involve token regeneration (e.g. a status change only)
 
 ### `subscription.deleted`
 
@@ -318,8 +332,10 @@ Fired when a developer unsubscribes. Your subscriber should revoke access for th
 ```json
 {
   "event_type": "subscription.deleted",
+  "encrypted_fields": [],
   "data": {
     "subscription_id": "sub-uuid",
+    "subscriber_id": "user@example.com",
     "subscription_plan": {
       "ref_id": "plan-uuid",
       "name": "Gold"
@@ -342,11 +358,11 @@ Fired when a developer creates an application.
 ```json
 {
   "event_type": "application.created",
+  "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
     "name": "My Mobile App",
-    "description": "Application used to call Weather APIs.",
-    "type": "WEB"
+    "description": "Application used to call Weather APIs."
   }
 }
 ```
@@ -358,11 +374,11 @@ Fired when a developer renames an application or changes its details. `data` car
 ```json
 {
   "event_type": "application.updated",
+  "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
     "name": "My Mobile App (renamed)",
-    "description": "Application used to call Weather APIs.",
-    "type": "WEB"
+    "description": "Application used to call Weather APIs."
   }
 }
 ```
@@ -376,6 +392,7 @@ Fired when a developer deletes an application, after the application has been re
 ```json
 {
   "event_type": "application.deleted",
+  "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
     "name": "My Mobile App"
@@ -432,12 +449,12 @@ function verifySignature(secret, rawBody, signatureHeader) {
 
 ### Envelope encryption
 
-`apikey.generated`, `apikey.regenerated`, and `subscription.created` events include an `encrypted_key` object when a public key is configured for the subscriber. The sensitive value (API key secret or subscription token) is never included in plaintext.
+Events that carry sensitive fields include them directly in `data` under their field name (e.g. `data.key`, `data.token`). The top-level `encrypted_fields` array lists which fields are encrypted — check it before processing `data` so you know which fields need decryption.
 
 **Encryption scheme:** hybrid RSA-OAEP + AES-256-GCM.
 
 ```
-encrypted_key = {
+{
   wrappedKey  — RSA-OAEP(SHA-256) encrypted 256-bit AES key (base64)
   iv          — 12-byte AES-GCM IV (base64)
   tag         — 16-byte AES-GCM authentication tag (base64)
@@ -455,37 +472,32 @@ encrypted_key = {
 ```js
 const crypto = require('crypto');
 
-function decryptSecret(privateKeyPem, encryptedKey) {
+function decryptField(privateKeyPem, envelope) {
     const aesKey = crypto.privateDecrypt(
         { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
-        Buffer.from(encryptedKey.wrappedKey, 'base64')
+        Buffer.from(envelope.wrappedKey, 'base64')
     );
     const decipher = crypto.createDecipheriv(
-        'aes-256-gcm', aesKey, Buffer.from(encryptedKey.iv, 'base64')
+        'aes-256-gcm', aesKey, Buffer.from(envelope.iv, 'base64')
     );
-    decipher.setAuthTag(Buffer.from(encryptedKey.tag, 'base64'));
-    return decipher.update(Buffer.from(encryptedKey.ciphertext, 'base64')) + decipher.final('utf8');
+    decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
+    return Buffer.concat([
+        decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+        decipher.final()
+    ]).toString('utf8');
+}
+
+// Usage — decrypt all encrypted fields from a webhook payload:
+for (const fieldName of payload.encrypted_fields) {
+    payload.data[fieldName] = decryptField(privateKeyPem, payload.data[fieldName]);
 }
 ```
 
-If no public key is configured for the subscriber, `encrypted_key` is omitted and the sensitive value is not delivered at all — configure a public key before going to production.
+If no public key is configured for the subscriber, encrypted fields are omitted from `data` and `encrypted_fields` is empty — configure a public key before going to production.
 
-## Delivery Retry
+## Delivery Attempts
 
-If your subscriber endpoint is unavailable or returns a non-2xx response, the portal retries delivery according to this schedule:
-
-| Attempt | Delay |
-|---|---|
-| 1 | 1 minute |
-| 2 | 5 minutes |
-| 3 | 15 minutes |
-| 4 | 30 minutes |
-| 5 | 1 hour |
-| 6 | 2 hours |
-| 7 | 4 hours |
-| 8 | 8 hours |
-
-After all attempts are exhausted, the delivery is marked as failed. You can trigger a manual retry via the admin API.
+Each delivery is attempted exactly once. If your subscriber endpoint is unavailable or returns a non-2xx response, the delivery is marked `FAILED` immediately — there is no retry or dead-letter queue. Make sure your endpoint is reliable and fast (see `timeoutMs`), since a missed event is not redelivered automatically.
 
 ## Monitoring Event Deliveries
 
@@ -501,12 +513,4 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events -H "Authorizati
 
 ```bash
 curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
-```
-
-### Retry a failed delivery
-
-```bash
-curl -X POST \
-  http://localhost:3000/o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry \
-  -H "Authorization: Bearer $TOKEN"
 ```

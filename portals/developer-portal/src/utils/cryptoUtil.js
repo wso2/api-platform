@@ -25,7 +25,7 @@ const GCM_ALGO = "aes-256-gcm";
 
 /**
  * Create a standalone encrypt/decrypt pair for a given 64-char hex key.
- * Useful for encrypting key-manager admin secrets, webhook secrets, etc.
+ * Useful for encrypting webhook secrets, subscription tokens, etc.
  *
  * @param {string} hexKey  64-character hex string (32 random bytes)
  * @returns {{ encrypt: (text: string) => string, decrypt: (payload: string) => string }}
@@ -68,4 +68,14 @@ function createCryptoUtil(hexKey) {
   };
 }
 
-module.exports = { createCryptoUtil };
+/**
+ * Normalize a BYTEA-backed column value back to a string.
+ * Use as a Sequelize attribute `get()` for BLOB columns that actually hold
+ * text (encrypted payloads, PEM keys, prompts) so callers reading the
+ * instance property never have to deal with the raw Buffer.
+ */
+function bufferToUtf8(value) {
+  return Buffer.isBuffer(value) ? value.toString("utf8") : value;
+}
+
+module.exports = { createCryptoUtil, bufferToUtf8 };

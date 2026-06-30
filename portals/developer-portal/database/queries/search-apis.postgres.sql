@@ -22,31 +22,37 @@
 -- Named parameters (passed as Sequelize replacements):
 --   :searchTerm  — the user-supplied search string
 --   :orgID       — the organisation UUID to scope results to
+--   :viewID      — the view UUID to scope results to (API must have a label mapped to this view)
 --
 -- Other dialects use a LIKE-based fallback in searchAPIMetadataFallback().
 
 SELECT
     metadata.*,
     COALESCE(
-        JSON_AGG("DP_API_IMAGEDATA") FILTER (WHERE "DP_API_IMAGEDATA"."API_ID" IS NOT NULL),
+        JSONB_AGG(DISTINCT JSONB_BUILD_OBJECT('API_UUID', images."API_UUID", 'LOOKUP_KEY', images."LOOKUP_KEY", 'FILE_NAME', images."FILE_NAME", 'TYPE', images."TYPE"))
+            FILTER (WHERE images."API_UUID" IS NOT NULL),
         '[]'
-    ) AS "DP_API_IMAGEDATA",
+    ) AS "DP_API_CONTENTs",
     COALESCE(
-        JSON_AGG("DP_API_SUBSCRIPTION_PLAN") FILTER (WHERE "DP_API_SUBSCRIPTION_PLAN"."API_ID" IS NOT NULL),
+        JSONB_AGG(DISTINCT TO_JSONB("DP_API_SUBSCRIPTION_PLAN_MAPPING".*)) FILTER (WHERE "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_UUID" IS NOT NULL),
         '[]'
-    ) AS "DP_API_SUBSCRIPTION_PLAN",
+    ) AS "DP_API_SUBSCRIPTION_PLAN_MAPPING",
     COALESCE(
-        ARRAY_AGG(DISTINCT "DP_LABELS"."NAME") FILTER (WHERE "DP_LABELS"."NAME" IS NOT NULL),
+        ARRAY_AGG(DISTINCT "DP_LABEL"."NAME") FILTER (WHERE "DP_LABEL"."NAME" IS NOT NULL),
         '{}'
     ) AS "DP_LABELs",
+    COALESCE(
+        ARRAY_AGG(DISTINCT "DP_TAG"."NAME") FILTER (WHERE "DP_TAG"."NAME" IS NOT NULL),
+        '{}'
+    ) AS "DP_TAGs",
     ts_rank(
         to_tsvector('english', metadata."METADATA_SEARCH"::text),
         plainto_tsquery('english', COALESCE(:searchTerm, ''))
     ) AS "rank_metadata",
     STRING_AGG(
         DISTINCT CASE
-            WHEN content."API_FILE" IS NOT NULL
-            AND to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
+            WHEN content."FILE_CONTENT" IS NOT NULL
+            AND to_tsvector('english', convert_from(content."FILE_CONTENT", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
             THEN content."TYPE"
             ELSE 'METADATA'
         END, ', '
@@ -55,7 +61,7 @@ FROM
     "DP_API_METADATA" metadata
 LEFT JOIN
     "DP_API_CONTENT" content
-    ON metadata."API_ID" = content."API_ID"
+    ON metadata."UUID" = content."API_UUID"
     AND (
         content."FILE_NAME" LIKE '%.hbs'
         OR content."FILE_NAME" LIKE '%.md%'
@@ -64,27 +70,39 @@ LEFT JOIN
         OR content."FILE_NAME" LIKE '%.graphql%'
     )
 LEFT OUTER JOIN
-    "DP_API_IMAGEDATA"
-    ON metadata."API_ID" = "DP_API_IMAGEDATA"."API_ID"
+    "DP_API_CONTENT" images
+    ON metadata."UUID" = images."API_UUID" AND images."TYPE" = 'IMAGE'
 LEFT OUTER JOIN
-    "DP_API_SUBSCRIPTION_PLAN"
-    ON metadata."API_ID" = "DP_API_SUBSCRIPTION_PLAN"."API_ID"
+    "DP_API_SUBSCRIPTION_PLAN_MAPPING"
+    ON metadata."UUID" = "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_UUID"
 LEFT OUTER JOIN
-    "DP_API_LABELS"
-    ON metadata."API_ID" = "DP_API_LABELS"."API_ID"
+    "DP_API_LABEL_MAPPING"
+    ON metadata."UUID" = "DP_API_LABEL_MAPPING"."API_UUID"
 LEFT OUTER JOIN
-    "DP_LABELS"
-    ON "DP_API_LABELS"."LABEL_ID" = "DP_LABELS"."LABEL_ID"
+    "DP_LABEL"
+    ON "DP_API_LABEL_MAPPING"."LABEL_UUID" = "DP_LABEL"."UUID"
+LEFT OUTER JOIN
+    "DP_API_TAG_MAPPING"
+    ON metadata."UUID" = "DP_API_TAG_MAPPING"."API_UUID"
+LEFT OUTER JOIN
+    "DP_TAG"
+    ON "DP_API_TAG_MAPPING"."TAG_UUID" = "DP_TAG"."UUID"
 WHERE
     (
         to_tsvector('english', metadata."METADATA_SEARCH"::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))
         OR (
-            content."API_FILE" IS NOT NULL AND
-            to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
+            content."FILE_CONTENT" IS NOT NULL AND
+            to_tsvector('english', convert_from(content."FILE_CONTENT", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
         )
     )
-    AND metadata."ORG_ID" = :orgID
+    AND metadata."ORG_UUID" = :orgID
+    AND EXISTS (
+        SELECT 1
+        FROM "DP_API_LABEL_MAPPING" alm
+        JOIN "DP_VIEW_LABEL_MAPPING" vlm ON alm."LABEL_UUID" = vlm."LABEL_UUID"
+        WHERE alm."API_UUID" = metadata."UUID" AND vlm."VIEW_UUID" = :viewID
+    )
 GROUP BY
-    metadata."API_ID"
+    metadata."UUID"
 ORDER BY
     rank_metadata DESC;

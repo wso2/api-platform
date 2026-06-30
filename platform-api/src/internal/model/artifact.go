@@ -24,9 +24,11 @@ type Artifact struct {
 	Type             string    `db:"type"`
 	OrganizationUUID string    `db:"organization_uuid"`
 	// Supplemental fields: populated by UNION queries across kind-specific tables, not stored in artifacts table.
-	Handle    string    `db:"handle"`
-	Name      string    `db:"name"`
-	Version   string    `db:"version"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
+	Handle           string    `db:"handle"`
+	Name             string    `db:"name"`
+	Version          string    `db:"version"`
+	Kind             string    `db:"kind"`
+	Origin           string    `db:"origin"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }

@@ -21,29 +21,29 @@ const { Organization } = require('./organization');
 
 // Outbox table — one row per domain event. Payload never contains plaintext key secrets.
 const DPEvent = sequelize.define('DP_EVENT', {
-    EVENT_ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    EVENT_TYPE: {
+    TYPE: {
         type: DataTypes.STRING(128),
         allowNull: false
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     AGGREGATE_TYPE: {
         type: DataTypes.STRING(64),
         allowNull: false
     },
-    AGGREGATE_ID: {
-        type: DataTypes.UUID,
+    AGGREGATE_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     PAYLOAD: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: false,
         defaultValue: {}
     },
@@ -53,10 +53,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
         defaultValue: DataTypes.NOW
     },
     STATUS: {
-        // REJECTED: a secret event type (apikey.*, subscription.created) was published
-        // without a plaintextKey — see eventPublisher.js. Must stay in this enum or that
-        // guard path throws instead of recording the rejection.
-        type: DataTypes.ENUM('PENDING', 'DISPATCHED', 'ALL_DELIVERED', 'FAILED', 'REJECTED'),
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PENDING'
     }
@@ -65,11 +62,12 @@ const DPEvent = sequelize.define('DP_EVENT', {
     tableName: 'DP_EVENT',
     returning: true,
     indexes: [
-        { name: 'IDX_EVENT_STATUS_OCCURRED_AT', fields: ['STATUS', 'OCCURRED_AT'] }
+        { name: 'IDX_EVENT_STATUS_OCCURRED_AT', fields: ['STATUS', 'OCCURRED_AT'] },
+        { name: 'IDX_EVENT_ORG_UUID', fields: ['ORG_UUID'] }
     ]
 });
 
-DPEvent.belongsTo(Organization, { foreignKey: 'ORG_ID' });
-Organization.hasMany(DPEvent, { foreignKey: 'ORG_ID', onDelete: 'CASCADE' });
+DPEvent.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
+Organization.hasMany(DPEvent, { foreignKey: 'ORG_UUID', onDelete: 'CASCADE' });
 
 module.exports = DPEvent;

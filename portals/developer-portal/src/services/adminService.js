@@ -27,16 +27,16 @@ const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 const constants = require('../utils/constants');
 const sequelize = require('../db/sequelizeConfig');
-const { ApplicationDTO, SubscriptionDTO } = require('../dto/applicationDto');
+const { ApplicationDTO } = require('../dto/applicationDto');
 const APIDTO = require('../dto/apiDto');
 const { config } = require('../config/configLoader');
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
 const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetryUtil');
 const kmDao = require('../dao/keyManagerDao');
-const { getKeyManagerAdapter } = require('../adapters/keyManager');
 
 function mapYamlToOrganization(parsed) {
     const { metadata = {}, spec = {} } = parsed;
@@ -44,6 +44,7 @@ function mapYamlToOrganization(parsed) {
         orgHandle: metadata.name,
         orgName: spec.displayName,
         organizationIdentifier: spec.organizationIdentifier,
+        cpRefId: spec.cpRefId,
         businessOwner: spec.businessOwner,
         businessOwnerContact: spec.businessOwnerContact,
         businessOwnerEmail: spec.businessOwnerEmail,
@@ -74,8 +75,8 @@ function parseOrganizationFromYamlFile(fileBuffer) {
         }
     }
     if (spec.views !== undefined && spec.views !== null) {
-        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || !v.name)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a 'name' field");
+        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || !v.handle)) {
+            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a 'handle' field");
         }
     }
     const organization = mapYamlToOrganization(parsed);
@@ -101,12 +102,14 @@ const createOrganization = async (req, res) => {
             return util.handleError(res, error);
         }
     }
-    logger.info('Initiate organization creation...', req.body);
+    logger.info('Initiate organization creation...');
 
     const payload = req.body;
     payload.orgConfig = {
         devportalMode: constants.DEVPORTAL_MODE.DEFAULT,
     };
+    const userId = util.resolveActor(req);
+    payload.createdBy = userId;
 
     let organization = "";
     try {
@@ -114,10 +117,10 @@ const createOrganization = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
             organization = await orgDao.create(payload, t);
-            const orgId = organization.ORG_ID;
+            const orgId = organization.UUID;
             logger.info('Organization created successfully', {
                 orgId,
-                orgName: organization.ORG_NAME
+                orgName: organization.NAME
             });
 
             // Labels: use YAML-defined if provided, else fall back to default
@@ -125,33 +128,36 @@ const createOrganization = async (req, res) => {
                 ? payload.labels
                 : [{ name: 'default', displayName: 'default' }];
 
-            const createdLabels = await labelDao.createMany(orgId, labelDefs, t);
+            const createdLabels = await labelDao.createMany(orgId, labelDefs, userId, t);
             logger.info('Labels created successfully', { orgId });
 
-            // Build name→ID map for view→label linking
+            // Build name→UUID map for view→label linking
             const labelMap = {};
-            createdLabels.forEach(l => { labelMap[l.dataValues.NAME] = l.dataValues.LABEL_ID; });
+            createdLabels.forEach(l => { labelMap[l.dataValues.NAME] = l.dataValues.UUID; });
 
             // Views: use YAML-defined if provided, else fall back to default
             const viewDefs = payload.views?.length
                 ? payload.views
-                : [{ name: 'default', displayName: 'default', labels: [labelDefs[0].name] }];
+                : [{ handle: 'default', name: 'default', labels: [labelDefs[0].name] }];
 
             for (const viewDef of viewDefs) {
-                const viewResponse = await viewDao.create(orgId, viewDef, t);
-                const viewID = viewResponse.dataValues.VIEW_ID;
+                const viewResponse = await viewDao.create(orgId, viewDef, userId, t);
+                const viewID = viewResponse.dataValues.UUID;
                 for (const lName of (viewDef.labels || [])) {
                     const labelId = labelMap[lName];
-                    if (labelId) {
-                        await labelDao.addToView(orgId, labelId, viewID, t);
+                    if (!labelId) {
+                        throw new Sequelize.ValidationError(
+                            `Invalid organization YAML: view '${viewDef.handle}' references unknown label '${lName}'`
+                        );
                     }
+                    await labelDao.addToView(orgId, labelId, viewID, userId, t);
                 }
             }
             logger.info('Views created successfully', { orgId });
 
             //store default subscription plans
             if (config.generateDefaultSubPlans) {
-                await subscriptionPlanDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
+                await subscriptionPlanDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, userId, t);
             }
             logger.info('Default subscription plans created successfully', {
                 orgId
@@ -160,19 +166,21 @@ const createOrganization = async (req, res) => {
         });
 
         const orgCreationResponse = {
-            orgId: organization.ORG_ID,
-            orgName: organization.ORG_NAME,
+            orgId: organization.UUID,
+            orgName: organization.NAME,
             businessOwner: organization.BUSINESS_OWNER,
             businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
-            orgHandle: organization.ORG_HANDLE,
-            organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-            orgConfiguration: organization.dataValues.ORG_CONFIG
+            orgHandle: organization.HANDLE,
+            organizationIdentifier: organization.IDP_REF_ID,
+            cpRefId: organization.CP_REF_ID,
+            orgConfiguration: organization.dataValues.CONFIGURATION
         };
         logger.info('Organization creation flow completed successfully', {
             orgId: orgCreationResponse.orgId,
             orgName: orgCreationResponse.orgName,
         });
+        logUserAction('ORG_CREATED', req, { orgId: orgCreationResponse.orgId, orgName: orgCreationResponse.orgName });
         res.status(201).send(orgCreationResponse);
     } catch (error) {
         logger.error('Organization creation failed', {
@@ -198,14 +206,15 @@ const getAllOrganizations = async () => {
     if (organizations.length > 0) {
         for (const organization of organizations) {
             orgList.push({
-                orgName: organization.dataValues.ORG_NAME,
-                orgID: organization.dataValues.ORG_ID,
+                orgName: organization.dataValues.NAME,
+                orgID: organization.dataValues.UUID,
                 businessOwner: organization.dataValues.BUSINESS_OWNER,
                 businessOwnerContact: organization.dataValues.BUSINESS_OWNER_CONTACT,
                 businessOwnerEmail: organization.dataValues.BUSINESS_OWNER_EMAIL,
-                orgHandle: organization.ORG_HANDLE,
-                organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-                orgConfiguration: organization.dataValues.ORG_CONFIG
+                orgHandle: organization.HANDLE,
+                organizationIdentifier: organization.IDP_REF_ID,
+                cpRefId: organization.CP_REF_ID,
+                orgConfiguration: organization.dataValues.CONFIGURATION
             });
         }
     }
@@ -228,6 +237,13 @@ const updateOrganization = async (req, res) => {
     try {
         const payload = req.body;
         payload.orgId = orgId;
+        const userId = util.resolveActor(req);
+        payload.updatedBy = userId;
+
+        const devportalMode = payload.orgConfiguration?.devportalMode;
+        if (devportalMode !== undefined && !Object.values(constants.DEVPORTAL_MODE).includes(devportalMode)) {
+            return res.status(400).json({ error: `Invalid devportalMode '${devportalMode}'. Must be one of: ${Object.values(constants.DEVPORTAL_MODE).join(', ')}.` });
+        }
 
         let updatedOrg;
         await sequelize.transaction({ timeout: 60000 }, async (t) => {
@@ -237,7 +253,7 @@ const updateOrganization = async (req, res) => {
             // Labels upsert — only if present in payload
             if (payload.labels?.length) {
                 for (const label of payload.labels) {
-                    await labelDao.update(orgId, label, t);
+                    await labelDao.update(orgId, label, userId, t);
                 }
                 logger.info('Labels upserted successfully', { orgId });
             }
@@ -245,9 +261,14 @@ const updateOrganization = async (req, res) => {
             // Views upsert — only if present in payload
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
-                    const view = await viewDao.update(orgId, viewDef.name, viewDef.displayName, t);
-                    if (viewDef.labels?.length) {
-                        await viewDao.replaceLabels(orgId, view.dataValues.VIEW_ID, viewDef.labels, t);
+                    if (!viewDef.handle || typeof viewDef.handle !== 'string') {
+                        throw new Sequelize.ValidationError(
+                            "Invalid organization payload: each entry in 'views' must have a non-empty 'handle'"
+                        );
+                    }
+                    const view = await viewDao.update(orgId, viewDef.handle, viewDef.name, userId, t);
+                    if (Array.isArray(viewDef.labels)) {
+                        await viewDao.replaceLabels(orgId, view.dataValues.UUID, viewDef.labels, userId, t);
                     }
                 }
                 logger.info('Views upserted successfully', { orgId });
@@ -255,14 +276,15 @@ const updateOrganization = async (req, res) => {
         });
 
         res.status(200).json({
-            orgId: updatedOrg[0].dataValues.ORG_ID,
-            orgName: updatedOrg[0].dataValues.ORG_NAME,
+            orgId: updatedOrg[0].dataValues.UUID,
+            orgName: updatedOrg[0].dataValues.NAME,
             businessOwner: updatedOrg[0].dataValues.BUSINESS_OWNER,
             businessOwnerContact: updatedOrg[0].dataValues.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: updatedOrg[0].dataValues.BUSINESS_OWNER_EMAIL,
-            orgHandle: updatedOrg[0].dataValues.ORG_HANDLE,
-            organizationIdentifier: updatedOrg[0].dataValues.ORGANIZATION_IDENTIFIER,
-            orgConfiguration: updatedOrg[0].dataValues.ORG_CONFIG
+            orgHandle: updatedOrg[0].dataValues.HANDLE,
+            organizationIdentifier: updatedOrg[0].dataValues.IDP_REF_ID,
+            cpRefId: updatedOrg[0].dataValues.CP_REF_ID,
+            orgConfiguration: updatedOrg[0].dataValues.CONFIGURATION
         });
     } catch (error) {
         logger.error('Organization update failed', {
@@ -285,6 +307,7 @@ const deleteOrganization = async (req, res) => {
             logger.info('Organization deletion successful', {
                 orgId
             });
+            logUserAction('ORG_DELETED', req, { orgId });
             res.status(204).send();
         } else {
             throw new CustomError(404, "Records Not Found", 'Organization not found');
@@ -303,6 +326,7 @@ const createOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
+    const userId = util.resolveActor(req);
     logger.info('Initiate create organization content...', {
         orgId,
         viewName
@@ -327,7 +351,7 @@ const createOrgContent = async (req, res) => {
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
         for (const { filePath, fileName, fileContent, fileType } of files) {
-            await createContent(filePath, fileName, fileContent, fileType, orgId, viewName);
+            await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId);
         }
         logger.info('Organization content created successfully', {
             orgId,
@@ -351,7 +375,7 @@ const createOrgContent = async (req, res) => {
     }
 };
 
-const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName) => {
+const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName, userId) => {
     let content;
     // eslint-disable-next-line no-useless-catch
     try {
@@ -362,7 +386,8 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
                 fileContent: fileContent,
                 filePath: filePath,
                 orgId: orgId,
-                viewName: viewName
+                viewName: viewName,
+                createdBy: userId
             });
         }
     } catch (error) {
@@ -375,6 +400,7 @@ const updateOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
+    const userId = util.resolveActor(req);
     logger.info('Initiate update organization content...', {
         orgId,
         viewName
@@ -406,7 +432,8 @@ const updateOrgContent = async (req, res) => {
                         fileContent: fileContent,
                         filePath: filePath,
                         orgId: orgId,
-                        viewName: viewName
+                        viewName: viewName,
+                        updatedBy: userId
                     });
                 } else {
                     logger.info('Content not found during update, creating new content', {
@@ -416,7 +443,7 @@ const updateOrgContent = async (req, res) => {
                         fileName,
                         filePath
                     });
-                    await createContent(filePath, fileName, fileContent, fileType, orgId, viewName);
+                    await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId);
                 }
             }
         }

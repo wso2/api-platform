@@ -17,36 +17,21 @@
  */
 const { Sequelize } = require('sequelize');
 const { KeyManager } = require('../models/keyManager');
-const { createCryptoUtil } = require('../utils/cryptoUtil');
-const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
-
-const kmCrypto = createCryptoUtil(config.advanced.encryptionKey);
 
 /**
  * Create a new key manager for an organization.
- * Admin credentials are encrypted before storage.
  */
-const create = async (orgId, kmData) => {
+const create = async (orgId, kmData, createdBy) => {
     try {
-        if (!kmCrypto.enabled) {
-            throw new Error('Key manager encryption key is not configured. ' +
-                'Set config.advanced.encryptionKey to a 64-char hex string.');
-        }
         const record = await KeyManager.create({
-            ORG_ID: orgId,
+            ORG_UUID: orgId,
             NAME: kmData.name,
             TYPE: kmData.type,
-            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled }),
+            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled ? 1 : 0 }),
             TOKEN_ENDPOINT: kmData.tokenEndpoint,
-            CLIENT_REG_ENDPOINT: kmData.clientRegistrationEndpoint,
-            ...(kmData.issuer && { ISSUER: kmData.issuer }),
-            ...(kmData.jwksURL && { JWKS_URL: kmData.jwksURL }),
-            ADMIN_CLIENT_ID_ENC: kmCrypto.encrypt(kmData.adminClientId),
-            ADMIN_CLIENT_SECRET_ENC: kmCrypto.encrypt(kmData.adminClientSecret),
-            ...(kmData.supportedGrantTypes && { SUPPORTED_GRANT_TYPES: kmData.supportedGrantTypes }),
-            ...(kmData.supportedScopes && { SUPPORTED_SCOPES: kmData.supportedScopes }),
-            ...(kmData.additionalProperties && { ADDITIONAL_PROPERTIES: kmData.additionalProperties }),
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy,
         });
         return record;
     } catch (error) {
@@ -60,39 +45,20 @@ const create = async (orgId, kmData) => {
 
 /**
  * Update an existing key manager.
- * Re-encrypts admin credentials if they are provided.
  */
-const update = async (kmId, kmData) => {
+const update = async (kmId, kmData, updatedBy) => {
     try {
         const updatePayload = {
             ...(kmData.name && { NAME: kmData.name }),
             ...(kmData.type && { TYPE: kmData.type }),
-            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled }),
+            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled ? 1 : 0 }),
             ...(kmData.tokenEndpoint && { TOKEN_ENDPOINT: kmData.tokenEndpoint }),
-            ...(kmData.clientRegistrationEndpoint && { CLIENT_REG_ENDPOINT: kmData.clientRegistrationEndpoint }),
-            ...(kmData.issuer !== undefined && { ISSUER: kmData.issuer }),
-            ...(kmData.jwksURL !== undefined && { JWKS_URL: kmData.jwksURL }),
-            ...(kmData.supportedGrantTypes && { SUPPORTED_GRANT_TYPES: kmData.supportedGrantTypes }),
-            ...(kmData.supportedScopes && { SUPPORTED_SCOPES: kmData.supportedScopes }),
-            ...(kmData.additionalProperties && { ADDITIONAL_PROPERTIES: kmData.additionalProperties }),
+            UPDATED_BY: updatedBy,
+            UPDATED_AT: new Date(),
         };
 
-        // Re-encrypt admin credentials if provided
-        if (kmData.adminClientId) {
-            if (!kmCrypto.enabled) {
-                throw new Error('Key manager encryption key is not configured.');
-            }
-            updatePayload.ADMIN_CLIENT_ID_ENC = kmCrypto.encrypt(kmData.adminClientId);
-        }
-        if (kmData.adminClientSecret) {
-            if (!kmCrypto.enabled) {
-                throw new Error('Key manager encryption key is not configured.');
-            }
-            updatePayload.ADMIN_CLIENT_SECRET_ENC = kmCrypto.encrypt(kmData.adminClientSecret);
-        }
-
         const [updatedRowsCount] = await KeyManager.update(updatePayload, {
-            where: { KM_ID: kmId }
+            where: { UUID: kmId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -112,12 +78,11 @@ const update = async (kmId, kmData) => {
 
 /**
  * List all key managers for an organization.
- * Returns raw records (encrypted fields included for internal use).
  */
 const list = async (orgId) => {
     try {
         return await KeyManager.findAll({
-            where: { ORG_ID: orgId }
+            where: { ORG_UUID: orgId }
         });
     } catch (error) {
         logger.error('Error fetching key managers', { error });
@@ -131,7 +96,7 @@ const list = async (orgId) => {
 const listEnabled = async (orgId) => {
     try {
         return await KeyManager.findAll({
-            where: { ORG_ID: orgId, ENABLED: true }
+            where: { ORG_UUID: orgId, ENABLED: 1 }
         });
     } catch (error) {
         logger.error('Error fetching enabled key managers', { error });
@@ -140,7 +105,7 @@ const listEnabled = async (orgId) => {
 };
 
 /**
- * Get a single key manager by ID.
+ * Get a single key manager by UUID.
  */
 const get = async (kmId) => {
     try {
@@ -164,7 +129,7 @@ const get = async (kmId) => {
 const getByName = async (orgId, name) => {
     try {
         const km = await KeyManager.findOne({
-            where: { ORG_ID: orgId, NAME: name }
+            where: { ORG_UUID: orgId, NAME: name }
         });
         if (!km) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -185,7 +150,7 @@ const getByName = async (orgId, name) => {
 const deleteKm = async (kmId) => {
     try {
         const deleted = await KeyManager.destroy({
-            where: { KM_ID: kmId }
+            where: { UUID: kmId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -200,20 +165,6 @@ const deleteKm = async (kmId) => {
     }
 };
 
-/**
- * Decrypt admin credentials for a key manager record.
- * Used internally by adapters to make admin API calls.
- */
-const decryptCredentials = (kmRecord) => {
-    if (!kmCrypto.enabled) {
-        throw new Error('Key manager encryption key is not configured.');
-    }
-    return {
-        adminClientId: kmCrypto.decrypt(kmRecord.ADMIN_CLIENT_ID_ENC),
-        adminClientSecret: kmCrypto.decrypt(kmRecord.ADMIN_CLIENT_SECRET_ENC),
-    };
-};
-
 module.exports = {
     create,
     update,
@@ -222,5 +173,4 @@ module.exports = {
     get,
     getByName,
     delete: deleteKm,
-    decryptCredentials,
 };

@@ -95,6 +95,7 @@ CREATE TABLE dbo.rest_apis (
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -108,15 +109,13 @@ CREATE TABLE dbo.rest_apis (
 );
 
 -- Subscription plans table (organization-scoped rate/billing plans)
+-- Throttling limits now live in subscription_plan_limits (one row per limit).
 IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
-    stop_on_quota_reach SMALLINT DEFAULT 1,
-    throttle_limit_count INT,
-    throttle_limit_unit VARCHAR(20),
     expiry_time DATETIME2(7),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -127,6 +126,23 @@ CREATE TABLE dbo.subscription_plans (
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
+);
+
+-- Subscription plan limits table (throttling limits for a plan).
+IF OBJECT_ID(N'dbo.subscription_plan_limits', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_limits (
+    uuid VARCHAR(40) PRIMARY KEY,
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
+    time_unit VARCHAR(20) NOT NULL,
+    time_amount INT NOT NULL DEFAULT 1,
+    limit_count BIGINT NOT NULL,
+    limit_count_unit VARCHAR(10),
+    stop_on_quota_reach SMALLINT NOT NULL DEFAULT 1,
+    -- Cleanup happens via the subscription_plan_uuid -> subscription_plans CASCADE edge
+    -- (plans themselves cascade from organizations).
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    UNIQUE(subscription_plan_uuid, limit_type, time_amount, time_unit)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -330,6 +346,7 @@ CREATE TABLE dbo.llm_provider_templates (
     is_latest SMALLINT NOT NULL DEFAULT 1,
     enabled SMALLINT NOT NULL DEFAULT 1,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -352,6 +369,7 @@ CREATE TABLE dbo.llm_providers (
     model_list VARBINARY(MAX),
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -377,6 +395,7 @@ CREATE TABLE dbo.llm_proxies (
     openapi_spec VARBINARY(MAX),
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -401,6 +420,7 @@ CREATE TABLE dbo.mcp_proxies (
     description VARCHAR(1023),
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -426,6 +446,7 @@ CREATE TABLE dbo.websub_apis (
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -474,6 +495,7 @@ CREATE TABLE dbo.webbroker_apis (
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -509,8 +531,8 @@ CREATE TABLE dbo.api_keys (
 );
 
 -- Application API Key mappings table
-IF OBJECT_ID(N'dbo.application_api_keys', N'U') IS NULL
-CREATE TABLE dbo.application_api_keys (
+IF OBJECT_ID(N'dbo.application_api_key_mappings', N'U') IS NULL
+CREATE TABLE dbo.application_api_key_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     api_key_id VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
@@ -521,8 +543,8 @@ CREATE TABLE dbo.application_api_keys (
 );
 
 -- Application to artifacts mapping table
-IF OBJECT_ID(N'dbo.application_artifacts', N'U') IS NULL
-CREATE TABLE dbo.application_artifacts (
+IF OBJECT_ID(N'dbo.application_artifact_mappings', N'U') IS NULL
+CREATE TABLE dbo.application_artifact_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
@@ -603,14 +625,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_org' AN
 CREATE INDEX idx_applications_org ON dbo.applications(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_project_id' AND object_id = OBJECT_ID(N'dbo.applications'))
 CREATE INDEX idx_applications_project_id ON dbo.applications(organization_uuid, project_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_app_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))
-CREATE INDEX idx_application_api_keys_app_id ON dbo.application_api_keys(application_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_key_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))
-CREATE INDEX idx_application_api_keys_key_id ON dbo.application_api_keys(api_key_id);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifacts_app_id' AND object_id = OBJECT_ID(N'dbo.application_artifacts'))
-CREATE INDEX idx_application_artifacts_app_id ON dbo.application_artifacts(application_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifacts_artifact_id' AND object_id = OBJECT_ID(N'dbo.application_artifacts'))
-CREATE INDEX idx_application_artifacts_artifact_id ON dbo.application_artifacts(artifact_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_key_mappings_app_id' AND object_id = OBJECT_ID(N'dbo.application_api_key_mappings'))
+CREATE INDEX idx_application_api_key_mappings_app_id ON dbo.application_api_key_mappings(application_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_key_mappings_key_id' AND object_id = OBJECT_ID(N'dbo.application_api_key_mappings'))
+CREATE INDEX idx_application_api_key_mappings_key_id ON dbo.application_api_key_mappings(api_key_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifact_mappings_app_id' AND object_id = OBJECT_ID(N'dbo.application_artifact_mappings'))
+CREATE INDEX idx_application_artifact_mappings_app_id ON dbo.application_artifact_mappings(application_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifact_mappings_artifact_id' AND object_id = OBJECT_ID(N'dbo.application_artifact_mappings'))
+CREATE INDEX idx_application_artifact_mappings_artifact_id ON dbo.application_artifact_mappings(artifact_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_rest_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.rest_apis'))
 CREATE INDEX idx_rest_apis_lifecycle_status ON dbo.rest_apis(lifecycle_status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.websub_apis'))
@@ -621,6 +643,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_o
 CREATE INDEX idx_subscription_plans_org    ON dbo.subscription_plans(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_status' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
 CREATE INDEX idx_subscription_plans_status ON dbo.subscription_plans(status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
+CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(subscription_plan_uuid);
 
 -- EventHub tables for multi-replica HA sync and gateway event propagation.
 -- Keyed columns are bounded NVARCHAR to stay within SQL Server index-key limits.

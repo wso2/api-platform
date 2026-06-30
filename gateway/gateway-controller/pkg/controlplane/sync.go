@@ -608,7 +608,91 @@ func parseCPSyncInfo(cpSyncInfo string) (apiID, revisionID string) {
 	return data["id"], data["revision"]
 }
 
-// SyncBottomUpAPIs pushes all pending gateway-created APIs to the on-prem control plane.
+// PushGatewayArtifactsToControlPlane pushes every gateway-originated artifact to the
+// platform-API control plane via the generic import endpoint. It runs on first connect
+// and on every reconnect so artifacts created while disconnected (or before the CP was
+// reachable) become visible in the control plane. It is best-effort: a failure to push
+// one artifact is logged and does not stop the others.
+//
+// This is distinct from SyncArtifactsToOnPremAPIM, which targets the legacy on-prem APIM
+// product. Both may run; this one is gated only on deployment_sync_enabled.
+func (c *Client) PushGatewayArtifactsToControlPlane() {
+	if c.IsConnected() && c.config.DeploymentSyncEnabled {
+		c.pushGatewayArtifacts()
+	}
+}
+
+// pushGatewayArtifacts performs the actual listing and pushing of gateway-origin
+// artifacts. It is separated from the connection/flag gating so it can be tested in
+// isolation.
+func (c *Client) pushGatewayArtifacts() {
+	if c.db == nil {
+		c.logger.Warn("Cannot push gateway artifacts to control plane: database is not available")
+		return
+	}
+
+	// Only artifacts whose control-plane sync is incomplete (cp_sync_status pending/failed)
+	// are pushed. This avoids re-pushing artifacts that have already been successfully synced.
+	configs, err := c.db.GetPendingCPSyncArtifacts()
+	if err != nil {
+		c.logger.Error("Failed to list pending gateway-originated artifacts for control plane push", slog.Any("error", err))
+		return
+	}
+	if len(configs) == 0 {
+		return
+	}
+
+	// GetPendingCPSyncArtifacts returns metadata only; load each full config to push.
+	full := make([]*models.StoredConfig, 0, len(configs))
+	for _, meta := range configs {
+		cfg, err := c.db.GetConfig(meta.UUID)
+		if err != nil || cfg == nil {
+			c.logger.Warn("Failed to load full config for control plane push",
+				slog.String("artifact_id", meta.UUID), slog.Any("error", err))
+			continue
+		}
+		full = append(full, cfg)
+	}
+	if len(full) == 0 {
+		return
+	}
+
+	c.logger.Info("Pushing pending gateway-originated artifacts to control plane", slog.Int("count", len(full)))
+
+	// Push the whole pending set as a single ordered, zipped batch.
+	resp, err := c.pushArtifactsWithRetry(full)
+	if err != nil {
+		// Transport-level failure: the artifacts keep their pending/failed cp_sync_status and
+		// are retried on the next (re)connect.
+		c.logger.Error("Failed to push gateway artifacts to control plane", slog.Any("error", err))
+		return
+	}
+
+	// Reconcile each artifact's cp_sync_status from its per-dpid result in the response.
+	for _, cfg := range full {
+		item, ok := resp.Artifacts[cfg.UUID]
+		if !ok {
+			c.logger.Warn("Control plane returned no result for pushed artifact; leaving it pending",
+				slog.String("artifact_id", cfg.UUID))
+			continue
+		}
+		if item.Error != "" {
+			if dbErr := c.db.UpdateCPSyncStatus(cfg.UUID, "", models.CPSyncStatusFailed, item.Error); dbErr != nil {
+				c.logger.Warn("Failed to record artifact CP sync failure",
+					slog.String("artifact_id", cfg.UUID), slog.Any("error", dbErr))
+			}
+			continue
+		}
+		if dbErr := c.db.UpdateCPSyncStatus(cfg.UUID, item.ID, models.CPSyncStatusSuccess, ""); dbErr != nil {
+			c.logger.Warn("Failed to record artifact CP sync success",
+				slog.String("artifact_id", cfg.UUID), slog.Any("error", dbErr))
+		}
+	}
+	c.logger.Info("Completed pushing gateway-originated artifacts to control plane",
+		slog.Int("total", resp.Total), slog.Int("success", resp.Success), slog.Int("failed", resp.Failed))
+}
+
+// SyncArtifactsToOnPremAPIM SyncBottomUpAPIs pushes all pending gateway-created APIs to the on-prem control plane.
 // It is called on connect/reconnect (when IsOnPrem() is true) and immediately after a
 // gateway-initiated create/update/undeploy when the gateway is already connected.
 //

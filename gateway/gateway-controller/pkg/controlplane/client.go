@@ -97,7 +97,7 @@ type ConnectionState struct {
 // ControlPlaneClient interface defines the methods needed from the control plane client
 type ControlPlaneClient interface {
 	IsConnected() bool
-	PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
+	PushArtifact(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
 	SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error
 	IsOnPrem() bool
 	GetAPIMConfig() *utils.APIMConfig
@@ -146,6 +146,11 @@ type Client struct {
 	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
 	secretSyncer                 secretSyncer
 	secretHashCache              sync.Map // handle → last-known Platform API hash (string)
+
+	// DP->CP push retry tuning.
+	pushMaxAttempts   int
+	pushRetryBaseWait time.Duration
+	pushRetryMaxWait  time.Duration
 }
 
 // NewClient creates a new control plane client
@@ -464,13 +469,17 @@ func (c *Client) Connect() error {
 			// Sync secrets before deployments so {{ secret "..." }} placeholders
 			// in API configs resolve correctly during the first render pass.
 			c.syncSecrets()
-			c.syncDeployments(gwID)
+			if c.config.DeploymentSyncEnabled {
+				c.syncDeployments(gwID)
+			}
 			// Bottom-up sync: push gateway-created APIs to on-prem control plane
-			if c.IsOnPrem() {
+			if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
 				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
 					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
 				}
 			}
+			// Push gateway-originated artifacts up to the platform-API control plane.
+			c.PushGatewayArtifactsToControlPlane()
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -485,7 +494,7 @@ func (c *Client) Connect() error {
 		go func(gwID string) {
 			defer c.wg.Done()
 			// Bottom-up sync on reconnect
-			if c.IsOnPrem() {
+			if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
 				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
 					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
 				}
@@ -494,6 +503,8 @@ func (c *Client) Connect() error {
 			// are picked up. Hash-based change detection ensures only changed
 			// secrets trigger a plaintext fetch.
 			c.syncSecrets()
+			// Push gateway-originated artifacts up to the platform-API control plane.
+			c.PushGatewayArtifactsToControlPlane()
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -930,19 +941,19 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	}
 }
 
+// onPremSupportedAPIKeyKinds lists the artifact kinds for which the on-prem APIM control plane
+// exposes an API-key backfill endpoint. LLM, WebSub, and WebBroker kinds are cloud-only.
+var onPremSupportedAPIKeyKinds = map[string]bool{
+	models.KindRestApi: true,
+}
+
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
 // currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
+// For on-prem control planes only KindRestApi is synced; other kinds are skipped because
+// the corresponding backfill endpoints do not exist in carbon-apimgt for now.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
-	// Skip for on-prem control planes
-	if c.isOnPrem() {
-		c.logger.Debug("Skipping API Key bulk sync: on-prem control plane detected",
-			slog.String("gateway_id", gatewayID),
-		)
-		return
-	}
-
 	if c.apiUtilsService == nil || c.store == nil || c.apiKeyStore == nil {
 		return
 	}
@@ -975,6 +986,14 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 	}
 
 	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+		// On-prem APIM only exposes backfill endpoints for RestApi keys.
+		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
+			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",
+				slog.String("kind", kind),
+				slog.String("gateway_id", gatewayID),
+			)
+			continue
+		}
 		select {
 		case <-c.ctx.Done():
 			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
@@ -4197,16 +4216,171 @@ func (c *Client) IsConnected() bool {
 	return c.state.Current == Connected && c.state.Conn != nil
 }
 
-// PushAPIDeployment pushes API deployment details to the control plane
-func (c *Client) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
+// DP->CP push retry policy. The push to the control plane is retried with exponential
+// backoff so a transient control-plane hiccup does not strand an artifact as unsynced until
+// the next gateway restart. After all attempts are exhausted the failure is recorded
+// (cp_sync_status=failed) and retried again on the next (re)connect.
+const (
+	pushArtifactMaxAttempts   = 5
+	pushArtifactRetryBaseWait = 1 * time.Second
+	pushArtifactRetryMaxWait  = 30 * time.Second
+)
+
+// PushArtifact pushes a gateway-created/updated artifact of any kind to the control plane.
+// The control plane mints its own artifact UUID and returns it; this records it (and the
+// sync outcome) on the artifact's row as cp_artifact_id / cp_sync_status / cp_sync_info,
+// mirroring the on-prem APIM bottom-up sync.
+func (c *Client) PushArtifact(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
 	// Check if connected to control plane
 	if !c.IsConnected() {
-		c.logger.Debug("Not connected to control plane, skipping API deployment push",
-			slog.String("api_id", apiID))
+		c.logger.Debug("Not connected to control plane, skipping artifact push",
+			slog.String("artifact_id", apiID))
 		return nil
 	}
 
-	return c.apiUtilsService.PushAPIDeployment(apiID, apiConfig, deploymentID)
+	cpArtifactID, err := c.pushArtifactWithRetry(apiID, apiConfig, deploymentID)
+	c.recordArtifactSyncStatus(apiConfig, cpArtifactID, err)
+	return err
+}
+
+// pushArtifactWithRetry performs the DP->CP push, retrying transient failures up to
+// pushArtifactMaxAttempts times with exponential backoff (capped at pushArtifactRetryMaxWait).
+// It returns the control-plane artifact UUID from the first successful attempt, or the last
+// error after all attempts are exhausted. The backoff is abandoned early if the client is
+// shutting down (c.ctx cancelled).
+func (c *Client) pushArtifactWithRetry(apiID string, apiConfig *models.StoredConfig, deploymentID string) (string, error) {
+	maxAttempts := pushArtifactMaxAttempts
+	if c.pushMaxAttempts > 0 {
+		maxAttempts = c.pushMaxAttempts
+	}
+	wait := pushArtifactRetryBaseWait
+	if c.pushRetryBaseWait > 0 {
+		wait = c.pushRetryBaseWait
+	}
+	maxWait := pushArtifactRetryMaxWait
+	if c.pushRetryMaxWait > 0 {
+		maxWait = c.pushRetryMaxWait
+	}
+
+	var cpArtifactID string
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		cpArtifactID, lastErr = c.apiUtilsService.PushArtifact(apiID, apiConfig, deploymentID)
+		if lastErr == nil {
+			if attempt > 1 {
+				c.logger.Info("DP->CP artifact push succeeded after retry",
+					slog.String("artifact_id", apiID), slog.Int("attempt", attempt))
+			}
+			return cpArtifactID, nil
+		}
+
+		c.logger.Warn("DP->CP artifact push attempt failed",
+			slog.String("artifact_id", apiID),
+			slog.String("kind", apiConfig.Kind),
+			slog.Int("attempt", attempt),
+			slog.Int("max_attempts", maxAttempts),
+			slog.Any("error", lastErr))
+
+		if attempt == maxAttempts {
+			break
+		}
+
+		// Back off before the next attempt, but bail out promptly on shutdown.
+		select {
+		case <-time.After(wait):
+		case <-c.ctx.Done():
+			c.logger.Debug("DP->CP artifact push retry abandoned: client shutting down",
+				slog.String("artifact_id", apiID))
+			return cpArtifactID, lastErr
+		}
+		if wait *= 2; wait > maxWait {
+			wait = maxWait
+		}
+	}
+
+	c.logger.Error("DP->CP artifact push failed after all retries",
+		slog.String("artifact_id", apiID),
+		slog.String("kind", apiConfig.Kind),
+		slog.Int("attempts", maxAttempts),
+		slog.Any("error", lastErr))
+	return cpArtifactID, lastErr
+}
+
+// pushArtifactsWithRetry performs the bulk DP->CP push, retrying transport-level failures up to
+// pushArtifactMaxAttempts times with exponential backoff. Per-artifact import failures are
+// reported inside the returned response (Error per dpid), not as an error, and are not retried
+// here — they are reconciled by the caller and re-attempted on the next (re)connect.
+func (c *Client) pushArtifactsWithRetry(configs []*models.StoredConfig) (*utils.ImportArtifactsResponse, error) {
+	maxAttempts := pushArtifactMaxAttempts
+	if c.pushMaxAttempts > 0 {
+		maxAttempts = c.pushMaxAttempts
+	}
+	wait := pushArtifactRetryBaseWait
+	if c.pushRetryBaseWait > 0 {
+		wait = c.pushRetryBaseWait
+	}
+	maxWait := pushArtifactRetryMaxWait
+	if c.pushRetryMaxWait > 0 {
+		maxWait = c.pushRetryMaxWait
+	}
+
+	var resp *utils.ImportArtifactsResponse
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		resp, lastErr = c.apiUtilsService.PushArtifacts(configs)
+		if lastErr == nil {
+			if attempt > 1 {
+				c.logger.Info("DP->CP bulk artifact push succeeded after retry", slog.Int("attempt", attempt))
+			}
+			return resp, nil
+		}
+		c.logger.Warn("DP->CP bulk artifact push attempt failed",
+			slog.Int("attempt", attempt), slog.Int("max_attempts", maxAttempts),
+			slog.Int("count", len(configs)), slog.Any("error", lastErr))
+		if attempt == maxAttempts {
+			break
+		}
+		select {
+		case <-time.After(wait):
+		case <-c.ctx.Done():
+			c.logger.Debug("DP->CP bulk artifact push retry abandoned: client shutting down")
+			return resp, lastErr
+		}
+		if wait *= 2; wait > maxWait {
+			wait = maxWait
+		}
+	}
+	c.logger.Error("DP->CP bulk artifact push failed after all retries",
+		slog.Int("attempts", maxAttempts), slog.Any("error", lastErr))
+	return resp, lastErr
+}
+
+// recordArtifactSyncStatus persists the outcome of a DP->CP push on the artifact's row
+// (cp_sync_status / cp_sync_info / cp_artifact_id), mirroring the on-prem APIM bottom-up
+// sync. On success it stores the control-plane UUID; on failure it preserves the prior
+// cp_artifact_id and records the error detail. It is best-effort bookkeeping and only
+// applies to gateway-originated artifacts that still have a row (i.e. not undeploy/delete
+// pushes, where the artifact is being removed from the gateway).
+func (c *Client) recordArtifactSyncStatus(cfg *models.StoredConfig, cpArtifactID string, pushErr error) {
+	if c.db == nil || cfg == nil || cfg.Origin != models.OriginGatewayAPI || cfg.DesiredState == models.StateUndeployed {
+		return
+	}
+	if pushErr != nil {
+		if dbErr := c.db.UpdateCPSyncStatus(cfg.UUID, cfg.CPArtifactID, models.CPSyncStatusFailed, pushErr.Error()); dbErr != nil {
+			c.logger.Debug("Failed to record artifact CP sync failure",
+				slog.String("artifact_id", cfg.UUID), slog.Any("error", dbErr))
+		}
+		return
+	}
+	effectiveCPArtifactID := cpArtifactID
+	if effectiveCPArtifactID == "" {
+		effectiveCPArtifactID = cfg.CPArtifactID
+	}
+	if dbErr := c.db.UpdateCPSyncStatus(cfg.UUID, effectiveCPArtifactID, models.CPSyncStatusSuccess, ""); dbErr != nil {
+		c.logger.Debug("Failed to record artifact CP sync success",
+			slog.String("artifact_id", cfg.UUID), slog.Any("error", dbErr))
+	}
 }
 
 // getWebSocketURL constructs the base WebSocket URL from configuration (cloud default; on-prem may override via well-known).

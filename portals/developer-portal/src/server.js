@@ -36,7 +36,7 @@ function startBackgroundServices() {
     try {
         webhookDispatcher.start();
         webhookDeliveryWorker.start();
-        logger.info('Webhook dispatcher and delivery worker started');
+        logger.info('Services: webhook dispatcher + delivery worker started ✓');
     } catch (error) {
         logger.warn('Could not start webhook workers', {
             error: error.message,
@@ -45,33 +45,29 @@ function startBackgroundServices() {
     }
 }
 
-function logStartupInfo() {
-    logger.info(`Developer Portal V2 is running on port ${PORT}`);
-    if (config.designMode?.enabled) {
-        logger.info('Design Mode enabled — no DB or IDP required');
-        logger.info(`  Layout templates: ${config.designMode.pathToLayout}`);
-        logger.info(`  Sample APIs:      ${config.designMode.apiSamplesPath}`);
-    }
-
-    const visitUrl = config.baseUrl + (config.designMode?.enabled ? "/views/default" : "/<organization>/views/default");
-    logger.info(`Visit ${visitUrl}`);
+function logStartupBanner() {
+    const orgSegment = config.designMode?.enabled ? '' : `/${config.defaultOrgName || '<organization>'}`;
+    const visitUrl = `${config.baseUrl}${orgSegment}/views/default`;
+    const line = '='.repeat(72);
+    logger.info(`\n${line}\n\n\n\tDeveloper Portal Started.\n\tVisit Portal: ${visitUrl}\n\n\n${line}`);
 }
 
-function onListening() {
-    logStartupInfo();
+async function onListening() {
     startBackgroundServices();
-    seedDefaultOrg().catch(err =>
+    await seedDefaultOrg().catch(err =>
         logger.error('Unexpected error during default org seeding', { error: err.message })
     );
+    logStartupBanner();
 }
 
 let server;
 
 async function startServer() {
+    logger.info('Developer Portal starting...');
     // Sync database schema for SQLite in production mode
     if (config.db.dialect === 'sqlite' && !config.designMode?.enabled) {
         await sequelize.sync();
-        logger.info('SQLite schema synced');
+        logger.info('Database: SQLite schema synced ✓');
     }
 
     if (config.advanced.http || config.designMode?.enabled) {

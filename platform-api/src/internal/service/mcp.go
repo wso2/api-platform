@@ -155,6 +155,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			Policies:     mapMCPPoliciesAPIToModel(req.Policies),
 			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		},
+		Origin: constants.OriginCP,
 		AssociatedGateways: associatedGateways,
 	}
 
@@ -269,6 +270,10 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if existing == nil {
 		return nil, constants.ErrMCPProxyNotFound
 	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
 	if s.secretService != nil {
@@ -342,6 +347,11 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	}
 	if mcpProxy == nil {
 		return constants.ErrMCPProxyNotFound
+	}
+
+	// DP-originated artifacts may only be deleted once undeployed on all gateways.
+	if err := ensureOriginDeletable(s.deploymentRepo, mcpProxy.Origin, mcpProxy.UUID, orgUUID); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -507,6 +517,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		Upstream:       mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
 		Policies:       mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		Capabilities:   mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
+		ReadOnly:       utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
@@ -530,6 +541,7 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 		ProjectId:      m.ProjectUUID,
 		Context:        m.Configuration.Context,
 		McpSpecVersion: utils.StringPtrIfNotEmpty(m.Configuration.SpecVersion),
+		ReadOnly:       utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}

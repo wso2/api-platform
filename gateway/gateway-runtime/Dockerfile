@@ -89,6 +89,8 @@ ENV ENABLE_DEBUG=${ENABLE_DEBUG}
 COPY --from=sdk-core go.mod /api-platform/sdk/core/
 
 # Download common dependencies (cached by go.mod/go.sum changes)
+# httpkit go.mod must be present before downloading — common/go.mod has a replace directive pointing to ../httpkit
+COPY --from=httpkit go.mod /api-platform/httpkit/
 COPY --from=common go.mod go.sum /api-platform/common/
 WORKDIR /api-platform/common
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -106,6 +108,7 @@ COPY python-executor/ /api-platform/gateway/gateway-runtime/python-executor/
 COPY --from=sdk-python . /api-platform/sdk-python
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
+COPY --from=httpkit . /api-platform/httpkit
 COPY --from=system-policies . /api-platform/gateway/system-policies/
 COPY --from=dev-policies . /api-platform/gateway/dev-policies/
 COPY --from=target build.yaml /api-platform/gateway/build.yaml

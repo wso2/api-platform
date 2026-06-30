@@ -59,9 +59,7 @@ jobs:
           IMG=${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} make docker-build
 
       - name: Build Mock JWKS image
-        run: |
-          cd tests/mock-servers/mock-jwks
-          docker build -t ${{ env.DOCKER_REGISTRY }}/mock-jwks:${{ env.VERSION }} .
+        run: make -C tests/mock-servers build MOCKS=mock-jwks DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }}
 
       - name: Load images into Kind
         run: |

@@ -114,13 +114,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnCopyPrompt) {
         btnCopyPrompt.addEventListener('click', function() {
             const promptEl = document.getElementById('modalAgentPromptText');
-            if (!promptEl) { showNotification('Prompt not available', 'error'); return; }
-            const promptText = promptEl.textContent;
-            navigator.clipboard.writeText(promptText).then(() => {
-                const icon = btnCopyPrompt.querySelector('i');
-                icon.className = 'bi bi-check-lg';
-                setTimeout(() => { icon.className = 'bi bi-copy'; }, 2000);
-            }).catch(() => showNotification('Failed to copy prompt', 'error'));
+            if (!promptEl) return;
+            navigator.clipboard.writeText(promptEl.textContent).then(() => {
+                btnCopyPrompt.classList.add('copy-btn--copied');
+                if (btnCopyPrompt._copyTimer) clearTimeout(btnCopyPrompt._copyTimer);
+                btnCopyPrompt._copyTimer = setTimeout(() => { btnCopyPrompt.classList.remove('copy-btn--copied'); }, 1600);
+            }).catch(function(){});
         });
     }
 

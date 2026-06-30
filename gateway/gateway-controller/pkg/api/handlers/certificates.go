@@ -21,16 +21,17 @@ package handlers
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // UploadCertificateRequest represents the request body for certificate upload
@@ -61,16 +62,23 @@ type ListCertificatesResponse struct {
 
 // UploadCertificate handles certificate upload via REST API
 // POST /certificates
-func (s *APIServer) UploadCertificate(c *gin.Context) {
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
+	correlationID := middleware.GetCorrelationID(r)
 	log := s.logger.With(slog.String("correlation_id", correlationID))
 
 	var req UploadCertificateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("Invalid certificate upload request", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, gin.H{
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 			"status":  "error",
 			"message": "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+	if req.Name == "" || req.Certificate == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
+			"status":  "error",
+			"message": "name and certificate are required fields",
 		})
 		return
 	}
@@ -80,7 +88,7 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 	count, err := s.validateCertificate(certData)
 	if err != nil {
 		log.Warn("Invalid certificate provided", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, gin.H{
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 			"status":  "error",
 			"message": "Invalid certificate: " + err.Error(),
 		})
@@ -91,7 +99,7 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 	subject, issuer, notBefore, notAfter, err := s.extractCertificateMetadata(certData)
 	if err != nil {
 		log.Warn("Failed to extract certificate metadata", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, gin.H{
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 			"status":  "error",
 			"message": "Failed to parse certificate metadata: " + err.Error(),
 		})
@@ -102,9 +110,9 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 	certID, err := utils.GenerateUUID()
 	if err != nil {
 		log.Error("Failed to generate certificate ID", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Failed to generate certificate ID: " + err.Error(),
+			"message": "Failed to generate certificate ID",
 		})
 		return
 	}
@@ -128,9 +136,9 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 		log.Error("Failed to save certificate to database",
 			slog.String("name", req.Name),
 			slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Failed to save certificate: " + err.Error(),
+			"message": "Failed to save certificate",
 		})
 		return
 	}
@@ -144,7 +152,7 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 	translator := s.snapshotManager.GetTranslator()
 	if translator == nil || translator.GetCertStore() == nil {
 		log.Error("Certificate store not available")
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
 			"message": "Certificate store not configured",
 		})
@@ -156,9 +164,9 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 	// Reload certificates from database
 	if err := certStore.Reload(); err != nil {
 		log.Error("Failed to reload certificates", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Certificate saved but failed to reload: " + err.Error(),
+			"message": "Certificate saved but failed to reload",
 		})
 		return
 	}
@@ -166,9 +174,9 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 	// Trigger SDS update by regenerating the snapshot
 	if err := s.snapshotManager.UpdateSnapshot(context.Background(), correlationID); err != nil {
 		log.Error("Failed to update SDS snapshot", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Certificate reloaded but failed to update SDS: " + err.Error(),
+			"message": "Certificate reloaded but failed to update SDS",
 		})
 		return
 	}
@@ -177,7 +185,7 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 		slog.String("id", certID),
 		slog.String("name", req.Name))
 
-	c.JSON(http.StatusCreated, CertificateResponse{
+	httputil.WriteJSON(w, http.StatusCreated, CertificateResponse{
 		ID:       certID,
 		Name:     req.Name,
 		Subject:  subject,
@@ -191,17 +199,17 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 
 // ListCertificates lists all custom certificates
 // GET /certificates
-func (s *APIServer) ListCertificates(c *gin.Context) {
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) ListCertificates(w http.ResponseWriter, r *http.Request) {
+	correlationID := middleware.GetCorrelationID(r)
 	log := s.logger.With(slog.String("correlation_id", correlationID))
 
 	// Get certificates from database
 	certs, err := s.db.ListCertificates()
 	if err != nil {
 		log.Error("Failed to list certificates from database", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Failed to list certificates: " + err.Error(),
+			"message": "Failed to list certificates",
 		})
 		return
 	}
@@ -223,7 +231,7 @@ func (s *APIServer) ListCertificates(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, ListCertificatesResponse{
+	httputil.WriteJSON(w, http.StatusOK, ListCertificatesResponse{
 		Certificates: certificates,
 		TotalCount:   len(certificates),
 		TotalBytes:   totalBytes,
@@ -233,12 +241,12 @@ func (s *APIServer) ListCertificates(c *gin.Context) {
 
 // DeleteCertificate deletes a certificate by ID
 // DELETE /certificates/:id
-func (s *APIServer) DeleteCertificate(c *gin.Context, id string) {
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id string) {
+	correlationID := middleware.GetCorrelationID(r)
 	log := s.logger.With(slog.String("correlation_id", correlationID))
 
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 			"status":  "error",
 			"message": "Certificate ID is required",
 		})
@@ -248,7 +256,7 @@ func (s *APIServer) DeleteCertificate(c *gin.Context, id string) {
 	translator := s.snapshotManager.GetTranslator()
 	if translator == nil || translator.GetCertStore() == nil {
 		log.Error("Certificate store not available")
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
 			"message": "Certificate store not configured",
 		})
@@ -260,7 +268,7 @@ func (s *APIServer) DeleteCertificate(c *gin.Context, id string) {
 		log.Error("Failed to delete certificate",
 			slog.String("id", id),
 			slog.Any("error", err))
-		c.JSON(http.StatusNotFound, gin.H{
+		httputil.WriteJSON(w, http.StatusNotFound, map[string]any{
 			"status":  "error",
 			"message": "Certificate not found or failed to delete: " + err.Error(),
 		})
@@ -274,9 +282,9 @@ func (s *APIServer) DeleteCertificate(c *gin.Context, id string) {
 	// Reload certificates from database
 	if err := certStore.Reload(); err != nil {
 		log.Error("Failed to reload certificates", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Certificate deleted but failed to reload: " + err.Error(),
+			"message": "Certificate deleted but failed to reload",
 		})
 		return
 	}
@@ -284,16 +292,16 @@ func (s *APIServer) DeleteCertificate(c *gin.Context, id string) {
 	// Trigger SDS update
 	if err := s.snapshotManager.UpdateSnapshot(context.Background(), correlationID); err != nil {
 		log.Error("Failed to update SDS snapshot", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Certificate deleted and reloaded but failed to update SDS: " + err.Error(),
+			"message": "Certificate deleted and reloaded but failed to update SDS",
 		})
 		return
 	}
 
 	log.Info("SDS snapshot updated after certificate deletion", slog.String("id", id))
 
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "Certificate deleted and SDS updated successfully",
 		"id":      id,
@@ -302,14 +310,14 @@ func (s *APIServer) DeleteCertificate(c *gin.Context, id string) {
 
 // ReloadCertificates manually triggers certificate reload and SDS update
 // POST /certificates/reload
-func (s *APIServer) ReloadCertificates(c *gin.Context) {
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) ReloadCertificates(w http.ResponseWriter, r *http.Request) {
+	correlationID := middleware.GetCorrelationID(r)
 	log := s.logger.With(slog.String("correlation_id", correlationID))
 
 	translator := s.snapshotManager.GetTranslator()
 	if translator == nil || translator.GetCertStore() == nil {
 		log.Error("Certificate store not available")
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
 			"message": "Certificate store not configured",
 		})
@@ -321,9 +329,9 @@ func (s *APIServer) ReloadCertificates(c *gin.Context) {
 	// Reload certificates from database
 	if err := certStore.Reload(); err != nil {
 		log.Error("Failed to reload certificates", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Failed to reload certificates: " + err.Error(),
+			"message": "Failed to reload certificates",
 		})
 		return
 	}
@@ -331,9 +339,9 @@ func (s *APIServer) ReloadCertificates(c *gin.Context) {
 	// Trigger SDS update
 	if err := s.snapshotManager.UpdateSnapshot(context.Background(), correlationID); err != nil {
 		log.Error("Failed to update SDS snapshot", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
-			"message": "Certificates reloaded but failed to update SDS: " + err.Error(),
+			"message": "Certificates reloaded but failed to update SDS",
 		})
 		return
 	}
@@ -341,7 +349,7 @@ func (s *APIServer) ReloadCertificates(c *gin.Context) {
 	log.Info("Certificates reloaded and SDS snapshot updated")
 
 	combinedCerts := certStore.GetCombinedCertificates()
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":     "success",
 		"message":    "Certificates reloaded and SDS updated successfully",
 		"totalBytes": len(combinedCerts),

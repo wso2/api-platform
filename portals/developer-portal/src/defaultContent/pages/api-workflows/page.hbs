@@ -1,0 +1,69 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * API Flows Gallery
+ -->
+
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">API Workflows</h1>
+      <p class="page-desc">Pre-configured workflows let your AI agents reference these best practices to use your APIs correctly, every time — no hallucination, no manual setup.</p>
+    </div>
+    {{#if apiFlows.length}}
+      {{#if profile.isAdmin}}
+      <a href="{{baseUrl}}/settings#cfg-workflows" class="dp-btn dp-btn--primary">
+        <i class="bi bi-pencil"></i> Manage workflows
+      </a>
+      {{/if}}
+    {{/if}}
+  </div>
+
+  {{#if apiFlows.length}}
+  <div class="wf-grid">
+    {{#each apiFlows}}
+    <div class="wf-card" onclick="window.location.href='{{@root.baseUrl}}/api-workflows/{{this.handle}}';">
+      <div class="wf-card-head">
+        <h3 class="wf-card-name">{{this.name}}</h3>
+      </div>
+      <div class="wf-card-body">
+        <p class="wf-card-desc">{{this.description}}</p>
+        {{#if this.sourcesPreview.length}}
+        <div class="wf-powered-label">POWERED BY</div>
+        <div class="wf-api-pills">
+          {{#each this.sourcesPreview}}
+          <span class="wf-api-pill">{{this.name}}</span>
+          {{/each}}
+          {{#if ../sourcesMoreCount}}
+          <span class="wf-api-pill">+{{../sourcesMoreCount}} more</span>
+          {{/if}}
+        </div>
+        {{/if}}
+      </div>
+      <div class="wf-card-footer">
+        {{#unless (eq this.agentVisibility "HIDDEN")}}
+        <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this workflow">
+          <i class="bi bi-robot"></i> AI Ready
+        </span>
+        {{/unless}}
+      </div>
+    </div>
+    {{/each}}
+  </div>
+  {{else}}
+  <div class="dp-empty">
+    <span class="dp-empty-icon">
+      <i class="bi bi-diagram-3"></i>
+    </span>
+    <h2 class="dp-empty-title">No workflows yet</h2>
+    <p class="dp-empty-desc">Create a workflow to encode a multi-step API sequence your AI agents can follow. Published workflows will appear here for every consumer.</p>
+    {{#if profile.isAdmin}}
+    <a href="{{baseUrl}}/settings#cfg-workflows" class="dp-btn dp-btn--primary dp-btn--lg" style="margin-top:1.5rem;">
+      <i class="bi bi-plus"></i> Create workflow
+    </a>
+    {{/if}}
+  </div>
+  {{/if}}
+
+  {{> alert}}
+</div>

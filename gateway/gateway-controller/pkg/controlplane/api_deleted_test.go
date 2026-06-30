@@ -635,6 +635,17 @@ func (m *mockStorageForDeletion) GetPendingBottomUpAPIs() ([]*models.StoredConfi
 	return pending, nil
 }
 
+func (m *mockStorageForDeletion) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it

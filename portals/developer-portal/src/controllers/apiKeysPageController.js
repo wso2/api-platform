@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplateFromAPI, renderTemplate } = require('../utils/util');
+const { renderTemplateFromAPI } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -29,29 +29,24 @@ const apiKeyService = require('../services/apiKeyService');
 const { apiUsesApiKeySecurity } = require('../utils/apiDefinitionUtil');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 
-const loadAPIApiKeys = async (req, res) => {
+const loadAPIApiKeys = async (req, res, next) => {
     let html;
     const { orgName, viewName, apiHandle } = req.params;
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.UUID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         const apiID = await apiDao.getId(orgID, apiHandle);
         if (!apiID) {
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-                errorMessage: constants.ERROR_MESSAGE.API_NOT_FOUND,
-                profile: req.isAuthenticated() ? req.user : null,
-            };
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-            return res.status(404).send(html);
+            const err = new Error('API not found');
+            err.status = 404;
+            return next(err);
         }
         let metaData = await apiMetadataService.getMetadataFromDB(orgID, apiID, viewName);
         if (metaData && typeof metaData === 'object') {
@@ -82,15 +77,9 @@ const loadAPIApiKeys = async (req, res) => {
 
         const showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
         if (!showApiKeysNav) {
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-                errorMessage:
-                    'API Keys are not available for this API. They require an API with API Key security enabled.',
-                profile: req.isAuthenticated() ? req.user : null,
-            };
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-            return res.status(404).send(html);
+            const err = new Error('API Keys not available for this API');
+            err.status = 404;
+            return next(err);
         }
 
         let apiKeys = [];
@@ -101,21 +90,18 @@ const loadAPIApiKeys = async (req, res) => {
 
         try {
             const keys = await apiKeyService.list(orgID, { apiId: apiID, appId: selectedAppId || undefined });
-            apiKeys = (keys || []).map((k) => {
-                const app = k.DP_APPLICATION;
-                return {
-                    keyId: k.KEY_ID,
-                    name: k.NAME,
-                    status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-                    expiresAt: k.EXPIRES_AT,
-                    createdAt: k.CREATED_AT,
-                    revokedAt: k.REVOKED_AT || undefined,
-                    apiId: k.API_ID,
-                    appId: app ? app.APP_ID : null,
-                    appName: app ? app.NAME : null,
-                    maskedApiKey: '••••••••'
-                };
-            });
+            apiKeys = (keys || []).map((k) => ({
+                keyId: k.UUID,
+                name: k.NAME,
+                status: String(k.STATUS || 'ACTIVE').toLowerCase(),
+                expiresAt: k.EXPIRES_AT,
+                createdAt: k.CREATED_AT,
+                revokedAt: k.REVOKED_AT || undefined,
+                apiId: k.API_UUID,
+                appId: k.DP_API_KEY_APP_MAPPING?.APP_UUID || null,
+                appName: k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION?.NAME || null,
+                maskedApiKey: '••••••••'
+            }));
             apiKeysCount = apiKeys.length;
         } catch (dbError) {
             apiKeysLoadError = true;
@@ -128,7 +114,7 @@ const loadAPIApiKeys = async (req, res) => {
 
         try {
             const apps = await applicationDao.list(orgID, req.user.sub);
-            applications = (apps || []).map((a) => ({ appId: a.APP_ID, name: a.NAME }));
+            applications = (apps || []).map((a) => ({ appId: a.UUID, name: a.NAME }));
         } catch (dbError) {
             logger.warn('Failed to load applications for API key association', {
                 error: dbError.message,
@@ -170,13 +156,7 @@ const loadAPIApiKeys = async (req, res) => {
             orgName,
             apiHandle
         });
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: constants.DEVPORTAL_MODE.DEFAULT,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        };
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.status(500).send(html);
+        next(error);
     }
 };
 
