@@ -110,7 +110,7 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 	defer tx.Rollback()
 
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, handle, name, description, properties, is_critical,
+		INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, is_critical,
 		                      gateway_functionality_type, version, is_active, created_by, updated_by, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -157,7 +157,7 @@ func (r *GatewayRepo) scanGateway(row interface {
 // GetByUUID retrieves a gateway by ID
 func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
@@ -179,7 +179,7 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 // GetByOrganizationID retrieves all gateways for an organization
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE organization_uuid = ?
@@ -209,7 +209,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 // GetByHandleAndOrgID checks if a gateway with the given handle exists within an organization
 func (r *GatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE handle = ? AND organization_uuid = ?
@@ -231,7 +231,7 @@ func (r *GatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway,
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
@@ -319,7 +319,7 @@ func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
 
 	query := `
 		UPDATE gateways
-		SET name = ?, description = ?, is_critical = ?, properties = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, description = ?, is_critical = ?, properties = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?
 	`
 	if _, err = tx.Exec(r.db.Rebind(query), gateway.Name, gateway.Description, isCriticalInt, propertiesBytes, gateway.UpdatedBy, gateway.UpdatedAt, gateway.ID); err != nil {

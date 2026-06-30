@@ -82,7 +82,7 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 	// Insert into mcp_proxies table
 	query := `
 		INSERT INTO mcp_proxies (
-			uuid, handle, name, version, project_uuid, description, created_by, configuration, origin, created_at, updated_at, organization_uuid
+			uuid, handle, display_name, version, project_uuid, description, created_by, configuration, origin, created_at, updated_at, organization_uuid
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
@@ -107,7 +107,7 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE handle = ? AND organization_uuid = ?`
@@ -142,7 +142,7 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE uuid = ? AND organization_uuid = ?`
@@ -178,7 +178,7 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ?
@@ -224,7 +224,7 @@ func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
 func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
@@ -305,7 +305,7 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	// Update mcp_proxies table (name/version/updated_at now live here)
 	query = `
 		UPDATE mcp_proxies
-		SET name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
 		p.Name, p.Version, p.Description, configurationJSON, p.UpdatedBy, now,

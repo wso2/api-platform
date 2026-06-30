@@ -294,6 +294,9 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
 		return nil, err
 	}
+	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
+		return nil, err
+	}
 
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
 		key, err := generateRandomSecret()
@@ -576,6 +579,27 @@ func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
 	}
 	if cfg.HeaderKeyName == "" {
 		return fmt.Errorf("default DevPortal header_key_name is not configured")
+	}
+	return nil
+}
+
+// validateAuthModeExclusivity enforces that IDP (JWKS) auth is not enabled
+// alongside the local auth modes. When an IDP is configured every token must be
+// validated against its JWKS; leaving local HMAC auth on would let the server
+// silently validate (file-based) or accept (local JWT) tokens with the local
+// secret instead, shadowing the IDP. So enabling the IDP requires consciously
+// turning the local modes off.
+func validateAuthModeExclusivity(auth *Auth) error {
+	if !auth.IDP.Enabled {
+		return nil
+	}
+	if auth.JWT.Enabled {
+		return fmt.Errorf("auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive: " +
+			"set auth.jwt.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
+	}
+	if auth.FileBased.Enabled {
+		return fmt.Errorf("auth.idp.enabled=true and auth.file_based.enabled=true are mutually exclusive: " +
+			"set auth.file_based.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
 	}
 	return nil
 }

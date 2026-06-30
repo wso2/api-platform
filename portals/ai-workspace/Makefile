@@ -25,7 +25,13 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/ai-workspace
 
-.PHONY: help run build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release e2e-deps e2e-test e2e-open e2e-ci
+.PHONY: help run build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release e2e-deps e2e-test e2e-open e2e-ci bff-build bff-run bff-test bff-tidy
+
+# BFF (Backend-for-Frontend) — Go server that serves the SPA, proxies all
+# browser→backend traffic, and owns authentication.
+BFF_DIR        := bff
+BFF_DEV_ADDR   ?= :8081
+PLATFORM_API_URL ?= https://localhost:9243
 
 help: ## Show this help message
 	@echo 'AI Workspace Build System (Version: $(VERSION))'
@@ -39,6 +45,23 @@ run: ## Start AI Workspace dev server locally (installs deps if needed)
 		npm install; \
 	fi
 	npm run dev
+
+bff-build: ## Build the BFF binary (stdlib-only Go module)
+	cd $(BFF_DIR) && GOWORK=off CGO_ENABLED=0 go build -o ../target/ai-workspace-bff .
+
+bff-run: ## Run the BFF locally (proxies to PLATFORM_API_URL; pair with `make run`)
+	cd $(BFF_DIR) && \
+		PLATFORM_API_URL=$(PLATFORM_API_URL) \
+		PLATFORM_API_TLS_SKIP_VERIFY=true \
+		BFF_ADDR=$(BFF_DEV_ADDR) \
+		STATIC_DIR=../dist \
+		go run .
+
+bff-test: ## Run BFF unit tests
+	cd $(BFF_DIR) && GOWORK=off go test ./...
+
+bff-tidy: ## Tidy the BFF module
+	cd $(BFF_DIR) && go mod tidy
 
 e2e-deps: ## Install Cypress dependencies for local E2E runs
 	npm install

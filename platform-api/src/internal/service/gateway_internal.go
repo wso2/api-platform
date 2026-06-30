@@ -297,7 +297,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 		items[i] = dto.GatewaySubscriptionPlanInfo{
 			ID:                 plan.UUID,
 			Handle:             plan.Handle,
-			Name:               plan.Name,
+			PlanName:           plan.Name,
 			BillingPlan:        plan.BillingPlan,
 			StopOnQuotaReach:   plan.StopOnQuotaReach,
 			ThrottleLimitCount: plan.ThrottleLimitCount,

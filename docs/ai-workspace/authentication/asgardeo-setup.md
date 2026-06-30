@@ -21,18 +21,25 @@ A complete reference for Platform API and AI Workspace config values is in [`pro
 
 ---
 
-## 2. AI Workspace Application (SPA)
+## 2. AI Workspace Application (Confidential Web Application)
+
+The AI Workspace is served by a **BFF that acts as a confidential OIDC client** — it holds the
+client secret and runs the authorization-code + PKCE exchange on the back channel. Register it
+as a confidential web app, **not** a Single-Page Application. (An SPA is a public client; the
+token endpoint will reject the BFF's exchange with *"The authenticated client is not authorized
+to use the requested grant type."*)
 
 1. In the root organization, go to **Applications** → **New Application**.
-2. Choose **Single-Page Application** and name it `AI Workspace`.
-3. Add **authorized redirect URLs**:
-   - `https://<your-domain>/signin`
+2. Choose **Standard-Based Application → OpenID Connect** (Traditional Web Application) and name
+   it `AI Workspace`.
+3. Add the **authorized redirect URL** — the BFF callback, not `/signin`:
+   - `https://<your-domain>/api/auth/callback`
 4. Enable **Share with all organizations** so sub-org users can log in.
 5. Under the **Protocol** tab:
-   - Set **Access Token Type** to **JWT**.
-6. Under the **Login Flow** tab:
-   - Remove the Username/Password authenticator.
-   - Add **SSO Authentication** (organization SSO).
+   - **Allowed grant types**: Authorization Code + Refresh Token.
+   - **PKCE**: enabled.
+   - **Access Token Type**: **JWT**.
+6. Under the **Login Flow** tab, configure authentication as desired (e.g. SSO Authentication).
 7. Under the **User Attributes** tab, add these attributes to the token:
    - `username`
    - `given_name`
@@ -41,7 +48,8 @@ A complete reference for Platform API and AI Workspace config values is in [`pro
    - `email`
    - `scope` (see section 3 below)
 
-Note the **Client ID** from the Protocol tab — you will use it in both Platform API and AI Workspace config.
+Note the **Client ID** and **Client Secret** from the Protocol tab — the BFF needs both; the
+Client ID is also used in the Platform API config (audience).
 
 ---
 
@@ -148,6 +156,17 @@ platform_api_base_url = "https://<platform-api-host>/api/v1"
 controlplane_host    = "<platform-api-host>"
 default_org_region   = "us"
 ```
+
+The **client secret and redirect URLs are BFF settings, not `config.toml` keys** (the secret
+must never reach the browser). Set them as environment variables on the AI Workspace container:
+
+```bash
+OIDC_CLIENT_SECRET=<ai-workspace-client-secret>
+OIDC_REDIRECT_URL=https://<your-domain>/api/auth/callback        # the BFF callback (section 2)
+OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/login
+```
+
+> `OIDC_REDIRECT_URL` must exactly match the authorized redirect URL registered in section 2.
 
 ---
 

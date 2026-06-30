@@ -68,11 +68,11 @@ func setupSecretTestEnv(t *testing.T) (http.Handler, func()) {
 		t.Fatalf("failed to apply schema: %v", err)
 	}
 
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-it-001', 'test-org', 'Test Org', 'default', datetime('now'), datetime('now'))`); err != nil {
 		t.Fatalf("failed to insert org: %v", err)
 	}
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-it-002', 'test-org-b', 'Test Org B', 'default', datetime('now'), datetime('now'))`); err != nil {
 		t.Fatalf("failed to insert org-b: %v", err)
 	}
@@ -365,7 +365,7 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-react-it', 'org-react', 'Org React', 'default', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
@@ -464,16 +464,16 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	schema, _ := os.ReadFile(schemaPath)
 	db.Exec(string(schema))
 
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-it-001', 'test-org', 'Test Org', 'default', datetime('now'), datetime('now'))`)
 
 	// Insert a project (required by artifacts via rest_apis)
-	db.Exec(`INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
+	db.Exec(`INSERT INTO projects (uuid, handle, display_name, organization_uuid, created_at, updated_at)
 		VALUES ('proj-001', 'test-proj', 'Test Project', 'org-it-001', datetime('now'), datetime('now'))`)
 
 	// Insert an artifact
-	db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-001', 'my-api', 'My API', '1.0.0', 'REST', 'org-it-001', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid)
+		VALUES ('art-001', 'RestApi', 'org-it-001')`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
@@ -650,7 +650,7 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-sd-it', 'org-sd', 'Org SD', 'default', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
@@ -731,7 +731,7 @@ func TestSecretService_Decrypt_DeprecatedSecretReturnsError(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-dep-it', 'org-dep', 'Org Dep', 'default', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
@@ -774,7 +774,7 @@ func TestSecretRepo_CiphertextStoredNotPlaintext(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-ct-001', 'org-ct', 'Org CT', 'default', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
@@ -813,7 +813,7 @@ func TestSecretRepo_ProviderIsInBuilt(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-prov-001', 'org-prov', 'Org Prov', 'default', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
@@ -849,7 +849,7 @@ func TestSecretService_DecryptReturnsOriginalPlaintext(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-dec-001', 'org-dec', 'Org Dec', 'default', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
@@ -885,7 +885,7 @@ func TestSecretService_ValidateSecretRefs_DeprecatedHandleRejected(t *testing.T)
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('org-val-it', 'org-val', 'Org Val', 'default', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))

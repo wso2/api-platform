@@ -37,7 +37,7 @@ describe('AI Workspace — LLM provider secret management', () => {
     cy.login();
     cy.request({
       method: 'POST',
-      url: '/api-proxy/api/portal/v0.9/auth/login',
+      url: '/api/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -49,7 +49,7 @@ describe('AI Workspace — LLM provider secret management', () => {
         authToken = response.body?.token ?? '';
         expect(authToken).to.not.equal('');
         return cy.request({
-          url: '/api-proxy/api/v0.9/organizations',
+          url: '/api/proxy/api/v0.9/organizations',
           headers: { Authorization: `Bearer ${authToken}` },
         });
       })
@@ -64,7 +64,7 @@ describe('AI Workspace — LLM provider secret management', () => {
     if (!authToken || !organizationId || !createdProviderId) return;
     cy.request({
       method: 'DELETE',
-      url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
       headers: { Authorization: `Bearer ${authToken}` },
       failOnStatusCode: false,
     });
@@ -118,14 +118,14 @@ describe('AI Workspace — LLM provider secret management', () => {
     // Pre-create the secret via API so there's a real secret backing the placeholder.
     cy.request({
       method: 'POST',
-      url: '/api-proxy/api/v0.9/secrets',
+      url: '/api/proxy/api/v0.9/secrets',
       headers: {
         Authorization: `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
       },
+      form: true,
       body: {
         handle: existingHandle,
-        displayName: `${providerName} API Key`,
+        name: `${providerName} API Key`,
         value: 'sk-tc58-pre-existing-value',
         type: 'GENERIC',
       },
