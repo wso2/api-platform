@@ -57,12 +57,15 @@ type ArtifactsExistResponse struct {
 }
 
 // GatewaySubscriptionPlanInfo represents a subscription plan in internal gateway responses.
+//
+// StopOnQuotaReach is exposed as a boolean to match the gateway-controller's model;
+// the platform-api stores it as a SMALLINT (0/1) and converts at this boundary.
 type GatewaySubscriptionPlanInfo struct {
 	ID                 string     `json:"id"`
 	Handle             string     `json:"handle"`
-	Name               string     `json:"name"`
+	PlanName           string     `json:"planName"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   int        `json:"stopOnQuotaReach"`
+	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`

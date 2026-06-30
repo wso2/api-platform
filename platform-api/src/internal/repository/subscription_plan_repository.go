@@ -98,7 +98,7 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 //
 // limit_count is NOT NULL, so a row is written ONLY when ThrottleLimitCount is set.
 // When it is nil the plan has no quota: the row is left deleted and reads default
-// StopOnQuotaReach to 1 (see scanPlan).
+// StopOnQuotaReach to true (see scanPlan).
 //
 // NOTE: SINGLE-LIMIT ASSUMPTION. subscription_plan_limits supports multiple limits per
 // plan, but only one REQUEST_COUNT limit is persisted here. This must be improved to
@@ -114,13 +114,18 @@ func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.Subs
 	if plan.ThrottleLimitCount == nil {
 		return nil
 	}
+	// stop_on_quota_reach is a SMALLINT (0/1) column; map the boolean domain field onto it.
+	stopOnQuotaReach := 0
+	if plan.StopOnQuotaReach {
+		stopOnQuotaReach = 1
+	}
 	if _, err := tx.Exec(r.db.Rebind(`
 		INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid,
 			limit_type, time_unit, time_amount, limit_count, stop_on_quota_reach)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`),
 		uuid.New().String(), plan.UUID, constants.LimitTypeRequestCount,
-		plan.ThrottleLimitUnit, 1, *plan.ThrottleLimitCount, plan.StopOnQuotaReach,
+		plan.ThrottleLimitUnit, 1, *plan.ThrottleLimitCount, stopOnQuotaReach,
 	); err != nil {
 		return fmt.Errorf("failed to insert subscription plan limit: %w", err)
 	}
@@ -129,7 +134,7 @@ func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.Subs
 
 // scanPlan reads a subscription plan joined with its single throttling limit row
 // (see planSelectColumns). When no limit row exists the throttle fields are left
-// empty and StopOnQuotaReach defaults to 1.
+// empty and StopOnQuotaReach defaults to true.
 func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 	plan := &model.SubscriptionPlan{}
 	var (
@@ -150,9 +155,10 @@ func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 	}
 	plan.ThrottleLimitUnit = timeUnit.String
 	if stopOnQuota.Valid {
-		plan.StopOnQuotaReach = int(stopOnQuota.Int64)
+		plan.StopOnQuotaReach = stopOnQuota.Int64 != 0
 	} else {
-		plan.StopOnQuotaReach = 1
+		// No limit row: default to blocking on quota reach (SMALLINT default 1).
+		plan.StopOnQuotaReach = true
 	}
 	return plan, nil
 }
