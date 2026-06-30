@@ -179,7 +179,11 @@ const CreationMetaData: React.FC<Props> = ({
           version: effectiveVersion,
         };
 
-        if (!res.valid) {
+        if (res.error?.code === "not-supported") {
+          // Uniqueness validation is no longer supported by the platform;
+          // treat it as non-blocking instead of an "already exists" failure.
+          setNameVersionError(null);
+        } else if (!res.valid) {
           setNameVersionError(
             `API with name ${effectiveName} and version ${effectiveVersion} already exists.`
           );
@@ -240,7 +244,11 @@ const CreationMetaData: React.FC<Props> = ({
         const res = await validateIdentifier(effectiveIdentifier);
         lastCheckedIdentifierRef.current = effectiveIdentifier;
 
-        if (!res.valid) {
+        if (res.error?.code === "not-supported") {
+          // Uniqueness validation is no longer supported by the platform;
+          // treat it as non-blocking instead of an "already exists" failure.
+          setIdentifierError(null);
+        } else if (!res.valid) {
           setIdentifierError(
             `API with identifier ${effectiveIdentifier} already exists.`
           );
