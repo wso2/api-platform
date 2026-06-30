@@ -188,15 +188,16 @@ func TestUpdateGatewayEndpoints(t *testing.T) {
 		{Host: "old.example.com", Protocol: "https", Port: 8080},
 	}
 
-	existingGateway := &model.Gateway{
-		ID:             gatewayID,
-		OrganizationID: orgID,
-		Name:           "my-gateway",
-		Endpoints:      existingEndpoints,
-	}
-
 	newService := func() (*GatewayService, *mockGatewayRepository) {
-		repo := &mockGatewayRepository{getByUUIDResult: existingGateway}
+		eps := make([]model.GatewayEndpoint, len(existingEndpoints))
+		copy(eps, existingEndpoints)
+		gw := &model.Gateway{
+			ID:             gatewayID,
+			OrganizationID: orgID,
+			Name:           "my-gateway",
+			Endpoints:      eps,
+		}
+		repo := &mockGatewayRepository{getByUUIDResult: gw}
 		svc := &GatewayService{
 			gatewayRepo: repo,
 			auditRepo:   &noopAuditRepo{},
