@@ -119,7 +119,7 @@ func buildWebBrokerCreateRequest() *api.WebBrokerAPI {
 
 	return &api.WebBrokerAPI{
 		Id:        &handle,
-		Name:      "stock-trading",
+		DisplayName:      "stock-trading",
 		Version:   "v1.0",
 		ProjectId: "project-uuid",
 		Context:   &ctx,
@@ -219,8 +219,8 @@ func TestWebBrokerAPI_Get(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
-	if resp.Name != "stock-trading" {
-		t.Errorf("expected name 'stock-trading', got %q", resp.Name)
+	if resp.DisplayName != "stock-trading" {
+		t.Errorf("expected name 'stock-trading', got %q", resp.DisplayName)
 	}
 	if resp.Version != "v1.0" {
 		t.Errorf("expected version 'v1.0', got %q", resp.Version)
@@ -239,7 +239,7 @@ func TestWebBrokerAPI_Update(t *testing.T) {
 	}
 
 	updateReq := buildWebBrokerCreateRequest()
-	updateReq.Name = "updated-trading"
+	updateReq.DisplayName = "updated-trading"
 	_, err = svc.Update("org-uuid", "stock-trading-v1-0", "test-user", updateReq)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
@@ -249,8 +249,8 @@ func TestWebBrokerAPI_Update(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after Update failed: %v", err)
 	}
-	if resp.Name != "updated-trading" {
-		t.Errorf("expected updated name 'updated-trading', got %q", resp.Name)
+	if resp.DisplayName != "updated-trading" {
+		t.Errorf("expected updated name 'updated-trading', got %q", resp.DisplayName)
 	}
 }
 
@@ -304,7 +304,7 @@ func TestWebBrokerAPI_ListPagination(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		req := buildWebBrokerCreateRequest()
 		name := fmt.Sprintf("api-%d", i)
-		req.Name = name
+		req.DisplayName = name
 		handle := fmt.Sprintf("api-%d-v1-0", i)
 		req.Id = &handle
 		_, err := svc.Create("org-uuid", "alice", req)

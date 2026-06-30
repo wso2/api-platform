@@ -822,7 +822,7 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 	proj := importTestProjectID
 	if _, err := svc.Create(importTestOrgID, "tester", &api.MCPProxy{
 		Id:        "cp-mcp",
-		Name:      "CP MCP",
+		DisplayName:      "CP MCP",
 		Version:   "v1.0",
 		ProjectId: &proj,
 		Upstream:  api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
@@ -886,7 +886,7 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{})
 		mustImport(t, d, dpTemplateReq("dp-t", "blk-tmpl", "T"))
-		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
+		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{DisplayName: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("Template Update(DP) = %v, want ErrArtifactReadOnly", err)
 		}
 	})
@@ -897,7 +897,7 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
 		mustImport(t, d, dpTemplateReq("dp-t", "p-tmpl", "T"))
 		mustImport(t, d, dpProviderReq("dp-p", "blk-prov", "P", "p-tmpl"))
-		if _, err := svc.Update(importTestOrgID, "blk-prov", "tester", &api.LLMProvider{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
+		if _, err := svc.Update(importTestOrgID, "blk-prov", "tester", &api.LLMProvider{DisplayName: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("Provider Update(DP) = %v, want ErrArtifactReadOnly", err)
 		}
 	})
@@ -910,7 +910,7 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 		mustImport(t, d, dpProviderReq("dp-p", "px-prov", "P", "px-tmpl"))
 		mustImport(t, d, dpProxyReq("dp-x", "blk-proxy", "X", "px-prov"))
 		if _, err := svc.Update(importTestOrgID, "blk-proxy", "tester", &api.LLMProxy{
-			Name: "Hacked", Version: "v2", Provider: api.LLMProxyProvider{Id: "px-prov"},
+			DisplayName: "Hacked", Version: "v2", Provider: api.LLMProxyProvider{Id: "px-prov"},
 		}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("Proxy Update(DP) = %v, want ErrArtifactReadOnly", err)
 		}
@@ -922,7 +922,7 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
 		mustImport(t, d, dpMCPReq("dp-m", "blk-mcp", "M"))
 		if _, err := svc.Update(importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{
-			Id: "blk-mcp", Name: "Hacked", Version: "v2",
+			Id: "blk-mcp", DisplayName: "Hacked", Version: "v2",
 			Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
 		}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("MCP Update(DP) = %v, want ErrArtifactReadOnly", err)

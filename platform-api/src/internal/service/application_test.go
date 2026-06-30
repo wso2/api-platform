@@ -802,7 +802,7 @@ func TestCreateApplication_RequiresProjectID(t *testing.T) {
 	}
 
 	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
-		Name: "Sample App",
+		DisplayName: "Sample App",
 		Type: api.ApplicationType("genai"),
 	}, orgID, "")
 	if !errors.Is(err, constants.ErrProjectNotFound) {
@@ -833,7 +833,7 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 
 	projectUUID := openapi_types.UUID(uuid.MustParse("11111111-1111-1111-1111-111111111111"))
 	_, err := svc.CreateApplication(&api.CreateApplicationRequest{
-		Name:      "Sample App",
+		DisplayName:      "Sample App",
 		ProjectId: projectUUID,
 		Type:      api.ApplicationType("genai"),
 	}, orgID, "")

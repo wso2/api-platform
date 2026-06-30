@@ -56,7 +56,7 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if strings.TrimSpace(req.Name) == "" {
+	if strings.TrimSpace(req.DisplayName) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
 		return
 	}

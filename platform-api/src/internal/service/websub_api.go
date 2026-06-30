@@ -69,7 +69,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if utils.ValueOrEmpty(req.Id) == "" || req.Name == "" || req.Version == "" {
+	if utils.ValueOrEmpty(req.Id) == "" || req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if req.ProjectId == "" {
@@ -132,14 +132,14 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		Handle:           handle,
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
 		Origin: constants.OriginCP,
 		Configuration: model.WebSubAPIConfiguration{
-			Name:              req.Name,
+			Name:              req.DisplayName,
 			Version:           req.Version,
 			Context:           req.Context,
 			Transport:         transport,
@@ -222,7 +222,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" || req.Version == "" {
+	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	// Get existing
@@ -256,13 +256,13 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	existing.Name = req.Name
+	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.UpdatedBy = updatedBy
 	existing.LifeCycleStatus = lifeCycleStatus
 	existing.Configuration = model.WebSubAPIConfiguration{
-		Name:              req.Name,
+		Name:              req.DisplayName,
 		Version:           req.Version,
 		Context:           req.Context,
 		Transport:         transport,
@@ -374,7 +374,7 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 
 	result := &api.WebSubAPI{
 		Id:                utils.StringPtrIfNotEmpty(m.Handle),
-		Name:              m.Name,
+		DisplayName:       m.Name,
 		Version:           m.Version,
 		ProjectId:         m.ProjectUUID,
 		Description:       &desc,
@@ -529,7 +529,7 @@ func mapWebSubAPIModelToListItem(m *model.WebSubAPI) *api.WebSubAPIListItem {
 
 	return &api.WebSubAPIListItem{
 		Id:              utils.StringPtrIfNotEmpty(m.Handle),
-		Name:            utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:     utils.StringPtrIfNotEmpty(m.Name),
 		Version:         utils.StringPtrIfNotEmpty(m.Version),
 		ProjectId:       utils.StringPtrIfNotEmpty(m.ProjectUUID),
 		Context:         m.Configuration.Context,

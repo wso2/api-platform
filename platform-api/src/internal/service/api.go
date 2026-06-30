@@ -101,9 +101,9 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	} else {
 		// Generate handle from API name with collision detection
 		var err error
-		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgUUID))
+		handle, err = utils.GenerateHandle(req.DisplayName, s.HandleExistsCheck(orgUUID))
 		if err != nil {
-			s.slogger.Error("Failed to generate API handle", "apiName", req.Name, "error", err)
+			s.slogger.Error("Failed to generate API handle", "apiName", req.DisplayName, "error", err)
 			return nil, err
 		}
 	}
@@ -134,7 +134,7 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	apiModel := s.apiUtil.RESTAPIToModel(apiREST, orgUUID)
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
-		s.slogger.Error("Failed to create API in repository", "apiName", req.Name, "error", err)
+		s.slogger.Error("Failed to create API in repository", "apiName", req.DisplayName, "error", err)
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
 
@@ -484,7 +484,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 			return constants.ErrHandleExists
 		}
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return constants.ErrInvalidAPIName
 	}
 	if !s.isValidContext(req.Context) {
@@ -497,7 +497,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		return errors.New("project id is required")
 	}
 
-	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID, "")
+	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName, req.Version, orgUUID, "")
 	if err != nil {
 		return err
 	}
@@ -591,8 +591,8 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 	}
 
 	// Update fields (only allow certain fields to be updated)
-	if req.Name != "" {
-		existingAPI.Name = req.Name
+	if req.DisplayName != "" {
+		existingAPI.DisplayName = req.DisplayName
 	}
 	if req.Description != nil {
 		existingAPI.Description = req.Description
@@ -627,8 +627,8 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 
 // validateUpdateAPIRequest checks the validity of the update API request
 func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *api.UpdateRESTAPIRequest, orgUUID string) error {
-	if req.Name != "" {
-		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name,
+	if req.DisplayName != "" {
+		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName,
 			existingAPIModel.Version, orgUUID, existingAPIModel.Handle)
 		if err != nil {
 			return err
@@ -803,7 +803,7 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 		Id:                utils.StringPtrIfNotEmpty(handle),
 		Kind:              req.Kind,
 		LifeCycleStatus:   lifecycle,
-		Name:              req.Name,
+		DisplayName:       req.DisplayName,
 		Operations:        req.Operations,
 		Policies:          req.Policies,
 		ProjectId:         req.ProjectId,

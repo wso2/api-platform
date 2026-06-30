@@ -1284,7 +1284,7 @@ func TestLLMProviderServiceUpdatePreservesUpstreamAuthValue(t *testing.T) {
 	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	request := validProviderRequest("openai")
-	request.Name = "Updated Provider"
+	request.DisplayName = "Updated Provider"
 	request.Upstream.Main.Auth = &api.UpstreamAuth{
 		Type:   upstreamAuthTypePtr("api-key"),
 		Header: stringPtr("Authorization"),
@@ -1405,7 +1405,7 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	request := validProxyRequest("provider-1", "project-1")
-	request.Name = "Updated Proxy"
+	request.DisplayName = "Updated Proxy"
 	request.Provider.Auth = &api.UpstreamAuth{
 		Type:   upstreamAuthTypePtr("api-key"),
 		Header: stringPtr("Authorization"),
@@ -1427,7 +1427,7 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 func validProviderRequest(template string) *api.LLMProvider {
 	return &api.LLMProvider{
 		Id:       "provider-1",
-		Name:     "Test Provider",
+		DisplayName:     "Test Provider",
 		Version:  "v1.0",
 		Template: template,
 		Upstream: api.Upstream{
@@ -1440,7 +1440,7 @@ func validProviderRequest(template string) *api.LLMProvider {
 func validProxyRequest(providerID, projectID string) *api.LLMProxy {
 	return &api.LLMProxy{
 		Id:        "proxy-1",
-		Name:      "Test Proxy",
+		DisplayName:      "Test Proxy",
 		Version:   "v1.0",
 		ProjectId: projectID,
 		Provider: api.LLMProxyProvider{

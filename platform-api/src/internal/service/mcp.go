@@ -78,7 +78,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" {
+	if req.Id == "" || req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -134,12 +134,12 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		Handle:           req.Id,
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		Configuration: model.MCPProxyConfiguration{
-			Name:         req.Name,
+			Name:         req.DisplayName,
 			Version:      req.Version,
 			Context:      req.Context,
 			Vhost:        req.Vhost,
@@ -246,7 +246,7 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if req.Id != "" && req.Id != handle {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" || req.Version == "" {
+	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -282,12 +282,12 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	existingUpstreamConfig := existing.Configuration.Upstream
 
 	// Update fields
-	existing.Name = req.Name
+	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.UpdatedBy = updatedBy
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
-		Name:         req.Name,
+		Name:         req.DisplayName,
 		Version:      req.Version,
 		Context:      req.Context,
 		Vhost:        req.Vhost,
@@ -484,7 +484,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 
 	return &api.MCPProxy{
 		Id:             m.Handle,
-		Name:           m.Name,
+		DisplayName:    m.Name,
 		Description:    &desc,
 		CreatedBy:      &createdBy,
 		Version:        m.Version,
@@ -508,7 +508,7 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 
 	return &api.MCPProxyListItem{
 		Id:             utils.StringPtrIfNotEmpty(m.Handle),
-		Name:           utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:    utils.StringPtrIfNotEmpty(m.Name),
 		Description:    utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:        utils.StringPtrIfNotEmpty(m.Version),

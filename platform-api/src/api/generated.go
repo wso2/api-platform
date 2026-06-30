@@ -577,11 +577,11 @@ type Application struct {
 	// Description Description of the application
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Display name of the application
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Application handle/identifier
 	Id string `binding:"required" json:"id" yaml:"id"`
-
-	// Name Name of the application
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// ProjectId UUID of the project this application belongs to
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
@@ -596,14 +596,14 @@ type ApplicationAssociation struct {
 	// CreatedAt Timestamp when the association was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// DisplayName Display name of the associated target
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Handle/ID of the associated target
 	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// Kind Type of associated target
 	Kind string `binding:"required" json:"kind" yaml:"kind"`
-
-	// Name Display name of the associated target
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// UpdatedAt Timestamp when the association was updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -759,11 +759,11 @@ type CreateApplicationRequest struct {
 	// Description Description of the application
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Display name of the application
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle/identifier for the application. Can be provided during creation or auto-generated.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-	// Name Name of the application
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// ProjectId UUID of the project this application belongs to.
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
@@ -844,12 +844,12 @@ type CreateLLMProviderTemplateVersionRequest struct {
 	// Description Description of the LLM provider template
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM Template name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// ManagedBy Identifies who manages the template. Custom templates default to 'customer'.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-
-	// Name Human-readable LLM Template name
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
@@ -926,6 +926,9 @@ type CreateRESTAPIRequest struct {
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Display name of the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
@@ -934,9 +937,6 @@ type CreateRESTAPIRequest struct {
 
 	// LifeCycleStatus Current lifecycle status of the API
 	LifeCycleStatus *CreateRESTAPIRequestLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-	// Name Display name of the API
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Operations List of operations exposed by this API
 	Operations *[]Operation `json:"operations,omitempty" yaml:"operations,omitempty"`
@@ -1305,23 +1305,23 @@ type LLMModel struct {
 	// Description Model description
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable model name
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
 	// Id Unique model identifier
 	Id string `binding:"required" json:"id" yaml:"id"`
-
-	// Name Human-readable model name
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
 // LLMModelProvider defines model for LLMModelProvider.
 type LLMModelProvider struct {
+	// DisplayName Human-readable model provider name
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
 	// Id Unique model provider identifier
 	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// Models Models under this model provider
 	Models *[]LLMModel `json:"models,omitempty" yaml:"models,omitempty"`
-
-	// Name Human-readable model provider name
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
 // LLMPolicy defines model for LLMPolicy.
@@ -1362,6 +1362,9 @@ type LLMProvider struct {
 	// Description Description of the LLM provider
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM Provider name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
 
@@ -1370,9 +1373,6 @@ type LLMProvider struct {
 
 	// ModelProviders List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureaifoundry).
 	ModelProviders *[]LLMModelProvider `json:"modelProviders,omitempty" yaml:"modelProviders,omitempty"`
-
-	// Name Human-readable LLM Provider name
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Openapi OpenAPI specification (JSON or YAML) for the provider endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
@@ -1423,8 +1423,8 @@ type LLMProviderListItem struct {
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Name        *string    `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly  *bool                      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -1457,6 +1457,9 @@ type LLMProviderTemplate struct {
 	// Description Description of the LLM provider template
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM Template name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Enabled Whether this version is offered when creating providers. Disabled
 	// versions stay in the catalog but are hidden from the provider picker.
 	// Response-only: create/update default new versions to enabled; toggle
@@ -1479,9 +1482,6 @@ type LLMProviderTemplate struct {
 	// omitted, so a request/YAML without a managedBy is accepted.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-
-	// Name Human-readable LLM Template name
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
@@ -1527,6 +1527,7 @@ type LLMProviderTemplateListItem struct {
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
 	// Enabled Whether this version is offered when creating providers.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
@@ -1544,7 +1545,6 @@ type LLMProviderTemplateListItem struct {
 
 	// ManagedBy Who manages the template ('wso2' for built-in, otherwise custom-defined).
 	ManagedBy *string `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
-	Name      *string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -1610,14 +1610,14 @@ type LLMProxy struct {
 	// Description Description of the LLM proxy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM proxy name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
 
 	// Id Unique handle for the proxy
 	Id string `binding:"required" json:"id" yaml:"id"`
-
-	// Name Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
@@ -1665,8 +1665,8 @@ type LLMProxyListItem struct {
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Name        *string    `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
@@ -1727,6 +1727,9 @@ type MCPProxy struct {
 	// Description Description of the MCP proxy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable MCP proxy name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle for the proxy
 	Id string `binding:"required" json:"id" yaml:"id"`
 
@@ -1735,9 +1738,6 @@ type MCPProxy struct {
 
 	// McpSpecVersion MCP specification version supported by this proxy
 	McpSpecVersion *MCPProxyMcpSpecVersion `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
-
-	// Name Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Policies List of policies to be applied
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -1783,9 +1783,9 @@ type MCPProxyListItem struct {
 	CreatedAt      *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy      *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description    *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName    *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Id             *string    `json:"id,omitempty" yaml:"id,omitempty"`
 	McpSpecVersion *string    `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
-	Name           *string    `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
@@ -2067,6 +2067,9 @@ type RESTAPI struct {
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Display name of the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
@@ -2075,9 +2078,6 @@ type RESTAPI struct {
 
 	// LifeCycleStatus Current lifecycle status of the API
 	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-	// Name Display name of the API
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Operations List of operations exposed by this API
 	Operations *[]Operation `json:"operations,omitempty" yaml:"operations,omitempty"`
@@ -2523,8 +2523,8 @@ type UpdateApplicationRequest struct {
 	// Description Description of the application
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Name Name of the application
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+	// DisplayName Display name of the application
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
 	// Type Type of the application
 	Type *ApplicationType `json:"type,omitempty" yaml:"type,omitempty"`
@@ -2704,6 +2704,9 @@ type WebBrokerAPI struct {
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable name for the WebBroker API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle for the WebBroker API
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
@@ -2712,9 +2715,6 @@ type WebBrokerAPI struct {
 
 	// LifeCycleStatus Lifecycle status of the WebBroker API
 	LifeCycleStatus *WebBrokerAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-	// Name Human-readable name for the WebBroker API
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
@@ -2756,9 +2756,9 @@ type WebBrokerAPITransport string
 type WebBrokerAPIListItem struct {
 	Context         *string                              `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt       *time.Time                           `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName     *string                              `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Id              *string                              `json:"id,omitempty" yaml:"id,omitempty"`
 	LifeCycleStatus *WebBrokerAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            *string                              `json:"name,omitempty" yaml:"name,omitempty"`
 	ProjectId       *string                              `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
@@ -2833,6 +2833,9 @@ type WebSubAPI struct {
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable name for the WebSub API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle for the WebSub API
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
@@ -2841,9 +2844,6 @@ type WebSubAPI struct {
 
 	// LifeCycleStatus Lifecycle status of the WebSub API
 	LifeCycleStatus *WebSubAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-	// Name Human-readable name for the WebSub API
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
@@ -2926,9 +2926,9 @@ type WebSubAPIHmacSecretRequest struct {
 type WebSubAPIListItem struct {
 	Context         *string                           `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt       *time.Time                        `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName     *string                           `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Id              *string                           `json:"id,omitempty" yaml:"id,omitempty"`
 	LifeCycleStatus *WebSubAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            *string                           `json:"name,omitempty" yaml:"name,omitempty"`
 	ProjectId       *string                           `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.

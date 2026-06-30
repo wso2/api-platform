@@ -88,7 +88,7 @@ func NewApplicationService(
 }
 
 func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID, createdBy string) (*api.Application, error) {
-	if strings.TrimSpace(req.Name) == "" {
+	if strings.TrimSpace(req.DisplayName) == "" {
 		return nil, constants.ErrInvalidApplicationName
 	}
 	appType, err := normalizeApplicationType(string(req.Type))
@@ -117,7 +117,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		return nil, constants.ErrProjectNotFound
 	}
 
-	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.Name), projectID, orgID)
+	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.DisplayName), projectID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 
 	handle := strings.TrimSpace(valueOrEmptyApplication(req.Id))
 	if handle == "" {
-		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgID))
+		handle, err = utils.GenerateHandle(req.DisplayName, s.HandleExistsCheck(orgID))
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +155,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		OrganizationUUID: orgID,
 		CreatedBy:        actor,
 		UpdatedBy:        actor,
-		Name:             strings.TrimSpace(req.Name),
+		Name:             strings.TrimSpace(req.DisplayName),
 		Description:      strings.TrimSpace(valueOrEmptyApplication(req.Description)),
 		Type:             appType,
 	}
@@ -261,8 +261,8 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		return nil, constants.ErrApplicationNotFound
 	}
 
-	if req.Name != nil {
-		name := strings.TrimSpace(*req.Name)
+	if req.DisplayName != nil {
+		name := strings.TrimSpace(*req.DisplayName)
 		if name == "" {
 			return nil, constants.ErrInvalidApplicationName
 		}
@@ -797,7 +797,7 @@ func (s *ApplicationService) modelToApplicationResponse(app *model.Application) 
 
 	return &api.Application{
 		Id:          app.Handle,
-		Name:        app.Name,
+		DisplayName: app.Name,
 		ProjectId:   projectID,
 		Type:        api.ApplicationType(app.Type),
 		Description: utils.StringPtrIfNotEmpty(app.Description),

@@ -6504,7 +6504,7 @@ components:
       description: Request body for creating an application.
       type: object
       required:
-        - name
+        - displayName
         - projectId
         - type
       properties:
@@ -6512,10 +6512,10 @@ components:
           type: string
           description: Unique handle/identifier for the application. Can be provided during creation or auto-generated.
           example: my-app-handle
-        name:
+        displayName:
           type: string
           minLength: 1
-          description: Name of the application
+          description: Display name of the application
           example: "GenAI Demo App"
         projectId:
           type: string
@@ -6536,10 +6536,10 @@ components:
     UpdateApplicationRequest:
       type: object
       properties:
-        name:
+        displayName:
           type: string
           minLength: 1
-          description: Name of the application
+          description: Display name of the application
           example: "Updated GenAI App"
         description:
           type: string
@@ -6552,7 +6552,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - projectId
         - type
       properties:
@@ -6560,9 +6560,9 @@ components:
           type: string
           description: Application handle/identifier
           example: "my-app-handle"
-        name:
+        displayName:
           type: string
-          description: Name of the application
+          description: Display name of the application
           example: "GenAI Demo App"
         projectId:
           type: string
@@ -6653,7 +6653,7 @@ components:
       required:
         - id
         - uuid
-        - name
+        - displayName
         - version
         - kind
       properties:
@@ -6666,7 +6666,7 @@ components:
           format: uuid
           description: UUID of the associated target
           example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
-        name:
+        displayName:
           type: string
           description: Display name of the associated target
           example: "OpenAI Provider"
@@ -6802,7 +6802,7 @@ components:
     RESTAPI:
       title: API object
       required:
-        - name
+        - displayName
         - context
         - version
         - projectId
@@ -6813,7 +6813,7 @@ components:
           type: string
           description: Unique handle/identifier for the API. Can be provided during creation or auto-generated.
           example: my-rest-api-handle
-        name:
+        displayName:
           minLength: 1
           description: Display name of the API
           pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
@@ -7536,7 +7536,7 @@ components:
         - $ref: '#/components/schemas/RESTAPI'
         - type: object
           required:
-            - name
+            - displayName
             - context
             - version
             - projectId
@@ -8364,7 +8364,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - version
       properties:
         id:
@@ -8380,7 +8380,7 @@ components:
           readOnly: true
           maxLength: 40
           example: openai
-        name:
+        displayName:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
@@ -8486,10 +8486,10 @@ components:
     CreateLLMProviderTemplateVersionRequest:
       type: object
       required:
-        - name
+        - displayName
         - version
       properties:
-        name:
+        displayName:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
@@ -8550,7 +8550,7 @@ components:
           readOnly: true
           maxLength: 40
           example: openai
-        name:
+        displayName:
           type: string
           example: OpenAI
         managedBy:
@@ -8908,7 +8908,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - version
         - template
         - upstream
@@ -8918,7 +8918,7 @@ components:
           type: string
           description: Unique handle for the provider
           example: wso2-openai-provider
-        name:
+        displayName:
           type: string
           description: Human-readable LLM Provider name
           minLength: 1
@@ -9063,7 +9063,7 @@ components:
         id:
           type: string
           example: wso2-openai-provider
-        name:
+        displayName:
           type: string
           example: WSO2 OpenAI Provider
         description:
@@ -9107,7 +9107,7 @@ components:
           type: string
           description: Unique model provider identifier
           example: claude
-        name:
+        displayName:
           type: string
           description: Human-readable model provider name
           example: Claude
@@ -9126,7 +9126,7 @@ components:
           type: string
           description: Unique model identifier
           example: claude-3-5-sonnet
-        name:
+        displayName:
           type: string
           description: Human-readable model name
           example: Claude 3.5 Sonnet
@@ -9156,7 +9156,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - version
         - projectId
         - provider
@@ -9165,13 +9165,13 @@ components:
           type: string
           description: Unique handle for the proxy
           example: wso2-con-assistant
-        name:
+        displayName:
           type: string
-          description: Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          description: Human-readable LLM proxy name
           minLength: 1
           maxLength: 253
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: wso2-con-assistant
+          example: WSO2 Con Assistant
         description:
           type: string
           description: Description of the LLM proxy
@@ -9273,7 +9273,7 @@ components:
         id:
           type: string
           example: wso2-con-assistant
-        name:
+        displayName:
           type: string
           example: WSO2 Con Assistant
         description:
@@ -9461,7 +9461,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - version
         - upstream
       properties:
@@ -9469,9 +9469,9 @@ components:
           type: string
           description: Unique handle for the proxy
           example: weather-mcp-proxy
-        name:
+        displayName:
           type: string
-          description: Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          description: Human-readable MCP proxy name
           minLength: 1
           maxLength: 253
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
@@ -9569,7 +9569,7 @@ components:
         id:
           type: string
           example: weather-mcp-proxy
-        name:
+        displayName:
           type: string
           example: Weather Server
         description:
@@ -9693,7 +9693,7 @@ components:
     WebSubAPI:
       type: object
       required:
-        - name
+        - displayName
         - version
         - projectId
         - upstream
@@ -9703,7 +9703,7 @@ components:
           type: string
           description: Unique handle for the WebSub API
           example: my-websub-api
-        name:
+        displayName:
           type: string
           description: Human-readable name for the WebSub API
           minLength: 1
@@ -9791,7 +9791,7 @@ components:
         id:
           type: string
           example: my-websub-api
-        name:
+        displayName:
           type: string
           example: My WebSub API
         version:
@@ -9968,7 +9968,7 @@ components:
     WebBrokerAPI:
       type: object
       required:
-        - name
+        - displayName
         - version
         - projectId
         - receiver
@@ -9979,7 +9979,7 @@ components:
           type: string
           description: Unique handle for the WebBroker API
           example: my-webbroker-api
-        name:
+        displayName:
           type: string
           description: Human-readable name for the WebBroker API
           minLength: 1
@@ -10101,7 +10101,7 @@ components:
         id:
           type: string
           example: my-webbroker-api
-        name:
+        displayName:
           type: string
           example: My WebBroker API
         version:

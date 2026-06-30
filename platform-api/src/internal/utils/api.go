@@ -73,7 +73,7 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 
 	apiModel := &model.API{
 		Handle:          handle,
-		Name:            restAPI.Name,
+		Name:            restAPI.DisplayName,
 		Kind:            kind,
 		Description:     description,
 		Version:         restAPI.Version,
@@ -83,7 +83,7 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 		LifeCycleStatus: lifeCycleStatus,
 		Channels:        u.ChannelsAPIToModel(restAPI.Channels),
 		Configuration: model.RestAPIConfig{
-			Name:              restAPI.Name,
+			Name:              restAPI.DisplayName,
 			Version:           restAPI.Version,
 			Context:           &restAPI.Context,
 			Transport:         stringSliceValue(restAPI.Transport),
@@ -132,7 +132,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
 		Id:                StringPtrIfNotEmpty(modelAPI.Handle),
 		Kind:              StringPtrIfNotEmpty(modelAPI.Kind),
 		LifeCycleStatus:   status,
-		Name:              modelAPI.Name,
+		DisplayName:       modelAPI.Name,
 		Operations:        u.OperationsModelToAPI(modelAPI.Configuration.Operations),
 		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
 		ProjectId:         *projectID,
@@ -570,7 +570,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error)
 
 func (u *APIUtil) buildInfoSectionFromRESTAPI(restAPI *api.RESTAPI) dto.Info {
 	info := dto.Info{}
-	info.Title = restAPI.Name
+	info.Title = restAPI.DisplayName
 	info.Version = restAPI.Version
 
 	if restAPI.Description != nil {
@@ -781,7 +781,7 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 
 	// Create and populate generated RESTAPI model with available fields
 	restAPI := &api.RESTAPI{
-		Name:            yamlData.DisplayName,
+		DisplayName:     yamlData.DisplayName,
 		Context:         yamlData.Context,
 		Version:         yamlData.Version,
 		Operations:      &operations,

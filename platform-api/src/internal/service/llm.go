@@ -128,11 +128,11 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
-	baseHandle, err := utils.GenerateHandle(req.Name, nil)
+	baseHandle, err := utils.GenerateHandle(req.DisplayName, nil)
 	if err != nil || baseHandle == "" {
 		return nil, constants.ErrInvalidInput
 	}
@@ -162,7 +162,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		ID:               handle,
 		GroupID:          baseHandle,
 		Version:          version,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		ManagedBy:        defaultTemplateManagedBy(req.ManagedBy),
 		CreatedBy:        createdBy,
@@ -245,7 +245,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if req.Id != "" && req.Id != handle {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
@@ -284,7 +284,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		UpdatedBy:        updatedBy,
 		ManagedBy:        managedBy,
@@ -315,7 +315,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to resolve template family: %w", baseErr)
 	}
 	if base != "" {
-		if err := s.repo.RenameFamily(base, orgUUID, req.Name); err != nil {
+		if err := s.repo.RenameFamily(base, orgUUID, req.DisplayName); err != nil {
 			return nil, fmt.Errorf("failed to propagate template name: %w", err)
 		}
 	}
@@ -350,7 +350,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	version, ok := normalizeTemplateVersion(req.Version)
@@ -375,7 +375,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		OrganizationUUID: orgUUID,
 		ID:               makeTemplateHandle(baseHandle, version),
 		GroupID:          baseHandle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		ManagedBy:        managedBy,
 		CreatedBy:        createdBy,
@@ -592,7 +592,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" || req.Template == "" {
+	if req.Id == "" || req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
@@ -673,7 +673,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               req.Id,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
@@ -753,7 +753,7 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		template := utils.StringPtrIfNotEmpty(tplHandle)
 		resp.List = append(resp.List, api.LLMProviderListItem{
 			Id:          &id,
-			Name:        &name,
+			DisplayName: &name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Version:     &version,
@@ -810,7 +810,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
 		return nil, err
 	}
-	if req.Name == "" || req.Version == "" || req.Template == "" {
+	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
@@ -847,7 +847,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		UpdatedBy:        updatedBy,
 		Version:          req.Version,
@@ -956,7 +956,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
+	if req.Id == "" || req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if s.projectRepo != nil {
@@ -999,7 +999,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
 		ID:               req.Id,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
@@ -1091,7 +1091,7 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
-			Name:        &name,
+			DisplayName: &name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Context:     contextValue,
@@ -1153,7 +1153,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
-			Name:        &name,
+			DisplayName: &name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Context:     contextValue,
@@ -1189,7 +1189,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	if req.Id != "" && req.Id != handle {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" || req.Version == "" || req.Provider.Id == "" {
+	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -1218,7 +1218,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		UpdatedBy:        updatedBy,
 		Version:          req.Version,
@@ -1958,7 +1958,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 	return api.LLMProviderTemplateListItem{
 		Id:          &id,
 		GroupId:     utils.StringPtrIfNotEmpty(t.GroupID),
-		Name:        &name,
+		DisplayName: &name,
 		Description: utils.StringPtrIfNotEmpty(t.Description),
 		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
 		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
@@ -1981,7 +1981,7 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 	return &api.LLMProviderTemplate{
 		Id:               m.ID,
 		GroupId:          utils.StringPtrIfNotEmpty(m.GroupID),
-		Name:             m.Name,
+		DisplayName:      m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
 		ManagedBy:        utils.StringPtrIfNotEmpty(m.ManagedBy),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
@@ -2203,7 +2203,7 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 
 	out := &api.LLMProvider{
 		Id:                m.ID,
-		Name:              m.Name,
+		DisplayName:       m.Name,
 		Description:       utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:         utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:           m.Version,
@@ -2277,10 +2277,10 @@ func mapModelProvidersAPI(in *[]api.LLMModelProvider) []model.LLMModelProvider {
 		if p.Models != nil {
 			models = make([]model.LLMModel, 0, len(*p.Models))
 			for _, m := range *p.Models {
-				models = append(models, model.LLMModel{ID: m.Id, Name: utils.ValueOrEmpty(m.Name), Description: utils.ValueOrEmpty(m.Description)})
+				models = append(models, model.LLMModel{ID: m.Id, Name: utils.ValueOrEmpty(m.DisplayName), Description: utils.ValueOrEmpty(m.Description)})
 			}
 		}
-		out = append(out, model.LLMModelProvider{ID: p.Id, Name: utils.ValueOrEmpty(p.Name), Models: models})
+		out = append(out, model.LLMModelProvider{ID: p.Id, Name: utils.ValueOrEmpty(p.DisplayName), Models: models})
 	}
 	return out
 }
@@ -2293,10 +2293,10 @@ func mapModelProvidersModelToAPI(in []model.LLMModelProvider) *[]api.LLMModelPro
 	for _, p := range in {
 		models := make([]api.LLMModel, 0, len(p.Models))
 		for _, m := range p.Models {
-			models = append(models, api.LLMModel{Id: m.ID, Name: utils.StringPtrIfNotEmpty(m.Name), Description: utils.StringPtrIfNotEmpty(m.Description)})
+			models = append(models, api.LLMModel{Id: m.ID, DisplayName: utils.StringPtrIfNotEmpty(m.Name), Description: utils.StringPtrIfNotEmpty(m.Description)})
 		}
 		modelsPtr := &models
-		out = append(out, api.LLMModelProvider{Id: p.ID, Name: utils.StringPtrIfNotEmpty(p.Name), Models: modelsPtr})
+		out = append(out, api.LLMModelProvider{Id: p.ID, DisplayName: utils.StringPtrIfNotEmpty(p.Name), Models: modelsPtr})
 	}
 	return &out
 }
@@ -2530,7 +2530,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 	updatedAt := utils.TimePtr(m.UpdatedAt)
 	out := &api.LLMProxy{
 		Id:          m.ID,
-		Name:        m.Name,
+		DisplayName: m.Name,
 		Description: utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:   utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:     m.Version,

@@ -62,7 +62,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API name is required"))
 		return

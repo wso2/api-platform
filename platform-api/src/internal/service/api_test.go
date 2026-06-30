@@ -84,7 +84,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:                       &api.UpdateRESTAPIRequest{Name: "Updated Name"},
+			req:                       &api.UpdateRESTAPIRequest{DisplayName: "Updated Name"},
 			mockNameVersionExists:     false,
 			wantErr:                   false,
 			expectedExcludeHandle:     "my-api",
@@ -96,7 +96,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:                   &api.UpdateRESTAPIRequest{Name: "Conflicting Name"},
+			req:                   &api.UpdateRESTAPIRequest{DisplayName: "Conflicting Name"},
 			mockNameVersionExists: true,
 			wantErr:               true,
 			expectedErr:           constants.ErrAPINameVersionAlreadyExists,
@@ -215,7 +215,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid create request",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -230,7 +230,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 			name: "handle already exists",
 			req: &api.CreateRESTAPIRequest{
 				Id:        ptr("my-handle"),
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -243,7 +243,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "name version already exists",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -258,7 +258,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "missing name",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "",
+				DisplayName:      "",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -270,7 +270,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "missing project id",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: openapi_types.UUID{},
@@ -282,7 +282,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid context",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "invalid",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -294,7 +294,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid version",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "",
 				ProjectId: projectID,
@@ -306,7 +306,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid lifecycle state",
 			req: &api.CreateRESTAPIRequest{
-				Name:            "Test API",
+				DisplayName:            "Test API",
 				Context:         "/test",
 				Version:         "v1",
 				ProjectId:       projectID,
@@ -319,7 +319,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid api type",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -332,7 +332,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid transport",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -345,7 +345,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid lifecycle state",
 			req: &api.CreateRESTAPIRequest{
-				Name:            "Test API",
+				DisplayName:            "Test API",
 				Context:         "/test",
 				Version:         "v1",
 				ProjectId:       projectID,
@@ -360,7 +360,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid api type",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,
@@ -375,7 +375,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid transport",
 			req: &api.CreateRESTAPIRequest{
-				Name:      "Test API",
+				DisplayName:      "Test API",
 				Context:   "/test",
 				Version:   "v1",
 				ProjectId: projectID,

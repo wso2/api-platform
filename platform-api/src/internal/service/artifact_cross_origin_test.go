@@ -273,7 +273,7 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 
 	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
 		Id:            "cp-provider",
-		Name:          "CP Provider",
+		DisplayName:          "CP Provider",
 		Version:       "v1.0",
 		Template:      templateHandle, // references the DP template
 		Upstream:      api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.openai.com")}},
@@ -314,7 +314,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
 		Id:        "cp-proxy",
-		Name:      "CP Proxy",
+		DisplayName:      "CP Proxy",
 		Version:   "v1.0",
 		ProjectId: importTestProjectID,
 		Provider:  api.LLMProxyProvider{Id: providerHandle}, // references the DP provider

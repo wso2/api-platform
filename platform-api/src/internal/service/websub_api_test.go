@@ -108,7 +108,7 @@ func buildCreateRequest() *api.WebSubAPI {
 	ctx := "/repos"
 	return &api.WebSubAPI{
 		Id:        &handle,
-		Name:      "repo-watcher",
+		DisplayName:      "repo-watcher",
 		Version:   "v1.0",
 		ProjectId: "project-uuid",
 		Context:   &ctx,
@@ -355,7 +355,7 @@ func TestWebSubAPI_ListPagination(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		req := buildCreateRequest()
 		name := fmt.Sprintf("api-%d", i)
-		req.Name = name
+		req.DisplayName = name
 		handle := fmt.Sprintf("api-%d-v1-0", i)
 		req.Id = &handle
 		_, err := svc.Create("org-uuid", "alice", req)
