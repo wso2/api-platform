@@ -847,14 +847,11 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	// replaces the full set. A gateway the provider is actively deployed on must remain
 	// associated, so the update is rejected if it would drop such a gateway. Deployments
 	// themselves are never modified here.
-	if req.AssociatedGateways != nil {
-		requested, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
-		if err != nil {
-			return nil, err
-		}
-		if err := guardLiveGatewaysRetained(s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, requested); err != nil {
-			return nil, err
-		}
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+	if manage {
 		m.AssociatedGateways = requested
 		m.ReplaceAssociatedGateways = true
 	}
@@ -1228,14 +1225,11 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	// replaces the full set. A gateway the proxy is actively deployed on must remain
 	// associated, so the update is rejected if it would drop such a gateway. Deployments
 	// themselves are never modified here.
-	if req.AssociatedGateways != nil {
-		requested, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
-		if err != nil {
-			return nil, err
-		}
-		if err := guardLiveGatewaysRetained(s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, requested); err != nil {
-			return nil, err
-		}
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+	if manage {
 		m.AssociatedGateways = requested
 		m.ReplaceAssociatedGateways = true
 	}
@@ -2618,6 +2612,34 @@ func guardLiveGatewaysRetained(deploymentRepo repository.DeploymentRepository, o
 		return fmt.Errorf("%w: %s", constants.ErrAssociationGatewayDeployed, strings.Join(violations, ", "))
 	}
 	return nil
+}
+
+// resolveManagedAssociatedGateways is the shared update-time entry point for managing an
+// artifact's gateway associations, used by LLM providers, LLM proxies and MCP proxies.
+//
+// It encodes the omitted-vs-empty semantics: when the request's associatedGateways field
+// is omitted (nil), manage is false and associations are left untouched; when it is
+// present (even empty), it resolves the requested set and rejects the update if it would
+// drop a gateway the artifact is actively deployed on. Callers assign the returned set to
+// their own model and set its ReplaceAssociatedGateways flag only when manage is true.
+func resolveManagedAssociatedGateways(
+	gatewayRepo repository.GatewayRepository,
+	deploymentRepo repository.DeploymentRepository,
+	orgUUID, artifactUUID string,
+	existingAssociations []model.AssociatedGatewayMapping,
+	requestedGateways *[]api.AssociatedGateway,
+) (resolved []model.AssociatedGatewayMapping, manage bool, err error) {
+	if requestedGateways == nil {
+		return nil, false, nil
+	}
+	resolved, err = resolveAssociatedGateways(gatewayRepo, orgUUID, requestedGateways)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := guardLiveGatewaysRetained(deploymentRepo, orgUUID, artifactUUID, existingAssociations, resolved); err != nil {
+		return nil, false, err
+	}
+	return resolved, true, nil
 }
 
 // resolveAssociatedGateways validates each requested gateway association, resolving

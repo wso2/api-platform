@@ -129,6 +129,13 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		}
 	}
 
+	// Resolve any associated gateways up-front so they can be persisted within the
+	// same transaction as the MCP proxy create.
+	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create MCP proxy model
 	m := &model.MCPProxy{
 		Handle:           req.Id,
@@ -148,6 +155,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			Policies:     mapMCPPoliciesAPIToModel(req.Policies),
 			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		},
+		AssociatedGateways: associatedGateways,
 	}
 
 	if err := s.repo.Create(m); err != nil {
@@ -295,6 +303,20 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	// Preserve existing upstream auth credential if not provided in update request
 	// (the auth value is redacted in GET responses, so clients send empty value on updates)
 	existing.Configuration.Upstream = *preserveMCPUpstreamAuthValue(&existingUpstreamConfig, &existing.Configuration.Upstream)
+
+	// Gateway associations are managed only when the field is present in the request. An
+	// omitted field leaves associations untouched; an explicit (possibly empty) list
+	// replaces the full set. A gateway the proxy is actively deployed on must remain
+	// associated, so the update is rejected if it would drop such a gateway. Deployments
+	// themselves are never modified here.
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+	if manage {
+		existing.AssociatedGateways = requested
+		existing.ReplaceAssociatedGateways = true
+	}
 
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -472,7 +494,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		specVersion = &sv
 	}
 
-	return &api.MCPProxy{
+	out := &api.MCPProxy{
 		Id:             m.Handle,
 		Name:           m.Name,
 		Description:    &desc,
@@ -488,6 +510,10 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
+	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
+		out.AssociatedGateways = associated
+	}
+	return out
 }
 
 func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {

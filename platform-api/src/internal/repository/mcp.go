@@ -92,6 +92,11 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Persist gateway associations (if any) within the same transaction.
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -129,6 +134,12 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 			p.Configuration = *config
 		}
 	}
+
+	associations, err := loadArtifactGatewayAssociations(r.db, p.UUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load gateway associations for MCP proxy %s: %w", p.Handle, err)
+	}
+	p.AssociatedGateways = associations
 
 	return &p, nil
 }
@@ -321,10 +332,25 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Replace the full set of gateway associations within the same transaction when the
+	// caller manages associations. Deployments are intentionally left untouched.
+	if p.ReplaceAssociatedGateways {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+			return err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
+}
+
+// EnsureGatewayAssociation creates a gateway association for the MCP proxy if one does not
+// already exist and resolves the metadata to use for the deployment. See
+// ensureArtifactGatewayAssociation for the full semantics.
+func (r *MCPProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
 }
 
 // Delete deletes an MCP proxy by its handle and organization UUID
