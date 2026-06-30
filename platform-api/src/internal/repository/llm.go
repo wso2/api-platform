@@ -625,6 +625,130 @@ func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUI
 	return count, nil
 }
 
+// ---- Artifact–Gateway associations (shared by LLM providers and proxies) ----
+
+// insertArtifactGatewayAssociations writes the given gateway associations for an artifact
+// within the supplied transaction. metadata is a BYTEA column; a nil slice is stored as NULL.
+func insertArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
+	if len(assocs) == 0 {
+		return nil
+	}
+	query := `
+		INSERT INTO artifact_gateway_mappings (
+			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?)`
+	for _, assoc := range assocs {
+		var metadata []byte
+		if assoc.Metadata != "" {
+			metadata = []byte(assoc.Metadata)
+		}
+		if _, err := tx.Exec(db.Rebind(query), artifactUUID, orgUUID, assoc.GatewayUUID, metadata, now, now); err != nil {
+			return fmt.Errorf("failed to create gateway association: %w", err)
+		}
+	}
+	return nil
+}
+
+// replaceArtifactGatewayAssociations replaces the full set of gateway associations for an
+// artifact within the supplied transaction (delete-all then insert). Deployments are not touched.
+func replaceArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
+	if _, err := tx.Exec(db.Rebind(
+		`DELETE FROM artifact_gateway_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`),
+		artifactUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to clear gateway associations: %w", err)
+	}
+	return insertArtifactGatewayAssociations(tx, db, artifactUUID, orgUUID, assocs, now)
+}
+
+// loadArtifactGatewayAssociations returns the gateway associations for an artifact, joining
+// the gateways table to resolve each gateway handle.
+func loadArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID string) ([]model.AssociatedGatewayMapping, error) {
+	query := `
+		SELECT m.gateway_uuid, g.handle, m.metadata
+		FROM artifact_gateway_mappings m
+		JOIN gateways g ON g.uuid = m.gateway_uuid
+		WHERE m.artifact_uuid = ? AND m.organization_uuid = ?
+		ORDER BY m.created_at`
+	rows, err := db.Query(db.Rebind(query), artifactUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var associations []model.AssociatedGatewayMapping
+	for rows.Next() {
+		var assoc model.AssociatedGatewayMapping
+		var metadata []byte
+		if err := rows.Scan(&assoc.GatewayUUID, &assoc.GatewayHandle, &metadata); err != nil {
+			return nil, err
+		}
+		if len(metadata) > 0 {
+			assoc.Metadata = string(metadata)
+		}
+		associations = append(associations, assoc)
+	}
+	return associations, rows.Err()
+}
+
+// ensureArtifactGatewayAssociation creates a gateway association for an artifact if one does
+// not already exist and resolves the metadata to use for the deployment.
+//
+// metadataProvided distinguishes an omitted deploy metadata field from one explicitly set to
+// empty, so a caller can deploy with empty metadata even when the association already carries
+// a value. An association that already exists is never modified at deploy time:
+//   - No association yet → create it, seeding its metadata from deployMetadata.
+//   - Association exists, metadataProvided → use deployMetadata for the deployment (including
+//     an explicit empty value); the association is left untouched.
+//   - Association exists, metadata omitted → fall back to the association's stored metadata.
+//
+// It returns the metadata to persist on the deployment record. An empty string means "no metadata".
+func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	// metadata is a BYTEA column, so it is read and written as a byte slice.
+	var existingMetadata []byte
+	selectQuery := `
+		SELECT metadata
+		FROM artifact_gateway_mappings
+		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?`
+	err := db.QueryRow(db.Rebind(selectQuery), artifactUUID, gatewayUUID, orgUUID).Scan(&existingMetadata)
+	exists := true
+	if errors.Is(err, sql.ErrNoRows) {
+		exists = false
+	} else if err != nil {
+		return "", fmt.Errorf("failed to check gateway association: %w", err)
+	}
+
+	if !exists {
+		// First deployment to this gateway: create the association seeded with the
+		// initial deployment's metadata. A nil slice is stored as NULL.
+		now := time.Now()
+		var metaArg []byte
+		if strings.TrimSpace(deployMetadata) != "" {
+			metaArg = []byte(deployMetadata)
+		}
+		insertQuery := `
+			INSERT INTO artifact_gateway_mappings (
+				artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?)`
+		if _, err := db.Exec(db.Rebind(insertQuery), artifactUUID, orgUUID, gatewayUUID, metaArg, now, now); err != nil {
+			return "", fmt.Errorf("failed to create gateway association: %w", err)
+		}
+		return deployMetadata, nil
+	}
+
+	// Existing association is never modified at deploy time. When the deploy request
+	// provides metadata (even an explicit empty value), it is used as-is; only an
+	// omitted field falls back to the association's stored metadata.
+	if metadataProvided {
+		return deployMetadata, nil
+	}
+	if len(existingMetadata) > 0 {
+		return string(existingMetadata), nil
+	}
+	return "", nil
+}
+
 // ---- LLM Providers ----
 
 type LLMProviderRepo struct {
@@ -691,22 +815,8 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	}
 
 	// Persist gateway associations (if any) within the same transaction.
-	assocQuery := `
-		INSERT INTO gateway_association_mappings (
-			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?)`
-	for _, assoc := range p.AssociatedGateways {
-		// metadata is a BYTEA column; a nil slice is stored as NULL.
-		var metadata []byte
-		if assoc.Metadata != "" {
-			metadata = []byte(assoc.Metadata)
-		}
-		if _, err := tx.Exec(r.db.Rebind(assocQuery),
-			p.UUID, p.OrganizationUUID, assoc.GatewayUUID, metadata, now, now,
-		); err != nil {
-			return fmt.Errorf("failed to create gateway association: %w", err)
-		}
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -756,7 +866,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 		}
 	}
 
-	associations, err := r.getAssociatedGateways(p.UUID, orgUUID)
+	associations, err := loadArtifactGatewayAssociations(r.db, p.UUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load gateway associations for provider %s: %w", p.ID, err)
 	}
@@ -765,96 +875,11 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	return &p, nil
 }
 
-// getAssociatedGateways returns the gateway associations for an artifact, joining
-// the gateways table to resolve each gateway handle.
-func (r *LLMProviderRepo) getAssociatedGateways(artifactUUID, orgUUID string) ([]model.AssociatedGatewayMapping, error) {
-	query := `
-		SELECT m.gateway_uuid, g.handle, m.metadata
-		FROM gateway_association_mappings m
-		JOIN gateways g ON g.uuid = m.gateway_uuid
-		WHERE m.artifact_uuid = ? AND m.organization_uuid = ?
-		ORDER BY m.created_at`
-	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var associations []model.AssociatedGatewayMapping
-	for rows.Next() {
-		var assoc model.AssociatedGatewayMapping
-		var metadata []byte
-		if err := rows.Scan(&assoc.GatewayUUID, &assoc.GatewayHandle, &metadata); err != nil {
-			return nil, err
-		}
-		if len(metadata) > 0 {
-			assoc.Metadata = string(metadata)
-		}
-		associations = append(associations, assoc)
-	}
-	return associations, rows.Err()
-}
-
-// EnsureGatewayAssociation creates a gateway association for the provider if one does
-// not already exist and resolves the metadata to use for the deployment.
-//
-// metadataProvided distinguishes an omitted deploy metadata field from one explicitly
-// set to empty, so a caller can deploy with empty metadata even when the association
-// already carries a value. An association that already exists is never modified at
-// deploy time:
-//   - No association yet → create it, seeding its metadata from deployMetadata (the
-//     initial deployment's value, no update afterward).
-//   - Association exists, metadataProvided → use deployMetadata for the deployment
-//     (including an explicit empty value); the association is left untouched.
-//   - Association exists, metadata omitted → fall back to the association's stored
-//     metadata, if any.
-//
-// It returns the metadata to persist on the deployment record. An empty string means
-// "no metadata".
+// EnsureGatewayAssociation creates a gateway association for the provider if one does not
+// already exist and resolves the metadata to use for the deployment. See
+// ensureArtifactGatewayAssociation for the full semantics.
 func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
-	// metadata is a BYTEA column, so it is read and written as a byte slice.
-	var existingMetadata []byte
-	selectQuery := `
-		SELECT metadata
-		FROM gateway_association_mappings
-		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?`
-	err := r.db.QueryRow(r.db.Rebind(selectQuery), providerUUID, gatewayUUID, orgUUID).Scan(&existingMetadata)
-	exists := true
-	if errors.Is(err, sql.ErrNoRows) {
-		exists = false
-	} else if err != nil {
-		return "", fmt.Errorf("failed to check gateway association: %w", err)
-	}
-
-	if !exists {
-		// First deployment to this gateway: create the association seeded with the
-		// initial deployment's metadata. A nil slice is stored as NULL.
-		now := time.Now()
-		var metaArg []byte
-		if strings.TrimSpace(deployMetadata) != "" {
-			metaArg = []byte(deployMetadata)
-		}
-		insertQuery := `
-			INSERT INTO gateway_association_mappings (
-				artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?)`
-		if _, err := r.db.Exec(r.db.Rebind(insertQuery), providerUUID, orgUUID, gatewayUUID, metaArg, now, now); err != nil {
-			return "", fmt.Errorf("failed to create gateway association: %w", err)
-		}
-		return deployMetadata, nil
-	}
-
-	// Existing association is never modified at deploy time. When the deploy request
-	// provides metadata (even an explicit empty value), it is used as-is; only an
-	// omitted field falls back to the association's stored metadata.
-	if metadataProvided {
-		return deployMetadata, nil
-	}
-	if len(existingMetadata) > 0 {
-		return string(existingMetadata), nil
-	}
-	return "", nil
+	return ensureArtifactGatewayAssociation(r.db, providerUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
@@ -971,28 +996,8 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	// Replace the full set of gateway associations within the same transaction when the
 	// caller manages associations. Deployments are intentionally left untouched.
 	if p.ReplaceAssociatedGateways {
-		if _, err := tx.Exec(r.db.Rebind(
-			`DELETE FROM gateway_association_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`),
-			providerUUID, p.OrganizationUUID); err != nil {
-			return fmt.Errorf("failed to clear gateway associations: %w", err)
-		}
-
-		assocQuery := `
-			INSERT INTO gateway_association_mappings (
-				artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?)`
-		for _, assoc := range p.AssociatedGateways {
-			// metadata is a BYTEA column; a nil slice is stored as NULL.
-			var metadata []byte
-			if assoc.Metadata != "" {
-				metadata = []byte(assoc.Metadata)
-			}
-			if _, err := tx.Exec(r.db.Rebind(assocQuery),
-				providerUUID, p.OrganizationUUID, assoc.GatewayUUID, metadata, now, now,
-			); err != nil {
-				return fmt.Errorf("failed to create gateway association: %w", err)
-			}
+		if err := replaceArtifactGatewayAssociations(tx, r.db, providerUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+			return err
 		}
 	}
 
@@ -1102,6 +1107,11 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Persist gateway associations (if any) within the same transaction.
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -1142,6 +1152,12 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 			p.Configuration = *config
 		}
 	}
+
+	associations, err := loadArtifactGatewayAssociations(r.db, p.UUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load gateway associations for proxy %s: %w", p.ID, err)
+	}
+	p.AssociatedGateways = associations
 
 	return &p, nil
 }
@@ -1368,10 +1384,25 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Replace the full set of gateway associations within the same transaction when the
+	// caller manages associations. Deployments are intentionally left untouched.
+	if p.ReplaceAssociatedGateways {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+			return err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
+}
+
+// EnsureGatewayAssociation creates a gateway association for the proxy if one does not
+// already exist and resolves the metadata to use for the deployment. See
+// ensureArtifactGatewayAssociation for the full semantics.
+func (r *LLMProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
 }
 
 func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {

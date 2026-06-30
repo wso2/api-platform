@@ -639,7 +639,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 
 	// Resolve any associated gateways up-front so they can be persisted within the
 	// same transaction as the provider create.
-	associatedGateways, err := s.resolveAssociatedGateways(orgUUID, req.AssociatedGateways)
+	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
 	if err != nil {
 		return nil, err
 	}
@@ -848,11 +848,11 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	// associated, so the update is rejected if it would drop such a gateway. Deployments
 	// themselves are never modified here.
 	if req.AssociatedGateways != nil {
-		requested, err := s.resolveAssociatedGateways(orgUUID, req.AssociatedGateways)
+		requested, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
 		if err != nil {
 			return nil, err
 		}
-		if err := s.guardLiveGatewaysRetained(orgUUID, existing, requested); err != nil {
+		if err := guardLiveGatewaysRetained(s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, requested); err != nil {
 			return nil, err
 		}
 		m.AssociatedGateways = requested
@@ -976,6 +976,13 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, err
 	}
 
+	// Resolve any associated gateways up-front so they can be persisted within the
+	// same transaction as the proxy create.
+	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
@@ -997,6 +1004,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 			Policies:          mapPoliciesAPIToModel(req.Policies),
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
+		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
@@ -1214,6 +1222,24 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 
 	// Preserve stored upstream auth credential when not supplied in update payload
 	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
+
+	// Gateway associations are managed only when the field is present in the request. An
+	// omitted field leaves associations untouched; an explicit (possibly empty) list
+	// replaces the full set. A gateway the proxy is actively deployed on must remain
+	// associated, so the update is rejected if it would drop such a gateway. Deployments
+	// themselves are never modified here.
+	if req.AssociatedGateways != nil {
+		requested, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+		if err != nil {
+			return nil, err
+		}
+		if err := guardLiveGatewaysRetained(s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, requested); err != nil {
+			return nil, err
+		}
+		m.AssociatedGateways = requested
+		m.ReplaceAssociatedGateways = true
+	}
+
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProxyNotFound
@@ -2495,6 +2521,9 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 	out.GlobalPolicies = globalPoliciesProxy
 	out.OperationPolicies = operationPoliciesProxy
 	out.Policies = nil
+	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
+		out.AssociatedGateways = associated
+	}
 	return out
 }
 
@@ -2548,14 +2577,15 @@ func isAssociatedGatewaysAvailable(associatedGateways *[]api.AssociatedGateway) 
 }
 
 // guardLiveGatewaysRetained rejects an association update that would drop a gateway the
-// provider is actively deployed on. The set of requested gateways must be a superset of
-// the gateways currently live (DEPLOYED/DEPLOYING/UNDEPLOYING) for the provider; any live
+// artifact is actively deployed on. The set of requested gateways must be a superset of
+// the gateways currently live (DEPLOYED/DEPLOYING/UNDEPLOYING) for the artifact; any live
 // gateway missing from the request is reported as a violation. Deployments are not touched.
-func (s *LLMProviderService) guardLiveGatewaysRetained(orgUUID string, existing *model.LLMProvider, requested []model.AssociatedGatewayMapping) error {
-	if s.deploymentRepo == nil {
+// existingAssociations is only used to resolve gateway handles for friendlier errors.
+func guardLiveGatewaysRetained(deploymentRepo repository.DeploymentRepository, orgUUID, artifactUUID string, existingAssociations, requested []model.AssociatedGatewayMapping) error {
+	if deploymentRepo == nil {
 		return fmt.Errorf("could not initialize deployment repository")
 	}
-	liveGatewayIDs, err := s.deploymentRepo.GetLiveGatewayIDs(existing.UUID, orgUUID)
+	liveGatewayIDs, err := deploymentRepo.GetLiveGatewayIDs(artifactUUID, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to check active deployments: %w", err)
 	}
@@ -2568,8 +2598,8 @@ func (s *LLMProviderService) guardLiveGatewaysRetained(orgUUID string, existing 
 		requestedSet[ag.GatewayUUID] = struct{}{}
 	}
 	// Resolve gateway handles for friendlier error messages, falling back to the UUID.
-	handleByUUID := make(map[string]string, len(existing.AssociatedGateways))
-	for _, ag := range existing.AssociatedGateways {
+	handleByUUID := make(map[string]string, len(existingAssociations))
+	for _, ag := range existingAssociations {
 		handleByUUID[ag.GatewayUUID] = ag.GatewayHandle
 	}
 
@@ -2593,17 +2623,17 @@ func (s *LLMProviderService) guardLiveGatewaysRetained(orgUUID string, existing 
 // resolveAssociatedGateways validates each requested gateway association, resolving
 // the gateway handle to its UUID and serializing any per-gateway configuration
 // overrides into the metadata column. Returns nil when no associations are requested.
-func (s *LLMProviderService) resolveAssociatedGateways(orgUUID string, associatedGateways *[]api.AssociatedGateway) ([]model.AssociatedGatewayMapping, error) {
+func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID string, associatedGateways *[]api.AssociatedGateway) ([]model.AssociatedGatewayMapping, error) {
 	if !isAssociatedGatewaysAvailable(associatedGateways) {
 		return nil, nil
 	}
-	if s.gatewayRepo == nil {
+	if gatewayRepo == nil {
 		return nil, fmt.Errorf("could not initialize gateway repository")
 	}
 
 	resolved := make([]model.AssociatedGatewayMapping, 0, len(*associatedGateways))
 	for _, ag := range *associatedGateways {
-		gw, err := s.gatewayRepo.GetByHandleAndOrgID(ag.Name, orgUUID)
+		gw, err := gatewayRepo.GetByHandleAndOrgID(ag.Name, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate associated gateway %q: %w", ag.Name, err)
 		}

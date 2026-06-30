@@ -468,7 +468,7 @@ func serializeAPIConfigurations(config model.RestAPIConfig) (string, error) {
 		return "", err
 	}
 
-	return configJSON, nil
+	return string(configJSON), nil
 }
 
 func deserializeAPIConfigurations(configJSON sql.NullString) (*model.RestAPIConfig, error) {

@@ -159,7 +159,7 @@ type LLMProviderTemplateResourceMappings struct {
 }
 
 // AssociatedGatewayMapping is a resolved gateway association persisted in the
-// gateway_association_mappings table alongside an artifact (e.g. an LLM provider).
+// artifact_gateway_mappings table alongside an artifact (e.g. an LLM provider).
 // GatewayHandle is populated on reads (joined from the gateways table) and is what
 // callers reference by name; GatewayUUID is used for the foreign-key write.
 type AssociatedGatewayMapping struct {
@@ -211,7 +211,7 @@ type LLMProvider struct {
 	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProviderConfig  `json:"configuration" db:"configuration"`
 	// AssociatedGateways carries resolved gateway associations to be persisted in
-	// the gateway_association_mappings table within the same create transaction.
+	// the artifact_gateway_mappings table within the same create transaction.
 	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
 	// ReplaceAssociatedGateways, when true on update, replaces the provider's full set
 	// of gateway associations with AssociatedGateways (within the update transaction).
@@ -252,6 +252,13 @@ type LLMProxy struct {
 	CreatedAt        time.Time      `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time      `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProxyConfig `json:"configuration" db:"configuration"`
+	// AssociatedGateways carries resolved gateway associations to be persisted in the
+	// artifact_gateway_mappings table within the same create transaction.
+	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
+	// ReplaceAssociatedGateways, when true on update, replaces the proxy's full set of
+	// gateway associations with AssociatedGateways (within the update transaction).
+	// See model.LLMProvider for the omitted-vs-empty semantics.
+	ReplaceAssociatedGateways bool `json:"-" db:"-"`
 }
 
 type LLMProxyConfig struct {

@@ -238,14 +238,7 @@ type LLMProviderRepository interface {
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
 	// EnsureGatewayAssociation creates a gateway association for the provider if one
-	// does not already exist and resolves the metadata to use for the deployment. The
-	// first deployment to a gateway creates the association, seeding its metadata from
-	// that initial deployment; an existing association is never modified at deploy
-	// time. deployMetadata is the (JSON) metadata supplied by the deploy request and
-	// metadataProvided reports whether the deploy request set the field at all (so an
-	// explicit empty value can override the association's stored value). It returns the
-	// metadata to persist on the deployment record: the deploy value when provided,
-	// otherwise the association's stored value. An empty string means "no metadata".
+	// does not already exist and resolves the metadata to use for the deployment.
 	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
@@ -274,6 +267,9 @@ type LLMProxyRepository interface {
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
+	// not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence

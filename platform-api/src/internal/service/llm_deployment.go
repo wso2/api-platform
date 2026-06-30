@@ -1212,7 +1212,7 @@ func isBoolTrue(v *bool) bool {
 }
 
 // marshalDeploymentMetadata serializes the deployment metadata map to the JSON form
-// stored in the metadata column shared with gateway_association_mappings. An empty or
+// stored in the metadata column shared with artifact_gateway_mappings. An empty or
 // nil map yields an empty string ("no metadata").
 func marshalDeploymentMetadata(m map[string]any) (string, error) {
 	if len(m) == 0 {
@@ -1277,6 +1277,25 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	// Validate deployment name is provided
 	if req.Name == "" {
 		return nil, constants.ErrDeploymentNameRequired
+	}
+
+	// Ensure a gateway association exists for the target gateway before deploying, and
+	// resolve the deployment metadata. The first deployment to a gateway creates the
+	// association and seeds its metadata from this deployment. For an existing
+	// association the deploy request value overrides for this deployment; when the
+	// metadata field is omitted, the association's stored metadata is used. An existing
+	// association's metadata is never modified at deploy time.
+	metadataProvided := req.Metadata != nil
+	deployMetaJSON, err := marshalDeploymentMetadata(metadata)
+	if err != nil {
+		return nil, err
+	}
+	effectiveMetaJSON, err := s.proxyRepo.EnsureGatewayAssociation(proxy.UUID, gatewayID, orgUUID, deployMetaJSON, metadataProvided)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+	}
+	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
+		return nil, err
 	}
 
 	var baseDeploymentID *string
