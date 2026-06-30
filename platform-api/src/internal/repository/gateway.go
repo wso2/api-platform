@@ -176,34 +176,84 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	return gateway, nil
 }
 
-// GetByOrganizationID retrieves all gateways for an organization
-func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
-	query := `
-		SELECT uuid, organization_uuid, handle, display_name, description, properties, is_critical, gateway_functionality_type, version, is_active,
-		       created_by, updated_by, created_at, updated_at
-		FROM gateways
-		WHERE organization_uuid = ?
-		ORDER BY created_at DESC
-	`
-	rows, err := r.db.Query(r.db.Rebind(query), orgID)
+// scanGatewaysWithEndpoints executes a pre-bound JOIN query (gateways LEFT JOIN
+// gateway_endpoints) and groups the resulting rows into an ordered gateway slice.
+// The SELECT list must be: all gateway columns (same order as scanGateway) followed
+// by ge.host, ge.protocol, ge.port, ge.context.
+func (r *GatewayRepo) scanGatewaysWithEndpoints(query string, args ...any) ([]*model.Gateway, error) {
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var gateways []*model.Gateway
+	var order []string
+	index := make(map[string]*model.Gateway)
+
 	for rows.Next() {
-		gateway, err := r.scanGateway(rows)
-		if err != nil {
+		var propertiesBytes []byte
+		var isCritical, isActive int
+		var createdBy, updatedBy sql.NullString
+		var epHost, epProtocol, epContext sql.NullString
+		var epPort sql.NullInt64
+
+		gw := &model.Gateway{}
+		if err := rows.Scan(
+			&gw.ID, &gw.OrganizationID, &gw.Handle, &gw.Name, &gw.Description, &propertiesBytes,
+			&isCritical, &gw.FunctionalityType, &gw.Version, &isActive, &createdBy, &updatedBy, &gw.CreatedAt, &gw.UpdatedAt,
+			&epHost, &epProtocol, &epPort, &epContext,
+		); err != nil {
 			return nil, err
 		}
-		gateway.Endpoints, err = loadEndpointsFromDB(r.db, gateway.ID)
-		if err != nil {
-			return nil, err
+
+		existing, seen := index[gw.ID]
+		if !seen {
+			gw.IsCritical = isCritical != 0
+			gw.IsActive = isActive != 0
+			gw.CreatedBy = createdBy.String
+			gw.UpdatedBy = updatedBy.String
+			if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
+				if err := json.Unmarshal(propertiesBytes, &gw.Properties); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
+				}
+			}
+			gw.Endpoints = []model.GatewayEndpoint{}
+			index[gw.ID] = gw
+			order = append(order, gw.ID)
+			existing = gw
 		}
-		gateways = append(gateways, gateway)
+		if epHost.Valid {
+			existing.Endpoints = append(existing.Endpoints, model.GatewayEndpoint{
+				Host:     epHost.String,
+				Protocol: epProtocol.String,
+				Port:     int(epPort.Int64),
+				Context:  epContext.String,
+			})
+		}
 	}
-	return gateways, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	gateways := make([]*model.Gateway, len(order))
+	for i, id := range order {
+		gateways[i] = index[id]
+	}
+	return gateways, nil
+}
+
+// GetByOrganizationID retrieves all gateways for an organization
+func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
+	query := `
+		SELECT g.uuid, g.organization_uuid, g.handle, g.display_name, g.description, g.properties, g.is_critical,
+		       g.gateway_functionality_type, g.version, g.is_active, g.created_by, g.updated_by, g.created_at, g.updated_at,
+		       ge.host, ge.protocol, ge.port, ge.context
+		FROM gateways g
+		LEFT JOIN gateway_endpoints ge ON ge.gateway_uuid = g.uuid
+		WHERE g.organization_uuid = ?
+		ORDER BY g.created_at DESC, ge.id
+	`
+	return r.scanGatewaysWithEndpoints(r.db.Rebind(query), orgID)
 }
 
 // GetByHandleAndOrgID checks if a gateway with the given handle exists within an organization
@@ -231,30 +281,14 @@ func (r *GatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway,
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, display_name, description, properties, is_critical, gateway_functionality_type, version, is_active,
-		       created_by, updated_by, created_at, updated_at
-		FROM gateways
-		ORDER BY created_at DESC
+		SELECT g.uuid, g.organization_uuid, g.handle, g.display_name, g.description, g.properties, g.is_critical,
+		       g.gateway_functionality_type, g.version, g.is_active, g.created_by, g.updated_by, g.created_at, g.updated_at,
+		       ge.host, ge.protocol, ge.port, ge.context
+		FROM gateways g
+		LEFT JOIN gateway_endpoints ge ON ge.gateway_uuid = g.uuid
+		ORDER BY g.created_at DESC, ge.id
 	`
-	rows, err := r.db.Query(r.db.Rebind(query))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var gateways []*model.Gateway
-	for rows.Next() {
-		gateway, err := r.scanGateway(rows)
-		if err != nil {
-			return nil, err
-		}
-		gateway.Endpoints, err = loadEndpointsFromDB(r.db, gateway.ID)
-		if err != nil {
-			return nil, err
-		}
-		gateways = append(gateways, gateway)
-	}
-	return gateways, rows.Err()
+	return r.scanGatewaysWithEndpoints(r.db.Rebind(query))
 }
 
 // Delete removes a gateway with organization isolation and cleans up all associations
