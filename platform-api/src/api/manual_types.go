@@ -24,20 +24,6 @@ package api
 
 import openapi_types "github.com/oapi-codegen/runtime/types"
 
-// ValidateRESTAPIParams defines query parameters used internally by the ValidateAPI service method.
-// The corresponding /rest-apis/validate path was removed from the spec; this type is preserved
-// because service/api.go still uses it for identifier/name/version validation.
-type ValidateRESTAPIParams struct {
-	// Identifier **API Identifier** to check for existence within the organization.
-	Identifier *ApiIdentifierQ `form:"identifier,omitempty" json:"identifier,omitempty" yaml:"identifier,omitempty"`
-
-	// Name **API Name** to check for existence within the organization.
-	Name *ApiNameQ `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Version **API Version** to check for existence within the organization.
-	Version *ApiVersionQ `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
-}
-
 // UnpublishFromDevPortalRequest defines model for UnpublishFromDevPortalRequest.
 type UnpublishFromDevPortalRequest struct {
 	// DevPortalUuid UUID of the DevPortal to unpublish from
