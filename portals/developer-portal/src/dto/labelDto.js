@@ -19,9 +19,9 @@
 
 class LabelDTO {
     constructor(label) {
-        this.id = label.UUID;
-        this.name = label.NAME;
-        this.displayName = label.DISPLAY_NAME;
+        this.id = label.uuid;
+        this.name = label.name;
+        this.displayName = label.display_name;
     }
 }
 

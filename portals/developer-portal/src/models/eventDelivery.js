@@ -19,60 +19,50 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const DPEvent = require('./event');
 
-// One delivery row per (event × subscriber). ENCRYPTED_FIELDS holds per-subscriber
-// ciphertext ({ [fieldName]: envelope }) so plaintext is never in DP_EVENT.
+// One delivery row per (event × subscriber). encrypted_fields holds per-subscriber
+// ciphertext ({ [fieldName]: envelope }) so plaintext is never in dp_event.
 const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
-    UUID: {
-        field: 'uuid',
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    EVENT_UUID: {
-        field: 'event_uuid',
+    event_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
         references: { model: DPEvent, key: 'uuid' }
     },
-    SUBSCRIBER_ID: {
-        field: 'subscriber_id',
+    subscriber_id: {
         type: DataTypes.STRING(128),
         allowNull: false
     },
-    TARGET_URL: {
-        field: 'target_url',
+    target_url: {
         type: DataTypes.STRING(1023),
         allowNull: false
     },
-    ENCRYPTED_FIELDS: {
-        field: 'encrypted_fields',
+    encrypted_fields: {
         type: DataTypes.JSON,
         allowNull: true,
         defaultValue: null
     },
-    STATUS: {
-        field: 'status',
+    status: {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PENDING'
     },
-    LAST_HTTP_STATUS: {
-        field: 'last_http_status',
+    last_http_status: {
         type: DataTypes.INTEGER,
         allowNull: true
     },
-    LAST_ERROR: {
-        field: 'last_error',
+    last_error: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    LAST_ATTEMPT_AT: {
-        field: 'last_attempt_at',
+    last_attempt_at: {
         type: DataTypes.DATE,
         allowNull: true
     },
-    DELIVERED_AT: {
-        field: 'delivered_at',
+    delivered_at: {
         type: DataTypes.DATE,
         allowNull: true
     }
@@ -81,12 +71,12 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     tableName: 'dp_event_delivery',
     returning: true,
     indexes: [
-        { name: 'idx_event_delivery_event_uuid', fields: ['EVENT_UUID'] },
-        { name: 'uq_event_delivery_event_subscriber', unique: true, fields: ['EVENT_UUID', 'SUBSCRIBER_ID'] }
+        { name: 'idx_event_delivery_event_uuid', fields: ['event_uuid'] },
+        { name: 'uq_event_delivery_event_subscriber', unique: true, fields: ['event_uuid', 'subscriber_id'] }
     ]
 });
 
-DPEventDelivery.belongsTo(DPEvent, { foreignKey: 'EVENT_UUID' });
-DPEvent.hasMany(DPEventDelivery, { foreignKey: 'EVENT_UUID' });
+DPEventDelivery.belongsTo(DPEvent, { foreignKey: 'event_uuid' });
+DPEvent.hasMany(DPEventDelivery, { foreignKey: 'event_uuid' });
 
 module.exports = DPEventDelivery;

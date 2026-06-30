@@ -39,15 +39,15 @@ function normalizeOptionalId(value) {
 function mapKey(k) {
     const app = k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION;
     return {
-        keyId: k.UUID,
-        name: k.NAME,
-        status: k.STATUS,
-        expiresAt: k.EXPIRES_AT,
-        createdAt: k.CREATED_AT,
-        revokedAt: k.REVOKED_AT || undefined,
-        apiId: k.API_UUID,
-        appId: app ? app.UUID : null,
-        appName: app ? app.NAME : null
+        keyId: k.uuid,
+        name: k.name,
+        status: k.status,
+        expiresAt: k.expires_at,
+        createdAt: k.created_at,
+        revokedAt: k.revoked_at || undefined,
+        apiId: k.api_uuid,
+        appId: app ? app.uuid : null,
+        appName: app ? app.name : null
     };
 }
 

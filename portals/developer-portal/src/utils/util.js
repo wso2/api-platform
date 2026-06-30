@@ -109,7 +109,7 @@ async function loadLayoutFromAPI(orgId, viewName) {
         viewName: viewName
     });
     if (layoutContent) {
-        return layoutContent.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+        return layoutContent.file_content.toString(constants.CHARSET_UTF8);
     } else {
         return "";
     }
@@ -124,7 +124,7 @@ async function loadTemplateFromAPI(orgId, filePath, viewName) {
         fileName: constants.FILE_NAME.PAGE,
         viewName: viewName
     });
-    return templateContent ? templateContent.FILE_CONTENT.toString(constants.CHARSET_UTF8) : "";
+    return templateContent ? templateContent.file_content.toString(constants.CHARSET_UTF8) : "";
 }
 
 async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, viewName) {
@@ -166,7 +166,7 @@ async function renderLlmsTxt(templateContent, orgId, viewName) {
         fileName: 'llms-txt.hbs'
     });
     const partialSource = dbPartial
-        ? dbPartial.FILE_CONTENT.toString(constants.CHARSET_UTF8)
+        ? dbPartial.file_content.toString(constants.CHARSET_UTF8)
         : fs.readFileSync(
             path.join(process.cwd(), filePrefix + 'pages/llms-txt/partials/llms-txt.hbs'),
             constants.CHARSET_UTF8
@@ -190,7 +190,7 @@ async function renderMarkdownTemplateFromAPI(templateContent, orgId, filePath, v
         fileName: partialName + '.hbs'
     });
     const partialSource = dbPartial
-        ? dbPartial.FILE_CONTENT.toString(constants.CHARSET_UTF8)
+        ? dbPartial.file_content.toString(constants.CHARSET_UTF8)
         : fs.readFileSync(
             path.join(process.cwd(), filePrefix + filePath + '/partials/' + partialName + '.hbs'),
             constants.CHARSET_UTF8
@@ -912,7 +912,7 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
 
 const enforcePortalMode = async (req, res, next) => {
     const orgDetails = await orgDao.get(req.params.orgName);
-    const portalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const portalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
     if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.APIS_ONLY) ||
@@ -931,7 +931,7 @@ async function isAiDisabledForPortal(orgId, viewName) {
     });
     if (!configAsset) return false;
     try {
-        const llmsConfig = JSON.parse(configAsset.FILE_CONTENT.toString('utf8'));
+        const llmsConfig = JSON.parse(configAsset.file_content.toString('utf8'));
         return llmsConfig.aiEnabled === false;
     } catch (e) {
         return false;

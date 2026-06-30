@@ -34,16 +34,16 @@ const create = async (orgId, subData, createdBy) => {
                 'Set config.advanced.encryptionKey to a 64-char hex string.');
         }
         const record = await WebhookSubscriber.create({
-            ORG_UUID: orgId,
-            NAME: subData.name,
-            TARGET_URL: subData.targetUrl,
-            ...(subData.secret && { SECRET_ENC: whCrypto.encrypt(subData.secret) }),
-            ...(subData.publicKey && { PUBLIC_KEY: subData.publicKey }),
-            ...(subData.events && { EVENT_PATTERNS: subData.events }),
-            ...(subData.enabled !== undefined && { ENABLED: subData.enabled ? 1 : 0 }),
-            ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
-            CREATED_BY: createdBy,
-            UPDATED_BY: createdBy,
+            org_uuid: orgId,
+            name: subData.name,
+            target_url: subData.targetUrl,
+            ...(subData.secret && { secret_enc: whCrypto.encrypt(subData.secret) }),
+            ...(subData.publicKey && { public_key: subData.publicKey }),
+            ...(subData.events && { event_patterns: subData.events }),
+            ...(subData.enabled !== undefined && { enabled: subData.enabled ? 1 : 0 }),
+            ...(subData.timeoutMs && { timeout_ms: subData.timeoutMs }),
+            created_by: createdBy,
+            updated_by: createdBy,
         });
         return record;
     } catch (error) {
@@ -62,25 +62,25 @@ const create = async (orgId, subData, createdBy) => {
 const update = async (orgId, subscriberId, subData, updatedBy) => {
     try {
         const updatePayload = {
-            ...(subData.name && { NAME: subData.name }),
-            ...(subData.targetUrl && { TARGET_URL: subData.targetUrl }),
-            ...(subData.publicKey !== undefined && { PUBLIC_KEY: subData.publicKey }),
-            ...(subData.events && { EVENT_PATTERNS: subData.events }),
-            ...(subData.enabled !== undefined && { ENABLED: subData.enabled ? 1 : 0 }),
-            ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
-            UPDATED_BY: updatedBy,
-            UPDATED_AT: new Date(),
+            ...(subData.name && { name: subData.name }),
+            ...(subData.targetUrl && { target_url: subData.targetUrl }),
+            ...(subData.publicKey !== undefined && { public_key: subData.publicKey }),
+            ...(subData.events && { event_patterns: subData.events }),
+            ...(subData.enabled !== undefined && { enabled: subData.enabled ? 1 : 0 }),
+            ...(subData.timeoutMs && { timeout_ms: subData.timeoutMs }),
+            updated_by: updatedBy,
+            updated_at: new Date(),
         };
 
         if (subData.secret) {
             if (!whCrypto.enabled) {
                 throw new Error('Webhook subscriber encryption key is not configured.');
             }
-            updatePayload.SECRET_ENC = whCrypto.encrypt(subData.secret);
+            updatePayload.secret_enc = whCrypto.encrypt(subData.secret);
         }
 
         const [updatedRowsCount] = await WebhookSubscriber.update(updatePayload, {
-            where: { UUID: subscriberId, ORG_UUID: orgId }
+            where: { uuid: subscriberId, org_uuid: orgId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
@@ -104,7 +104,7 @@ const update = async (orgId, subscriberId, subData, updatedBy) => {
 const list = async (orgId) => {
     try {
         return await WebhookSubscriber.findAll({
-            where: { ORG_UUID: orgId }
+            where: { org_uuid: orgId }
         });
     } catch (error) {
         logger.error('Error fetching webhook subscribers', { error });
@@ -119,10 +119,10 @@ const list = async (orgId) => {
 const matchSubscribers = async (orgId, eventType) => {
     try {
         const subscribers = await WebhookSubscriber.findAll({
-            where: { ORG_UUID: orgId, ENABLED: 1 }
+            where: { org_uuid: orgId, enabled: 1 }
         });
         return subscribers.filter(sub => {
-            const patterns = sub.EVENT_PATTERNS;
+            const patterns = sub.event_patterns;
             if (Array.isArray(patterns) && patterns.length > 0) {
                 const matches = patterns.some(pattern => {
                     if (pattern.endsWith('.*')) {
@@ -145,7 +145,7 @@ const matchSubscribers = async (orgId, eventType) => {
  */
 const get = async (orgId, subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { UUID: subscriberId, ORG_UUID: orgId } });
+        const sub = await WebhookSubscriber.findOne({ where: { uuid: subscriberId, org_uuid: orgId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -167,7 +167,7 @@ const get = async (orgId, subscriberId) => {
  */
 const getById = async (subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { UUID: subscriberId } });
+        const sub = await WebhookSubscriber.findOne({ where: { uuid: subscriberId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -187,7 +187,7 @@ const getById = async (subscriberId) => {
 const deleteSubscriber = async (orgId, subscriberId) => {
     try {
         const deleted = await WebhookSubscriber.destroy({
-            where: { UUID: subscriberId, ORG_UUID: orgId }
+            where: { uuid: subscriberId, org_uuid: orgId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
@@ -207,11 +207,11 @@ const deleteSubscriber = async (orgId, subscriberId) => {
  * Used internally by the delivery worker to sign outgoing requests.
  */
 const decryptSecret = (subRecord) => {
-    if (!subRecord.SECRET_ENC) return null;
+    if (!subRecord.secret_enc) return null;
     if (!whCrypto.enabled) {
         throw new Error('Webhook subscriber encryption key is not configured.');
     }
-    return whCrypto.decrypt(subRecord.SECRET_ENC);
+    return whCrypto.decrypt(subRecord.secret_enc);
 };
 
 module.exports = {

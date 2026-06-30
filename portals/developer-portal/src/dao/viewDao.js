@@ -27,11 +27,11 @@ const create = async (orgId, payload, createdBy, t) => {
     let name = payload.name ? payload.name : payload.handle;
     try {
         const viewResponse = await View.create({
-            NAME: name,
-            HANDLE: payload.handle,
-            ORG_UUID: orgId,
-            CREATED_BY: createdBy,
-            UPDATED_BY: createdBy
+            name: name,
+            handle: payload.handle,
+            org_uuid: orgId,
+            created_by: createdBy,
+            updated_by: createdBy
         }, { transaction: t });
         return viewResponse;
     } catch (error) {
@@ -47,24 +47,24 @@ const update = async (orgId, handle, name, updatedBy, t) => {
     try {
         let [record, created] = await View.findOrCreate({
             where: {
-                HANDLE: handle,
-                ORG_UUID: orgId
+                handle: handle,
+                org_uuid: orgId
             },
             defaults: {
-                HANDLE: handle,
-                NAME: name ? name : handle,
-                CREATED_BY: updatedBy,
-                UPDATED_BY: updatedBy
+                handle: handle,
+                name: name ? name : handle,
+                created_by: updatedBy,
+                updated_by: updatedBy
             },
             transaction: t,
             returning: true
         });
         if (!created) {
             record = await record.update({
-                HANDLE: handle,
-                ...(name && { NAME: name }),
-                UPDATED_BY: updatedBy,
-                UPDATED_AT: new Date()
+                handle: handle,
+                ...(name && { name: name }),
+                updated_by: updatedBy,
+                updated_at: new Date()
             }, { transaction: t }); // Update if found
         }
         return record;
@@ -81,8 +81,8 @@ const deleteView = async (orgId, handle) => {
     try {
         const viewResponse = await View.destroy({
             where: {
-                HANDLE: handle,
-                ORG_UUID: orgId
+                handle: handle,
+                org_uuid: orgId
             }
         });
         return viewResponse;
@@ -99,12 +99,12 @@ const get = async (orgId, handle) => {
     try {
         const viewResponse = await View.findOne({
             where: {
-                HANDLE: handle,
-                ORG_UUID: orgId
+                handle: handle,
+                org_uuid: orgId
             },
             include: {
                 model: Labels,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 through: { attributes: [] }
             },
         });
@@ -121,19 +121,19 @@ const getId = async (orgId, viewName, t) => {
 
     try {
         let viewResponse = await View.findOne({
-            where: { HANDLE: viewName, ORG_UUID: orgId },
+            where: { handle: viewName, org_uuid: orgId },
             transaction: t
         });
         if (!viewResponse) {
             viewResponse = await View.findOne({
-                where: { NAME: viewName, ORG_UUID: orgId },
+                where: { name: viewName, org_uuid: orgId },
                 transaction: t
             });
         }
         if (!viewResponse) {
             throw new CustomError(404, constants.ERROR_CODE[404], "View not found")
         }
-        return viewResponse.dataValues.UUID;
+        return viewResponse.dataValues.uuid;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -147,11 +147,11 @@ const list = async (orgId) => {
     try {
         const viewResponse = await View.findAll({
             where: {
-                ORG_UUID: orgId
+                org_uuid: orgId
             },
             include: {
                 model: Labels,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 through: {
                     attributes: []
                 }
@@ -173,9 +173,9 @@ const addLabels = async (orgId, viewId, labels, createdBy, t) => {
     try {
         IDList.forEach(label => {
             labelList.push({
-                LABEL_UUID: label,
-                VIEW_UUID: viewId,
-                CREATED_BY: createdBy,
+                label_uuid: label,
+                view_uuid: viewId,
+                created_by: createdBy,
             });
         });
         const labelResponse = await ViewLabels.bulkCreate(labelList, { transaction: t });
@@ -190,7 +190,7 @@ const addLabels = async (orgId, viewId, labels, createdBy, t) => {
 
 const replaceLabels = async (orgId, viewId, labelNames, createdBy, t) => {
     try {
-        await ViewLabels.destroy({ where: { VIEW_UUID: viewId }, transaction: t });
+        await ViewLabels.destroy({ where: { view_uuid: viewId }, transaction: t });
         if (labelNames?.length) {
             await addLabels(orgId, viewId, labelNames, createdBy, t);
         }
@@ -208,8 +208,8 @@ const deleteLabels = async (orgId, viewId, labels, t) => {
     try {
         return await ViewLabels.destroy({
             where: {
-                LABEL_UUID: { [Op.in]: IDList },
-                VIEW_UUID: viewId,
+                label_uuid: { [Op.in]: IDList },
+                view_uuid: viewId,
             },
             transaction: t
         });

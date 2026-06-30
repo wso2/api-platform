@@ -52,33 +52,33 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.loggedOrg = orgName;
         orgId = await orgDao.getId(orgName);
         const orgDetails = await orgDao.get(orgName);
-        templateContent.devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        templateContent.devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         templateContent.orgId = orgId;
 
         const viewId = await viewDao.getId(orgId, viewName);
         const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgId, viewId);
         templateContent.apiFlows = apiFlows;
 
-        const allAPIs = await apiDao.getByCondition({ ORG_UUID: orgId });
+        const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
         templateContent.orgAPIs = allAPIs.map(api => ({
-            apiId: api.UUID,
-            apiName: api.NAME,
-            apiHandle: api.HANDLE,
-            apiDescription: api.DESCRIPTION,
-            apiType: api.TYPE,
-            apiVersion: api.VERSION,
-            apiStatus: api.STATUS,
-            productionUrl: api.PRODUCTION_URL,
-            sandboxUrl: api.SANDBOX_URL,
-            tags: (api.DP_TAGs || []).map(tag => tag.NAME),
-            agentVisibility: api.AGENT_VISIBILITY,
-            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.NAME),
+            apiId: api.uuid,
+            apiName: api.name,
+            apiHandle: api.handle,
+            apiDescription: api.description,
+            apiType: api.type,
+            apiVersion: api.version,
+            apiStatus: api.status,
+            productionUrl: api.production_url,
+            sandboxUrl: api.sandbox_url,
+            tags: (api.DP_TAGs || []).map(tag => tag.name),
+            agentVisibility: api.agent_visibility,
+            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.name),
         }));
 
         let orgLabels = [];
         try {
             const labelsRaw = await labelDao.list(orgId);
-            orgLabels = labelsRaw.map(l => ({ labelId: l.UUID, name: l.NAME, displayName: l.DISPLAY_NAME }));
+            orgLabels = labelsRaw.map(l => ({ labelId: l.uuid, name: l.name, displayName: l.display_name }));
         } catch (err) {
             logger.warn('Failed to load labels for settings page', { error: err.message });
         }
@@ -88,12 +88,12 @@ const loadViewSettingsPage = async (req, res) => {
         try {
             const plansRaw = await subscriptionPlanDao.list(orgId);
             orgPlans = plansRaw.map(p => ({
-                planId: p.UUID,
-                planName: p.NAME,
-                displayName: p.DISPLAY_NAME,
-                description: p.DESCRIPTION || '',
-                requestCount: p.REQUEST_COUNT,
-                refId: p.REF_ID || '',
+                planId: p.uuid,
+                planName: p.name,
+                displayName: p.display_name,
+                description: p.description || '',
+                requestCount: p.request_count,
+                refId: p.ref_id || '',
             }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });
@@ -115,7 +115,7 @@ const loadViewSettingsPage = async (req, res) => {
         });
         let llmsConfig = { aiEnabled: true, portalName: '', portalDescription: '' };
         if (configAsset) {
-            try { llmsConfig = { ...llmsConfig, ...JSON.parse(configAsset.FILE_CONTENT.toString('utf8')) }; } catch (e) { /* ignore */ }
+            try { llmsConfig = { ...llmsConfig, ...JSON.parse(configAsset.file_content.toString('utf8')) }; } catch (e) { /* ignore */ }
         }
         templateContent.llmsConfig = llmsConfig;
         templateContent.llmsConfigContext = { orgId, viewName, csrfToken, baseUrl };
@@ -150,7 +150,7 @@ const getLlmsConfig = async (req, res) => {
         if (!asset) {
             return res.json({ aiEnabled: true, portalName: '', portalDescription: '' });
         }
-        res.json(JSON.parse(asset.FILE_CONTENT.toString('utf8')));
+        res.json(JSON.parse(asset.file_content.toString('utf8')));
     } catch (err) {
         logger.error('Error getting llms config', { error: err.message, stack: err.stack });
         res.status(500).json({ error: err.message });

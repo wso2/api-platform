@@ -62,9 +62,9 @@ const loadAPIs = async (req, res, next) => {
         html = renderTemplate(layoutPath + listingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
-            const orgId = orgDetails.UUID;
+            const orgId = orgDetails.uuid;
             const searchTerm = req.query.query;
             const tags = req.query.tags;
             let metaDataList = await loadAPIMetaDataListFromAPI(req, orgId, orgName, searchTerm, tags, viewName);
@@ -89,7 +89,7 @@ const loadAPIs = async (req, res, next) => {
                 try {
                     const createdBy = req.user && req.user.sub;
                     const localSubs = await subDao.list(orgId, { createdBy });
-                    const subscribedApiIds = new Set(localSubs.map(sub => sub.API_UUID));
+                    const subscribedApiIds = new Set(localSubs.map(sub => sub.api_uuid));
                     for (const metaData of metaDataList) {
                         const hasPlans = (metaData.subscriptionPlans || []).length > 0;
                         if (hasPlans) {
@@ -225,10 +225,10 @@ const loadAPIContent = async (req, res, next) => {
         res.send(html);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
             const orgDetails = await orgDao.get(orgName);
-            const orgId = orgDetails.UUID;
+            const orgId = orgDetails.uuid;
             const apiId = await apiDao.getId(orgId, apiHandle);
             const metaData = await loadAPIMetaData(req, orgId, apiId);
             
@@ -283,7 +283,7 @@ const loadAPIContent = async (req, res, next) => {
                     if (metaData.type === constants.API_TYPE.GRAPHQL) {
                         apiDefinition = "";
                         apiDefinition = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                        apiDefinition = apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+                        apiDefinition = apiDefinition.file_content.toString(constants.CHARSET_UTF8);
                         apiDetails = {
                             title: metaData.name || "No title",
                             description: metaData.description || "No description",
@@ -307,8 +307,8 @@ const loadAPIContent = async (req, res, next) => {
                                 apiId
                             );
                             if (rawSchema) {
-                                const schemaString = rawSchema.FILE_CONTENT.toString(constants.CHARSET_UTF8);
-                                const schemaFileName = String(rawSchema.FILE_NAME || '').toLowerCase();
+                                const schemaString = rawSchema.file_content.toString(constants.CHARSET_UTF8);
+                                const schemaFileName = String(rawSchema.file_name || '').toLowerCase();
                                 let parsed;
                                 if (schemaFileName.endsWith('.yaml') || schemaFileName.endsWith('.yml')) {
                                     parsed = yaml.load(schemaString);
@@ -344,14 +344,14 @@ const loadAPIContent = async (req, res, next) => {
                     const createdBy = req.user && req.user.sub;
                     const localSubs = await subDao.list(orgId, { apiId: apiId, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
-                        subscriptionId: sub.UUID,
+                        subscriptionId: sub.uuid,
                         // policyName (raw POLICY_NAME) is what isCurrentPlan compares against in the template.
                         // subscriptionPlanName keeps the human-readable label (DISPLAY_NAME when set).
-                        policyName: sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
-                        subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
-                        status: sub.STATUS,
-                        subscriptionToken: sub.TOKEN,
-                        maskedToken: sub.TOKEN ? sub.TOKEN.slice(0, 4) + '****' + sub.TOKEN.slice(-4) : '',
+                        policyName: sub.DP_SUBSCRIPTION_PLAN?.name || '',
+                        subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.display_name || sub.DP_SUBSCRIPTION_PLAN?.name || '',
+                        status: sub.status,
+                        subscriptionToken: sub.token,
+                        maskedToken: sub.token ? sub.token.slice(0, 4) + '****' + sub.token.slice(-4) : '',
                         customerName: null
                     }));
                 } catch (err) {
@@ -461,15 +461,15 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
             // Load MCP schema so loadAPIDefinitionRaw can serve it via SPEC_FORMAT_MAP field:'schema'
             try {
                 const rawSchema = await apiFileDao.getByType(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, apiId);
-                if (rawSchema?.FILE_CONTENT) {
-                    templateContent.schema = rawSchema.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+                if (rawSchema?.file_content) {
+                    templateContent.schema = rawSchema.file_content.toString(constants.CHARSET_UTF8);
                 }
             } catch (schemaErr) {
                 logger.warn('Could not load MCP schema definition for raw spec', { orgId, apiId, error: schemaErr.message });
             }
         } else if (metaData.type === constants.API_TYPE.GRAPHQL) {
             apiDefinition = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-            templateContent.graphql = apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+            templateContent.graphql = apiDefinition.file_content.toString(constants.CHARSET_UTF8);
         } else {
             apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
             if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) {
@@ -506,7 +506,7 @@ const loadDocsPage = async (req, res, next) => {
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         try {
             const orgId = await orgDao.getId(orgName);
@@ -526,9 +526,9 @@ const loadDocsPage = async (req, res, next) => {
             }
 
             const apiMetadata = await apiDao.get(orgId, apiId);
-            let apiType = apiMetadata[0].dataValues.TYPE;
+            let apiType = apiMetadata[0].dataValues.type;
             const metaForNav = {
-                refId: apiMetadata[0].dataValues.REF_ID,
+                refId: apiMetadata[0].dataValues.ref_id,
             };
 
             let apiDefinitionForNav = null;
@@ -549,7 +549,7 @@ const loadDocsPage = async (req, res, next) => {
                 baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
-                apiName: apiMetadata[0].dataValues.NAME || '',
+                apiName: apiMetadata[0].dataValues.name || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
@@ -623,7 +623,7 @@ const loadDocument = async (req, res, next) => {
     }
 
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let baseDocUrl = '/' + orgName + '/views/' + viewName + "/api/" + apiHandle
     if (req.originalUrl.includes('/mcp')) {
         baseDocUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
@@ -734,8 +734,8 @@ const loadDocument = async (req, res, next) => {
             const viewName = req.params.viewName;
             let docNames = await apiMetadataService.getAPIDocTypes(orgId, apiId);
             const apiMetadata = await apiDao.get(orgId, apiId);
-            let apiType = apiMetadata[0].dataValues.TYPE;
-            const referenceId = apiMetadata[0].dataValues.REF_ID;
+            let apiType = apiMetadata[0].dataValues.type;
+            const referenceId = apiMetadata[0].dataValues.ref_id;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
@@ -745,7 +745,7 @@ const loadDocument = async (req, res, next) => {
             templateContent.docTypes = docNames;
             templateContent.currentDocName = docName || null;
             templateContent.currentDocType = docType || null;
-            templateContent.apiName = apiMetadata[0].dataValues.NAME || '';
+            templateContent.apiName = apiMetadata[0].dataValues.name || '';
             let profile = null;
             if (req.user) {
                 profile = {
@@ -760,7 +760,7 @@ const loadDocument = async (req, res, next) => {
             templateContent.devportalMode = devportalMode;
             const row = apiMetadata[0].dataValues;
             const metaForNav = {
-                refId: row.REF_ID,
+                refId: row.ref_id,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
@@ -848,8 +848,8 @@ function resolveSamplesPath(apiHandle) {
 
 async function getApiDefinitionFileContent(orgId, apiId) {
     const apiDefinition = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-    if (apiDefinition?.FILE_CONTENT) {
-        return apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+    if (apiDefinition?.file_content) {
+        return apiDefinition.file_content.toString(constants.CHARSET_UTF8);
     }
 
     throw new Error('API definition file not found');
@@ -1041,7 +1041,7 @@ const loadAPIContentMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1069,16 +1069,16 @@ const loadAPIContentMd = async (req, res) => {
             if (apiType === constants.API_TYPE.GRAPHQL) {
                 specHeading = 'GraphQL Schema';
                 const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                if (raw) apiDefinition = raw.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
             } else if (apiType === constants.API_TYPE.MCP) {
                 specHeading = 'Tool Schema';
                 const raw = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, apiId, null);
-                if (raw) apiDefinition = raw.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
             } else {
                 if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) specHeading = 'AsyncAPI Specification';
                 else if (apiType === 'SOAP') specHeading = 'WSDL';
                 const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_FILE_NAME, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                if (raw) apiDefinition = raw.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
             }
         } catch (defErr) {
             logger.warn('Could not load API definition for markdown', { orgId, apiId, error: defErr.message });
@@ -1204,21 +1204,21 @@ const loadLlmsTxt = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         let llmsConfig = {};
         if (configAsset) {
-            try { llmsConfig = JSON.parse(configAsset.FILE_CONTENT.toString('utf8')); } catch (e) { /* ignore */ }
+            try { llmsConfig = JSON.parse(configAsset.file_content.toString('utf8')); } catch (e) { /* ignore */ }
         }
         if (llmsConfig.aiEnabled === false) {
             return res.status(404).send('Not Found');
         }
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, {
-            orgName: orgDetails.NAME,
+            orgName: orgDetails.name,
             portalName: llmsConfig.portalName || null,
             portalDescription: llmsConfig.portalDescription || null,
         });
@@ -1239,11 +1239,11 @@ const previewLlmsTxt = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
         const { portalName, portalDescription } = req.body;
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, {
-            orgName: orgDetails.NAME,
+            orgName: orgDetails.name,
             portalName: portalName || null,
             portalDescription: portalDescription || null,
         });
@@ -1265,7 +1265,7 @@ const loadAPIsMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1314,7 +1314,7 @@ const loadMCPsMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1363,7 +1363,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
     const { orgName, apiHandle, viewName, format } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).json({ message: 'Not Found' });
@@ -1429,7 +1429,7 @@ const loadDocumentMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1451,7 +1451,7 @@ const loadDocumentMd = async (req, res) => {
         if (!docContentResponse) {
             return res.status(404).send('# Not Found\n\nDocument not found.');
         }
-        const content = docContentResponse.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+        const content = docContentResponse.file_content.toString(constants.CHARSET_UTF8);
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
         res.send(content);
     } catch (error) {
@@ -1471,8 +1471,8 @@ const seedSamples = async (req, res) => {
     }
     try {
         const orgDetails = await orgDao.get(orgName);
-        const apiResults = await seedSampleAPIs(orgDetails.UUID);
-        const mcpResults = await seedSampleMCPs(orgDetails.UUID);
+        const apiResults = await seedSampleAPIs(orgDetails.uuid);
+        const mcpResults = await seedSampleMCPs(orgDetails.uuid);
         const results  = [...apiResults, ...mcpResults];
         const deployed = results.filter(r => r.status === 'ok').length;
         const skipped  = results.filter(r => r.status === 'exists').length;

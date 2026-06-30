@@ -19,55 +19,45 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 
 const APIContent = sequelize.define('DP_API_CONTENT', {
-    UUID: {
-        field: 'uuid',
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    API_UUID: {
-        field: 'api_uuid',
+    api_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
     },
-    FILE_CONTENT: {
-        field: 'file_content',
+    file_content: {
         type: DataTypes.BLOB,
         allowNull: false,
     },
-    TYPE: {
-        field: 'type',
+    type: {
         type: DataTypes.STRING(64),
         allowNull: false,
     },
-    FILE_NAME: {
-        field: 'file_name',
+    file_name: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    LOOKUP_KEY: {
-        field: 'lookup_key',
+    lookup_key: {
         type: DataTypes.STRING,
         allowNull: true,
     },
-    CREATED_BY: {
-        field: 'created_by',
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
-        field: 'created_at',
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
-        field: 'updated_by',
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
-        field: 'updated_at',
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
@@ -80,12 +70,12 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
         {
             name: 'uq_api_content_api_type_file_name',
             unique: true,
-            fields: ['API_UUID', 'TYPE', 'FILE_NAME']
+            fields: ['api_uuid', 'type', 'file_name']
         },
         {
             name: 'uq_api_content_api_type_lookup_key',
             unique: true,
-            fields: ['API_UUID', 'TYPE', 'LOOKUP_KEY']
+            fields: ['api_uuid', 'type', 'lookup_key']
         }
     ]
 });

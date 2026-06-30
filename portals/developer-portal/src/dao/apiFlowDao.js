@@ -23,20 +23,20 @@ const logger = require('../config/logger');
 const create = async (orgId, viewId, apiFlowData, createdBy, t) => {
     try {
         const apiFlow = await APIFlow.create({
-            ORG_UUID: orgId,
-            VIEW_UUID: viewId,
-            NAME: apiFlowData.name,
-            HANDLE: apiFlowData.handle,
-            DESCRIPTION: apiFlowData.description,
-            AGENT_PROMPT: apiFlowData.agentPrompt,
-            STATUS: apiFlowData.status || constants.API_FLOW_STATUS.PUBLISHED,
-            AGENT_VISIBILITY: apiFlowData.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
-            FILE_CONTENT: apiFlowData.apiFlowDefinition != null ? Buffer.from(apiFlowData.apiFlowDefinition) : null,
-            CONTENT_TYPE: apiFlowData.contentType || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
-            CREATED_BY: createdBy,
-            UPDATED_BY: createdBy,
-            CREATED_AT: new Date(),
-            UPDATED_AT: new Date()
+            org_uuid: orgId,
+            view_uuid: viewId,
+            name: apiFlowData.name,
+            handle: apiFlowData.handle,
+            description: apiFlowData.description,
+            agent_prompt: apiFlowData.agentPrompt,
+            status: apiFlowData.status || constants.API_FLOW_STATUS.PUBLISHED,
+            agent_visibility: apiFlowData.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
+            file_content: apiFlowData.apiFlowDefinition != null ? Buffer.from(apiFlowData.apiFlowDefinition) : null,
+            content_type: apiFlowData.contentType || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
+            created_by: createdBy,
+            updated_by: createdBy,
+            created_at: new Date(),
+            updated_at: new Date()
         }, { transaction: t });
         return apiFlow;
     } catch (error) {
@@ -49,18 +49,18 @@ const create = async (orgId, viewId, apiFlowData, createdBy, t) => {
 };
 
 const update = async (orgId, viewId, apiFlowId, apiFlowData, updatedBy, t) => {
-    const updateFields = { UPDATED_AT: new Date(), UPDATED_BY: updatedBy };
-    if (apiFlowData.name !== undefined) updateFields.NAME = apiFlowData.name;
-    if (apiFlowData.handle !== undefined) updateFields.HANDLE = apiFlowData.handle;
-    if (apiFlowData.description !== undefined) updateFields.DESCRIPTION = apiFlowData.description;
-    if (apiFlowData.agentPrompt !== undefined) updateFields.AGENT_PROMPT = apiFlowData.agentPrompt;
-    if (apiFlowData.status !== undefined) updateFields.STATUS = apiFlowData.status;
-    if (apiFlowData.agentVisibility !== undefined) updateFields.AGENT_VISIBILITY = apiFlowData.agentVisibility;
-    if (apiFlowData.apiFlowDefinition !== undefined) updateFields.FILE_CONTENT = apiFlowData.apiFlowDefinition != null ? Buffer.from(apiFlowData.apiFlowDefinition) : null;
-    if (apiFlowData.contentType !== undefined) updateFields.CONTENT_TYPE = apiFlowData.contentType;
+    const updateFields = { updated_at: new Date(), updated_by: updatedBy };
+    if (apiFlowData.name !== undefined) updateFields.name = apiFlowData.name;
+    if (apiFlowData.handle !== undefined) updateFields.handle = apiFlowData.handle;
+    if (apiFlowData.description !== undefined) updateFields.description = apiFlowData.description;
+    if (apiFlowData.agentPrompt !== undefined) updateFields.agent_prompt = apiFlowData.agentPrompt;
+    if (apiFlowData.status !== undefined) updateFields.status = apiFlowData.status;
+    if (apiFlowData.agentVisibility !== undefined) updateFields.agent_visibility = apiFlowData.agentVisibility;
+    if (apiFlowData.apiFlowDefinition !== undefined) updateFields.file_content = apiFlowData.apiFlowDefinition != null ? Buffer.from(apiFlowData.apiFlowDefinition) : null;
+    if (apiFlowData.contentType !== undefined) updateFields.content_type = apiFlowData.contentType;
 
     const [count, rows] = await APIFlow.update(updateFields, {
-        where: { UUID: apiFlowId, ORG_UUID: orgId, VIEW_UUID: viewId },
+        where: { uuid: apiFlowId, org_uuid: orgId, view_uuid: viewId },
         returning: true,
         transaction: t
     });
@@ -69,42 +69,42 @@ const update = async (orgId, viewId, apiFlowId, apiFlowData, updatedBy, t) => {
 
 const deleteFlow = async (orgId, viewId, apiFlowId, t) => {
     return await APIFlow.destroy({
-        where: { UUID: apiFlowId, ORG_UUID: orgId, VIEW_UUID: viewId },
+        where: { uuid: apiFlowId, org_uuid: orgId, view_uuid: viewId },
         transaction: t
     });
 };
 
 const get = async (orgId, viewId, apiFlowId) => {
     return await APIFlow.findOne({
-        where: { UUID: apiFlowId, ORG_UUID: orgId, VIEW_UUID: viewId }
+        where: { uuid: apiFlowId, org_uuid: orgId, view_uuid: viewId }
     });
 };
 
 const getByHandle = async (orgId, viewId, handle) => {
     return await APIFlow.findOne({
-        where: { HANDLE: handle, ORG_UUID: orgId, VIEW_UUID: viewId }
+        where: { handle: handle, org_uuid: orgId, view_uuid: viewId }
     });
 };
 
 const list = async (orgId, viewId) => {
     return await APIFlow.findAll({
-        where: { ORG_UUID: orgId, VIEW_UUID: viewId },
-        order: [['CREATED_AT', 'DESC']]
+        where: { org_uuid: orgId, view_uuid: viewId },
+        order: [['created_at', 'DESC']]
     });
 };
 
 const listPublished = async (orgId, viewId, { agentVisibility } = {}) => {
-    const where = { ORG_UUID: orgId, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
-    if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
+    const where = { org_uuid: orgId, view_uuid: viewId, status: 'PUBLISHED' };
+    if (agentVisibility) where.agent_visibility = agentVisibility;
     return await APIFlow.findAll({
         where,
-        order: [['CREATED_AT', 'DESC']]
+        order: [['created_at', 'DESC']]
     });
 };
 
 const getPublishedByHandle = async (orgId, viewId, handle, { agentVisibility } = {}) => {
-    const where = { HANDLE: handle, ORG_UUID: orgId, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
-    if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
+    const where = { handle: handle, org_uuid: orgId, view_uuid: viewId, status: 'PUBLISHED' };
+    if (agentVisibility) where.agent_visibility = agentVisibility;
     return await APIFlow.findOne({ where });
 };
 

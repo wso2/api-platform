@@ -38,7 +38,7 @@ function _uniqueConstraintMessage(error, payload) {
     const fields = Array.isArray(error.fields)
         ? error.fields
         : error.fields ? Object.keys(error.fields) : (error.errors || []).map(e => e.path);
-    if (fields.includes('NAME')) {
+    if (fields.includes('name')) {
         return `A webhook subscriber with name "${payload?.name}" already exists in this organization.`;
     }
     return 'A webhook subscriber with that name already exists in this organization.';
@@ -124,14 +124,14 @@ const getWebhookSubscriber = async (req, res) => {
 function _formatDeliverySummary(delivery) {
     const event = delivery.DP_EVENT;
     return {
-        deliveryId: delivery.UUID,
-        eventType: event ? event.TYPE : null,
-        occurredAt: event ? event.OCCURRED_AT : null,
-        status: delivery.STATUS,
-        lastHttpStatus: delivery.LAST_HTTP_STATUS || null,
-        lastError: delivery.LAST_ERROR || null,
-        lastAttemptAt: delivery.LAST_ATTEMPT_AT || null,
-        deliveredAt: delivery.DELIVERED_AT || null,
+        deliveryId: delivery.uuid,
+        eventType: event ? event.type : null,
+        occurredAt: event ? event.occurred_at : null,
+        status: delivery.status,
+        lastHttpStatus: delivery.last_http_status || null,
+        lastError: delivery.last_error || null,
+        lastAttemptAt: delivery.last_attempt_at || null,
+        deliveredAt: delivery.delivered_at || null,
     };
 }
 

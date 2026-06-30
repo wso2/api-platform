@@ -123,14 +123,14 @@ async function seedSampleAPIs(orgId) {
 
             await sequelize.transaction(async (t) => {
                 const created = await apiDao.create(orgId, apiMetadata, constants.SYSTEM_ACTOR, t);
-                apiId = created.dataValues.UUID;
+                apiId = created.dataValues.uuid;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
-                        if (plan) mappings.push({ apiId: apiId, planId: plan.UUID });
+                        if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }
@@ -208,14 +208,14 @@ async function seedSampleMCPs(orgId) {
 
             await sequelize.transaction(async (t) => {
                 const created = await apiDao.create(orgId, apiMetadata, constants.SYSTEM_ACTOR, t);
-                apiId = created.dataValues.UUID;
+                apiId = created.dataValues.uuid;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
-                        if (plan) mappings.push({ apiId: apiId, planId: plan.UUID });
+                        if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }

@@ -23,112 +23,91 @@ const Labels = require('./label');
 const Tags = require('./tag');
 
 const APIMetadata = sequelize.define('DP_API_METADATA', {
-  UUID: {
-    field: 'uuid',
+  uuid: {
     type: DataTypes.STRING(40),
     defaultValue: Sequelize.UUIDV4,
     primaryKey: true
   },
-  REF_ID: {
-    field: 'ref_id',
+  ref_id: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  NAME: {
-    field: 'name',
+  name: {
     type: DataTypes.STRING,
     allowNull: false
   },
-  STATUS: {
-    field: 'status',
+  status: {
     type: DataTypes.STRING(20),
     allowNull: false
   },
-  DESCRIPTION: {
-    field: 'description',
+  description: {
     type: DataTypes.STRING(1023),
     allowNull: true,
   },
-  VERSION: {
-    field: 'version',
+  version: {
     type: DataTypes.STRING(30),
     allowNull: false,
   },
-  TYPE: {
-    field: 'type',
+  type: {
     type: DataTypes.STRING(20),
     allowNull: false
   },
-  AGENT_VISIBILITY: {
-    field: 'agent_visibility',
+  agent_visibility: {
     type: DataTypes.STRING,
     allowNull: false,
     defaultValue: 'VISIBLE'
   },
-  TECHNICAL_OWNER: {
-    field: 'technical_owner',
+  technical_owner: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  TECHNICAL_OWNER_EMAIL: {
-    field: 'technical_owner_email',
+  technical_owner_email: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  BUSINESS_OWNER: {
-    field: 'business_owner',
+  business_owner: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  BUSINESS_OWNER_EMAIL: {
-    field: 'business_owner_email',
+  business_owner_email: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  SANDBOX_URL: {
-    field: 'sandbox_url',
+  sandbox_url: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  PRODUCTION_URL: {
-    field: 'production_url',
+  production_url: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  METADATA_SEARCH: {
-    field: 'metadata_search',
+  metadata_search: {
     type: DataTypes.JSONB,
     allowNull: true
   },
-  HANDLE: {
-    field: 'handle',
+  handle: {
     type: DataTypes.STRING,
     allowNull: false
   },
-  ORG_UUID: {
-    field: 'org_uuid',
+  org_uuid: {
     type: DataTypes.STRING(40),
     allowNull: true,
     references: { model: 'dp_organization', key: 'uuid' }
   },
-  CREATED_BY: {
-    field: 'created_by',
+  created_by: {
     type: DataTypes.STRING,
     allowNull: false
   },
-  CREATED_AT: {
-    field: 'created_at',
+  created_at: {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: Sequelize.NOW
   },
-  UPDATED_BY: {
-    field: 'updated_by',
+  updated_by: {
     type: DataTypes.STRING,
     allowNull: false
   },
-  UPDATED_AT: {
-    field: 'updated_at',
+  updated_at: {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: Sequelize.NOW
@@ -141,35 +120,33 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
       {
           name: 'uq_api_metadata_name_version_org',
           unique: true,
-          fields: ['NAME', 'VERSION', 'ORG_UUID']
+          fields: ['name', 'version', 'org_uuid']
       },
       {
           name: 'uq_api_metadata_org_ref_id',
           unique: true,
-          fields: ['ORG_UUID', 'REF_ID']
+          fields: ['org_uuid', 'ref_id']
       },
       {
           name: 'uq_api_metadata_handle_org',
           unique: true,
-          fields: ['HANDLE', 'ORG_UUID']
+          fields: ['handle', 'org_uuid']
       },
       {
           name: 'idx_api_metadata_status',
-          fields: ['STATUS']
+          fields: ['status']
       }
   ]
 });
 
 const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
 
-  UUID: {
-      field: 'uuid',
+  uuid: {
       type: DataTypes.STRING(40),
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true
   },
-  API_UUID: {
-      field: 'api_uuid',
+  api_uuid: {
       type: DataTypes.STRING(40),
       allowNull: false,
       references: {
@@ -177,8 +154,7 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
           key: 'uuid',
       }
   },
-  LABEL_UUID: {
-      field: 'label_uuid',
+  label_uuid: {
       type: DataTypes.STRING(40),
       allowNull: false,
       references: {
@@ -186,13 +162,11 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
           key: 'uuid',
       }
   },
-  CREATED_BY: {
-      field: 'created_by',
+  created_by: {
       type: DataTypes.STRING,
       allowNull: false
   },
-  CREATED_AT: {
-      field: 'created_at',
+  created_at: {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: Sequelize.NOW
@@ -205,25 +179,23 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
       {
           name: 'uq_api_label_mappings_label_api',
           unique: true,
-          fields: ['LABEL_UUID', 'API_UUID']
+          fields: ['label_uuid', 'api_uuid']
       },
       {
           name: 'idx_api_label_mappings_api_uuid',
-          fields: ['API_UUID']
+          fields: ['api_uuid']
       }
   ]
 });
 
 const APITags = sequelize.define('DP_API_TAG_MAPPING', {
 
-  UUID: {
-      field: 'uuid',
+  uuid: {
       type: DataTypes.STRING(40),
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true
   },
-  API_UUID: {
-      field: 'api_uuid',
+  api_uuid: {
       type: DataTypes.STRING(40),
       allowNull: false,
       references: {
@@ -231,8 +203,7 @@ const APITags = sequelize.define('DP_API_TAG_MAPPING', {
           key: 'uuid',
       }
   },
-  TAG_UUID: {
-      field: 'tag_uuid',
+  tag_uuid: {
       type: DataTypes.STRING(40),
       allowNull: false,
       references: {
@@ -240,13 +211,11 @@ const APITags = sequelize.define('DP_API_TAG_MAPPING', {
           key: 'uuid',
       }
   },
-  CREATED_BY: {
-      field: 'created_by',
+  created_by: {
       type: DataTypes.STRING,
       allowNull: false
   },
-  CREATED_AT: {
-      field: 'created_at',
+  created_at: {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: Sequelize.NOW
@@ -259,57 +228,57 @@ const APITags = sequelize.define('DP_API_TAG_MAPPING', {
       {
           name: 'uq_api_tag_mappings_tag_api',
           unique: true,
-          fields: ['TAG_UUID', 'API_UUID']
+          fields: ['tag_uuid', 'api_uuid']
       },
       {
           name: 'idx_api_tag_mappings_api_uuid',
-          fields: ['API_UUID']
+          fields: ['api_uuid']
       }
   ]
 });
 
 APILabels.belongsTo(APIMetadata, {
-  foreignKey: 'API_UUID',
+  foreignKey: 'api_uuid',
   onDelete: 'CASCADE'
 });
 
 APITags.belongsTo(APIMetadata, {
-  foreignKey: 'API_UUID',
+  foreignKey: 'api_uuid',
   onDelete: 'CASCADE'
 });
 
 APIContent.belongsTo(APIMetadata, {
-  foreignKey: 'API_UUID',
+  foreignKey: 'api_uuid',
   onDelete: 'CASCADE'
 });
 APIMetadata.belongsTo(Organization, {
-  foreignKey: 'ORG_UUID'
+  foreignKey: 'org_uuid'
 });
 APIMetadata.hasMany(APIContent, {
-  foreignKey: 'API_UUID',
+  foreignKey: 'api_uuid',
   onDelete: 'CASCADE'
 });
 
 APIMetadata.belongsToMany(Labels, {
   through: APILabels,
-  foreignKey: "API_UUID",
-  otherKey: "LABEL_UUID"
+  foreignKey: "api_uuid",
+  otherKey: "label_uuid"
 });
 Labels.belongsToMany(APIMetadata, {
   through: APILabels,
-  foreignKey: "LABEL_UUID",
-  otherKey: "API_UUID"
+  foreignKey: "label_uuid",
+  otherKey: "api_uuid"
  });
 
 APIMetadata.belongsToMany(Tags, {
   through: APITags,
-  foreignKey: "API_UUID",
-  otherKey: "TAG_UUID"
+  foreignKey: "api_uuid",
+  otherKey: "tag_uuid"
 });
 Tags.belongsToMany(APIMetadata, {
   through: APITags,
-  foreignKey: "TAG_UUID",
-  otherKey: "API_UUID"
+  foreignKey: "tag_uuid",
+  otherKey: "api_uuid"
 });
 
 module.exports = {

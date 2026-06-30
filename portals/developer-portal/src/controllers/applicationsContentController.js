@@ -32,7 +32,7 @@ const apiKeyService = require('../services/apiKeyService');
 
 const orgIDValue = async (orgName) => {
     const organization = await orgDao.get(orgName);
-    return organization.UUID;
+    return organization.uuid;
 }
 
 const templateResponseValue = async (pageName) => {
@@ -70,22 +70,22 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         try {
             const { ApplicationKeyMapping } = require('../models/application');
             const localMappings = await ApplicationKeyMapping.findAll({
-                where: { APP_UUID: applicationId }
+                where: { app_uuid: applicationId }
             });
             const keyList = [];
             for (const mapping of localMappings) {
-                if (mapping.AS_CLIENT_ID && mapping.KM_UUID) {
+                if (mapping.as_client_id && mapping.km_uuid) {
                     try {
-                        const km = await kmDao.get(mapping.KM_UUID);
+                        const km = await kmDao.get(mapping.km_uuid);
                         keyList.push({
-                            keyManager: km.NAME,
-                            consumerKey: mapping.AS_CLIENT_ID,
-                            keyMappingId: mapping.UUID,
-                            keyType: mapping.TYPE || constants.KEY_TYPE.PRODUCTION,
+                            keyManager: km.name,
+                            consumerKey: mapping.as_client_id,
+                            keyMappingId: mapping.uuid,
+                            keyType: mapping.type || constants.KEY_TYPE.PRODUCTION,
                         });
                     } catch (mappingErr) {
                         logger.warn('Skipping key mapping due to error', {
-                            mappingId: mapping.UUID, error: mappingErr.message
+                            mappingId: mapping.uuid, error: mappingErr.message
                         });
                     }
                 }
@@ -105,11 +105,11 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         const dbKeyManagers = await kmDao.listEnabled(orgId);
         for (const km of dbKeyManagers) {
             kMmetaData.push({
-                id: km.UUID,
-                name: km.NAME,
-                type: km.TYPE,
+                id: km.uuid,
+                name: km.name,
+                type: km.type,
                 enabled: true,
-                tokenEndpoint: km.TOKEN_ENDPOINT,
+                tokenEndpoint: km.token_endpoint,
             });
         }
     } catch (kmError) {
@@ -192,7 +192,7 @@ const loadApplications = async (req, res, next) => {
 
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let html, metaData, templateContent;
     try {
         const orgName = req.params.orgName;
@@ -244,7 +244,7 @@ const loadApplication = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationId, viewName);
@@ -307,7 +307,7 @@ const loadApplicationKeys = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationId, viewName);
@@ -367,8 +367,8 @@ const loadApplicationKeys = async (req, res, next) => {
  */
 function formatApiDisplayName(apiMetadata, fallbackId) {
     if (!apiMetadata) return fallbackId;
-    const namePart = [apiMetadata.NAME, apiMetadata.VERSION].filter(Boolean).join(' ');
-    return apiMetadata.HANDLE ? `${namePart} (${apiMetadata.HANDLE})` : namePart;
+    const namePart = [apiMetadata.name, apiMetadata.version].filter(Boolean).join(' ');
+    return apiMetadata.handle ? `${namePart} (${apiMetadata.handle})` : namePart;
 }
 
 async function loadApplicationApiKeysData(orgId, applicationId) {
@@ -377,22 +377,22 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
     try {
         const associated = await apiKeyService.list(orgId, { appId: applicationId });
         associatedApiKeys = associated.map((k) => ({
-            keyId: k.UUID,
-            name: k.NAME,
-            status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-            apiId: k.API_UUID,
-            apiName: formatApiDisplayName(k.DP_API_METADATA, k.API_UUID)
+            keyId: k.uuid,
+            name: k.name,
+            status: String(k.status || 'ACTIVE').toLowerCase(),
+            apiId: k.api_uuid,
+            apiName: formatApiDisplayName(k.DP_API_METADATA, k.api_uuid)
         }));
 
         // Capped — this just populates a UI picker, not a full export of the org's keys.
         const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
-            if (k.DP_API_KEY_APP_MAPPING?.APP_UUID === applicationId) return;
-            const apiId = k.API_UUID;
+            if (k.DP_API_KEY_APP_MAPPING?.app_uuid === applicationId) return;
+            const apiId = k.api_uuid;
             const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
-            byApi.get(apiId).keys.push({ keyId: k.UUID, name: k.NAME });
+            byApi.get(apiId).keys.push({ keyId: k.uuid, name: k.name });
         });
         availableKeysByApi = Array.from(byApi.values());
     } catch (error) {

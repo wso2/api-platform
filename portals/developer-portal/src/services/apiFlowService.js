@@ -201,7 +201,7 @@ const createAPIFlow = async (req, res) => {
         const viewId = await resolveViewId(orgId, viewName);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
-            : generateAgentPrompt(name, description, [], orgDetails.IDP_REF_ID || '', viewName, '', resolvedHandle);
+            : generateAgentPrompt(name, description, [], orgDetails.idp_ref_id || '', viewName, '', resolvedHandle);
 
         const apiFlow = await apiFlowDao.create(orgId, viewId, {
             name,
@@ -215,11 +215,11 @@ const createAPIFlow = async (req, res) => {
         }, userId, t);
 
         await t.commit();
-        logger.info('APIFlow created', { apiFlowId: apiFlow.UUID, orgId, viewId });
+        logger.info('APIFlow created', { apiFlowId: apiFlow.uuid, orgId, viewId });
         res.status(201).json({
-            apiFlowId: apiFlow.UUID,
-            name: apiFlow.NAME,
-            status: apiFlow.STATUS
+            apiFlowId: apiFlow.uuid,
+            name: apiFlow.name,
+            status: apiFlow.status
         });
     } catch (error) {
         if (t) await t.rollback();
@@ -359,22 +359,22 @@ const parseFileContent = (raw) => {
 };
 
 const toAPIFlowDTO = (apiFlow) => {
-    const fileContent = parseFileContent(apiFlow.FILE_CONTENT);
+    const fileContent = parseFileContent(apiFlow.file_content);
     return {
-    apiFlowId: apiFlow.UUID,
-    name: apiFlow.NAME,
-    handle: apiFlow.HANDLE,
-    description: apiFlow.DESCRIPTION,
-    agentPrompt: apiFlow.AGENT_PROMPT,
-    status: apiFlow.STATUS,
-    agentVisibility: apiFlow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE,
-    contentType: apiFlow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
-    apiFlowDefinition: (apiFlow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO) === constants.API_FLOW_CONTENT_TYPE.ARAZZO ? fileContent : null,
-    markdownContent: apiFlow.CONTENT_TYPE === 'MD' ? fileContent : null,
-    createdAt: apiFlow.CREATED_AT ? new Date(apiFlow.CREATED_AT).toLocaleDateString('en-US', {
+    apiFlowId: apiFlow.uuid,
+    name: apiFlow.name,
+    handle: apiFlow.handle,
+    description: apiFlow.description,
+    agentPrompt: apiFlow.agent_prompt,
+    status: apiFlow.status,
+    agentVisibility: apiFlow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE,
+    contentType: apiFlow.content_type || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
+    apiFlowDefinition: (apiFlow.content_type || constants.API_FLOW_CONTENT_TYPE.ARAZZO) === constants.API_FLOW_CONTENT_TYPE.ARAZZO ? fileContent : null,
+    markdownContent: apiFlow.content_type === 'MD' ? fileContent : null,
+    createdAt: apiFlow.created_at ? new Date(apiFlow.created_at).toLocaleDateString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric'
     }) : '',
-    updatedAt: apiFlow.UPDATED_AT
+    updatedAt: apiFlow.updated_at
     };
 };
 

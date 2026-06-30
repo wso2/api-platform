@@ -19,9 +19,9 @@
 
 class ViewDTO {
     constructor(view) {
-        this.handle = view.HANDLE;
-        this.name = view.NAME;
-        this.labels = view.DP_LABELs.map(label => label.dataValues.NAME);
+        this.handle = view.handle;
+        this.name = view.name;
+        this.labels = view.DP_LABELs.map(label => label.dataValues.name);
     }
 
     setResponseData(data) {

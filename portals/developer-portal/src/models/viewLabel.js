@@ -22,14 +22,12 @@ const Labels = require('./label');
 
 
 const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
-    UUID: {
-        field: 'uuid',
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    VIEW_UUID: {
-        field: 'view_uuid',
+    view_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
         references: {
@@ -37,8 +35,7 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
             key: 'uuid',
         },
     },
-    LABEL_UUID: {
-        field: 'label_uuid',
+    label_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
         references: {
@@ -46,13 +43,11 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
             key: 'uuid',
         }
     },
-    CREATED_BY: {
-        field: 'created_by',
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
-        field: 'created_at',
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
@@ -65,24 +60,24 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
         {
             name: 'uq_view_label_mappings_label_view',
             unique: true,
-            fields: ['LABEL_UUID', 'VIEW_UUID']
+            fields: ['label_uuid', 'view_uuid']
         },
         {
             name: 'idx_view_label_mappings_view_uuid',
-            fields: ['VIEW_UUID']
+            fields: ['view_uuid']
         }
     ]
 });
 
 View.belongsToMany(Labels, {
     through: ViewLabels,
-    foreignKey: "VIEW_UUID",
-    otherKey: "LABEL_UUID",
+    foreignKey: "view_uuid",
+    otherKey: "label_uuid",
 });
 Labels.belongsToMany(View, {
     through: ViewLabels,
-    foreignKey: "LABEL_UUID",
-    otherKey: "VIEW_UUID",
+    foreignKey: "label_uuid",
+    otherKey: "view_uuid",
 });
 
 module.exports = ViewLabels;

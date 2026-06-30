@@ -35,9 +35,9 @@ const resolveViewId = async (orgId, viewName) => {
 
 
 const extractSourceDescriptions = (flow) => {
-    if ((flow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO) !== constants.API_FLOW_CONTENT_TYPE.ARAZZO || !flow.FILE_CONTENT) return [];
+    if ((flow.content_type || constants.API_FLOW_CONTENT_TYPE.ARAZZO) !== constants.API_FLOW_CONTENT_TYPE.ARAZZO || !flow.file_content) return [];
     try {
-        const raw = Buffer.isBuffer(flow.FILE_CONTENT) ? flow.FILE_CONTENT.toString('utf8') : String(flow.FILE_CONTENT);
+        const raw = Buffer.isBuffer(flow.file_content) ? flow.file_content.toString('utf8') : String(flow.file_content);
         const spec = yaml.load(raw);
         return Array.isArray(spec?.sourceDescriptions)
             ? spec.sourceDescriptions.map(sd => ({ name: sd.name, url: sd.url || null })).filter(sd => sd.name)
@@ -78,7 +78,7 @@ const loadAPIFlows = async (req, res, next) => {
             return next(err);
         }
 
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
         const viewId = await resolveViewId(orgId, viewName);
 
         const apiFlows = await apiFlowDao.listPublished(orgId, viewId);
@@ -92,18 +92,18 @@ const loadAPIFlows = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || 'DEFAULT';
+        const devportalMode = orgDetails.configuration?.devportalMode || 'DEFAULT';
 
         const resolvedFlows = apiFlows.map(flow => {
             const sources = extractSourceDescriptions(flow);
             return {
-                apiFlowId: flow.UUID,
-                handle: flow.HANDLE,
-                name: flow.NAME,
-                description: flow.DESCRIPTION,
-                agentPrompt: flow.AGENT_PROMPT,
-                status: flow.STATUS,
-                agentVisibility: flow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE,
+                apiFlowId: flow.uuid,
+                handle: flow.handle,
+                name: flow.name,
+                description: flow.description,
+                agentPrompt: flow.agent_prompt,
+                status: flow.status,
+                agentVisibility: flow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE,
                 sources,
                 sourcesPreview: sources.slice(0, 4),
                 sourcesMoreCount: Math.max(0, sources.length - 4)
@@ -155,7 +155,7 @@ const loadAPIFlowDetail = async (req, res, next) => {
             return next(err);
         }
 
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
         const viewId = await resolveViewId(orgId, viewName);
 
         const apiFlow = await apiFlowDao.getPublishedByHandle(orgId, viewId, handle);
@@ -174,9 +174,9 @@ const loadAPIFlowDetail = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || 'DEFAULT';
+        const devportalMode = orgDetails.configuration?.devportalMode || 'DEFAULT';
 
-        const rawContent = apiFlow.FILE_CONTENT;
+        const rawContent = apiFlow.file_content;
         let fileContentStr = '';
         if (rawContent != null) {
             fileContentStr = Buffer.isBuffer(rawContent) ? rawContent.toString('utf8') : String(rawContent);
@@ -184,16 +184,16 @@ const loadAPIFlowDetail = async (req, res, next) => {
 
         const templateContent = {
             flow: {
-                flowId: apiFlow.UUID,
-                name: apiFlow.NAME,
-                description: apiFlow.DESCRIPTION,
-                agentPrompt: apiFlow.AGENT_PROMPT,
-                status: apiFlow.STATUS,
-                agentVisibility: apiFlow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE,
-                contentType: apiFlow.CONTENT_TYPE,
+                flowId: apiFlow.uuid,
+                name: apiFlow.name,
+                description: apiFlow.description,
+                agentPrompt: apiFlow.agent_prompt,
+                status: apiFlow.status,
+                agentVisibility: apiFlow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE,
+                contentType: apiFlow.content_type,
                 content: fileContentStr,
-                createdAt: apiFlow.CREATED_AT ? new Date(apiFlow.CREATED_AT).toLocaleDateString() : '',
-                updatedAt: apiFlow.UPDATED_AT ? new Date(apiFlow.UPDATED_AT).toLocaleDateString() : ''
+                createdAt: apiFlow.created_at ? new Date(apiFlow.created_at).toLocaleDateString() : '',
+                updatedAt: apiFlow.updated_at ? new Date(apiFlow.updated_at).toLocaleDateString() : ''
             },
             orgName,
             viewName,
@@ -238,7 +238,7 @@ const getFlowPromptJSON = async (req, res) => {
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).json({ error: 'Not Found' });
@@ -252,19 +252,19 @@ const getFlowPromptJSON = async (req, res) => {
             return res.status(404).json({ error: 'API Workflow not found or not published' });
         }
 
-        const rawContent = apiFlow.FILE_CONTENT;
+        const rawContent = apiFlow.file_content;
         let content = null;
         if (rawContent != null) {
             content = Buffer.isBuffer(rawContent) ? rawContent.toString('utf8') : String(rawContent);
         }
 
         res.status(200).json({
-            flowId: apiFlow.UUID,
-            handle: apiFlow.HANDLE,
-            name: apiFlow.NAME,
-            description: apiFlow.DESCRIPTION,
-            agentPrompt: apiFlow.AGENT_PROMPT,
-            contentType: apiFlow.CONTENT_TYPE,
+            flowId: apiFlow.uuid,
+            handle: apiFlow.handle,
+            name: apiFlow.name,
+            description: apiFlow.description,
+            agentPrompt: apiFlow.agent_prompt,
+            contentType: apiFlow.content_type,
             content,
             sources: extractSourceDescriptions(apiFlow)
         });
@@ -289,7 +289,7 @@ const getWorkflowDetailMd = async (req, res) => {
             return res.status(404).send('# Error\n\nOrganization not found.');
         }
 
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -304,7 +304,7 @@ const getWorkflowDetailMd = async (req, res) => {
         }
 
         // Get raw content as string
-        const rawContent = apiFlow.FILE_CONTENT;
+        const rawContent = apiFlow.file_content;
         let workflowContent = '';
         if (rawContent != null) {
             workflowContent = Buffer.isBuffer(rawContent) ? rawContent.toString('utf8') : String(rawContent);
@@ -312,7 +312,7 @@ const getWorkflowDetailMd = async (req, res) => {
 
         // Convert to Markdown format if the content is Arazzo JSON
         let markdownContent = workflowContent;
-        if (apiFlow.CONTENT_TYPE === 'ARAZZO') {
+        if (apiFlow.content_type === 'ARAZZO') {
             try {
                 const arazoJson = JSON.parse(workflowContent);
                 const rawSources = extractSourceDescriptions(apiFlow);
@@ -349,10 +349,10 @@ const generateWorkflowMarkdown = (arazoJson, apiFlow, orgName, viewName, sources
     const baseUrl = `/${orgName}/views/${viewName}`;
     const data = {
         flow: {
-            name: apiFlow.NAME,
-            handle: apiFlow.HANDLE,
-            status: apiFlow.STATUS,
-            description: apiFlow.DESCRIPTION
+            name: apiFlow.name,
+            handle: apiFlow.handle,
+            status: apiFlow.status,
+            description: apiFlow.description
         },
         sources: sources.map(s => ({
             ...s,
@@ -374,8 +374,8 @@ const generateWorkflowsListMarkdown = (apiFlows, orgName, viewName, hiddenWorkfl
     const baseUrl = `/${orgName}/views/${viewName}`;
     const data = {
         flows: apiFlows.map(flow => ({
-            name: flow.NAME,
-            handle: flow.HANDLE
+            name: flow.name,
+            handle: flow.handle
         })),
         baseUrl,
         orgName,
@@ -397,7 +397,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
             return res.status(404).send('# Error\n\nOrganization not found.');
         }
 
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -406,7 +406,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
         const viewId = await resolveViewId(orgId, viewName);
 
         const allPublishedFlows = await apiFlowDao.listPublished(orgId, viewId);
-        const apiFlows = allPublishedFlows.filter(f => (f.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE) !== constants.AGENT_VISIBILITY.HIDDEN);
+        const apiFlows = allPublishedFlows.filter(f => (f.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE) !== constants.AGENT_VISIBILITY.HIDDEN);
         const hiddenWorkflowCount = allPublishedFlows.length - apiFlows.length;
 
         const md = generateWorkflowsListMarkdown(apiFlows, orgName, viewName, hiddenWorkflowCount);
@@ -445,7 +445,7 @@ const getWorkflowArazzoSpec = async (req, res) => {
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
             return res.status(404).json({ error: 'Not Found' });
@@ -458,15 +458,15 @@ const getWorkflowArazzoSpec = async (req, res) => {
             return res.status(404).json({ error: 'API Workflow not found or not published' });
         }
 
-        if ((apiFlow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE) === constants.AGENT_VISIBILITY.HIDDEN) {
+        if ((apiFlow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE) === constants.AGENT_VISIBILITY.HIDDEN) {
             return res.status(404).json({ error: 'API Workflow not found or not published' });
         }
 
-        if (apiFlow.CONTENT_TYPE !== 'ARAZZO') {
+        if (apiFlow.content_type !== 'ARAZZO') {
             return res.status(404).json({ error: 'This workflow does not have an Arazzo specification' });
         }
 
-        const rawContent = apiFlow.FILE_CONTENT;
+        const rawContent = apiFlow.file_content;
         const content = Buffer.isBuffer(rawContent) ? rawContent.toString('utf8') : String(rawContent);
 
         res.setHeader('Content-Type', 'application/json; charset=utf-8');

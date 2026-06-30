@@ -24,47 +24,47 @@ const constants = require('../utils/constants');
 
 const API_METADATA_INCLUDE = {
     model: APIMetadata, as: 'DP_API_METADATA',
-    attributes: ['UUID', 'NAME', 'VERSION', 'HANDLE']
+    attributes: ['uuid', 'name', 'version', 'handle']
 };
 
 function appMappingInclude(required = false, appId = null) {
     const opts = {
         model: APIKeyAppMapping,
         required,
-        include: [{ model: Application, attributes: ['UUID', 'NAME'] }],
+        include: [{ model: Application, attributes: ['uuid', 'name'] }],
     };
-    if (appId) opts.where = { APP_UUID: appId };
+    if (appId) opts.where = { app_uuid: appId };
     return opts;
 }
 
 async function create({ apiId, subscriptionId, appId, orgId, name, expiresAt, createdBy }, transaction) {
     const key = await APIKey.create(
-        { API_UUID: apiId, SUBSCRIPTION_UUID: subscriptionId || null, ORG_UUID: orgId,
-          NAME: name, EXPIRES_AT: expiresAt || null, CREATED_BY: createdBy, UPDATED_BY: createdBy, STATUS: constants.API_KEY_STATUS.ACTIVE },
+        { api_uuid: apiId, subscription_uuid: subscriptionId || null, org_uuid: orgId,
+          name: name, expires_at: expiresAt || null, created_by: createdBy, updated_by: createdBy, status: constants.API_KEY_STATUS.ACTIVE },
         { transaction }
     );
     if (appId) {
-        await APIKeyAppMapping.create({ KEY_UUID: key.UUID, APP_UUID: appId, CREATED_BY: createdBy }, { transaction });
+        await APIKeyAppMapping.create({ key_uuid: key.uuid, app_uuid: appId, created_by: createdBy }, { transaction });
     }
     return key;
 }
 
 async function get(orgId, keyId, transaction) {
     return APIKey.findOne({
-        where: { UUID: keyId, ORG_UUID: orgId },
+        where: { uuid: keyId, org_uuid: orgId },
         include: [API_METADATA_INCLUDE, appMappingInclude()],
         transaction
     });
 }
 
 async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {}, transaction) {
-    const where = { ORG_UUID: orgId };
-    if (apiId) where.API_UUID = apiId;
-    if (subscriptionId) where.SUBSCRIPTION_UUID = subscriptionId;
-    if (status) where.STATUS = status;
+    const where = { org_uuid: orgId };
+    if (apiId) where.api_uuid = apiId;
+    if (subscriptionId) where.subscription_uuid = subscriptionId;
+    if (status) where.status = status;
     return APIKey.findAll({
         where,
-        order: [['CREATED_AT', 'DESC']],
+        order: [['created_at', 'DESC']],
         include: [API_METADATA_INCLUDE, appMappingInclude(!!appId, appId)],
         ...(limit && { limit }),
         transaction
@@ -73,21 +73,21 @@ async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {},
 
 async function revoke(orgId, keyId, updatedBy, transaction) {
     const [count] = await APIKey.update(
-        { STATUS: constants.API_KEY_STATUS.REVOKED, REVOKED_AT: new Date(), REVOKED_BY: updatedBy, UPDATED_BY: updatedBy },
-        { where: { UUID: keyId, ORG_UUID: orgId, STATUS: constants.API_KEY_STATUS.ACTIVE }, transaction }
+        { status: constants.API_KEY_STATUS.REVOKED, revoked_at: new Date(), revoked_by: updatedBy, updated_by: updatedBy },
+        { where: { uuid: keyId, org_uuid: orgId, status: constants.API_KEY_STATUS.ACTIVE }, transaction }
     );
     return count > 0;
 }
 
 async function setApplication(orgId, keyId, appId, updatedBy, transaction, { activeOnly = false } = {}) {
-    const where = { UUID: keyId, ORG_UUID: orgId };
-    if (activeOnly) where.STATUS = constants.API_KEY_STATUS.ACTIVE;
+    const where = { uuid: keyId, org_uuid: orgId };
+    if (activeOnly) where.status = constants.API_KEY_STATUS.ACTIVE;
     const key = await APIKey.findOne({ where, transaction, lock: transaction ? true : false });
     if (!key) return false;
     if (appId) {
-        await APIKeyAppMapping.upsert({ KEY_UUID: keyId, APP_UUID: appId, CREATED_BY: updatedBy }, { transaction });
+        await APIKeyAppMapping.upsert({ key_uuid: keyId, app_uuid: appId, created_by: updatedBy }, { transaction });
     } else {
-        await APIKeyAppMapping.destroy({ where: { KEY_UUID: keyId }, transaction });
+        await APIKeyAppMapping.destroy({ where: { key_uuid: keyId }, transaction });
     }
     return true;
 }

@@ -137,8 +137,8 @@ const ensureAuthenticated = async (req, res, next) => {
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                         req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                         if (orgDetails) {
-                            req.user[constants.ORG_UUID] = orgDetails.UUID;
-                            req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_REF_ID;
+                            req.user[constants.ORG_UUID] = orgDetails.uuid;
+                            req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
                     if (!config.advanced.disabledRoleValidation) {
@@ -166,13 +166,13 @@ const ensureAuthenticated = async (req, res, next) => {
                     req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                     req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                     if (orgDetails) {
-                        req.user[constants.ORG_UUID] = orgDetails.UUID;
-                        req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_REF_ID;
+                        req.user[constants.ORG_UUID] = orgDetails.uuid;
+                        req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                     }
                 }
                 const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
                 if (!isMatch) {
-                    const orgIdentifier = orgDetails?.IDP_REF_ID;
+                    const orgIdentifier = orgDetails?.idp_ref_id;
                     const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
                     if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
                         const err = new Error('Forbidden');

@@ -20,56 +20,46 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const KeyManager = sequelize.define('DP_KEY_MANAGER', {
-    UUID: {
-        field: 'uuid',
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_UUID: {
-        field: 'org_uuid',
+    org_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    NAME: {
-        field: 'name',
+    name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    TYPE: {
-        field: 'type',
+    type: {
         type: DataTypes.STRING(64),
         allowNull: false
     },
-    ENABLED: {
-        field: 'enabled',
+    enabled: {
         type: DataTypes.SMALLINT,
         allowNull: false,
         defaultValue: 1
     },
-    TOKEN_ENDPOINT: {
-        field: 'token_endpoint',
+    token_endpoint: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_BY: {
-        field: 'created_by',
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
-        field: 'created_at',
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
-        field: 'updated_by',
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
-        field: 'updated_at',
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
@@ -82,16 +72,16 @@ const KeyManager = sequelize.define('DP_KEY_MANAGER', {
         {
             name: 'uq_key_manager_org_name',
             unique: true,
-            fields: ['ORG_UUID', 'NAME']
+            fields: ['org_uuid', 'name']
         }
     ]
 });
 
 KeyManager.belongsTo(Organization, {
-    foreignKey: 'ORG_UUID'
+    foreignKey: 'org_uuid'
 });
 Organization.hasMany(KeyManager, {
-    foreignKey: 'ORG_UUID',
+    foreignKey: 'org_uuid',
     onDelete: 'CASCADE'
 });
 

@@ -19,29 +19,24 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 
 const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
-    UUID: {
-        field: 'uuid',
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    API_UUID: {
-        field: 'api_uuid',
+    api_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    PLAN_UUID: {
-        field: 'plan_uuid',
+    plan_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    CREATED_BY: {
-        field: 'created_by',
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
-        field: 'created_at',
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
@@ -54,11 +49,11 @@ const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING',
         {
             name: 'uq_api_subscription_plan_mappings_plan_api',
             unique: true,
-            fields: ['PLAN_UUID', 'API_UUID']
+            fields: ['plan_uuid', 'api_uuid']
         },
         {
             name: 'idx_api_subscription_plan_mappings_api_uuid',
-            fields: ['API_UUID']
+            fields: ['api_uuid']
         }
     ]
 });

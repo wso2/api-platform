@@ -22,12 +22,12 @@
  */
 class KeyManagerDTO {
     constructor(km) {
-        this.id = km.UUID;
-        this.orgId = km.ORG_UUID;
-        this.name = km.NAME;
-        this.type = km.TYPE;
-        this.enabled = !!km.ENABLED;
-        this.tokenEndpoint = km.TOKEN_ENDPOINT;
+        this.id = km.uuid;
+        this.orgId = km.org_uuid;
+        this.name = km.name;
+        this.type = km.type;
+        this.enabled = !!km.enabled;
+        this.tokenEndpoint = km.token_endpoint;
     }
 }
 
@@ -37,10 +37,10 @@ class KeyManagerDTO {
  */
 class KeyManagerPublicDTO {
     constructor(km) {
-        this.id = km.UUID;
-        this.name = km.NAME;
-        this.type = km.TYPE;
-        this.tokenEndpoint = km.TOKEN_ENDPOINT;
+        this.id = km.uuid;
+        this.name = km.name;
+        this.type = km.type;
+        this.tokenEndpoint = km.token_endpoint;
     }
 }
 

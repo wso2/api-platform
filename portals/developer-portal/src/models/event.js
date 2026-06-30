@@ -21,46 +21,38 @@ const { Organization } = require('./organization');
 
 // Outbox table — one row per domain event. Payload never contains plaintext key secrets.
 const DPEvent = sequelize.define('DP_EVENT', {
-    UUID: {
-        field: 'uuid',
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    TYPE: {
-        field: 'type',
+    type: {
         type: DataTypes.STRING(128),
         allowNull: false
     },
-    ORG_UUID: {
-        field: 'org_uuid',
+    org_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    AGGREGATE_TYPE: {
-        field: 'aggregate_type',
+    aggregate_type: {
         type: DataTypes.STRING(64),
         allowNull: false
     },
-    AGGREGATE_UUID: {
-        field: 'aggregate_uuid',
+    aggregate_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    PAYLOAD: {
-        field: 'payload',
+    payload: {
         type: DataTypes.JSONB,
         allowNull: false,
         defaultValue: {}
     },
-    OCCURRED_AT: {
-        field: 'occurred_at',
+    occurred_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: DataTypes.NOW
     },
-    STATUS: {
-        field: 'status',
+    status: {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PENDING'
@@ -70,12 +62,12 @@ const DPEvent = sequelize.define('DP_EVENT', {
     tableName: 'dp_event',
     returning: true,
     indexes: [
-        { name: 'idx_event_status_occurred_at', fields: ['STATUS', 'OCCURRED_AT'] },
-        { name: 'idx_event_org_uuid', fields: ['ORG_UUID'] }
+        { name: 'idx_event_status_occurred_at', fields: ['status', 'occurred_at'] },
+        { name: 'idx_event_org_uuid', fields: ['org_uuid'] }
     ]
 });
 
-DPEvent.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
-Organization.hasMany(DPEvent, { foreignKey: 'ORG_UUID', onDelete: 'CASCADE' });
+DPEvent.belongsTo(Organization, { foreignKey: 'org_uuid' });
+Organization.hasMany(DPEvent, { foreignKey: 'org_uuid', onDelete: 'CASCADE' });
 
 module.exports = DPEvent;

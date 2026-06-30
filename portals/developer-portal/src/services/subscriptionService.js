@@ -39,17 +39,17 @@ async function safePublish(eventType, payload, opts) {
 
 function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
-        subscription_id: sub.UUID,
-        subscriber_id: sub.CREATED_BY,
-        status: sub.STATUS,
+        subscription_id: sub.uuid,
+        subscriber_id: sub.created_by,
+        status: sub.status,
         subscription_plan: {
-            ref_id: plan ? (plan.REF_ID || null) : null,
-            name: plan ? (plan.NAME || null) : null,
+            ref_id: plan ? (plan.ref_id || null) : null,
+            name: plan ? (plan.name || null) : null,
         },
         api: {
-            name: apiMetadata ? apiMetadata.NAME : null,
-            version: apiMetadata ? apiMetadata.VERSION : null,
-            ref_id: apiMetadata ? (apiMetadata.REF_ID || '') : '',
+            name: apiMetadata ? apiMetadata.name : null,
+            version: apiMetadata ? apiMetadata.version : null,
+            ref_id: apiMetadata ? (apiMetadata.ref_id || '') : '',
         },
     };
 }
@@ -57,13 +57,13 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
 function formatSubscriptionResponse(sub) {
     const plan = sub.DP_SUBSCRIPTION_PLAN || {};
     return {
-        subscriptionId: sub.UUID,
-        subscriptionToken: sub.TOKEN,
-        status: sub.STATUS,
-        apiId: sub.API_UUID,
-        subscriptionPlanName: plan.NAME || null,
-        createdBy: sub.CREATED_BY || null,
-        createdAt: sub.CREATED_AT || null,
+        subscriptionId: sub.uuid,
+        subscriptionToken: sub.token,
+        status: sub.status,
+        apiId: sub.api_uuid,
+        subscriptionPlanName: plan.name || null,
+        createdBy: sub.created_by || null,
+        createdAt: sub.created_at || null,
     };
 }
 
@@ -90,14 +90,14 @@ const createSubscription = async (req, res) => {
             });
         }
 
-        const matchedPlan = plans.find(p => p.UUID === reqPlanId);
+        const matchedPlan = plans.find(p => p.uuid === reqPlanId);
         if (!matchedPlan) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request',
                 description: 'Subscription plan not found for this API',
             });
         }
-        const planId = matchedPlan.UUID;
+        const planId = matchedPlan.uuid;
 
         let newSub;
         await sequelize.transaction(async (t) => {
@@ -108,13 +108,13 @@ const createSubscription = async (req, res) => {
                 transaction: t,
                 orgId: orgId,
                 aggregateType: 'subscription',
-                aggregateId: newSub.UUID,
-                secretFields: { token: newSub.TOKEN },
+                aggregateId: newSub.uuid,
+                secretFields: { token: newSub.token },
             });
         });
 
-        const created = await subDao.get(orgId, newSub.UUID, createdBy);
-        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgId, apiId, subscriptionId: newSub.UUID });
+        const created = await subDao.get(orgId, newSub.uuid, createdBy);
+        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgId, apiId, subscriptionId: newSub.uuid });
         return res.status(201).json(formatSubscriptionResponse(created));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -199,7 +199,7 @@ const updateSubscription = async (req, res) => {
                 throw err;
             }
             await publishWebhookEvent('subscription.updated',
-                buildWebhookPayload({ ...existing.get({ plain: true }), STATUS: status }, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN),
+                buildWebhookPayload({ ...existing.get({ plain: true }), status: status }, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN),
                 { transaction: t, orgId: orgId, aggregateType: 'subscription', aggregateId: subscriptionId });
         });
         sub = await subDao.get(orgId, subscriptionId, req.user.sub);

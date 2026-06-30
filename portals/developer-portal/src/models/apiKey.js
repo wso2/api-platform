@@ -22,73 +22,60 @@ const { APIMetadata } = require('./apiMetadata');
 const { SubscriptionMapping } = require('./application');
 
 const APIKey = sequelize.define('DP_API_KEY', {
-    UUID: {
-        field: 'uuid',
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    API_UUID: {
-        field: 'api_uuid',
+    api_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
         references: { model: APIMetadata, key: 'uuid' }
     },
-    SUBSCRIPTION_UUID: {
-        field: 'subscription_uuid',
+    subscription_uuid: {
         type: DataTypes.STRING(40),
         allowNull: true,
         references: { model: SubscriptionMapping, key: 'uuid' }
     },
-    ORG_UUID: {
-        field: 'org_uuid',
+    org_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    NAME: {
-        field: 'name',
+    name: {
         type: DataTypes.STRING(128),
         allowNull: false
     },
-    STATUS: {
-        field: 'status',
+    status: {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'ACTIVE'
     },
-    EXPIRES_AT: {
-        field: 'expires_at',
+    expires_at: {
         type: DataTypes.DATE,
         allowNull: true
     },
-    CREATED_BY: {
-        field: 'created_by',
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_BY: {
-        field: 'updated_by',
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    REVOKED_AT: {
-        field: 'revoked_at',
+    revoked_at: {
         type: DataTypes.DATE,
         allowNull: true
     },
-    REVOKED_BY: {
-        field: 'revoked_by',
+    revoked_by: {
         type: DataTypes.STRING(200),
         allowNull: true
     },
-    CREATED_AT: {
-        field: 'created_at',
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_AT: {
-        field: 'updated_at',
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
@@ -104,16 +91,16 @@ const APIKey = sequelize.define('DP_API_KEY', {
         }
     ],
     indexes: [
-        { name: 'idx_api_key_org_api_uuid', fields: ['ORG_UUID', 'API_UUID'] },
-        { name: 'idx_api_key_subscription_uuid', fields: ['SUBSCRIPTION_UUID'] },
-        { name: 'idx_api_key_status', fields: ['STATUS'] },
+        { name: 'idx_api_key_org_api_uuid', fields: ['org_uuid', 'api_uuid'] },
+        { name: 'idx_api_key_subscription_uuid', fields: ['subscription_uuid'] },
+        { name: 'idx_api_key_status', fields: ['status'] },
     ],
 });
 
-APIKey.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
-Organization.hasMany(APIKey, { foreignKey: 'ORG_UUID' });
-APIKey.belongsTo(APIMetadata, { foreignKey: 'API_UUID', as: 'DP_API_METADATA' });
-APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_UUID', onDelete: 'SET NULL' });
-SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_UUID', onDelete: 'SET NULL' });
+APIKey.belongsTo(Organization, { foreignKey: 'org_uuid' });
+Organization.hasMany(APIKey, { foreignKey: 'org_uuid' });
+APIKey.belongsTo(APIMetadata, { foreignKey: 'api_uuid', as: 'DP_API_METADATA' });
+APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'subscription_uuid', onDelete: 'SET NULL' });
+SubscriptionMapping.hasMany(APIKey, { foreignKey: 'subscription_uuid', onDelete: 'SET NULL' });
 
 module.exports = APIKey;

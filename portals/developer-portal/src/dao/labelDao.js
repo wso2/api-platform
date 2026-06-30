@@ -25,11 +25,11 @@ const { CustomError } = require('../utils/errors/customErrors');
 const create = async (orgId, label, createdBy, t) => {
     try {
         return await Labels.create({
-            NAME: label.name,
-            DISPLAY_NAME: label.displayName,
-            ORG_UUID: orgId,
-            CREATED_BY: createdBy,
-            UPDATED_BY: createdBy
+            name: label.name,
+            display_name: label.displayName,
+            org_uuid: orgId,
+            created_by: createdBy,
+            updated_by: createdBy
         }, { transaction: t, returning: true });
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -41,7 +41,7 @@ const create = async (orgId, label, createdBy, t) => {
 
 const findById = async (orgId, labelId, t) => {
     const record = await Labels.findOne({
-        where: { UUID: labelId, ORG_UUID: orgId },
+        where: { uuid: labelId, org_uuid: orgId },
         transaction: t
     });
     if (!record) {
@@ -53,14 +53,14 @@ const findById = async (orgId, labelId, t) => {
 const updateById = async (orgId, labelId, label, updatedBy, t) => {
     const record = await findById(orgId, labelId, t);
     return record.update(
-        { DISPLAY_NAME: label.displayName, UPDATED_BY: updatedBy, UPDATED_AT: new Date() },
+        { display_name: label.displayName, updated_by: updatedBy, updated_at: new Date() },
         { transaction: t }
     );
 }
 
 const deleteById = async (orgId, labelId) => {
     try {
-        const count = await Labels.destroy({ where: { UUID: labelId, ORG_UUID: orgId } });
+        const count = await Labels.destroy({ where: { uuid: labelId, org_uuid: orgId } });
         if (count === 0) {
             throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
         }
@@ -77,11 +77,11 @@ const createMany = async (orgId, labels, createdBy, t) => {
     try {
         labels.forEach(label => {
             labelList.push({
-                NAME: label.name,
-                DISPLAY_NAME: label.displayName,
-                ORG_UUID: orgId,
-                CREATED_BY: createdBy,
-                UPDATED_BY: createdBy
+                name: label.name,
+                display_name: label.displayName,
+                org_uuid: orgId,
+                created_by: createdBy,
+                updated_by: createdBy
             });
         })
         const labelResponse = await Labels.bulkCreate(labelList, { transaction: t });
@@ -101,9 +101,9 @@ const createApiMapping = async (orgId, apiId, labels, createdBy, t) => {
     try {
         IDList.forEach(label => {
             labelList.push({
-                LABEL_UUID: label,
-                API_UUID: apiId,
-                CREATED_BY: createdBy,
+                label_uuid: label,
+                api_uuid: apiId,
+                created_by: createdBy,
             });
         });
         const labelResponse = await APILabels.bulkCreate(labelList, { transaction: t, ignoreDuplicates: true });
@@ -122,20 +122,20 @@ const update = async (orgId, label, updatedBy, t) => {
     try {
         let [record, created] = await Labels.findOrCreate({
             where: {
-                NAME: label.name,
-                ORG_UUID: orgId
+                name: label.name,
+                org_uuid: orgId
             },
             defaults: {
-                NAME: label.name,
-                DISPLAY_NAME: label.displayName,
-                CREATED_BY: updatedBy,
-                UPDATED_BY: updatedBy
+                name: label.name,
+                display_name: label.displayName,
+                created_by: updatedBy,
+                updated_by: updatedBy
             },
             transaction: t,
             returning: true
         });
         if (!created) {
-            record = await record.update({ DISPLAY_NAME: label.displayName, UPDATED_BY: updatedBy, UPDATED_AT: new Date() }, { transaction: t }); // Update if found
+            record = await record.update({ display_name: label.displayName, updated_by: updatedBy, updated_at: new Date() }, { transaction: t }); // Update if found
         }
         return record;
     } catch (error) {
@@ -166,15 +166,15 @@ const getIdList = async (orgId, label, t) => {
 
     const labelResponse = await Labels.findOne({
         where: {
-            NAME: label,
-            ORG_UUID: orgId
+            name: label,
+            org_uuid: orgId
         },
         transaction: t
     });
     if (!labelResponse) {
         throw new CustomError(404, constants.ERROR_CODE[404], "Label not found")
     }
-    return labelResponse.dataValues.UUID;
+    return labelResponse.dataValues.uuid;
 }
 
 const list = async (orgId) => {
@@ -182,7 +182,7 @@ const list = async (orgId) => {
     try {
         const labelResponse = await Labels.findAll({
             where: {
-                ORG_UUID: orgId
+                org_uuid: orgId
             }
         });
         return labelResponse;
@@ -200,8 +200,8 @@ const deleteApiMapping = async (orgId, apiId, labels, t) => {
     try {
         return await APILabels.destroy({
             where: {
-                LABEL_UUID: { [Op.in]: IDList },
-                API_UUID: apiId,
+                label_uuid: { [Op.in]: IDList },
+                api_uuid: apiId,
             },
             transaction: t
         });
@@ -216,8 +216,8 @@ const deleteApiMapping = async (orgId, apiId, labels, t) => {
 const addToView = async (orgId, labelId, viewId, createdBy, t) => {
     try {
         const [record] = await ViewLabels.findOrCreate({
-            where: { LABEL_UUID: labelId, VIEW_UUID: viewId },
-            defaults: { CREATED_BY: createdBy },
+            where: { label_uuid: labelId, view_uuid: viewId },
+            defaults: { created_by: createdBy },
             transaction: t,
         });
         return record;

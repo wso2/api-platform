@@ -35,12 +35,12 @@ const loadAPIApiKeys = async (req, res, next) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgId = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         const apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) {
@@ -65,7 +65,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         if (metaData?.type !== constants.API_TYPE.GRAPHQL && metaData?.type !== constants.API_TYPE.MCP) {
             try {
                 const apiFile = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                apiDefinitionForNav = apiFile?.FILE_CONTENT?.toString(constants.CHARSET_UTF8) || null;
+                apiDefinitionForNav = apiFile?.file_content?.toString(constants.CHARSET_UTF8) || null;
             } catch (definitionErr) {
                 logger.debug('Could not load API definition for API keys nav check', {
                     orgId,
@@ -91,15 +91,15 @@ const loadAPIApiKeys = async (req, res, next) => {
         try {
             const keys = await apiKeyService.list(orgId, { apiId: apiId, appId: selectedAppId || undefined });
             apiKeys = (keys || []).map((k) => ({
-                keyId: k.UUID,
-                name: k.NAME,
-                status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-                expiresAt: k.EXPIRES_AT,
-                createdAt: k.CREATED_AT,
-                revokedAt: k.REVOKED_AT || undefined,
-                apiId: k.API_UUID,
-                appId: k.DP_API_KEY_APP_MAPPING?.APP_UUID || null,
-                appName: k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION?.NAME || null,
+                keyId: k.uuid,
+                name: k.name,
+                status: String(k.status || 'ACTIVE').toLowerCase(),
+                expiresAt: k.expires_at,
+                createdAt: k.created_at,
+                revokedAt: k.revoked_at || undefined,
+                apiId: k.api_uuid,
+                appId: k.DP_API_KEY_APP_MAPPING?.app_uuid || null,
+                appName: k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION?.name || null,
                 maskedApiKey: '••••••••'
             }));
             apiKeysCount = apiKeys.length;
@@ -114,7 +114,7 @@ const loadAPIApiKeys = async (req, res, next) => {
 
         try {
             const apps = await applicationDao.list(orgId, req.user.sub);
-            applications = (apps || []).map((a) => ({ appId: a.UUID, name: a.NAME }));
+            applications = (apps || []).map((a) => ({ appId: a.uuid, name: a.name }));
         } catch (dbError) {
             logger.warn('Failed to load applications for API key association', {
                 error: dbError.message,

@@ -117,7 +117,7 @@ const createAPIMetadata = async (req, res) => {
         }, async (t) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, userId, t);
-            const apiId = createdAPI.dataValues.UUID;
+            const apiId = createdAPI.dataValues.uuid;
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -131,7 +131,7 @@ const createAPIMetadata = async (req, res) => {
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.UUID });
+                            subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.uuid });
                         }
                     };
                 }
@@ -303,7 +303,7 @@ const getMetadataFromDB = async (orgId, apiId) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
-        const retrievedAPI = await apiDao.getByCondition({ ORG_UUID: orgId, UUID: apiId }, t);
+        const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, uuid: apiId }, t);
         if (retrievedAPI.length > 0) {
             return new APIDTO(retrievedAPI[0]);
         } else {
@@ -344,9 +344,9 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
         let retrievedAPIs;
         if (apiName || apiVersion || tags) {
             const condition = {};
-            if (apiName) condition.NAME = apiName;
-            if (apiVersion) condition.VERSION = apiVersion;
-            condition.ORG_UUID = orgId;
+            if (apiName) condition.name = apiName;
+            if (apiVersion) condition.version = apiVersion;
+            condition.org_uuid = orgId;
             retrievedAPIs = await apiDao.getByCondition(condition, t, tags);
         } else if (searchTerm) {
             retrievedAPIs = await apiDao.search(orgId, searchTerm, viewName, t);
@@ -503,7 +503,7 @@ const updateAPIMetadata = async (req, res) => {
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.UUID });
+                            subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.uuid });
                         }
                     };
                 }
@@ -966,7 +966,7 @@ const getAPIFile = async (req, res) => {
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (apiFileResponse) {
-            apiFile = apiFileResponse.FILE_CONTENT;
+            apiFile = apiFileResponse.file_content;
             //convert to text to check if link
             const textContent = new TextDecoder().decode(apiFile);
             if (textContent.startsWith("http") || textContent.startsWith("https")) {
@@ -1455,7 +1455,7 @@ const addView = async (req, res) => {
     }, async (t) => {
         try {
             const viewResponse = await viewDao.create(orgId, req.body, userId, t);
-            const viewId = viewResponse.dataValues.UUID;
+            const viewId = viewResponse.dataValues.uuid;
             await viewDao.addLabels(orgId, viewId, labels, userId, t);
             res.status(201).send({ message: "View added successfully" });
         } catch (error) {
@@ -1484,7 +1484,7 @@ const updateView = async (req, res) => {
             let viewId = "";
             if (req.body.name) {
                 let viewResponse = await viewDao.update(orgId, viewName, req.body.name, userId, t);
-                viewId = viewResponse.dataValues.UUID;
+                viewId = viewResponse.dataValues.uuid;
             }
             if (removedLabels.length !== 0 || addedLabels.length !== 0) {
                 viewId = viewId ? viewId : await viewDao.getId(orgId, viewName, t);
