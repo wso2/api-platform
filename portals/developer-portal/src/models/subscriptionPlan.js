@@ -21,56 +21,72 @@ const { Organization } = require('./organization');
 
 const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         allowNull: false,
         primaryKey: true
     },
     HANDLE: {
+        field: 'handle',
         type: DataTypes.STRING,
         allowNull: false,
         unique: 'unique_org_plan_handle'
     },
     NAME: {
+        field: 'name',
         type: DataTypes.STRING,
         allowNull: false
     },
     DESCRIPTION: {
+        field: 'description',
         type: DataTypes.STRING(1023),
         allowNull: true
     },
     REQUEST_COUNT: {
+        field: 'request_count',
         type: DataTypes.STRING,
         allowNull: true
     },
     REF_ID: {
+        field: 'ref_id',
         type: DataTypes.STRING,
         allowNull: true
     },
+    ORG_UUID: {
+        field: 'org_uuid',
+        type: DataTypes.STRING(40),
+        allowNull: true,
+        references: { model: 'dp_organization', key: 'uuid' }
+    },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_AT: {
+        field: 'updated_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_SUBSCRIPTION_PLAN',
+    tableName: 'dp_subscription_plan',
     returning: true,
     indexes: [
-        { name: 'UQ_SUBSCRIPTION_PLAN_ORG_HANDLE', unique: true, fields: ['ORG_UUID', 'HANDLE'] }
+        { name: 'uq_subscription_plan_org_handle', unique: true, fields: ['ORG_UUID', 'HANDLE'] }
     ]
 });
 

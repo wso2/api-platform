@@ -69,6 +69,7 @@ Base URLs:
 
 - [List applications for the authenticated user](applications.md#list-applications-for-the-authenticated-user)
 - [Create an application](applications.md#create-an-application)
+- [Get an application](applications.md#get-an-application)
 - [Update an application](applications.md#update-an-application)
 - [Delete an application](applications.md#delete-an-application)
 

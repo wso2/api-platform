@@ -28,151 +28,174 @@ const { KeyManager } = require('./keyManager');
 const Application = sequelize.define('DP_APPLICATION', {
 
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     ORG_UUID: {
+        field: 'org_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     NAME: {
+        field: 'name',
         type: DataTypes.STRING,
         allowNull: false
     },
     HANDLE: {
+        field: 'handle',
         type: DataTypes.STRING,
         allowNull: false
     },
     DESCRIPTION: {
+        field: 'description',
         type: DataTypes.STRING(1023),
         allowNull: true
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_AT: {
+        field: 'updated_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_APPLICATION',
+    tableName: 'dp_application',
     returning: true,
     indexes: [
-        { name: 'IDX_APPLICATION_ORG_CREATED_BY', fields: ['ORG_UUID', 'CREATED_BY'] },
-        { name: 'UQ_APPLICATION_ORG_HANDLE', unique: true, fields: ['ORG_UUID', 'HANDLE'] },
+        { name: 'idx_application_org_created_by', fields: ['ORG_UUID', 'CREATED_BY'] },
+        { name: 'uq_application_org_handle', unique: true, fields: ['ORG_UUID', 'HANDLE'] },
     ],
 });
 
 const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
 
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     APP_UUID: {
+        field: 'app_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     KM_UUID: {
+        field: 'km_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     AS_CLIENT_ID: {
+        field: 'as_client_id',
         type: DataTypes.STRING,
         allowNull: true
     },
     TYPE: {
+        field: 'type',
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PRODUCTION'
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_AT: {
+        field: 'updated_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_APP_KEY_MAPPING',
+    tableName: 'dp_app_key_mappings',
     returning: true,
     indexes: [
-        { name: 'IDX_APP_KEY_MAPPING_APP_UUID', fields: ['APP_UUID'] },
-        { name: 'IDX_APP_KEY_MAPPING_KM_UUID', fields: ['KM_UUID'] },
+        { name: 'idx_app_key_mappings_app_uuid', fields: ['APP_UUID'] },
+        { name: 'idx_app_key_mappings_km_uuid', fields: ['KM_UUID'] },
     ],
 });
 
 const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
 
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false,
     },
     API_UUID: {
+        field: 'api_uuid',
         type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: APIMetadata,
-            key: 'UUID',
+            key: 'uuid',
         },
     },
     PLAN_UUID: {
+        field: 'plan_uuid',
         type: DataTypes.STRING(40),
         allowNull: true,
         references: {
             model: SubscriptionPlan,
-            key: 'UUID',
+            key: 'uuid',
         },
     },
     ORG_UUID: {
+        field: 'org_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
-    STATUS:      { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'ACTIVE' },
-    CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    UPDATED_BY:  { type: DataTypes.STRING, allowNull: false },
-    UPDATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    TOKEN:   { field: 'token', type: DataTypes.STRING(512), allowNull: true, unique: true },
+    STATUS:      { field: 'status', type: DataTypes.STRING(20), allowNull: false, defaultValue: 'ACTIVE' },
+    CREATED_AT:  { field: 'created_at', type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    UPDATED_BY:  { field: 'updated_by', type: DataTypes.STRING, allowNull: false },
+    UPDATED_AT:  { field: 'updated_at', type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,
-    tableName: 'DP_SUBSCRIPTION',
+    tableName: 'dp_subscription',
     returning: true,
     indexes: [
-        { name: 'IDX_SUBSCRIPTION_ORG_CREATED_BY', fields: ['ORG_UUID', 'CREATED_BY'] },
-        { name: 'IDX_SUBSCRIPTION_ORG_API_UUID', fields: ['ORG_UUID', 'API_UUID'] },
-        { name: 'IDX_SUBSCRIPTION_PLAN_UUID', fields: ['PLAN_UUID'] },
-        { name: 'IDX_SUBSCRIPTION_STATUS', fields: ['STATUS'] },
+        { name: 'idx_subscription_org_created_by', fields: ['ORG_UUID', 'CREATED_BY'] },
+        { name: 'idx_subscription_org_api_uuid', fields: ['ORG_UUID', 'API_UUID'] },
+        { name: 'idx_subscription_plan_uuid', fields: ['PLAN_UUID'] },
+        { name: 'idx_subscription_status', fields: ['STATUS'] },
     ],
 });
 
@@ -221,4 +244,3 @@ module.exports = {
     ApplicationKeyMapping,
     SubscriptionMapping
 }
-

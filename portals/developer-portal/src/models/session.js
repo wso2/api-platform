@@ -37,6 +37,6 @@ sequelize.define('Session', {
     tableName: 'session',
     timestamps: false,
     indexes: [
-        { name: 'IDX_session_expire', fields: ['expire'] },
+        { name: 'idx_session_expire', fields: ['expire'] },
     ],
 });

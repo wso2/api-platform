@@ -21,56 +21,66 @@ const { Organization } = require('./organization');
 
 const KeyManager = sequelize.define('DP_KEY_MANAGER', {
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     ORG_UUID: {
+        field: 'org_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
+        field: 'name',
         type: DataTypes.STRING,
         allowNull: false
     },
     TYPE: {
+        field: 'type',
         type: DataTypes.STRING(64),
         allowNull: false
     },
     ENABLED: {
+        field: 'enabled',
         type: DataTypes.SMALLINT,
         allowNull: false,
         defaultValue: 1
     },
     TOKEN_ENDPOINT: {
+        field: 'token_endpoint',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_AT: {
+        field: 'updated_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_KEY_MANAGER',
+    tableName: 'dp_key_manager',
     returning: true,
     indexes: [
         {
-            name: 'UQ_KEY_MANAGER_ORG_NAME',
+            name: 'uq_key_manager_org_name',
             unique: true,
             fields: ['ORG_UUID', 'NAME']
         }

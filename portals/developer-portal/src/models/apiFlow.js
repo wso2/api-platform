@@ -22,31 +22,38 @@ const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const APIFlow = sequelize.define('DP_API_WORKFLOW', {
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     ORG_UUID: {
+        field: 'org_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     VIEW_UUID: {
+        field: 'view_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
+        field: 'name',
         type: DataTypes.STRING,
         allowNull: false
     },
     DESCRIPTION: {
+        field: 'description',
         type: DataTypes.STRING(1023),
         allowNull: false
     },
     HANDLE: {
+        field: 'handle',
         type: DataTypes.STRING,
         allowNull: false
     },
     AGENT_PROMPT: {
+        field: 'agent_prompt',
         type: DataTypes.BLOB,
         allowNull: false,
         get() {
@@ -54,49 +61,57 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
         }
     },
     STATUS: {
+        field: 'status',
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PUBLISHED'
     },
     FILE_CONTENT: {
+        field: 'file_content',
         type: DataTypes.BLOB,
         allowNull: true
     },
     CONTENT_TYPE: {
+        field: 'content_type',
         type: DataTypes.STRING,
         allowNull: true
     },
     AGENT_VISIBILITY: {
+        field: 'agent_visibility',
         type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'VISIBLE'
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_AT: {
+        field: 'updated_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     }
 }, {
     timestamps: false,
-    tableName: 'DP_API_WORKFLOW',
+    tableName: 'dp_api_workflow',
     returning: true,
     indexes: [
-        { name: 'UQ_API_WORKFLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_UUID', 'VIEW_UUID', 'HANDLE'] },
-        { name: 'IDX_API_WORKFLOW_VIEW_UUID', fields: ['VIEW_UUID'] },
-        { name: 'IDX_API_WORKFLOW_STATUS', fields: ['STATUS'] }
+        { name: 'uq_api_workflow_org_view_handle', unique: true, fields: ['ORG_UUID', 'VIEW_UUID', 'HANDLE'] },
+        { name: 'idx_api_workflow_view_uuid', fields: ['VIEW_UUID'] },
+        { name: 'idx_api_workflow_status', fields: ['STATUS'] }
     ]
 });
 

@@ -185,6 +185,22 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
     return { appToDelete, affectedKeyIds };
 };
 
+const getApplication = async (req, res) => {
+    const orgId = req.orgId || '';
+    const userId = req.auth?.userId || req.user?.sub;
+    const applicationId = req.params.applicationId;
+    try {
+        const app = await appDao.get(orgId, applicationId, userId);
+        if (!app) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        return res.status(200).json(new ApplicationDTO(app.dataValues));
+    } catch (error) {
+        logger.error('Error occurred while getting the application', { orgId, appId: applicationId, error: error.message });
+        util.handleError(res, error);
+    }
+};
+
 const deleteApplication = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
     const applicationId = req.params.applicationId;
@@ -420,6 +436,7 @@ const login = async (req, res) => {
 };
 module.exports = {
     listApplications,
+    getApplication,
     saveApplication,
     updateApplication,
     deleteApplication,

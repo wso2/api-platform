@@ -191,13 +191,20 @@ for (const model of ordered) {
 
     // createTableQuery expects column definition strings, not DataType objects.
     // attributeToSQL converts each column to its dialect-specific SQL fragment.
+    // Use attr.field (lowercase column name) when set; fall back to attribute name.
+    const attrToField = {};
+    for (const [name, attr] of Object.entries(model.rawAttributes)) {
+        attrToField[name] = attr.field || name;
+    }
+
     const colDefs = {};
     for (const [name, attr] of Object.entries(model.rawAttributes)) {
+        const colName = attr.field || name;
         try {
-            colDefs[name] = qg.attributeToSQL(attr, { key: name, context: 'createTable' });
+            colDefs[colName] = qg.attributeToSQL(attr, { key: colName, context: 'createTable' });
         } catch (e) {
             // Fallback: best-effort type string
-            colDefs[name] = attr.type ? String(attr.type) : 'TEXT';
+            colDefs[colName] = attr.type ? String(attr.type) : 'TEXT';
         }
     }
 
@@ -228,10 +235,12 @@ for (const model of ordered) {
 
     for (const idx of (model.options.indexes || [])) {
         try {
+            // Resolve attribute names to field (column) names for index DDL.
+            const resolvedFields = idx.fields.map(f => attrToField[f] || f);
             // QueryGenerator.addIndexQuery(tableName, options, rawTablename)
             const idxSql = qg.addIndexQuery(
                 model.tableName,
-                { fields: idx.fields, unique: !!idx.unique, name: idx.name, where: idx.where },
+                { fields: resolvedFields, unique: !!idx.unique, name: idx.name, where: idx.where },
                 model.tableName,
             );
             if (idxSql) {

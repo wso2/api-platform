@@ -20,52 +20,60 @@ const sequelize = require('../db/sequelizeConfig');
 
 const View = sequelize.define('DP_VIEW', {
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     ORG_UUID: {
+        field: 'org_uuid',
         type: DataTypes.STRING(40),
         allowNull: false,
     },
     HANDLE: {
+        field: 'handle',
         type: DataTypes.STRING,
         allowNull: false
     },
     NAME: {
+        field: 'name',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_AT: {
+        field: 'updated_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_VIEW',
+    tableName: 'dp_view',
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEW_HANDLE_ORG_UUID',
+            name: 'uq_view_handle_org_uuid',
             unique: true,
             fields: ['HANDLE', 'ORG_UUID'],
         },
         {
-            name: 'IDX_VIEW_ORG_UUID',
+            name: 'idx_view_org_uuid',
             fields: ['ORG_UUID'],
         }
     ],

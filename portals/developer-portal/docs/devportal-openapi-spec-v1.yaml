@@ -856,6 +856,23 @@ paths:
   /devportal/v1/applications/{applicationId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
+    get:
+      tags:
+        - Applications
+      summary: Get an application
+      description: Returns the details of a single application owned by the authenticated user.
+      operationId: getApplication
+      responses:
+        "200":
+          $ref: "#/components/responses/ApplicationResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:app_read
+            - dp:app_manage
     put:
       tags:
         - Applications

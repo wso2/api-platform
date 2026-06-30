@@ -22,31 +22,35 @@ const { Application } = require('./application');
 
 const APIKeyAppMapping = sequelize.define('DP_API_KEY_APP_MAPPING', {
     KEY_UUID: {
+        field: 'key_uuid',
         type: DataTypes.STRING(40),
         allowNull: false,
         primaryKey: true,
-        references: { model: APIKey, key: 'UUID' },
+        references: { model: APIKey, key: 'uuid' },
     },
     APP_UUID: {
+        field: 'app_uuid',
         type: DataTypes.STRING(40),
         allowNull: false,
-        references: { model: Application, key: 'UUID' },
+        references: { model: Application, key: 'uuid' },
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_API_KEY_APP_MAPPING',
+    tableName: 'dp_api_key_app_mappings',
     returning: true,
     indexes: [
-        { name: 'IDX_API_KEY_APP_MAPPING_APP_UUID', fields: ['APP_UUID'] },
+        { name: 'idx_api_key_app_mappings_app_uuid', fields: ['APP_UUID'] },
     ],
 });
 

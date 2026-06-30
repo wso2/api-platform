@@ -242,6 +242,79 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |201|Location|string|uri|URL of the created application.|
 
+## Get an application
+
+<a id="opIdgetApplication"></a>
+
+`GET /devportal/v1/applications/{applicationId}`
+
+> Code samples
+
+```shell
+
+curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Returns the details of a single application owned by the authenticated user.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="get-an-application-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|applicationId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "app-12345",
+  "name": "Weather App",
+  "description": "Application used to call Weather APIs.",
+  "appKeyMappings": []
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="get-an-application-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Application DTO.|[ApplicationResponse](schemas.md#schemaapplicationresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
 ## Update an application
 
 <a id="opIdupdateApplication"></a>

@@ -23,69 +23,90 @@ const { SubscriptionMapping } = require('./application');
 
 const APIKey = sequelize.define('DP_API_KEY', {
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     API_UUID: {
+        field: 'api_uuid',
         type: DataTypes.STRING(40),
         allowNull: false,
-        references: { model: APIMetadata, key: 'UUID' }
+        references: { model: APIMetadata, key: 'uuid' }
     },
     SUBSCRIPTION_UUID: {
+        field: 'subscription_uuid',
         type: DataTypes.STRING(40),
         allowNull: true,
-        references: { model: SubscriptionMapping, key: 'UUID' }
+        references: { model: SubscriptionMapping, key: 'uuid' }
     },
     ORG_UUID: {
+        field: 'org_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
+        field: 'name',
         type: DataTypes.STRING(128),
         allowNull: false
     },
     STATUS: {
+        field: 'status',
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'ACTIVE'
     },
     EXPIRES_AT: {
+        field: 'expires_at',
         type: DataTypes.DATE,
         allowNull: true
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     REVOKED_AT: {
+        field: 'revoked_at',
         type: DataTypes.DATE,
         allowNull: true
     },
     REVOKED_BY: {
+        field: 'revoked_by',
         type: DataTypes.STRING(200),
         allowNull: true
+    },
+    CREATED_AT: {
+        field: 'created_at',
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_AT: {
+        field: 'updated_at',
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
     }
 }, {
-    timestamps: true,
-    createdAt: 'CREATED_AT',
-    updatedAt: 'UPDATED_AT',
-    tableName: 'DP_API_KEY',
+    timestamps: false,
+    tableName: 'dp_api_key',
     returning: true,
     checks: [
         {
             name: 'chk_api_key_revoked',
-            sql: `(("REVOKED_AT" IS NULL AND "STATUS" != 'REVOKED') OR ("REVOKED_AT" IS NOT NULL AND "STATUS" = 'REVOKED'))`
+            sql: `((revoked_at IS NULL AND status != 'REVOKED') OR (revoked_at IS NOT NULL AND status = 'REVOKED'))`
         }
     ],
     indexes: [
-        { name: 'IDX_API_KEY_ORG_API_UUID', fields: ['ORG_UUID', 'API_UUID'] },
-        { name: 'IDX_API_KEY_SUBSCRIPTION_UUID', fields: ['SUBSCRIPTION_UUID'] },
-        { name: 'IDX_API_KEY_STATUS', fields: ['STATUS'] },
+        { name: 'idx_api_key_org_api_uuid', fields: ['ORG_UUID', 'API_UUID'] },
+        { name: 'idx_api_key_subscription_uuid', fields: ['SUBSCRIPTION_UUID'] },
+        { name: 'idx_api_key_status', fields: ['STATUS'] },
     ],
 });
 

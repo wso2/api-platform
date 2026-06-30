@@ -23,47 +23,52 @@ const Labels = require('./label');
 
 const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     VIEW_UUID: {
+        field: 'view_uuid',
         type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: View,
-            key: 'UUID',
+            key: 'uuid',
         },
     },
     LABEL_UUID: {
+        field: 'label_uuid',
         type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: Labels,
-            key: 'UUID',
+            key: 'uuid',
         }
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_VIEW_LABEL_MAPPING',
+    tableName: 'dp_view_label_mappings',
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEW_LABEL_MAPPING_LABEL_VIEW',
+            name: 'uq_view_label_mappings_label_view',
             unique: true,
             fields: ['LABEL_UUID', 'VIEW_UUID']
         },
         {
-            name: 'IDX_VIEW_LABEL_MAPPING_VIEW_UUID',
+            name: 'idx_view_label_mappings_view_uuid',
             fields: ['VIEW_UUID']
         }
     ]
@@ -81,4 +86,3 @@ Labels.belongsToMany(View, {
 });
 
 module.exports = ViewLabels;
-

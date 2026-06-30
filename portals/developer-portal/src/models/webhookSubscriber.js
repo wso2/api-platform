@@ -22,23 +22,28 @@ const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
     UUID: {
+        field: 'uuid',
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     ORG_UUID: {
+        field: 'org_uuid',
         type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
+        field: 'name',
         type: DataTypes.STRING,
         allowNull: false
     },
     TARGET_URL: {
+        field: 'target_url',
         type: DataTypes.STRING(1023),
         allowNull: false
     },
     SECRET_ENC: {
+        field: 'secret_enc',
         type: DataTypes.BLOB,
         allowNull: true,
         get() {
@@ -46,6 +51,7 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
         }
     },
     PUBLIC_KEY: {
+        field: 'public_key',
         type: DataTypes.BLOB,
         allowNull: true,
         get() {
@@ -53,45 +59,52 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
         }
     },
     EVENT_PATTERNS: {
+        field: 'event_patterns',
         type: DataTypes.JSONB,
         allowNull: true,
         defaultValue: []
     },
     ENABLED: {
+        field: 'enabled',
         type: DataTypes.SMALLINT,
         allowNull: false,
         defaultValue: 1
     },
     TIMEOUT_MS: {
+        field: 'timeout_ms',
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 5000
     },
     CREATED_BY: {
+        field: 'created_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     CREATED_AT: {
+        field: 'created_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
     UPDATED_BY: {
+        field: 'updated_by',
         type: DataTypes.STRING,
         allowNull: false
     },
     UPDATED_AT: {
+        field: 'updated_at',
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_WEBHOOK_SUBSCRIBER',
+    tableName: 'dp_webhook_subscriber',
     returning: true,
     indexes: [
         {
-            name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_NAME',
+            name: 'uq_webhook_subscriber_org_name',
             unique: true,
             fields: ['ORG_UUID', 'NAME']
         }
