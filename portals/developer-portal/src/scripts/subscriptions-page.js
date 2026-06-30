@@ -78,7 +78,7 @@ async function fetchSubToken(subId) {
     if (!orgId) return null;
     try {
         const resp = await fetch(
-            devportalApi.org(orgId, `/subscriptions/${encodeURIComponent(subId)}`),
+            devportalApi.org(`/subscriptions/${encodeURIComponent(subId)}`),
             { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
         if (!resp.ok) return null;
@@ -133,7 +133,7 @@ async function toggleSubSuspend() {
     const newStatus = _manageSub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
         const resp = await fetch(
-            devportalApi.org(window.__subscriptionOrgId, `/subscriptions/${encodeURIComponent(_manageSub.id)}`),
+            devportalApi.org(`/subscriptions/${encodeURIComponent(_manageSub.id)}`),
             {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
@@ -186,7 +186,7 @@ async function confirmSubUnsub() {
 async function executeDeleteSubscription(subscriptionId) {
     try {
         const response = await fetch(
-            devportalApi.org(window.__subscriptionOrgId, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
+            devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
 

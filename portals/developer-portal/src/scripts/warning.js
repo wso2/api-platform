@@ -173,7 +173,7 @@ async function deleteApplication() {
                 '<span style="font-size: 0.875rem;"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>&nbsp;Deleting...</span>';
             trashButton.disabled = true;
         }
-        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${applicationId}`), {
+        const response = await fetch(devportalApi.org(`/applications/${applicationId}`), {
             method: 'DELETE',
         });
         if (response.ok) {

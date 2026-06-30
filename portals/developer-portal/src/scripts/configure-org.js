@@ -137,10 +137,10 @@ async function updateOrgContent(orgId) {
     }
     const formData = new FormData();
     formData.append('file', zipFile.files[0]);
-    const response = await fetch(`/devportal/organizations/${orgId}/layout`, {
+    const response = await fetch(devportalApi.org('/views/default/layout'), {
         method: 'PUT',
         body: formData,
-        credentials: 'same-origin' // Include cookies if needed
+        credentials: 'same-origin'
     });
     if (response.ok) {
         const result = await response.json();
@@ -159,7 +159,7 @@ async function uploadContent(orgId) {
     formData.append('file', zipFile.files[0]);
 
     const view = document.getElementById('uploadViewContent').value;
-    const response = await fetch(devportalApi.org(orgId, `/views/${view}/layout`), {
+    const response = await fetch(devportalApi.org(`/views/${view}/layout`), {
         method: 'PUT',
         body: formData,
         credentials: 'same-origin'
@@ -218,7 +218,7 @@ async function editView(existingLabels, labelsContainerID, nameID, handleID, org
         addedLabels: sanitizAddedLabels,
         removedLabels: sanitizeRemovedLabels
     }
-    const response = await fetch(devportalApi.org(orgId, `/views/${handle}`), {
+    const response = await fetch(devportalApi.org(`/views/${handle}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -234,7 +234,7 @@ async function editView(existingLabels, labelsContainerID, nameID, handleID, org
 
 async function deleteView(orgId, viewHandle) {
 
-    const response = await fetch(devportalApi.org(orgId, `/views/${viewHandle}`), {
+    const response = await fetch(devportalApi.org(`/views/${viewHandle}`), {
         method: 'DELETE',
     });
     if (response.ok) {
@@ -257,7 +257,7 @@ async function addLabels(orgId, orgLabels) {
         const sanitizeDelete = removedLabels.map(label => sanitizeInput(label));
         // Encode each name individually so spaces/reserved characters within a label
         const labelName = sanitizeDelete.map(label => encodeURIComponent(label)).join(",");
-        const response = await fetch(devportalApi.org(orgId, `/labels?names=${labelName}`), {
+        const response = await fetch(devportalApi.org(`/labels?names=${labelName}`), {
             method: "DELETE",
             headers: {
                 'Content-Type': 'application/json',
@@ -278,7 +278,7 @@ async function addLabels(orgId, orgLabels) {
         });
     });
  
-    const response = await fetch(devportalApi.org(orgId, '/labels'), {
+    const response = await fetch(devportalApi.org('/labels'), {
         method: "PUT",
         headers: {
             'Content-Type': 'application/json',

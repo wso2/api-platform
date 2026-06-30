@@ -98,7 +98,7 @@
         var meta = (window.__tokenMeta || {})[subscriptionId];
         if (meta && meta._fullToken) return meta._fullToken;
         try {
-          var resp = await fetch(devportalApi.org(window.__subscriptionOrgId, '/subscriptions/' + encodeURIComponent(subscriptionId)), {
+          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(subscriptionId)), {
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
           if (!resp.ok) return null;
@@ -195,7 +195,7 @@
         var orgId = window.__subscriptionOrgId;
         var newStatus = _sub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
         try {
-          var resp = await fetch(devportalApi.org(orgId, '/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             body: JSON.stringify({ status: newStatus }),
@@ -268,7 +268,7 @@
           var args = _switchArgs;
           closeUnsub();
           try {
-            var delResp = await fetch(devportalApi.org(args.orgId, '/subscriptions/' + encodeURIComponent(args.subscriptionId)), {
+            var delResp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(args.subscriptionId)), {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             });
@@ -286,7 +286,7 @@
         if (!_sub) return;
         var orgId = window.__subscriptionOrgId;
         try {
-          var resp = await fetch(devportalApi.org(orgId, '/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });

@@ -129,7 +129,7 @@
             submitBtn.disabled = true;
             try {
                 const selectedApiId = apiSelect ? apiSelect.value : '';
-                const response = await fetch(devportalApi.org(orgId, '/apis/' + encodeURIComponent(selectedApiId) + '/api-keys/associate'), {
+                const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(selectedApiId) + '/api-keys/associate'), {
                     method: 'POST', credentials: 'same-origin',
                     headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keySelect.value, appId: appId }),
                 });
@@ -158,7 +158,7 @@
             if (!keyId || !keyApiId) return;
             btn.disabled = true;
             try {
-                const response = await fetch(devportalApi.org(orgId, '/apis/' + encodeURIComponent(keyApiId) + '/api-keys/dissociate'), {
+                const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(keyApiId) + '/api-keys/dissociate'), {
                     method: 'POST', credentials: 'same-origin',
                     headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
                 });

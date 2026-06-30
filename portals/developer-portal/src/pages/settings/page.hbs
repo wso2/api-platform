@@ -1040,7 +1040,7 @@
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
       setSelectedPolicies(api.subscriptionPolicies || []);
       /* load existing docs */
-      fetch(window.devportalApi.org(ORG_ID, '/apis/' + encodeURIComponent(api.apiId) + '/docs'), {
+      fetch(window.devportalApi.org('/apis/' + encodeURIComponent(api.apiId) + '/docs'), {
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() }
       }).then(function(r) { return r.ok ? r.json() : []; })
         .then(function(list) {
@@ -1147,8 +1147,8 @@
     docFiles.forEach(function(f) { fd.append('docs', f); });
 
     var url    = editingId
-      ? window.devportalApi.org(ORG_ID, '/apis/' + encodeURIComponent(editingId))
-      : window.devportalApi.org(ORG_ID, '/apis');
+      ? window.devportalApi.org('/apis/' + encodeURIComponent(editingId))
+      : window.devportalApi.org('/apis');
     var method = editingId ? 'PUT' : 'POST';
 
     try {
@@ -1227,7 +1227,7 @@
       var failCount = 0;
       await Promise.all(ids.map(async function(item) {
         try {
-          var r = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(item.id)), {
+          var r = await fetch(window.devportalApi.org('/apis/'+encodeURIComponent(item.id)), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
@@ -1250,7 +1250,7 @@
 
     if (!pendingDelId) return;
     try {
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(pendingDelId)), {
+      var res = await fetch(window.devportalApi.org('/apis/'+encodeURIComponent(pendingDelId)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });
@@ -1287,7 +1287,7 @@
   async function setApiStatus(apiId, apiName, newStatus) {
     /* fetch current metadata, patch status, PUT back */
     try {
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(apiId)), {
+      var res = await fetch(window.devportalApi.org('/apis/'+encodeURIComponent(apiId)), {
         headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() }
       });
       if (!res.ok) throw new Error(res.statusText);
@@ -1300,7 +1300,7 @@
       });
       var fd = new FormData();
       fd.append('apiMetadata', JSON.stringify(meta));
-      var putRes = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(apiId)), {
+      var putRes = await fetch(window.devportalApi.org('/apis/'+encodeURIComponent(apiId)), {
         method: 'PUT',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
         body: fd,
@@ -1675,12 +1675,12 @@
     try {
       if (editLabelName && editLabelName !== name) {
         /* name changed — delete old first */
-        await fetch(window.devportalApi.org(ORG_ID, '/labels?names='+encodeURIComponent(editLabelName)), {
+        await fetch(window.devportalApi.org('/labels?names='+encodeURIComponent(editLabelName)), {
           method: 'DELETE',
           headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
         });
       }
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/labels'), {
+      var res = await fetch(window.devportalApi.org('/labels'), {
         method: 'PUT',
         headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
         body: JSON.stringify([{ name: name, displayName: displayName }]),
@@ -1727,7 +1727,7 @@
     if (!pendingDelName) return;
     document.getElementById('cfg-delete-label-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/labels?names='+encodeURIComponent(pendingDelName)), {
+      var res = await fetch(window.devportalApi.org('/labels?names='+encodeURIComponent(pendingDelName)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });
@@ -1793,7 +1793,7 @@
 
     try {
       var method = editPlanId ? 'PUT' : 'POST';
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-plans'), {
+      var res = await fetch(window.devportalApi.org('/subscription-plans'), {
         method: method,
         headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
         body: JSON.stringify(body),
@@ -1846,7 +1846,7 @@
     if (!pendingDelPlanId) return;
     document.getElementById('cfg-delete-plan-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
+      var res = await fetch(window.devportalApi.org('/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });
@@ -1969,8 +1969,8 @@
     if (publicKey) body.publicKey = publicKey;
 
     var url2   = editWebhookId
-      ? window.devportalApi.org(ORG_ID, '/webhook-subscribers/' + encodeURIComponent(editWebhookId))
-      : window.devportalApi.org(ORG_ID, '/webhook-subscribers');
+      ? window.devportalApi.org('/webhook-subscribers/' + encodeURIComponent(editWebhookId))
+      : window.devportalApi.org('/webhook-subscribers');
     var method = editWebhookId ? 'PUT' : 'POST';
 
     try {
@@ -2021,7 +2021,7 @@
     if (!pendingDelWebhookId) return;
     document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
+      var res = await fetch(window.devportalApi.org('/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });

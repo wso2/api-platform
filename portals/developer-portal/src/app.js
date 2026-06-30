@@ -139,9 +139,8 @@ app.use((req, res, next) => {
 //backend routes
 // Spec-driven devportal router (express-openapi-validator): request validation +
 // fine-grained OAuth2 scope enforcement, dispatching by operationId to
-// src/openapi/handlers. Mounted at root since spec paths are root-relative
-// (/o/{orgId}/devportal/v1/..., /applications, /login, ...). Registered before the
-// page route tree so unmatched requests fall through to it.
+// src/routes/api/handlers (/devportal/v1/..., /organizations, /login, ...).
+// Registered before the page route tree so unmatched requests fall through to it.
 const devportalApiRouter = require('./routes/api/devportalApiRouter');
 app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 
