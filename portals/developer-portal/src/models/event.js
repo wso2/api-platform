@@ -59,7 +59,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
     }
 }, {
     timestamps: false,
-    tableName: 'dp_event',
+    tableName: 'dp_events',
     returning: true,
     indexes: [
         { name: 'idx_event_status_occurred_at', fields: ['status', 'occurred_at'] },

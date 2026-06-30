@@ -66,7 +66,7 @@ const KeyManager = sequelize.define('DP_KEY_MANAGER', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_key_manager',
+    tableName: 'dp_key_managers',
     returning: true,
     indexes: [
         {

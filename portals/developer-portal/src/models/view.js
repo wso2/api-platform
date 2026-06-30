@@ -56,7 +56,7 @@ const View = sequelize.define('DP_VIEW', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_view',
+    tableName: 'dp_views',
     returning: true,
     indexes: [
         {

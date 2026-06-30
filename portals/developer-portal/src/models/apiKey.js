@@ -82,7 +82,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
     }
 }, {
     timestamps: false,
-    tableName: 'dp_api_key',
+    tableName: 'dp_api_keys',
     returning: true,
     checks: [
         {

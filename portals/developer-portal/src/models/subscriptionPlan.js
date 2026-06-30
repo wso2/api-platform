@@ -50,7 +50,7 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
     org_uuid: {
         type: DataTypes.STRING(40),
         allowNull: true,
-        references: { model: 'dp_organization', key: 'uuid' }
+        references: { model: 'dp_organizations', key: 'uuid' }
     },
     created_by: {
         type: DataTypes.STRING,
@@ -72,7 +72,7 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_subscription_plan',
+    tableName: 'dp_subscription_plans',
     returning: true,
     indexes: [
         { name: 'uq_subscription_plan_org_handle', unique: true, fields: ['org_uuid', 'handle'] }

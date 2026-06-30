@@ -79,7 +79,7 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_organization',
+    tableName: 'dp_organizations',
     returning: true
 });
 
@@ -134,7 +134,7 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_organization_asset',
+    tableName: 'dp_organization_assets',
     indexes: [
         {
             name: 'uq_organization_asset_type_name_path_org_view',

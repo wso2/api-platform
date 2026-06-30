@@ -87,7 +87,7 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_webhook_subscriber',
+    tableName: 'dp_webhook_subscribers',
     returning: true,
     indexes: [
         {

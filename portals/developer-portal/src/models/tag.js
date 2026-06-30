@@ -55,7 +55,7 @@ const Tags = sequelize.define('DP_TAG', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_tag',
+    tableName: 'dp_tags',
     returning: true,
     indexes: [
         {

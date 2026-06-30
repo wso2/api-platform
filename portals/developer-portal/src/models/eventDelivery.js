@@ -68,7 +68,7 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     }
 }, {
     timestamps: false,
-    tableName: 'dp_event_delivery',
+    tableName: 'dp_event_deliveries',
     returning: true,
     indexes: [
         { name: 'idx_event_delivery_event_uuid', fields: ['event_uuid'] },

@@ -92,7 +92,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   org_uuid: {
     type: DataTypes.STRING(40),
     allowNull: true,
-    references: { model: 'dp_organization', key: 'uuid' }
+    references: { model: 'dp_organizations', key: 'uuid' }
   },
   created_by: {
     type: DataTypes.STRING,

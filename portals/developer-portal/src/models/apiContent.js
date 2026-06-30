@@ -64,7 +64,7 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_api_content',
+    tableName: 'dp_api_contents',
     returning: true,
     indexes: [
         {

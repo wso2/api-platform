@@ -91,7 +91,7 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
     }
 }, {
     timestamps: false,
-    tableName: 'dp_api_workflow',
+    tableName: 'dp_api_workflows',
     returning: true,
     indexes: [
         { name: 'uq_api_workflow_org_view_handle', unique: true, fields: ['org_uuid', 'view_uuid', 'handle'] },

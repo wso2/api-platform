@@ -68,7 +68,7 @@ const Application = sequelize.define('DP_APPLICATION', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_application',
+    tableName: 'dp_applications',
     returning: true,
     indexes: [
         { name: 'idx_application_org_created_by', fields: ['org_uuid', 'created_by'] },
@@ -166,7 +166,7 @@ const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
     updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,
-    tableName: 'dp_subscription',
+    tableName: 'dp_subscriptions',
     returning: true,
     indexes: [
         { name: 'idx_subscription_org_created_by', fields: ['org_uuid', 'created_by'] },

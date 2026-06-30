@@ -44,7 +44,7 @@ function createSessionStore() {
     const pool = require('./dbPool');
     return new pgSession({
         pool,
-        tableName: 'session',
+        tableName: 'sessions',
         pruneSessionInterval: 3600,
         debug: (message) => logger.debug('Session store debug', { message }),
     });

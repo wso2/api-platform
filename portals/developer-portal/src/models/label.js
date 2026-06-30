@@ -59,7 +59,7 @@ const Labels = sequelize.define('DP_LABEL', {
     },
 }, {
     timestamps: false,
-    tableName: 'dp_label',
+    tableName: 'dp_labels',
     returning: true,
     indexes: [
         {
