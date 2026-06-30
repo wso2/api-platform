@@ -1167,7 +1167,7 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 // artifacts whose control-plane sync is incomplete (cp_sync_status IN ('pending','failed')).
 func (s *sqlStore) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
 	query := `
-		SELECT uuid, kind, handle, display_name, version, desired_state,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state,
 			deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
