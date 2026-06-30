@@ -81,7 +81,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	}
 
 	apiQuery := `
-		INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, description, created_by, project_uuid, lifecycle_status, configuration, origin, created_at, updated_at)
+		INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, description, created_by, project_uuid, lifecycle_status, configuration, origin, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
@@ -104,7 +104,7 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	api := &model.API{}
 
 	query := `
-		SELECT uuid, handle, name, description, version, created_by, updated_by,
+		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
 			project_uuid, organization_uuid, lifecycle_status, configuration, origin, created_at, updated_at
 		FROM rest_apis
 		WHERE uuid = ? AND organization_uuid = ?
@@ -176,7 +176,7 @@ func (r *APIRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMeta
 	metadata := &model.APIMetadata{}
 
 	query := `
-		SELECT uuid, handle, name, version, organization_uuid
+		SELECT uuid, handle, display_name, version, organization_uuid
 		FROM rest_apis
 		WHERE handle = ? AND organization_uuid = ?
 	`
@@ -198,7 +198,7 @@ func (r *APIRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMeta
 // GetAPIsByProjectUUID retrieves all APIs for a project
 func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT uuid, handle, name, description, version, created_by, updated_by,
+		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
 			project_uuid, organization_uuid, lifecycle_status, configuration, origin, created_at, updated_at
 		FROM rest_apis
 		WHERE project_uuid = ? AND organization_uuid = ?
@@ -253,7 +253,7 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	var args []interface{}
 
 	query = `
-		SELECT uuid, handle, name, description, version, created_by, updated_by,
+		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
 			project_uuid, organization_uuid, lifecycle_status, configuration, origin, created_at, updated_at
 		FROM rest_apis
 		WHERE organization_uuid = ?`
@@ -286,7 +286,7 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 // GetDeployedAPIsByGatewayUUID retrieves all APIs deployed to a specific gateway
 func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT a.uuid, a.name, a.description, a.version, a.created_by,
+		SELECT a.uuid, a.display_name, a.description, a.version, a.created_by,
 		       a.project_uuid, a.organization_uuid, a.origin, a.created_at, a.updated_at
 		FROM rest_apis a
 		INNER JOIN deployment_status ad ON a.uuid = ad.artifact_uuid AND ad.organization_uuid = a.organization_uuid
@@ -319,7 +319,7 @@ func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*
 // GetAPIsByGatewayUUID retrieves all APIs associated with a specific gateway
 func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT a.uuid, a.name, a.description, a.version, a.created_by,
+		SELECT a.uuid, a.display_name, a.description, a.version, a.created_by,
 			a.project_uuid, a.organization_uuid, a.origin, a.created_at, a.updated_at
 		FROM rest_apis a
 		INNER JOIN artifact_gateway_mappings aa ON a.uuid = aa.artifact_uuid
@@ -366,7 +366,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 
 	// Update main API record (name and version now live in rest_apis)
 	query := `
-		UPDATE rest_apis SET name = ?, version = ?, description = ?,
+		UPDATE rest_apis SET display_name = ?, version = ?, description = ?,
 			updated_by = ?, lifecycle_status = ?,
 			configuration = ?, updated_at = ?
 		WHERE uuid = ?
@@ -496,10 +496,10 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	var args []interface{}
 
 	if excludeHandle != "" {
-		query = `SELECT COUNT(*) FROM rest_apis WHERE name = ? AND version = ? AND organization_uuid = ? AND handle != ?`
+		query = `SELECT COUNT(*) FROM rest_apis WHERE display_name = ? AND version = ? AND organization_uuid = ? AND handle != ?`
 		args = []interface{}{name, version, orgUUID, excludeHandle}
 	} else {
-		query = `SELECT COUNT(*) FROM rest_apis WHERE name = ? AND version = ? AND organization_uuid = ?`
+		query = `SELECT COUNT(*) FROM rest_apis WHERE display_name = ? AND version = ? AND organization_uuid = ?`
 		args = []interface{}{name, version, orgUUID}
 	}
 
@@ -568,7 +568,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		SELECT
 			g.uuid as id,
 			g.organization_uuid as organization_id,
-			g.name,
+			g.display_name,
 			g.handle,
 			g.description,
 			g.properties,

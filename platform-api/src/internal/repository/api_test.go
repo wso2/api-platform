@@ -33,7 +33,7 @@ func createTestOrganizationAndProject(t *testing.T, db *database.DB, orgUUID, pr
 	t.Helper()
 
 	orgQuery := `
-		INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+		INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	_, err := db.Exec(orgQuery, orgUUID, "test-org-"+orgUUID, "Test Org", "default")
@@ -42,7 +42,7 @@ func createTestOrganizationAndProject(t *testing.T, db *database.DB, orgUUID, pr
 	}
 
 	projectQuery := `
-		INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
+		INSERT INTO projects (uuid, handle, display_name, organization_uuid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	_, err = db.Exec(projectQuery, projectUUID, "test-project-"+projectUUID, "Test Project", orgUUID)
