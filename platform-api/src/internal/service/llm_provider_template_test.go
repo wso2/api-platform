@@ -39,6 +39,7 @@ type mockLLMProviderTemplateCRUDRepo struct {
 	existsResult bool
 	existsErr    error
 	createErr    error
+	createCalled bool
 	created      *model.LLMProviderTemplate
 
 	managedByForHandleResult string
@@ -87,6 +88,7 @@ func (m *mockLLMProviderTemplateCRUDRepo) Exists(templateID, orgUUID string) (bo
 }
 
 func (m *mockLLMProviderTemplateCRUDRepo) Create(t *model.LLMProviderTemplate) error {
+	m.createCalled = true
 	if m.createErr != nil {
 		return m.createErr
 	}
@@ -218,7 +220,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsMissingEndpoint(t *testing.T) {
 	if _, err := svc.Create("org-1", "alice", req2); !errors.Is(err, constants.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput when endpoint is blank, got: %v", err)
 	}
-	if repo.created != nil {
+	if repo.createCalled {
 		t.Fatalf("did not expect repository create to be called")
 	}
 }
@@ -232,7 +234,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsEmptyName(t *testing.T) {
 	if !errors.Is(err, constants.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
-	if repo.created != nil {
+	if repo.createCalled {
 		t.Fatalf("did not expect repository create to be called")
 	}
 }
@@ -247,7 +249,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsInvalidVersion(t *testing.T) {
 	if !errors.Is(err, constants.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
-	if repo.created != nil {
+	if repo.createCalled {
 		t.Fatalf("did not expect repository create to be called")
 	}
 }
@@ -263,7 +265,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsReservedManagedBy(t *testing.T)
 	if !errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved) {
 		t.Fatalf("expected ErrLLMProviderTemplateManagedByReserved, got: %v", err)
 	}
-	if repo.created != nil {
+	if repo.createCalled {
 		t.Fatalf("did not expect repository create to be called")
 	}
 }
@@ -276,7 +278,7 @@ func TestLLMProviderTemplateServiceCreate_ReturnsConflictForDuplicateHandle(t *t
 	if !errors.Is(err, constants.ErrLLMProviderTemplateExists) {
 		t.Fatalf("expected ErrLLMProviderTemplateExists, got: %v", err)
 	}
-	if repo.created != nil {
+	if repo.createCalled {
 		t.Fatalf("did not expect repository create to be called")
 	}
 }

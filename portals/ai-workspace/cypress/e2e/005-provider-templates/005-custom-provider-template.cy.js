@@ -20,6 +20,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
   const suffix = Date.now().toString().slice(-8);
   const orgHandle = Cypress.env('ORG_HANDLE');
   const templateName = `E2E Custom Template ${suffix}`;
+  const groupId = toSlug(templateName);
   const templateV1Id = toTemplateId(`${templateName} v1.0`);
   const templateV2Id = toTemplateId(`${templateName} v2.0`);
   const providerName = `E2E Custom Template Provider ${suffix}`;
@@ -68,8 +69,8 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
     const targeted = (authToken && organizationId)
       ? deleteProvider(authToken, organizationId, targetProviderId)
           .then(() => waitForProviderGone(authToken, organizationId, targetProviderId))
-          .then(() => deleteProviderTemplate(authToken, organizationId, templateV2Id))
-          .then(() => deleteProviderTemplate(authToken, organizationId, templateV1Id))
+          .then(() => deleteTemplateVersion(authToken, organizationId, groupId, 'v2.0'))
+          .then(() => deleteTemplateVersion(authToken, organizationId, groupId, 'v1.0'))
       : cy.wrap(null);
 
     return targeted.then(() => cy.sweepE2EProviders(authToken, organizationId));
@@ -249,13 +250,18 @@ function deleteProvider(authToken, organizationId, targetProviderId) {
   });
 }
 
-function deleteProviderTemplate(authToken, organizationId, templateId) {
+// Delete a single version of a template family. There is no family-wide delete
+// endpoint; a custom template is removed by deleting each of its versions.
+function deleteTemplateVersion(authToken, organizationId, groupId, version) {
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api/proxy/api/v0.9/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api/proxy/api/v0.9/llm-provider-templates/${encodeURIComponent(groupId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
   }).then((response) => {
-    expect(response.status).to.be.oneOf([200, 204, 404, 409]);
+    if (response.status === 409) {
+      throw new Error(`Template version ${version} is still in use during cleanup`);
+    }
+    expect(response.status).to.be.oneOf([200, 204, 404]);
   });
 }
 
