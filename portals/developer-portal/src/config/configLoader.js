@@ -213,7 +213,7 @@ if (!config.advanced.encryptionKey || !/^[0-9a-fA-F]{64}$/.test(config.advanced.
     // Use process.stderr directly — logger is not yet initialised at this point
     process.stderr.write(
         '[WARN] advanced.encryptionKey is not set — generated an ephemeral key. ' +
-        'Encrypted data (subscription tokens, key manager credentials) will be unreadable after restart. ' +
+        'Encrypted data (subscription tokens, webhook secrets) will be unreadable after restart. ' +
         'Set DP_ADVANCED_ENCRYPTIONKEY in your .env file to persist it.\n'
     );
 }

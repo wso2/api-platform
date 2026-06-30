@@ -37,7 +37,6 @@ const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
 const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetryUtil');
 const kmDao = require('../dao/keyManagerDao');
-const { getKeyManagerAdapter } = require('../adapters/keyManager');
 
 function mapYamlToOrganization(parsed) {
     const { metadata = {}, spec = {} } = parsed;

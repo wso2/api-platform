@@ -57,9 +57,9 @@ Example plans: `Free`, `Basic`, `Gold`, `Enterprise`.
 
 ## Application
 
-An **application** is a logical container — representing a mobile app, web app, device, or script — that a developer creates in the portal. Applications are used to generate OAuth2 consumer key/secret pairs for OAuth2-secured APIs.
+An **application** is a logical container — representing a mobile app, web app, device, or script — that a developer creates in the portal. For OAuth2-secured APIs, an application holds the client ID(s) that link to OAuth applications created directly in a key manager; the portal never generates or stores consumer key/secret pairs.
 
-A developer can have multiple applications with independent OAuth2 credentials. For example, a developer might have a `MyApp-Production` application and a `MyApp-Staging` application with separate credentials.
+A developer can have multiple applications, each with independent OAuth2 client IDs. For example, a developer might have a `MyApp-Production` application and a `MyApp-Staging` application linked to separate OAuth applications in the key manager.
 
 > **Note:** Applications are not required for API subscriptions or API key generation. Subscriptions are made directly to an API, and API keys are bound to an API — not to an application.
 
@@ -83,11 +83,11 @@ Key lifecycle events (generate, regenerate, revoke) are published in real-time a
 
 ## OAuth2 Credentials
 
-For APIs that use OAuth2, developers generate a **consumer key** and **consumer secret** for their application. These credentials are used to obtain access tokens from the [key manager](../administer/key-manager-integration.md).
+For APIs that use OAuth2, developers create an OAuth application directly in a [key manager](../administer/key-manager-integration.md), then link the resulting **client ID** to an application in the portal. The portal never sees or stores the client secret — it's supplied by the developer each time they generate an access token, and the portal proxies that token request to the key manager.
 
 ## Key Manager
 
-A **key manager** is the OAuth2 authorization server configured for an organization. It issues consumer key/secret pairs and validates access tokens presented to the API Gateway. You can configure one or more key managers per organization.
+A **key manager** is an external OAuth2 authorization server configured for an organization. Developers create and own their OAuth applications there; the portal only stores a reference to the client ID and proxies `client_credentials` token requests to the key manager's token endpoint. You can configure one or more key managers per organization.
 
 ## API Workflow
 

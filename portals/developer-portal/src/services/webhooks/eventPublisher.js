@@ -97,13 +97,18 @@ async function publish(eventType, payload, opts) {
                     });
                 }
             }
-            if (Object.keys(encryptedForSub).length > 0) {
+            if (Object.keys(encryptedForSub).length === Object.keys(secretFields).length) {
                 perSubscriberEncrypted[sub.id] = encryptedForSub;
+            } else if (Object.keys(encryptedForSub).length > 0) {
+                logger.error('Partial encryption for subscriber — skipping delivery', {
+                    subscriberId: sub.id, eventType
+                });
             }
         }
 
-        if (subscribers.length > 0) {
-            await eventDao.createDeliveries(event.UUID, subscribers, perSubscriberEncrypted, transaction);
+        const deliverableSubscribers = subscribers.filter(s => perSubscriberEncrypted[s.id]);
+        if (deliverableSubscribers.length > 0) {
+            await eventDao.createDeliveries(event.UUID, deliverableSubscribers, perSubscriberEncrypted, transaction);
             event.STATUS = 'DISPATCHED';
         } else {
             event.STATUS = 'ALL_DELIVERED';

@@ -31,6 +31,7 @@ if (dialect === 'sqlite') {
         dialectModule: require('./betterSqlite3Compat'),
         storage: config.db.storage || './devportal.db',
         logging: false,
+        pool: { max: 1, min: 1, acquire: 30000, idle: 10000 },
     });
 } else {
     const sequelizeOptions = {

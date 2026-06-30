@@ -63,6 +63,8 @@ function Database(path, _flags, callback) {
     let db;
     try {
         db = new BetterSqlite3(path);
+        db.pragma('journal_mode = WAL');
+        db.pragma('busy_timeout = 5000');
     } catch (err) {
         if (callback) process.nextTick(() => callback(err));
         return;

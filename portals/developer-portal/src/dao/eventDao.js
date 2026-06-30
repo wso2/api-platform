@@ -82,6 +82,15 @@ async function claimDueDeliveries(batchSize) {
     const isPostgres = sequelize.getDialect() === 'postgres';
     const txOpts = isPostgres ? { isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED } : {};
     return sequelize.transaction(txOpts, async (t) => {
+        // Recover stale IN_FLIGHT rows left by a crashed or stopped worker. Any delivery
+        // that has been IN_FLIGHT for more than 5 minutes without a terminal update is
+        // marked FAILED so it re-enters PENDING on the next dispatch cycle.
+        const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+        await DPEventDelivery.update(
+            { STATUS: 'FAILED', LAST_ERROR: 'Delivery abandoned: worker stopped mid-flight' },
+            { where: { STATUS: 'IN_FLIGHT', LAST_ATTEMPT_AT: { [Op.lt]: staleThreshold } }, transaction: t }
+        );
+
         const findOpts = {
             where: { STATUS: 'PENDING' },
             limit: batchSize,
@@ -120,7 +129,7 @@ async function markFailed(deliveryId, { httpStatus, error }) {
     await DPEventDelivery.update(
         {
             STATUS: 'FAILED',
-            LAST_HTTP_STATUS: httpStatus || null,
+            LAST_HTTP_STATUS: httpStatus ?? null,
             LAST_ERROR: error ? String(error).slice(0, 1000) : null
         },
         { where: { UUID: deliveryId } }

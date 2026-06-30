@@ -301,7 +301,6 @@ module.exports = {
         KEY_MANAGER_DELETE_ERROR: "Error while deleting key manager",
         KEY_MANAGER_RETRIEVE_ERROR: "Error while retrieving key manager",
         KEY_MANAGER_NOT_FOUND: "Key manager not found",
-        KEY_MANAGER_ENCRYPTION_ERROR: "Key manager encryption key not configured",
         WEBHOOK_SUBSCRIBER_CREATE_ERROR: "Error while creating webhook subscriber",
         WEBHOOK_SUBSCRIBER_UPDATE_ERROR: "Error while updating webhook subscriber",
         WEBHOOK_SUBSCRIBER_DELETE_ERROR: "Error while deleting webhook subscriber",

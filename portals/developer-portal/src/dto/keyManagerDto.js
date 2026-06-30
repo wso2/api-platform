@@ -28,16 +28,6 @@ class KeyManagerDTO {
         this.type = km.TYPE;
         this.enabled = !!km.ENABLED;
         this.tokenEndpoint = km.TOKEN_ENDPOINT;
-        this.clientRegistrationEndpoint = km.CLIENT_REG_ENDPOINT;
-        if (km.ISSUER) {
-            this.issuer = km.ISSUER;
-        }
-        if (km.JWKS_URL) {
-            this.jwksURL = km.JWKS_URL;
-        }
-        this.supportedGrantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
-        this.supportedScopes = km.SUPPORTED_SCOPES || ['openid'];
-        this.additionalProperties = km.ADDITIONAL_PROPERTIES || {};
     }
 }
 
@@ -51,8 +41,6 @@ class KeyManagerPublicDTO {
         this.name = km.NAME;
         this.type = km.TYPE;
         this.tokenEndpoint = km.TOKEN_ENDPOINT;
-        this.supportedGrantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
-        this.supportedScopes = km.SUPPORTED_SCOPES || ['openid'];
     }
 }
 

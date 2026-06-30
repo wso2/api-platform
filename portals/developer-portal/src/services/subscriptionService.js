@@ -41,6 +41,7 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
         subscription_id: sub.UUID,
         subscriber_id: sub.CREATED_BY,
+        status: sub.STATUS,
         subscription_plan: {
             ref_id: plan ? (plan.REF_ID || null) : null,
             name: plan ? (plan.NAME || null) : null,
@@ -194,29 +195,24 @@ const updateSubscription = async (req, res) => {
             });
         }
 
-        const updated = await subDao.updateStatus(
-            orgID, subscriptionId, status, req.user.sub
-        );
-        if (!updated) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
-        }
-        const sub = await subDao.get(orgID, subscriptionId, req.user.sub);
-        try {
-            await sequelize.transaction(async (t) => {
-                await safePublish('subscription.updated', buildWebhookPayload(existing, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN), {
-                    transaction: t,
-                    orgId: orgID,
-                    aggregateType: 'subscription',
-                    aggregateId: subscriptionId,
-                });
-            });
-        } catch (pubErr) {
-            logger.warn('Failed to publish subscription.updated event', { orgId: orgID, subscriptionId, error: pubErr.message });
-        }
+        let sub;
+        await sequelize.transaction(async (t) => {
+            const updated = await subDao.updateStatus(orgID, subscriptionId, status, req.user.sub, t);
+            if (!updated) {
+                const err = new Error('Subscription not found');
+                err.status = 404;
+                throw err;
+            }
+            await publishWebhookEvent('subscription.updated',
+                buildWebhookPayload({ ...existing.get({ plain: true }), STATUS: status }, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN),
+                { transaction: t, orgId: orgID, aggregateType: 'subscription', aggregateId: subscriptionId });
+        });
+        sub = await subDao.get(orgID, subscriptionId, req.user.sub);
         return res.status(200).json(formatSubscriptionResponse(sub));
     } catch (error) {
+        if (error.status === 404) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
+        }
         logger.error('Error updating subscription', {
             error: error.message, subscriptionId, status,
         });

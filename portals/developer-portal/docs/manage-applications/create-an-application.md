@@ -1,10 +1,10 @@
 # Create an Application
 
-An application is a logical representation of a physical application such as a mobile app, web app, device, or CLI tool. In the Developer Portal, applications are used to generate OAuth2 consumer key/secret pairs for invoking OAuth2-secured APIs.
+An application is a logical representation of a physical application such as a mobile app, web app, device, or CLI tool. In the Developer Portal, applications are used to link OAuth2 client IDs — created directly in a key manager — for invoking OAuth2-secured APIs.
 
 > **Note:** Applications are not required for subscriptions or API key generation. Subscriptions are made directly to an API, and API keys are bound to an API — not to an application. Applications are only needed for OAuth2-secured APIs.
 
-A developer can have multiple applications with independent OAuth2 credentials. For example, a `MyApp-Production` application and a `MyApp-Staging` application with separate credentials.
+A developer can have multiple applications with independent OAuth2 client IDs. For example, a `MyApp-Production` application and a `MyApp-Staging` application linked to different OAuth applications in the key manager.
 
 ## Create a New Application
 
@@ -29,8 +29,8 @@ From the application detail page you can:
 
 | Action | Where |
 |---|---|
-| Generate OAuth2 consumer key/secret | **Manage Keys** → **Generate** |
-| Generate an access token for testing | **Manage Keys** → token section → **Generate** |
+| Link an OAuth2 client ID | **Manage Keys** → paste client ID → **Add** |
+| Generate an access token for testing | **Manage Keys** → **Generate Token** tab |
 | Edit or delete the application | Application header menu |
 
 ## Delete an Application
@@ -41,7 +41,7 @@ To delete an application:
 2. Click the **Delete** option from the application menu.
 3. Confirm deletion.
 
-> **Warning:** Deleting an application makes a best-effort attempt to revoke registered OAuth2 clients with the key manager and removes all stored key mappings; revocation failures are logged as warnings and do not abort deletion. Existing access tokens will stop working when they expire. This action is irreversible.
+> **Warning:** Deleting an application removes all stored client ID mappings. It does not contact the key manager — OAuth applications there must be deleted independently if no longer needed. Existing access tokens will stop working when they expire. This action is irreversible.
 
 ## Related
 

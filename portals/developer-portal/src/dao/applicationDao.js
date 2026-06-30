@@ -199,7 +199,6 @@ const upsertKeyMapping = async (mappingData, t) => {
         if (existing) {
             await existing.update({
                 AS_CLIENT_ID: mappingData.asClientID,
-                ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
                 UPDATED_BY: mappingData.createdBy,
                 UPDATED_AT: new Date()
             }, { transaction: t });
@@ -210,7 +209,6 @@ const upsertKeyMapping = async (mappingData, t) => {
             ...(mappingData.kmID && { KM_UUID: mappingData.kmID }),
             AS_CLIENT_ID: mappingData.asClientID,
             TYPE: mappingData.keyType,
-            ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
             CREATED_BY: mappingData.createdBy,
             UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });
@@ -287,7 +285,6 @@ const createKeyMapping = async (mappingData, t) => {
             ...(mappingData.kmID && { KM_UUID: mappingData.kmID }),
             ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
             ...(mappingData.keyType && { TYPE: mappingData.keyType }),
-            ...(mappingData.additionalProperties && { ADDITIONAL_PROPERTIES: mappingData.additionalProperties }),
             CREATED_BY: mappingData.createdBy,
             UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });

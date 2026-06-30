@@ -77,16 +77,11 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                 if (mapping.AS_CLIENT_ID && mapping.KM_UUID) {
                     try {
                         const km = await kmDao.get(mapping.KM_UUID);
-                        const storedProps = mapping.ADDITIONAL_PROPERTIES || {};
                         keyList.push({
                             keyManager: km.NAME,
                             consumerKey: mapping.AS_CLIENT_ID,
-                            consumerSecret: '',
                             keyMappingId: mapping.UUID,
                             keyType: mapping.TYPE || constants.KEY_TYPE.PRODUCTION,
-                            supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
-                            additionalProperties: storedProps,
-                            callbackUrl: storedProps.redirect_uris?.[0] || '',
                         });
                     } catch (mappingErr) {
                         logger.warn('Skipping key mapping due to error', {
@@ -109,19 +104,12 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     try {
         const dbKeyManagers = await kmDao.listEnabled(orgID);
         for (const km of dbKeyManagers) {
-            const grantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
             kMmetaData.push({
                 id: km.UUID,
                 name: km.NAME,
                 type: km.TYPE,
                 enabled: true,
                 tokenEndpoint: km.TOKEN_ENDPOINT,
-                authorizeEndpoint: km.ADDITIONAL_PROPERTIES?.authorizeEndpoint || '',
-                revokeEndpoint: km.ADDITIONAL_PROPERTIES?.revokeEndpoint || '',
-                availableGrantTypes: await mapGrants(grantTypes),
-                applicationConfiguration: await mapDefaultValues(
-                    km.ADDITIONAL_PROPERTIES?.applicationConfiguration || []
-                ),
             });
         }
     } catch (kmError) {
@@ -132,20 +120,11 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     let sandboxKeys = [];
 
     applicationKeyList?.list?.map(key => {
-        let client_name;
-        if (key?.additionalProperties?.client_name) {
-            client_name = key.additionalProperties.client_name;
-        }
         let keyData = {
             keyManager: key.keyManager,
             consumerKey: key.consumerKey,
-            consumerSecret: key.consumerSecret,
             keyMappingId: key.keyMappingId,
             keyType: key.keyType,
-            supportedGrantTypes: key.supportedGrantTypes,
-            additionalProperties: key.additionalProperties,
-            clientName: client_name,
-            callbackUrl: key.callbackUrl,
             appRefID: applicationReference
         };
         if (key.keyType === constants.KEY_TYPE.PRODUCTION) {
@@ -423,65 +402,6 @@ async function loadApplicationApiKeysData(orgID, applicationId) {
     }
     return { associatedApiKeys, availableKeysByApi };
 }
-
-async function mapGrants(grantTypes) {
-
-    let mappedGrantTypes = [];
-    grantTypes.map(grantType => {
-        if (grantType === 'password') {
-            mappedGrantTypes.push({
-                label: 'Password',
-                name: grantType
-            });
-        } else if (grantType === 'client_credentials') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Client Credentials',
-                    name: grantType
-                }
-            );
-        } else if (grantType === 'refresh_token') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Refresh Token',
-                    name: grantType
-                }
-            );
-        } else if (grantType === 'authorization_code') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Authorization Code',
-                    name: grantType
-                }
-            );
-        } else if (grantType === 'implicit') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Implicit',
-                    name: grantType
-                }
-            );
-        }
-    });
-    return mappedGrantTypes;
-}
-
-async function mapDefaultValues(applicationConfiguration) {
-
-    let appConfigs = [];
-    let defaultConfigs = ["application_access_token_expiry_time", "user_access_token_expiry_time", "id_token_expiry_time"];
-    applicationConfiguration.map(config => {
-        if (defaultConfigs.includes(config.name) && config.default == 'N/A') {
-            config.default = 900;
-        } else if (config.name === 'refresh_token_expiry_time' && config.default == 'N/A') {
-            config.default = 86400;
-        }
-        appConfigs.push(config);
-    });
-    return appConfigs;
-}
-
-
 
 module.exports = {
     loadApplications,

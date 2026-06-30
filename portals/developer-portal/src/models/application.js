@@ -89,7 +89,7 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
     },
     KM_UUID: {
         type: DataTypes.STRING(40),
-        allowNull: true
+        allowNull: false
     },
     AS_CLIENT_ID: {
         type: DataTypes.STRING,
@@ -99,10 +99,6 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PRODUCTION'
-    },
-    ADDITIONAL_PROPERTIES: {
-        type: DataTypes.JSONB,
-        allowNull: true
     },
     CREATED_BY: {
         type: DataTypes.STRING,

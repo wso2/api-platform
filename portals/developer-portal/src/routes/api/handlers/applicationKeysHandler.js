@@ -26,6 +26,4 @@ module.exports = {
     generateApplicationKeys: devportalController.generateKeys,
     generateOAuthKeys: devportalController.generateOAuthKeys,
     revokeOAuthKeys: devportalController.revokeOAuthKeys,
-    updateOAuthKeys: devportalController.updateOAuthKeys,
-    cleanUpOAuthKeys: devportalController.cleanUp,
 };

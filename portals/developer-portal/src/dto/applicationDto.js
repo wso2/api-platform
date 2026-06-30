@@ -40,7 +40,6 @@ class AppMappingDTO {
         this.appRefID = map.AS_CLIENT_ID;
         this.kmID = map.KM_UUID;
         this.keyType = map.TYPE;
-        this.additionalProperties = map.ADDITIONAL_PROPERTIES;
     }
 
     setResponseData(data) {
