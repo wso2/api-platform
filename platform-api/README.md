@@ -43,7 +43,7 @@ go run ./cmd/main.go
 **1. Register an Organization**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/organizations \
+curl -k -X POST https://localhost:9243/api/v0.9/organizations \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{"id":"<org-uuid>","handle":"acme","name":"ACME Corporation","region":"us-east-1"}'
@@ -52,7 +52,7 @@ curl -k -X POST https://localhost:9243/api/v1/organizations \
 **2. Create a Project**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/projects \
+curl -k -X POST https://localhost:9243/api/v0.9/projects \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
@@ -63,7 +63,7 @@ curl -k -X POST https://localhost:9243/api/v1/projects \
 **3. Create a Gateway**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>' \
@@ -89,7 +89,7 @@ Response includes the gateway UUID:
 **4. Generate Gateway Token**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways/<gateway-uuid>/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/<gateway-uuid>/tokens \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>'
 ```
@@ -106,7 +106,7 @@ Response includes the gateway authentication token:
 
 **List Gateway Tokens:**
 ```bash
-curl -k https://localhost:9243/api/v1/gateways/<gateway-uuid>/tokens \
+curl -k https://localhost:9243/api/v0.9/gateways/<gateway-uuid>/tokens \
   -H 'Authorization: Bearer <your-token>'
 ```
 
@@ -134,7 +134,7 @@ Keep this connection open to receive real-time deployment events.
 **6. Create an API**
 
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
+curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
@@ -156,7 +156,7 @@ curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
 **7. Deploy API to Gateway**
 
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/rest-apis/weather-api/deployments' \
+curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis/weather-api/deployments' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>' \

@@ -158,7 +158,7 @@ ap gateway rest-api api-key create -f api-key.json --platform eu --gateway prod
 `ApiKey` CR shape (`api-key.yaml`):
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: ApiKey
 metadata:
   name: petstore-key-acme
@@ -326,7 +326,7 @@ ap gateway subscription-plan create -f subscription-plan.json --platform eu --ga
 `SubscriptionPlan` CR shape (`subscription-plan.yaml`):
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: SubscriptionPlan
 metadata:
   name: bronze-1k-per-min
@@ -426,7 +426,7 @@ ap gateway subscription create -f subscription.json --platform eu --gateway prod
 `Subscription` CR shape (`subscription.yaml`):
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Subscription
 metadata:
   name: petstore-acme-bronze

@@ -71,7 +71,7 @@
 
 **Goal**: Enable the platform to send API deployment events to target gateways via established WebSocket connections when API deployment occurs
 
-**Independent Test**: With a gateway connected, trigger an API deployment action (`POST /api/v1/apis/:api_uuid/deploy-revision`). Gateway should receive deployment event within 5 seconds with API UUID, revision details, and vhost (no API YAML).
+**Independent Test**: With a gateway connected, trigger an API deployment action (`POST /api/v0.9/apis/:api_uuid/deploy-revision`). Gateway should receive deployment event within 5 seconds with API UUID, revision details, and vhost (no API YAML).
 
 ### Implementation for User Story 2
 

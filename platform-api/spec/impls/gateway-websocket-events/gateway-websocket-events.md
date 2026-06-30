@@ -223,7 +223,7 @@ export WS_RATE_LIMIT_PER_MINUTE=20
 
 **Register Gateway**:
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Content-Type: application/json' \
   -d '{
     "organizationId": "<org-uuid>",
@@ -245,7 +245,7 @@ curl -k -X POST https://localhost:9243/api/v1/gateways \
 
 **Generate Gateway Token**:
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways/d1aa71bc-8cb5-4294-8a26-fe1273c28632/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/d1aa71bc-8cb5-4294-8a26-fe1273c28632/tokens \
   -H 'Accept: application/json'
 ```
 
@@ -275,7 +275,7 @@ Connected (press CTRL+C to quit)
 
 **Deploy API Revision** (with gateway connected):
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
+curl -k -X POST 'https://localhost:9243/api/v0.9/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -d '[{

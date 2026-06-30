@@ -127,7 +127,7 @@ Authorization: Basic admin:admin
 Content-Type: application/json
 
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebSubApi",
   "metadata": {
     "name": "repo-watcher-v1-0"
@@ -232,7 +232,7 @@ curl --location 'http://localhost:9090/api/management/v0.9/webbroker-apis' \
 --header 'Accept: application/json' \
 --header 'Authorization: Basic YWRtaW46YWRtaW4=' \
 --data '{
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebBrokerApi",
   "metadata": {
     "name": "stock-trading-v1.0"
@@ -380,7 +380,7 @@ curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
   -u admin:admin \
   -H "Content-Type: application/json" \
   -d '{
-    "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
     "kind": "WebSubApi",
     "metadata": { "name": "repo-watcher-v1-0" },
     "spec": {
@@ -431,7 +431,7 @@ The `WebSubApi` kind is configured via `policies` and `channels`. Both are optio
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebSubApi",
   "metadata": { "name": "my-api" },
   "spec": {
