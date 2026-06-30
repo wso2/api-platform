@@ -268,6 +268,117 @@ func TestLifecycle_GatewayCreateListAndTokenGenerate(t *testing.T) {
 	}
 }
 
+// TestLifecycle_GatewayEndpointRoundTrip verifies that GetByOrganizationID and
+// List correctly return endpoints via the JOIN query introduced to replace the
+// nested-query pattern that deadlocked under SQLite's single-connection pool.
+// It covers: multiple endpoints per gateway, zero endpoints, cross-gateway
+// endpoint isolation, insertion-order preservation, and post-update re-listing.
+func TestLifecycle_GatewayEndpointRoundTrip(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	orgID, _ := seedOrgProject(t, it, "ep")
+	gwRepo := repository.NewGatewayRepo(it.db)
+
+	twoEndpoints := []model.GatewayEndpoint{
+		{Host: "primary.example.com", Protocol: "https", Port: 443, Context: "/api"},
+		{Host: "secondary.example.com", Protocol: "http", Port: 8080, Context: "/api"},
+	}
+	oneEndpoint := []model.GatewayEndpoint{
+		{Host: "single.example.com", Protocol: "https", Port: 443, Context: "/"},
+	}
+
+	gwMulti := &model.Gateway{
+		ID: id(), OrganizationID: orgID,
+		Name: "multi-ep", Handle: "multi-ep-" + id()[:6],
+		FunctionalityType: "REGULAR", Version: "1.0.0",
+		Endpoints: twoEndpoints,
+	}
+	gwSingle := &model.Gateway{
+		ID: id(), OrganizationID: orgID,
+		Name: "single-ep", Handle: "single-ep-" + id()[:6],
+		FunctionalityType: "REGULAR", Version: "1.0.0",
+		Endpoints: oneEndpoint,
+	}
+
+	for _, gw := range []*model.Gateway{gwMulti, gwSingle} {
+		if err := gwRepo.Create(gw); err != nil {
+			t.Fatalf("[%s] Create(%s) failed: %v", it.driver, gw.Handle, err)
+		}
+	}
+
+	checkEndpoints := func(t *testing.T, label string, gateways []*model.Gateway) {
+		t.Helper()
+		byID := make(map[string]*model.Gateway, len(gateways))
+		for _, g := range gateways {
+			byID[g.ID] = g
+		}
+
+		got := byID[gwMulti.ID]
+		if got == nil {
+			t.Fatalf("[%s] %s: multi-endpoint gateway missing from results", it.driver, label)
+		}
+		if len(got.Endpoints) != len(twoEndpoints) {
+			t.Fatalf("[%s] %s: want %d endpoints for multi-ep gateway, got %d", it.driver, label, len(twoEndpoints), len(got.Endpoints))
+		}
+		for i, want := range twoEndpoints {
+			ep := got.Endpoints[i]
+			if ep.Host != want.Host || ep.Protocol != want.Protocol || ep.Port != want.Port || ep.Context != want.Context {
+				t.Fatalf("[%s] %s: endpoint[%d] mismatch: want %+v, got %+v", it.driver, label, i, want, ep)
+			}
+		}
+
+		gotSingle := byID[gwSingle.ID]
+		if gotSingle == nil {
+			t.Fatalf("[%s] %s: single-endpoint gateway missing from results", it.driver, label)
+		}
+		if len(gotSingle.Endpoints) != 1 || gotSingle.Endpoints[0].Host != "single.example.com" {
+			t.Fatalf("[%s] %s: single-ep gateway endpoints mismatch: %+v", it.driver, label, gotSingle.Endpoints)
+		}
+	}
+
+	// GetByOrganizationID uses the JOIN path; this was the deadlock site.
+	list, err := gwRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		t.Fatalf("[%s] GetByOrganizationID failed: %v", it.driver, err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("[%s] GetByOrganizationID: want 2 gateways, got %d", it.driver, len(list))
+	}
+	checkEndpoints(t, "GetByOrganizationID", list)
+
+	// List also uses the JOIN path.
+	all, err := gwRepo.List()
+	if err != nil {
+		t.Fatalf("[%s] List failed: %v", it.driver, err)
+	}
+	checkEndpoints(t, "List", all)
+
+	// Replace the endpoints on the multi-endpoint gateway and verify the list reflects it.
+	updatedEndpoints := []model.GatewayEndpoint{
+		{Host: "new.example.com", Protocol: "https", Port: 9443, Context: "/v2"},
+	}
+	gwMulti.Endpoints = updatedEndpoints
+	gwMulti.UpdatedBy = "it-user"
+	if err := gwRepo.UpdateGateway(gwMulti); err != nil {
+		t.Fatalf("[%s] UpdateGateway failed: %v", it.driver, err)
+	}
+	afterUpdate, err := gwRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		t.Fatalf("[%s] GetByOrganizationID after update failed: %v", it.driver, err)
+	}
+	byID := make(map[string]*model.Gateway, len(afterUpdate))
+	for _, g := range afterUpdate {
+		byID[g.ID] = g
+	}
+	updated := byID[gwMulti.ID]
+	if updated == nil {
+		t.Fatalf("[%s] updated gateway missing from list", it.driver)
+	}
+	if len(updated.Endpoints) != 1 || updated.Endpoints[0].Host != "new.example.com" {
+		t.Fatalf("[%s] post-update endpoints mismatch: %+v", it.driver, updated.Endpoints)
+	}
+}
+
 // TestLifecycle_APIKeyCreateListRevoke drives the real APIKeyRepo through key
 // creation, lookup, listing, update and revocation. The key hangs off a REST
 // API artifact created via APIRepo, so this exercises the api_keys ->
