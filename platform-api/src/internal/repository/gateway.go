@@ -135,13 +135,14 @@ func (r *GatewayRepo) scanGateway(row interface {
 	gateway := &model.Gateway{}
 	var propertiesBytes []byte
 	var isCritical, isActive int
-	var createdBy, updatedBy sql.NullString
+	var description, createdBy, updatedBy sql.NullString
 	if err := row.Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes,
+		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &description, &propertiesBytes,
 		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &createdBy, &updatedBy, &gateway.CreatedAt, &gateway.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
+	gateway.Description = description.String
 	gateway.IsCritical = isCritical != 0
 	gateway.IsActive = isActive != 0
 	gateway.CreatedBy = createdBy.String
@@ -193,13 +194,13 @@ func (r *GatewayRepo) scanGatewaysWithEndpoints(query string, args ...any) ([]*m
 	for rows.Next() {
 		var propertiesBytes []byte
 		var isCritical, isActive int
-		var createdBy, updatedBy sql.NullString
+		var description, createdBy, updatedBy sql.NullString
 		var epHost, epProtocol, epContext sql.NullString
 		var epPort sql.NullInt64
 
 		gw := &model.Gateway{}
 		if err := rows.Scan(
-			&gw.ID, &gw.OrganizationID, &gw.Handle, &gw.Name, &gw.Description, &propertiesBytes,
+			&gw.ID, &gw.OrganizationID, &gw.Handle, &gw.Name, &description, &propertiesBytes,
 			&isCritical, &gw.FunctionalityType, &gw.Version, &isActive, &createdBy, &updatedBy, &gw.CreatedAt, &gw.UpdatedAt,
 			&epHost, &epProtocol, &epPort, &epContext,
 		); err != nil {
@@ -208,6 +209,7 @@ func (r *GatewayRepo) scanGatewaysWithEndpoints(query string, args ...any) ([]*m
 
 		existing, seen := index[gw.ID]
 		if !seen {
+			gw.Description = description.String
 			gw.IsCritical = isCritical != 0
 			gw.IsActive = isActive != 0
 			gw.CreatedBy = createdBy.String
