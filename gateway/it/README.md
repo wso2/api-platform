@@ -133,7 +133,7 @@ Feature: API Deployment and Invocation
   Scenario: Deploy a simple HTTP API and invoke it successfully
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: weather-api-v1.0

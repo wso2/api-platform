@@ -29,32 +29,33 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
+	corerepo "platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 )
 
-// WebBrokerAPIRepo handles database operations for WebBroker APIs
-type WebBrokerAPIRepo struct {
+// WebSubAPIRepo handles database operations for WebSub APIs
+type WebSubAPIRepo struct {
 	db           *database.DB
-	artifactRepo *ArtifactRepo
+	artifactRepo *corerepo.ArtifactRepo
 }
 
-// NewWebBrokerAPIRepo creates a new WebBrokerAPIRepo instance
-func NewWebBrokerAPIRepo(db *database.DB) *WebBrokerAPIRepo {
-	return &WebBrokerAPIRepo{db: db, artifactRepo: NewArtifactRepo(db)}
+// NewWebSubAPIRepo creates a new WebSubAPIRepo instance
+func NewWebSubAPIRepo(db *database.DB, reg *corerepo.ArtifactTableRegistry) *WebSubAPIRepo {
+	return &WebSubAPIRepo{db: db, artifactRepo: corerepo.NewArtifactRepo(db, reg)}
 }
 
-// Create creates a new WebBroker API in the database
-func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
+// Create creates a new WebSub API in the database
+func (r *WebSubAPIRepo) Create(a *model.WebSubAPI) error {
 	uuidStr, err := utils.GenerateUUID()
 	if err != nil {
-		return fmt.Errorf("failed to generate WebBroker API ID: %w", err)
+		return fmt.Errorf("failed to generate WebSub API ID: %w", err)
 	}
 	a.UUID = uuidStr
 	now := time.Now().UTC()
 	a.CreatedAt = now
 	a.UpdatedAt = now
 
-	configurationJSON, err := serializeWebBrokerAPIConfiguration(a.Configuration)
+	configurationJSON, err := serializeWebSubAPIConfiguration(a.Configuration)
 	if err != nil {
 		return fmt.Errorf("failed to serialize configuration: %w", err)
 	}
@@ -68,7 +69,7 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 	// Insert into artifacts table first
 	if err := r.artifactRepo.Create(tx, &model.Artifact{
 		UUID:             a.UUID,
-		Type:             constants.WebBrokerApi,
+		Type:             constants.WebSubApi,
 		OrganizationUUID: a.OrganizationUUID,
 	}); err != nil {
 		return fmt.Errorf("failed to create artifact: %w", err)
@@ -79,9 +80,9 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 		origin = constants.OriginCP
 	}
 
-	// Insert into webbroker_apis table
+	// Insert into websub_apis table
 	query := `
-		INSERT INTO webbroker_apis (
+		INSERT INTO websub_apis (
 			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, lifecycle_status, configuration, origin, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -90,7 +91,7 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 		configurationJSON, origin, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create WebBroker API: %w", err)
+		return fmt.Errorf("failed to create WebSub API: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -99,32 +100,32 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 	return nil
 }
 
-// GetByHandle retrieves a WebBroker API by its handle and organization UUID
-func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBrokerAPI, error) {
+// GetByHandle retrieves a WebSub API by its handle and organization UUID
+func (r *WebSubAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebSubAPI, error) {
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
-		FROM webbroker_apis
+		FROM websub_apis
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
-	return r.scanWebBrokerAPI(row)
+	return r.scanWebSubAPI(row)
 }
 
-// GetByUUID retrieves a WebBroker API by its UUID and organization UUID
-func (r *WebBrokerAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebBrokerAPI, error) {
+// GetByUUID retrieves a WebSub API by its UUID and organization UUID
+func (r *WebSubAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebSubAPI, error) {
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
-		FROM webbroker_apis
+		FROM websub_apis
 		WHERE uuid = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
-	return r.scanWebBrokerAPI(row)
+	return r.scanWebSubAPI(row)
 }
 
-// List retrieves all WebBroker APIs for an organization, optionally filtered by project
-func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]*model.WebBrokerAPI, error) {
+// List retrieves all WebSub APIs for an organization, optionally filtered by project
+func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]*model.WebSubAPI, error) {
 	var query string
 	var args []interface{}
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
@@ -134,7 +135,7 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 			SELECT
 				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
-			FROM webbroker_apis
+			FROM websub_apis
 			WHERE organization_uuid = ? AND project_uuid = ?
 			ORDER BY created_at DESC
 			` + pageClause
@@ -144,7 +145,7 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 			SELECT
 				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
-			FROM webbroker_apis
+			FROM websub_apis
 			WHERE organization_uuid = ?
 			ORDER BY created_at DESC
 			` + pageClause
@@ -157,9 +158,9 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	}
 	defer rows.Close()
 
-	var res []*model.WebBrokerAPI
+	var res []*model.WebSubAPI
 	for rows.Next() {
-		a, err := r.scanWebBrokerAPIFromRows(rows)
+		a, err := r.scanWebSubAPIFromRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -168,16 +169,16 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	return res, rows.Err()
 }
 
-// Count returns the total number of WebBroker APIs for an organization
-func (r *WebBrokerAPIRepo) Count(orgUUID string) (int, error) {
-	return r.artifactRepo.CountByKindAndOrg(constants.WebBrokerApi, orgUUID)
+// Count returns the total number of WebSub APIs for an organization
+func (r *WebSubAPIRepo) Count(orgUUID string) (int, error) {
+	return r.artifactRepo.CountByKindAndOrg(constants.WebSubApi, orgUUID)
 }
 
-// CountByProject returns the total number of WebBroker APIs for a specific project
-func (r *WebBrokerAPIRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
+// CountByProject returns the total number of WebSub APIs for a specific project
+func (r *WebSubAPIRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
 	var count int
 	query := `
-		SELECT COUNT(*) FROM webbroker_apis
+		SELECT COUNT(*) FROM websub_apis
 		WHERE organization_uuid = ? AND project_uuid = ?`
 	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
 		return 0, err
@@ -185,12 +186,12 @@ func (r *WebBrokerAPIRepo) CountByProject(orgUUID, projectUUID string) (int, err
 	return count, nil
 }
 
-// Update updates an existing WebBroker API
-func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
+// Update updates an existing WebSub API
+func (r *WebSubAPIRepo) Update(a *model.WebSubAPI) error {
 	now := time.Now().UTC()
 	a.UpdatedAt = now
 
-	configurationJSON, err := serializeWebBrokerAPIConfiguration(a.Configuration)
+	configurationJSON, err := serializeWebSubAPIConfiguration(a.Configuration)
 	if err != nil {
 		return fmt.Errorf("failed to serialize configuration: %w", err)
 	}
@@ -204,7 +205,7 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT uuid FROM webbroker_apis
+		SELECT uuid FROM websub_apis
 		WHERE handle = ? AND organization_uuid = ?`
 	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID).Scan(&apiUUID)
 	if err != nil {
@@ -214,9 +215,9 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 		return err
 	}
 
-	// Update webbroker_apis table (name/version/updated_at now live here)
+	// Update websub_apis table (name/version/updated_at now live here)
 	query = `
-		UPDATE webbroker_apis
+		UPDATE websub_apis
 		SET display_name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
@@ -224,7 +225,7 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 		apiUUID,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to update WebBroker API: %w", err)
+		return fmt.Errorf("failed to update WebSub API: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
@@ -239,8 +240,8 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 	return nil
 }
 
-// Delete deletes a WebBroker API by its handle and organization UUID
-func (r *WebBrokerAPIRepo) Delete(handle, orgUUID string) error {
+// Delete deletes a WebSub API by its handle and organization UUID
+func (r *WebSubAPIRepo) Delete(handle, orgUUID string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -250,7 +251,7 @@ func (r *WebBrokerAPIRepo) Delete(handle, orgUUID string) error {
 	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT uuid FROM webbroker_apis
+		SELECT uuid FROM websub_apis
 		WHERE handle = ? AND organization_uuid = ?`
 	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&apiUUID)
 	if err != nil {
@@ -260,8 +261,8 @@ func (r *WebBrokerAPIRepo) Delete(handle, orgUUID string) error {
 		return err
 	}
 
-	// Delete from webbroker_apis first, then artifacts
-	_, err = tx.Exec(r.db.Rebind(`DELETE FROM webbroker_apis WHERE uuid = ?`), apiUUID)
+	// Delete from websub_apis first, then artifacts
+	_, err = tx.Exec(r.db.Rebind(`DELETE FROM websub_apis WHERE uuid = ?`), apiUUID)
 	if err != nil {
 		return err
 	}
@@ -276,14 +277,14 @@ func (r *WebBrokerAPIRepo) Delete(handle, orgUUID string) error {
 	return nil
 }
 
-// Exists checks if a WebBroker API exists by its handle and organization UUID
-func (r *WebBrokerAPIRepo) Exists(handle, orgUUID string) (bool, error) {
-	return r.artifactRepo.Exists(constants.WebBrokerApi, handle, orgUUID)
+// Exists checks if a WebSub API exists by its handle and organization UUID
+func (r *WebSubAPIRepo) Exists(handle, orgUUID string) (bool, error) {
+	return r.artifactRepo.Exists(constants.WebSubApi, handle, orgUUID)
 }
 
-// scanWebBrokerAPI scans a single Row into a WebBrokerAPI
-func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, error) {
-	var a model.WebBrokerAPI
+// scanWebSubAPI scans a single Row into a WebSubAPI
+func (r *WebSubAPIRepo) scanWebSubAPI(row *sql.Row) (*model.WebSubAPI, error) {
+	var a model.WebSubAPI
 	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
@@ -298,8 +299,8 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, 
 	a.CreatedBy = createdBy.String
 	a.UpdatedBy = updatedBy.String
 	if len(configurationJSON) > 0 {
-		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {
-			return nil, fmt.Errorf("unmarshal configuration for WebBroker API %s: %w", a.Handle, err)
+		if config, err := deserializeWebSubAPIConfiguration(configurationJSON); err != nil {
+			return nil, fmt.Errorf("unmarshal configuration for WebSub API %s: %w", a.Handle, err)
 		} else if config != nil {
 			a.Configuration = *config
 		}
@@ -307,9 +308,9 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, 
 	return &a, nil
 }
 
-// scanWebBrokerAPIFromRows scans a Rows row into a WebBrokerAPI
-func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebBrokerAPI, error) {
-	var a model.WebBrokerAPI
+// scanWebSubAPIFromRows scans a Rows row into a WebSubAPI
+func (r *WebSubAPIRepo) scanWebSubAPIFromRows(rows *sql.Rows) (*model.WebSubAPI, error) {
+	var a model.WebSubAPI
 	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := rows.Scan(
@@ -321,8 +322,8 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebB
 	a.CreatedBy = createdBy.String
 	a.UpdatedBy = updatedBy.String
 	if len(configurationJSON) > 0 {
-		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {
-			return nil, fmt.Errorf("unmarshal configuration for WebBroker API %s: %w", a.Handle, err)
+		if config, err := deserializeWebSubAPIConfiguration(configurationJSON); err != nil {
+			return nil, fmt.Errorf("unmarshal configuration for WebSub API %s: %w", a.Handle, err)
 		} else if config != nil {
 			a.Configuration = *config
 		}
@@ -330,15 +331,19 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebB
 	return &a, nil
 }
 
-func serializeWebBrokerAPIConfiguration(config model.WebBrokerAPIConfiguration) ([]byte, error) {
-	return json.Marshal(config)
+func serializeWebSubAPIConfiguration(config model.WebSubAPIConfiguration) ([]byte, error) {
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return configJSON, nil
 }
 
-func deserializeWebBrokerAPIConfiguration(configJSON []byte) (*model.WebBrokerAPIConfiguration, error) {
+func deserializeWebSubAPIConfiguration(configJSON []byte) (*model.WebSubAPIConfiguration, error) {
 	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
-	var config model.WebBrokerAPIConfiguration
+	var config model.WebSubAPIConfiguration
 	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}

@@ -210,14 +210,14 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
-// ValidArtifactKinds holds accepted values for artifacts.type
+// ValidArtifactKinds holds accepted values for artifacts.type for the core (non-plugin)
+// artifact kinds. Plugin-owned kinds (e.g. WebSubApi, WebBrokerApi) are registered
+// into the ArtifactTableRegistry during plugin Init.
 var ValidArtifactKinds = map[string]bool{
-	RestApi:      true,
-	WebSubApi:    true,
-	WebBrokerApi: true,
-	LLMProvider:  true,
-	LLMProxy:     true,
-	MCPProxy:     true,
+	RestApi:     true,
+	LLMProvider: true,
+	LLMProxy:    true,
+	MCPProxy:    true,
 }
 
 // Throttle limit unit constants

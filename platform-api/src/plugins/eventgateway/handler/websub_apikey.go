@@ -31,19 +31,20 @@ import (
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
 
 // WebSubAPIKeyHandler handles API key operations for WebSub APIs
 type WebSubAPIKeyHandler struct {
-	websubAPIService *service.WebSubAPIService
+	websubAPIService *egservice.WebSubAPIService
 	apiKeyService    *service.APIKeyService
 	slogger          *slog.Logger
 }
 
 // NewWebSubAPIKeyHandler creates a new WebSubAPIKeyHandler instance
-func NewWebSubAPIKeyHandler(websubAPIService *service.WebSubAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebSubAPIKeyHandler {
+func NewWebSubAPIKeyHandler(websubAPIService *egservice.WebSubAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebSubAPIKeyHandler {
 	return &WebSubAPIKeyHandler{
 		websubAPIService: websubAPIService,
 		apiKeyService:    apiKeyService,

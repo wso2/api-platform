@@ -23,36 +23,28 @@ import (
 	"fmt"
 	"strings"
 
-	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 )
 
-// originJoin derives an artifact's origin from its kind-specific child table. The
-// origin column lives on each artifact-backed table (rest_apis, llm_providers,
-// llm_proxies, mcp_proxies, websub_apis, webbroker_apis) rather than on artifacts,
-// so reads that need it LEFT JOIN every child table and COALESCE the first non-null
-// value, defaulting to control_plane for any artifact without a child row.
-const originJoin = `
-	LEFT JOIN rest_apis ra ON a.uuid = ra.uuid
-	LEFT JOIN llm_providers lpr ON a.uuid = lpr.uuid
-	LEFT JOIN llm_proxies lpx ON a.uuid = lpx.uuid
-	LEFT JOIN mcp_proxies mp ON a.uuid = mp.uuid
-	LEFT JOIN websub_apis ws ON a.uuid = ws.uuid
-	LEFT JOIN webbroker_apis wb ON a.uuid = wb.uuid`
-
-const originCoalesce = `COALESCE(ra.origin, lpr.origin, lpx.origin, mp.origin, ws.origin, wb.origin, 'control_plane')`
-
 type ArtifactRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
-func NewArtifactRepo(db *database.DB) *ArtifactRepo {
-	return &ArtifactRepo{db: db}
+// NewArtifactRepo creates an ArtifactRepo. When reg is provided it is used for
+// dynamic UNION queries and kind validation; when omitted the core-only default
+// registry (rest_apis, llm_providers, llm_proxies, mcp_proxies) is used.
+func NewArtifactRepo(db *database.DB, reg ...*ArtifactTableRegistry) *ArtifactRepo {
+	r := NewArtifactTableRegistry()
+	if len(reg) > 0 && reg[0] != nil {
+		r = reg[0]
+	}
+	return &ArtifactRepo{db: db, reg: r}
 }
 
 func (r *ArtifactRepo) Create(tx *sql.Tx, artifact *model.Artifact) error {
-	if !constants.ValidArtifactKinds[artifact.Type] {
+	if !r.reg.IsValidKindAlias(artifact.Type) {
 		return fmt.Errorf("invalid artifact type: %q", artifact.Type)
 	}
 	query := `
@@ -87,25 +79,11 @@ func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
 // Exists checks whether an artifact with the given type+handle exists for the org.
 // Since handle moved to the type-specific tables, we query them directly.
 func (r *ArtifactRepo) Exists(kind, handle, orgUUID string) (bool, error) {
-	var table string
-	switch kind {
-	case "rest-api", "RestApi":
-		table = "rest_apis"
-	case "websub-api", "WebSubApi":
-		table = "websub_apis"
-	case "webbroker-api", "WebBrokerApi":
-		table = "webbroker_apis"
-	case "llm-provider", "LlmProvider":
-		table = "llm_providers"
-	case "llm-proxy", "LlmProxy":
-		table = "llm_proxies"
-	case "mcp-proxy", "MCPProxy", "Mcp":
-		table = "mcp_proxies"
-	default:
+	entry, ok := r.reg.TableByKindKey(kind)
+	if !ok {
 		return false, nil
 	}
-
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE handle = ? AND organization_uuid = ?`, table)
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE handle = ? AND organization_uuid = ?`, entry.Table)
 	var count int
 	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&count)
 	if err != nil {
@@ -114,26 +92,26 @@ func (r *ArtifactRepo) Exists(kind, handle, orgUUID string) (bool, error) {
 	return count > 0, nil
 }
 
-// GetAPIMetadataByHandle retrieves minimal API metadata by handle across all API type tables.
+// GetAPIMetadataByHandle retrieves minimal API metadata by handle across all registered artifact tables.
 func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error) {
-	query := `
-		SELECT uuid, handle, display_name, version, type, organization_uuid
-		FROM (
-			SELECT uuid, handle, display_name, version, 'RestApi'      AS type, organization_uuid FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'LlmProxy'     AS type, organization_uuid FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'Mcp'          AS type, organization_uuid FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'WebSubApi'    AS type, organization_uuid FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'WebBrokerApi' AS type, organization_uuid FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
-		) combined
-	`
+	entries := r.reg.Entries()
+	parts := make([]string, len(entries))
+	args := make([]interface{}, 0, len(entries)*2)
+	for i, e := range entries {
+		parts[i] = fmt.Sprintf(
+			"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid FROM %s WHERE handle = ? AND organization_uuid = ?",
+			e.KindAlias, e.Table,
+		)
+		args = append(args, handle, orgUUID)
+	}
+	query := "SELECT uuid, handle, display_name, version, type, organization_uuid FROM (\n\t\t\t" +
+		strings.Join(parts, "\n\t\t\tUNION ALL\n\t\t\t") +
+		"\n\t\t) combined"
+
 	metadata := &model.APIMetadata{}
-	err := r.db.QueryRow(r.db.Rebind(query),
-		handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID,
-	).Scan(&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Version, &metadata.Kind, &metadata.OrganizationID)
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(
+		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Version, &metadata.Kind, &metadata.OrganizationID,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -143,30 +121,28 @@ func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.AP
 	return metadata, nil
 }
 
-// GetByHandle finds an artifact by handle across all type-specific tables.
-// Returns the artifact with its supplemental fields (handle, name, version, type, origin)
-// derived from the matching kind-specific table.
+// GetByHandle finds an artifact by handle across all registered artifact tables.
+// Returns the artifact with its supplemental fields derived from the matching table.
 func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {
-	query := `
-		SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (
-			SELECT uuid, handle, display_name, version, 'RestApi'      AS type, organization_uuid, origin FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'WebSubApi'    AS type, organization_uuid, origin FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'WebBrokerApi' AS type, organization_uuid, origin FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'LlmProvider'  AS type, organization_uuid, origin FROM llm_providers  WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'LlmProxy'     AS type, organization_uuid, origin FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'Mcp'          AS type, organization_uuid, origin FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
-		) combined
-		ORDER BY (SELECT NULL)
-		` + r.db.FetchFirstClause(1)
+	entries := r.reg.Entries()
+	parts := make([]string, len(entries))
+	args := make([]interface{}, 0, len(entries)*2)
+	for i, e := range entries {
+		parts[i] = fmt.Sprintf(
+			"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid, origin FROM %s WHERE handle = ? AND organization_uuid = ?",
+			e.KindAlias, e.Table,
+		)
+		args = append(args, handle, orgUUID)
+	}
+	query := "SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (\n\t\t\t" +
+		strings.Join(parts, "\n\t\t\tUNION ALL\n\t\t\t") +
+		"\n\t\t) combined ORDER BY (SELECT NULL) " + r.db.FetchFirstClause(1)
+
 	artifact := &model.Artifact{}
-	err := r.db.QueryRow(r.db.Rebind(query),
-		handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID,
-	).Scan(&artifact.UUID, &artifact.Handle, &artifact.Name, &artifact.Version, &artifact.Type, &artifact.OrganizationUUID, &artifact.Origin)
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(
+		&artifact.UUID, &artifact.Handle, &artifact.Name, &artifact.Version,
+		&artifact.Type, &artifact.OrganizationUUID, &artifact.Origin,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -176,30 +152,28 @@ func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, err
 	return artifact, nil
 }
 
-// GetByUUID finds an artifact by uuid across all type-specific tables.
-// Returns the artifact with its supplemental fields (handle, name, version, type, origin)
-// derived from the matching kind-specific table.
+// GetByUUID finds an artifact by UUID across all registered artifact tables.
+// Returns the artifact with its supplemental fields derived from the matching table.
 func (r *ArtifactRepo) GetByUUID(uuid, orgUUID string) (*model.Artifact, error) {
-	query := `
-		SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (
-			SELECT uuid, handle, display_name, version, 'RestApi'      AS type, organization_uuid, origin FROM rest_apis      WHERE uuid = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'WebSubApi'    AS type, organization_uuid, origin FROM websub_apis    WHERE uuid = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'WebBrokerApi' AS type, organization_uuid, origin FROM webbroker_apis WHERE uuid = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'LlmProvider'  AS type, organization_uuid, origin FROM llm_providers  WHERE uuid = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'LlmProxy'     AS type, organization_uuid, origin FROM llm_proxies    WHERE uuid = ? AND organization_uuid = ?
-			UNION ALL
-			SELECT uuid, handle, display_name, version, 'Mcp'          AS type, organization_uuid, origin FROM mcp_proxies    WHERE uuid = ? AND organization_uuid = ?
-		) combined
-		ORDER BY (SELECT NULL)
-		` + r.db.FetchFirstClause(1)
+	entries := r.reg.Entries()
+	parts := make([]string, len(entries))
+	args := make([]interface{}, 0, len(entries)*2)
+	for i, e := range entries {
+		parts[i] = fmt.Sprintf(
+			"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid, origin FROM %s WHERE uuid = ? AND organization_uuid = ?",
+			e.KindAlias, e.Table,
+		)
+		args = append(args, uuid, orgUUID)
+	}
+	query := "SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (\n\t\t\t" +
+		strings.Join(parts, "\n\t\t\tUNION ALL\n\t\t\t") +
+		"\n\t\t) combined ORDER BY (SELECT NULL)" + r.db.FetchFirstClause(1)
+
 	artifact := &model.Artifact{}
-	err := r.db.QueryRow(r.db.Rebind(query),
-		uuid, orgUUID, uuid, orgUUID, uuid, orgUUID, uuid, orgUUID, uuid, orgUUID, uuid, orgUUID,
-	).Scan(&artifact.UUID, &artifact.Handle, &artifact.Name, &artifact.Version, &artifact.Type, &artifact.OrganizationUUID, &artifact.Origin)
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(
+		&artifact.UUID, &artifact.Handle, &artifact.Name, &artifact.Version,
+		&artifact.Type, &artifact.OrganizationUUID, &artifact.Origin,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

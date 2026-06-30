@@ -30,20 +30,20 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
-	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
 
 // WebSubAPIHmacSecretHandler handles HMAC secret CRUD for WebSub APIs.
 type WebSubAPIHmacSecretHandler struct {
-	secretService *service.WebSubAPIHmacSecretService
+	secretService *egservice.WebSubAPIHmacSecretService
 	slogger       *slog.Logger
 }
 
 // NewWebSubAPIHmacSecretHandler creates a new WebSubAPIHmacSecretHandler.
-func NewWebSubAPIHmacSecretHandler(secretService *service.WebSubAPIHmacSecretService, slogger *slog.Logger) *WebSubAPIHmacSecretHandler {
+func NewWebSubAPIHmacSecretHandler(secretService *egservice.WebSubAPIHmacSecretService, slogger *slog.Logger) *WebSubAPIHmacSecretHandler {
 	return &WebSubAPIHmacSecretHandler{
 		secretService: secretService,
 		slogger:       slogger,

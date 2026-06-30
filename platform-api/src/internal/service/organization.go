@@ -40,7 +40,6 @@ type OrganizationService struct {
 	llmProviderRepo   repository.LLMProviderRepository
 	llmProxyRepo      repository.LLMProxyRepository
 	mcpProxyRepo      repository.MCPProxyRepository
-	websubAPIRepo     repository.WebSubAPIRepository
 	llmTemplateSeeder *LLMTemplateSeeder
 	auditRepo         repository.AuditRepository
 	config            *config.Server
@@ -55,7 +54,6 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	llmProviderRepo repository.LLMProviderRepository,
 	llmProxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
-	websubAPIRepo repository.WebSubAPIRepository,
 	llmTemplateSeeder *LLMTemplateSeeder,
 	auditRepo repository.AuditRepository,
 	cfg *config.Server,
@@ -70,7 +68,6 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 		llmProviderRepo:   llmProviderRepo,
 		llmProxyRepo:      llmProxyRepo,
 		mcpProxyRepo:      mcpProxyRepo,
-		websubAPIRepo:     websubAPIRepo,
 		llmTemplateSeeder: llmTemplateSeeder,
 		auditRepo:         auditRepo,
 		config:            cfg,

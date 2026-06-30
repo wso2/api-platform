@@ -28,8 +28,8 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -37,12 +37,12 @@ import (
 
 // WebSubAPIDeploymentHandler handles deployment routes for WebSub APIs
 type WebSubAPIDeploymentHandler struct {
-	websubAPIDeploymentService *service.WebSubAPIDeploymentService
+	websubAPIDeploymentService *egservice.WebSubAPIDeploymentService
 	slogger                    *slog.Logger
 }
 
 // NewWebSubAPIDeploymentHandler creates a new WebSubAPIDeploymentHandler
-func NewWebSubAPIDeploymentHandler(websubAPIDeploymentService *service.WebSubAPIDeploymentService, slogger *slog.Logger) *WebSubAPIDeploymentHandler {
+func NewWebSubAPIDeploymentHandler(websubAPIDeploymentService *egservice.WebSubAPIDeploymentService, slogger *slog.Logger) *WebSubAPIDeploymentHandler {
 	return &WebSubAPIDeploymentHandler{
 		websubAPIDeploymentService: websubAPIDeploymentService,
 		slogger:                    slogger,

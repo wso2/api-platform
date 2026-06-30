@@ -30,6 +30,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	coreservice "platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
 	"gopkg.in/yaml.v3"
@@ -43,7 +44,7 @@ type WebSubAPIDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
-	gatewayEventsService *GatewayEventsService
+	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
 }
@@ -56,7 +57,7 @@ func NewWebSubAPIDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	artifactRepo repository.ArtifactRepository,
 	apiRepo repository.APIRepository,
-	gatewayEventsService *GatewayEventsService,
+	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *WebSubAPIDeploymentService {

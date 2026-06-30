@@ -40,7 +40,7 @@ curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: reading-list-api-v1.0

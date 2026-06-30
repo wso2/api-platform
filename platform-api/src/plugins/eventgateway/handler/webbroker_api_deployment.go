@@ -28,8 +28,8 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -37,12 +37,12 @@ import (
 
 // WebBrokerAPIDeploymentHandler handles deployment routes for WebBroker APIs
 type WebBrokerAPIDeploymentHandler struct {
-	webbrokerAPIDeploymentService *service.WebBrokerAPIDeploymentService
+	webbrokerAPIDeploymentService *egservice.WebBrokerAPIDeploymentService
 	slogger                       *slog.Logger
 }
 
 // NewWebBrokerAPIDeploymentHandler creates a new WebBrokerAPIDeploymentHandler
-func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *service.WebBrokerAPIDeploymentService, slogger *slog.Logger) *WebBrokerAPIDeploymentHandler {
+func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *egservice.WebBrokerAPIDeploymentService, slogger *slog.Logger) *WebBrokerAPIDeploymentHandler {
 	return &WebBrokerAPIDeploymentHandler{
 		webbrokerAPIDeploymentService: webbrokerAPIDeploymentService,
 		slogger:                       slogger,

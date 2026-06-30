@@ -110,21 +110,21 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	secretRepo := repository.NewSecretRepo(db)
 	secretSvc := service.NewSecretService(secretRepo, v)
 
-	deploymentRepo := repository.NewDeploymentRepo(db)
+	deploymentRepo := repository.NewDeploymentRepo(db, repository.NewArtifactTableRegistry())
 	gatewayRepo := repository.NewGatewayRepo(db)
 
 	gatewaySvc := service.NewGatewayService(gatewayRepo, nil, nil, nil, nil, slog.Default(), false, false, nil)
 
 	cfg := &config.Server{}
 	gwInternalSvc := service.NewGatewayInternalAPIService(
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 		deploymentRepo, gatewayRepo,
 		nil, nil, nil, nil,
 		secretRepo,
 		cfg, slog.Default(),
 	)
 
-	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, nil, nil, secretSvc, slog.Default())
+	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, nil, secretSvc, slog.Default())
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)

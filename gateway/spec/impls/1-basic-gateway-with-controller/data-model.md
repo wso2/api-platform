@@ -100,7 +100,7 @@ type Operation struct {
 
 | Field | Constraint | Error if Violated |
 |-------|-----------|-------------------|
-| `version` | Must equal "gateway.api-platform.wso2.com/v1alpha1" | "Unsupported API version" |
+| `version` | Must equal "gateway.api-platform.wso2.com/v1" | "Unsupported API version" |
 | `kind` | Must equal "RestApi" | "Unsupported API kind (only RestApi supported)" |
 | `spec.name` | Non-empty string, 1-100 characters | "API name is required and must be 1-100 characters" |
 | `spec.version` | Non-empty string, matches semantic version pattern (e.g., v1.0) | "API version is required and must follow format vX.Y" |

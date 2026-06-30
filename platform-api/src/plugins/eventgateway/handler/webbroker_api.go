@@ -30,55 +30,53 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
 
-// WebSubAPIHandler handles CRUD and auxiliary routes for WebSub APIs
-type WebSubAPIHandler struct {
-	websubAPIService *service.WebSubAPIService
-	slogger          *slog.Logger
+// WebBrokerAPIHandler handles CRUD and auxiliary routes for WebBroker APIs
+type WebBrokerAPIHandler struct {
+	webbrokerAPIService *egservice.WebBrokerAPIService
+	slogger             *slog.Logger
 }
 
-// NewWebSubAPIHandler creates a new WebSubAPIHandler instance
-func NewWebSubAPIHandler(websubAPIService *service.WebSubAPIService, slogger *slog.Logger) *WebSubAPIHandler {
-	return &WebSubAPIHandler{
-		websubAPIService: websubAPIService,
-		slogger:          slogger,
+// NewWebBrokerAPIHandler creates a new WebBrokerAPIHandler instance
+func NewWebBrokerAPIHandler(webbrokerAPIService *egservice.WebBrokerAPIService, slogger *slog.Logger) *WebBrokerAPIHandler {
+	return &WebBrokerAPIHandler{
+		webbrokerAPIService: webbrokerAPIService,
+		slogger:             slogger,
 	}
 }
 
-// RegisterRoutes registers WebSub API routes
-func (h *WebSubAPIHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis", h.CreateWebSubAPI)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis", h.ListWebSubAPIs)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{id}", h.GetWebSubAPI)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{id}", h.UpdateWebSubAPI)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{id}", h.DeleteWebSubAPI)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{id}/publications", h.PublishToDevPortal)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{id}/publications/{devportalId}", h.UnpublishFromDevPortal)
+// RegisterRoutes registers WebBroker API routes
+func (h *WebBrokerAPIHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis", h.CreateWebBrokerAPI)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis", h.ListWebBrokerAPIs)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{id}", h.GetWebBrokerAPI)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{id}", h.UpdateWebBrokerAPI)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{id}", h.DeleteWebBrokerAPI)
 }
 
-// CreateWebSubAPI handles POST /api/v0.9/websub-apis
-func (h *WebSubAPIHandler) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
+// CreateWebBrokerAPI handles POST /api/v0.9/webbroker-apis
+func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	var req api.WebSubAPI
+	var req api.WebBrokerAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.slogger.Error("WebSub API request validation failed", "org_id", orgID, "error", err)
+		h.slogger.Error("WebBroker API request validation failed", "org_id", orgID, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
 	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
-	resp, err := h.websubAPIService.Create(orgID, createdBy, &req)
+	resp, err := h.webbrokerAPIService.Create(orgID, createdBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -87,8 +85,8 @@ func (h *WebSubAPIHandler) CreateWebSubAPI(w http.ResponseWriter, r *http.Reques
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
-// ListWebSubAPIs handles GET /api/v0.9/websub-apis
-func (h *WebSubAPIHandler) ListWebSubAPIs(w http.ResponseWriter, r *http.Request) {
+// ListWebBrokerAPIs handles GET /api/v0.9/webbroker-apis
+func (h *WebBrokerAPIHandler) ListWebBrokerAPIs(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
@@ -101,19 +99,28 @@ func (h *WebSubAPIHandler) ListWebSubAPIs(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	limitStr := "20"
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limitStr = v
+	}
+	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit <= 0 {
 		limit = 20
 	}
 	if limit > 100 {
 		limit = 100
 	}
-	offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	offsetStr := "0"
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offsetStr = v
+	}
+	offset, err := strconv.Atoi(offsetStr)
 	if err != nil || offset < 0 {
 		offset = 0
 	}
 
-	resp, err := h.websubAPIService.List(orgID, projectID, limit, offset)
+	resp, err := h.webbrokerAPIService.List(orgID, projectID, limit, offset)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -122,8 +129,8 @@ func (h *WebSubAPIHandler) ListWebSubAPIs(w http.ResponseWriter, r *http.Request
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
-// GetWebSubAPI handles GET /api/v0.9/websub-apis/:apiId
-func (h *WebSubAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) {
+// GetWebBrokerAPI handles GET /api/v0.9/webbroker-apis/:apiId
+func (h *WebBrokerAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
@@ -131,7 +138,7 @@ func (h *WebSubAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) 
 	}
 
 	id := r.PathValue("id")
-	resp, err := h.websubAPIService.Get(orgID, id)
+	resp, err := h.webbrokerAPIService.Get(orgID, id)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -140,8 +147,8 @@ func (h *WebSubAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) 
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
-// UpdateWebSubAPI handles PUT /api/v0.9/websub-apis/:apiId
-func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request) {
+// UpdateWebBrokerAPI handles PUT /api/v0.9/webbroker-apis/:apiId
+func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
@@ -150,15 +157,15 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Reques
 
 	id := r.PathValue("id")
 
-	var req api.WebSubAPI
+	var req api.WebBrokerAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.slogger.Error("WebSub API update validation failed", "org_id", orgID, "api_id", id, "error", err)
+		h.slogger.Error("WebBroker API update validation failed", "org_id", orgID, "api_id", id, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
 	updatedBy, _ := middleware.GetUserIDFromRequest(r)
-	resp, err := h.websubAPIService.Update(orgID, id, updatedBy, &req)
+	resp, err := h.webbrokerAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -167,8 +174,8 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Reques
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
-// DeleteWebSubAPI handles DELETE /api/v0.9/websub-apis/:apiId
-func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request) {
+// DeleteWebBrokerAPI handles DELETE /api/v0.9/webbroker-apis/:apiId
+func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
@@ -178,7 +185,7 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 	id := r.PathValue("id")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
-	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
+	if err := h.webbrokerAPIService.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
@@ -186,18 +193,8 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PublishToDevPortal handles POST /api/v0.9/websub-apis/{id}/publications
-func (h *WebSubAPIHandler) PublishToDevPortal(w http.ResponseWriter, r *http.Request) {
-	httputil.WriteJSON(w, http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "DevPortal publication is not yet supported"))
-}
-
-// UnpublishFromDevPortal handles DELETE /api/v0.9/websub-apis/{id}/publications/{devportalId}
-func (h *WebSubAPIHandler) UnpublishFromDevPortal(w http.ResponseWriter, r *http.Request) {
-	httputil.WriteJSON(w, http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "DevPortal publication is not yet supported"))
-}
-
 // handleServiceError maps service errors to HTTP responses
-func (h *WebSubAPIHandler) handleServiceError(w http.ResponseWriter, err error) {
+func (h *WebBrokerAPIHandler) handleServiceError(w http.ResponseWriter, err error) {
 	if respondArtifactGuardError(w, err) {
 		return
 	}
@@ -206,18 +203,18 @@ func (h *WebSubAPIHandler) handleServiceError(w http.ResponseWriter, err error) 
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrInvalidInput):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-	case errors.Is(err, constants.ErrWebSubAPINotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
-	case errors.Is(err, constants.ErrWebSubAPIExists):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebSub API with this ID already exists"))
-	case errors.Is(err, constants.ErrWebSubAPILimitReached):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebSub API limit reached for the organization"))
+	case errors.Is(err, constants.ErrWebBrokerAPINotFound):
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
+	case errors.Is(err, constants.ErrWebBrokerAPIExists):
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebBroker API with this ID already exists"))
+	case errors.Is(err, constants.ErrWebBrokerAPILimitReached):
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebBroker API limit reached for the organization"))
 	case errors.Is(err, constants.ErrProjectNotFound):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
 	case errors.Is(err, constants.ErrDevPortalNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "DevPortal not found"))
 	default:
-		h.slogger.Error("WebSub API service error", "error", err)
+		h.slogger.Error("WebBroker API service error", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 	}
 }

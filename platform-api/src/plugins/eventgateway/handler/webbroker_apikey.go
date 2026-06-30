@@ -31,19 +31,20 @@ import (
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
 
 // WebBrokerAPIKeyHandler handles API key operations for WebBroker APIs
 type WebBrokerAPIKeyHandler struct {
-	webbrokerAPIService *service.WebBrokerAPIService
+	webbrokerAPIService *egservice.WebBrokerAPIService
 	apiKeyService       *service.APIKeyService
 	slogger             *slog.Logger
 }
 
 // NewWebBrokerAPIKeyHandler creates a new WebBrokerAPIKeyHandler instance
-func NewWebBrokerAPIKeyHandler(webbrokerAPIService *service.WebBrokerAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebBrokerAPIKeyHandler {
+func NewWebBrokerAPIKeyHandler(webbrokerAPIService *egservice.WebBrokerAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebBrokerAPIKeyHandler {
 	return &WebBrokerAPIKeyHandler{
 		webbrokerAPIService: webbrokerAPIService,
 		apiKeyService:       apiKeyService,
