@@ -37,10 +37,10 @@ async function seedDefaultOrg() {
     if (!orgName) return;
 
     const payload = {
-        orgName,
-        orgHandle: orgName,
+        name: orgName,
+        handle: orgName,
         idpRefId: orgName,
-        orgConfig: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
+        configuration: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
         createdBy: constants.SYSTEM_ACTOR,
     };
 
