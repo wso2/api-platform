@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApiKey"></a>
 
-`POST /devportal/v1/api-keys/generate`
+`POST /devportal/v1/apis/{apiId}/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/api-keys/generate \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -25,7 +25,6 @@ Generates an API key stored in the Developer Portal (devportal is source of trut
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
   "name": "weather_prod_key",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
@@ -42,7 +41,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `apiId` is the Developer Portal API ID. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
+|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the `{apiId}` path parameter.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -117,20 +117,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApiKeys"></a>
 
-`GET /devportal/v1/api-keys`
+`GET /devportal/v1/apis/{apiId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/api-keys?apiId=api-7f4c2a6b \
+curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists API keys for an API. The `apiId` query parameter is required.
+Lists API keys for the given API.
 
 ### Authentication
 
@@ -143,10 +143,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|query|string|true|Developer Portal API ID.|
 |appId|query|string|false|Optional application ID used to filter API keys associated with that application.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -264,20 +264,30 @@ Status Code **200**
 
 <a id="opIdregenerateApiKey"></a>
 
-`POST /devportal/v1/api-keys/{apiKeyId}/regenerate`
+`POST /devportal/v1/apis/{apiId}/api-keys/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/regenerate \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/regenerate \
   -u {username}:{password} \
+  -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
 
 ```
 
-Regenerates the secret for an existing API key identified by `apiKeyId`. An `apikey.regenerated` webhook event is published to the organization's configured webhook subscribers so they can invalidate the old secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
+Regenerates the secret for an existing API key identified by `keyId` in the request body. An `apikey.regenerated` webhook event is published to the organization's configured webhook subscribers so they can invalidate the old secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
+
+> Payload
+
+```json
+{
+  "keyId": "key-12345"
+}
+```
 
 ### Authentication
 
@@ -290,7 +300,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key to regenerate by its `keyId`.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -358,20 +370,30 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeApiKey"></a>
 
-`POST /devportal/v1/api-keys/{apiKeyId}/revoke`
+`POST /devportal/v1/apis/{apiId}/api-keys/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/revoke \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/revoke \
   -u {username}:{password} \
+  -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
 
 ```
 
-Revokes an existing API key. An `apikey.revoked` webhook event is published to the organization's configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
+Revokes an existing API key identified by `keyId` in the request body. An `apikey.revoked` webhook event is published to the organization's configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
+
+> Payload
+
+```json
+{
+  "keyId": "key-12345"
+}
+```
 
 ### Authentication
 
@@ -384,7 +406,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key to revoke by its `keyId`.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -440,13 +464,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdassociateApiKeyApplication"></a>
 
-`PUT /devportal/v1/api-keys/{apiKeyId}/application`
+`POST /devportal/v1/apis/{apiId}/api-keys/associate`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/application \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/associate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -461,6 +485,7 @@ Associates (or re-associates) an existing API key with an application, for analy
 
 ```json
 {
+  "keyId": "key-12345",
   "appId": "app-12345"
 }
 ```
@@ -476,9 +501,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|Associates an API key with an application, identified by `appId`.|
-|» appId|body|string|true|none|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key and the application to associate it with.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» appId|body|string|true|Developer Portal application ID to associate the key with.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -557,20 +583,30 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdremoveApiKeyApplication"></a>
 
-`DELETE /devportal/v1/api-keys/{apiKeyId}/application`
+`POST /devportal/v1/apis/{apiId}/api-keys/dissociate`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/api-keys/{apiKeyId}/application \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/dissociate \
   -u {username}:{password} \
+  -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
 
 ```
 
-Removes the application association from an API key, if any. An `apikey.application_updated` webhook event is published once for this key, with `application` set to `null`.
+Removes the application association from an API key identified by `keyId` in the request body, if any. An `apikey.application_updated` webhook event is published once for this key, with `application` set to `null`.
+
+> Payload
+
+```json
+{
+  "keyId": "key-12345"
+}
+```
 
 ### Authentication
 
@@ -583,7 +619,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key to remove the application association from.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|apiId|path|string|true|none|
 
 > Example responses
 

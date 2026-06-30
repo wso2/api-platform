@@ -206,11 +206,12 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
  * Regenerate an existing key: same keyId, new secret, status stays ACTIVE.
  * The old secret is silently invalidated by whatever consumes the webhook event.
  */
-async function regenerate({ orgId, keyId, actor }) {
+async function regenerate({ orgId, apiId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (apiId && existing.API_UUID !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (existing.STATUS === constants.API_KEY_STATUS.REVOKED) throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
 
     const apiInfo = await resolveApiDirect(orgId, existing.API_UUID);
@@ -245,11 +246,12 @@ async function regenerate({ orgId, keyId, actor }) {
 /**
  * Revoke a key. Fires apikey.revoked so webhook subscribers can reject it immediately.
  */
-async function revoke({ orgId, keyId, actor }) {
+async function revoke({ orgId, apiId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (apiId && existing.API_UUID !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
 
     const revokeApiInfo = await resolveApiDirect(orgId, existing.API_UUID);
     const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_UUID);
@@ -283,11 +285,12 @@ async function list(orgId, filters, transaction) {
  * for this key; the previously-associated app (if any) needs no event of its own since
  * none of its other keys are affected.
  */
-async function associateApplication({ orgId, keyId, appId, actor }) {
+async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (apiId && existing.API_UUID !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (existing.STATUS === constants.API_KEY_STATUS.REVOKED) throw Object.assign(new Error('Cannot associate a revoked key'), { status: 409 });
 
     const application = await resolveApp(orgId, appId, actor);
@@ -308,11 +311,12 @@ async function associateApplication({ orgId, keyId, appId, actor }) {
  * Remove a key's app association, if any. No-op (but not an error) if the key
  * had no app associated.
  */
-async function removeApplicationAssociation({ orgId, keyId, actor }) {
+async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (apiId && existing.API_UUID !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
 
     if (!existing.DP_API_KEY_APP_MAPPING) return { keyId, application: null };
 

@@ -1095,7 +1095,6 @@ Subscription payload.
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
   "name": "weather_prod_key",
   "subscriptionId": "sub-abc123",
   "appId": "app-12345",
@@ -1108,7 +1107,6 @@ Subscription payload.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|true|none|Developer Portal API ID.|
 |name|string|true|none|none|
 |subscriptionId|string|false|none|Optional subscription ID to associate the key with.|
 |appId|string|false|none|Optional application ID to associate the key with, for analytics attribution only — it has no effect on the key's validity or authorization. Must belong to the same organization and be owned by the caller.|

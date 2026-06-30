@@ -1038,7 +1038,9 @@ paths:
         - OAuth2Security:
             - dp:subscription_delete
             - dp:subscription_manage
-  /devportal/v1/api-keys/generate:
+  /devportal/v1/apis/{apiId}/api-keys/generate:
+    parameters:
+      - $ref: "#/components/parameters/apiId"
     post:
       tags:
         - API Keys
@@ -1083,15 +1085,16 @@ paths:
         - OAuth2Security:
             - dp:api_key_create
             - dp:api_key_manage
-  /devportal/v1/api-keys:
+  /devportal/v1/apis/{apiId}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/apiId"
     get:
       tags:
         - API Keys
       operationId: listApiKeys
       summary: List API keys
-      description: Lists API keys for an API. The `apiId` query parameter is required.
+      description: Lists API keys for the given API.
       parameters:
-        - $ref: "#/components/parameters/apiIdQueryRequired"
         - $ref: "#/components/parameters/appIdQueryOptional"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
@@ -1106,18 +1109,20 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /devportal/v1/api-keys/{apiKeyId}/regenerate:
+  /devportal/v1/apis/{apiId}/api-keys/regenerate:
     parameters:
-      - $ref: "#/components/parameters/apiKeyId"
+      - $ref: "#/components/parameters/apiId"
     post:
       tags:
         - API Keys
       operationId: regenerateApiKey
       summary: Regenerate an API key
       description: >-
-        Regenerates the secret for an existing API key identified by `apiKeyId`. An `apikey.regenerated` webhook
-        event is published to the organization's configured webhook subscribers so they can invalidate the old
-        secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
+        Regenerates the secret for an existing API key identified by `keyId` in the request body. An
+        `apikey.regenerated` webhook event is published to the organization's configured webhook subscribers so they
+        can invalidate the old secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyRegenerateBody"
       responses:
         "200":
           $ref: "#/components/responses/ApiKeyGenerateResponse"
@@ -1140,17 +1145,20 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /devportal/v1/api-keys/{apiKeyId}/revoke:
+  /devportal/v1/apis/{apiId}/api-keys/revoke:
     parameters:
-      - $ref: "#/components/parameters/apiKeyId"
+      - $ref: "#/components/parameters/apiId"
     post:
       tags:
         - API Keys
       operationId: revokeApiKey
       summary: Revoke an API key
       description: >-
-        Revokes an existing API key. An `apikey.revoked` webhook event is published to the organization's
-        configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
+        Revokes an existing API key identified by `keyId` in the request body. An `apikey.revoked` webhook event is
+        published to the organization's configured webhook subscribers so they can immediately reject requests
+        carrying the key (e.g. at a gateway).
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyRevokeBody"
       responses:
         "204":
           description: API key revoked successfully.
@@ -1173,10 +1181,10 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /devportal/v1/api-keys/{apiKeyId}/application:
+  /devportal/v1/apis/{apiId}/api-keys/associate:
     parameters:
-      - $ref: "#/components/parameters/apiKeyId"
-    put:
+      - $ref: "#/components/parameters/apiId"
+    post:
       tags:
         - API Keys
       operationId: associateApiKeyApplication
@@ -1186,7 +1194,7 @@ paths:
         has no effect on the key's validity or authorization. An `apikey.application_updated` webhook event is
         published once for this key, with a payload of `{ key_id, application }`.
       requestBody:
-        $ref: "#/components/requestBodies/ApiKeyApplicationBody"
+        $ref: "#/components/requestBodies/ApiKeyAssociateBody"
       responses:
         "200":
           description: Association updated.
@@ -1215,14 +1223,19 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-    delete:
+  /devportal/v1/apis/{apiId}/api-keys/dissociate:
+    parameters:
+      - $ref: "#/components/parameters/apiId"
+    post:
       tags:
         - API Keys
       operationId: removeApiKeyApplication
       summary: Remove an API key's application association
       description: >-
-        Removes the application association from an API key, if any. An `apikey.application_updated` webhook event
-        is published once for this key, with `application` set to `null`.
+        Removes the application association from an API key identified by `keyId` in the request body, if any. An
+        `apikey.application_updated` webhook event is published once for this key, with `application` set to `null`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyDissociateBody"
       responses:
         "204":
           description: Association removed (or none existed).
@@ -2100,12 +2113,6 @@ components:
       required: true
       schema:
         type: string
-    apiKeyId:
-      name: apiKeyId
-      in: path
-      required: true
-      schema:
-        type: string
     eventId:
       name: eventId
       in: path
@@ -2423,9 +2430,9 @@ components:
     ApiKeyBody:
       required: true
       description: >-
-        API key payload. `apiId` is the Developer Portal API ID. `name` must be lowercase and may contain numbers,
-        underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch
-        milliseconds.
+        API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can
+        be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the
+        `{apiId}` path parameter.
       content:
         application/json:
           schema:
@@ -2434,30 +2441,86 @@ components:
             expiringKey:
               summary: Generate an expiring key
               value:
-                apiId: api-7f4c2a6b
                 name: weather_prod_key
                 expiresAt: "2026-12-31T23:59:59Z"
             nonExpiringKey:
               summary: Generate a key without expiry
               value:
-                apiId: api-7f4c2a6b
                 name: weather_sandbox_key
-    ApiKeyApplicationBody:
+    ApiKeyRegenerateBody:
       required: true
-      description: Associates an API key with an application, identified by `appId`.
+      description: Identifies the API key to regenerate by its `keyId`.
       content:
         application/json:
           schema:
             type: object
             required:
+              - keyId
+            properties:
+              keyId:
+                type: string
+                description: Developer Portal key ID returned by generate or list.
+                example: key-12345
+            additionalProperties: true
+          example:
+            keyId: key-12345
+    ApiKeyRevokeBody:
+      required: true
+      description: Identifies the API key to revoke by its `keyId`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - keyId
+            properties:
+              keyId:
+                type: string
+                description: Developer Portal key ID returned by generate or list.
+                example: key-12345
+            additionalProperties: false
+          example:
+            keyId: key-12345
+    ApiKeyAssociateBody:
+      required: true
+      description: Identifies the API key and the application to associate it with.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - keyId
               - appId
             properties:
+              keyId:
+                type: string
+                description: Developer Portal key ID returned by generate or list.
+                example: key-12345
               appId:
                 type: string
+                description: Developer Portal application ID to associate the key with.
                 example: app-12345
             additionalProperties: false
           example:
+            keyId: key-12345
             appId: app-12345
+    ApiKeyDissociateBody:
+      required: true
+      description: Identifies the API key to remove the application association from.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - keyId
+            properties:
+              keyId:
+                type: string
+                description: Developer Portal key ID returned by generate or list.
+                example: key-12345
+            additionalProperties: false
+          example:
+            keyId: key-12345
     AppKeyMappingBody:
       required: true
       description: >-
@@ -4107,13 +4170,8 @@ components:
     ApiKeyRequest:
       type: object
       required:
-        - apiId
         - name
       properties:
-        apiId:
-          type: string
-          description: Developer Portal API ID.
-          example: api-7f4c2a6b
         name:
           type: string
           pattern: ^[a-z0-9][a-z0-9_-]{0,127}$
