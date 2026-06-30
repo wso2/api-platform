@@ -56,6 +56,11 @@ type Config struct {
 	AuthMode string // "basic" | "oidc" — informs the SPA which login UX to show
 	OIDC     OIDCConfig
 
+	// DemoMode mirrors Platform API's APIP_DEMO_MODE: defaults to true, and an
+	// explicit "false"/"0" opts into production-grade startup checks (no
+	// file-based/basic auth, no auto-generated self-signed TLS certificate).
+	DemoMode bool
+
 	// Runtime config surfaced to the SPA (window.__RUNTIME_CONFIG__)
 	RuntimeConfig map[string]string
 }
@@ -219,6 +224,7 @@ func Load() (*Config, error) {
 		},
 		CSRFHeader: getenv("CSRF_HEADER", "X-Requested-By"),
 		AuthMode:   authMode,
+		DemoMode:   demoMode(),
 		OIDC: OIDCConfig{
 			Enabled:      authMode == "oidc" || oidcEnabled,
 			Issuer:       strings.TrimRight(getenv("OIDC_ISSUER", getenv("VITE_OIDC_AUTHORITY", "")), "/"),
@@ -255,8 +261,26 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Outside demo mode, basic (file-based) auth is not allowed — it relies on the
+	// Platform API's built-in admin/admin credentials and is dev-only.
+	if !cfg.DemoMode && !cfg.OIDC.Enabled {
+		return nil, fmt.Errorf("APIP_DEMO_MODE=false does not allow basic (file-based) auth; " +
+			"configure OIDC (set VITE_AUTH_MODE=oidc and OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URL)")
+	}
+
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg)
 	return cfg, nil
+}
+
+// demoMode reports whether APIP_DEMO_MODE is enabled. Defaults to true when the
+// variable is unset; only an explicit "false"/"0" opts out. Matches the Platform
+// API semantics so a single APIP_DEMO_MODE drives the whole stack.
+func demoMode() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+	if v == "" {
+		return true
+	}
+	return v == "true" || v == "1"
 }
 
 func getenv(key, def string) string {

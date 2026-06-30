@@ -396,3 +396,38 @@ Mount your own certificate to remove the browser trust warning.
    ```
 3. Uncomment the TLS volume lines in `docker-compose.yaml` under each service.
 4. Restart the stack: `docker compose up -d`
+
+---
+
+## Production hardening (`APIP_DEMO_MODE`)
+
+The stack ships in **demo mode** so the quickstart is zero-config: file-based auth
+(`admin` / `admin`) works out of the box and both services fall back to an auto-generated
+self-signed TLS certificate. `APIP_DEMO_MODE` controls this — it **defaults to `true`**, and
+only an explicit `false` (or `0`) opts into production-grade startup checks.
+
+A single `APIP_DEMO_MODE` drives the **whole stack**: `docker-compose.yaml` passes it to both
+the `platform-api` and `ai-workspace` services, so set it once in your shell or `.env`:
+
+```bash
+# portals/ai-workspace/.env
+APIP_DEMO_MODE=false
+```
+
+When `APIP_DEMO_MODE=false`, startup is **stricter on both services** and will **fail fast**
+rather than run insecurely:
+
+| Service | Demo mode (`true`, default) | Production (`false`) |
+|---|---|---|
+| **AI Workspace (BFF)** — auth | Basic / file-based auth allowed | Basic auth **rejected** — OIDC required (`VITE_AUTH_MODE=oidc` + the `OIDC_*` values) |
+| **AI Workspace (BFF)** — TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`BFF_TLS_CERT_FILE` / `BFF_TLS_KEY_FILE`) |
+| **Platform API** — secrets | Generates an ephemeral encryption key when none is set | A stable key is **required** (`PLATFORM_SECRET_ENCRYPTION_KEY` or `DATABASE_ENCRYPTION_KEY`) |
+
+So before flipping `APIP_DEMO_MODE=false`, make sure you have:
+
+1. **OIDC configured on both services** — follow [Testing with an IDP locally](#testing-with-an-idp-locally) (uncomment the OIDC blocks on both compose services and set the `OIDC_*` values). Basic auth is no longer a fallback.
+2. **A real TLS certificate mounted** on the BFF (and the Platform API) — follow [Custom TLS certificates](#custom-tls-certificates-optional) above and uncomment the cert volume lines. The self-signed fallback is gone.
+3. **A stable secret encryption key** for the Platform API — set `PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)` in your `.env` (otherwise encrypted secrets become unreadable after a restart). See [platform-api/README.md](../../platform-api/README.md).
+
+If any of these is missing, the corresponding service exits at startup with a message naming
+exactly what to provide.

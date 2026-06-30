@@ -203,3 +203,16 @@ platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel
 
 Environment variables (e.g. passed via `docker run -e` or a Kubernetes `env:` block) always
 override the corresponding `config.toml` value.
+
+---
+
+## 4. Disable demo mode (`APIP_DEMO_MODE=false`)
+
+For a production deployment, set `APIP_DEMO_MODE=false` (a single var passed to **both** the
+`platform-api` and `ai-workspace` services). This turns on fail-fast startup checks: basic /
+file-based auth is rejected (the OIDC setup in sections 1–3 becomes mandatory), the BFF and
+Platform API no longer auto-generate self-signed TLS certificates (you must mount your own),
+and the Platform API requires a stable `PLATFORM_SECRET_ENCRYPTION_KEY`.
+
+See [Production hardening (`APIP_DEMO_MODE`)](../README.md#production-hardening-apip_demo_mode)
+in the main README for the full checklist of what each service requires.

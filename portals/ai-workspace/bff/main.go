@@ -37,15 +37,29 @@ import (
 	"ai-workspace-bff/internal/tlsutil"
 )
 
-const startupBanner = `
-========================================
-
-
-          AI Workspace started
-
-
-========================================
-`
+// printBanner writes a multi-line startup banner horizontally centered in an
+// 80-column terminal, with blank-line padding above and below the title.
+func printBanner() {
+	const termWidth = 80
+	lines := []string{
+		"========================================",
+		"",
+		"",
+		"AI Workspace started",
+		"",
+		"",
+		"========================================",
+	}
+	fmt.Println()
+	for _, line := range lines {
+		pad := (termWidth - len(line)) / 2
+		if pad < 0 {
+			pad = 0
+		}
+		fmt.Printf("%*s%s\n", pad, "", line)
+	}
+	fmt.Println()
+}
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
@@ -75,7 +89,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	tlsConfig, err := buildTLS(cfg.TLS)
+	tlsConfig, err := buildTLS(cfg.TLS, cfg.DemoMode)
 	if err != nil {
 		slog.Error("failed to set up TLS", "err", err)
 		os.Exit(1)
@@ -83,7 +97,7 @@ func main() {
 	httpServer.TLSConfig = tlsConfig
 
 	go func() {
-		fmt.Print(startupBanner)
+		printBanner()
 		slog.Info("AI Workspace BFF started",
 			"addr", cfg.Addr,
 			"auth_mode", cfg.AuthMode,
@@ -116,8 +130,9 @@ func main() {
 
 // buildTLS returns the listener TLS config, or nil for plain HTTP. Priority:
 // mounted cert/key files (when both exist), then in-memory self-signed, then
-// disabled. A missing mounted cert is not fatal — it falls back to self-signed.
-func buildTLS(c config.TLSConfig) (*tls.Config, error) {
+// disabled. In demo mode a missing mounted cert is not fatal — it falls back to
+// a self-signed cert; outside demo mode an operator-provided cert is required.
+func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
 	// A partial mount (exactly one of cert/key present) is a misconfiguration, not
 	// a request for plain HTTP — fail loudly instead of silently downgrading.
 	if fileExists(c.CertFile) != fileExists(c.KeyFile) {
@@ -130,6 +145,13 @@ func buildTLS(c config.TLSConfig) (*tls.Config, error) {
 		}
 		slog.Info("TLS: using mounted certificate", "cert", c.CertFile)
 		return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
+	}
+	// No mounted cert. Auto-generating a self-signed certificate is a dev-only
+	// convenience — outside demo mode, require the operator to mount a real cert.
+	if !demoMode {
+		return nil, fmt.Errorf("APIP_DEMO_MODE=false requires a mounted TLS certificate: "+
+			"set BFF_TLS_CERT_FILE (%q) and BFF_TLS_KEY_FILE (%q) to existing files. "+
+			"Self-signed certificates are only auto-generated in demo mode", c.CertFile, c.KeyFile)
 	}
 	if c.SelfSigned {
 		cert, err := tlsutil.SelfSigned()
