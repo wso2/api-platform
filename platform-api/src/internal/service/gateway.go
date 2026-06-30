@@ -632,21 +632,12 @@ func (s *GatewayService) ListGateways(orgID *string) (*api.GatewayListResponse, 
 
 // GetGateway retrieves a gateway by ID
 func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayResponse, error) {
-	// Validate UUID format
-	if _, err := uuid.Parse(gatewayId); err != nil {
-		return nil, errors.New("invalid UUID format")
-	}
-
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 
 	if gateway == nil {
-		return nil, errors.New("gateway not found")
-	}
-
-	if gateway.OrganizationID != orgId {
 		return nil, errors.New("gateway not found")
 	}
 
@@ -656,15 +647,12 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 // UpdateGateway updates gateway details
 func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, description, displayName *string,
 	isCritical *bool, properties *map[string]interface{}) (*api.GatewayResponse, error) {
-	// Get existing gateway
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	// Get existing gateway by handle
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, err
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
-	}
-	if gateway.OrganizationID != orgId {
 		return nil, constants.ErrGatewayNotFound
 	}
 
@@ -697,21 +685,12 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, descr
 
 // DeleteGateway deletes a gateway and all associated tokens (CASCADE)
 func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error {
-	// Validate UUID format
-	if _, err := uuid.Parse(gatewayID); err != nil {
-		return errors.New("invalid UUID format")
-	}
-
-	// Verify gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	// Verify gateway exists and belongs to organization (gatewayID is now the handle)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgID)
 	if err != nil {
 		return err
 	}
 	if gateway == nil {
-		return constants.ErrGatewayNotFound
-	}
-	if gateway.OrganizationID != orgID {
-		// Return same error for both "not found" and "wrong organization" (security through obscurity)
 		return constants.ErrGatewayNotFound
 	}
 
@@ -894,17 +873,13 @@ func (s *GatewayService) GetGatewayStatus(orgID string, gatewayId *string) (*api
 	var gateways []*model.Gateway
 	var err error
 
-	// If gatewayId is provided, get specific gateway
+	// If gatewayId is provided, get specific gateway by handle
 	if gatewayId != nil && *gatewayId != "" {
-		gateway, err := s.gatewayRepo.GetByUUID(*gatewayId)
+		gateway, err := s.gatewayRepo.GetByHandleAndOrgID(*gatewayId, orgID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get gateway: %w", err)
 		}
 		if gateway == nil {
-			return nil, errors.New("gateway not found")
-		}
-		// Check organization access
-		if gateway.OrganizationID != orgID {
 			return nil, errors.New("gateway not found")
 		}
 		gateways = []*model.Gateway{gateway}
@@ -1100,10 +1075,10 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
 	return &api.GatewayResponse{
-		Id:                &gatewayID,
+		Uuid:              &gatewayID,
+		Id:                &gateway.Handle,
 		OrganizationId:    &orgID,
-		Name:              &gateway.Name,
-		DisplayName:       &gateway.Handle,
+		DisplayName:       &gateway.Name,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
 		Vhost:             &gateway.Vhost,
@@ -1128,8 +1103,8 @@ func gatewayStatusModelToAPI(gateway *model.Gateway) *api.GatewayStatusResponse 
 	}
 
 	return &api.GatewayStatusResponse{
-		Id:         &gatewayID,
-		Name:       &gateway.Name,
+		Uuid:       &gatewayID,
+		Id:         &gateway.Handle,
 		IsActive:   &gateway.IsActive,
 		IsCritical: &gateway.IsCritical,
 	}

@@ -65,14 +65,14 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 	}
 	req := dto.CreateSecretRequest{
-		Handle:      r.FormValue("handle"),
-		DisplayName: r.FormValue("name"),
+		Handle:      r.FormValue("id"),
+		DisplayName: r.FormValue("displayName"),
 		Description: r.FormValue("description"),
 		Value:       r.FormValue("value"),
 		Type:        r.FormValue("type"),
 	}
 	if req.Handle == "" || req.Value == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "handle and value are required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "id and value are required"))
 		return
 	}
 
@@ -183,7 +183,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 	}
 	req := dto.UpdateSecretRequest{
-		DisplayName: r.FormValue("name"),
+		DisplayName: r.FormValue("displayName"),
 		Description: r.FormValue("description"),
 		Value:       r.FormValue("value"),
 	}

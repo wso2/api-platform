@@ -784,11 +784,11 @@ type CreateGatewayRequest struct {
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType CreateGatewayRequestFunctionalityType `binding:"required" json:"functionalityType" yaml:"functionalityType"`
 
+	// Id Handle (URL-friendly slug) for the gateway. Immutable after creation.
+	Id string `binding:"required" json:"id" yaml:"id"`
+
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
-
-	// Name URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -1234,17 +1234,14 @@ type GatewayResponse struct {
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *GatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// Id Handle (URL-friendly slug) for the gateway
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
-
-	// Name URL-friendly gateway identifier
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// OrganizationId UUID of the organization this gateway belongs to
 	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
@@ -1254,6 +1251,9 @@ type GatewayResponse struct {
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Unique UUID for the gateway
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
@@ -1275,8 +1275,8 @@ type GatewayStatusListResponse struct {
 
 // GatewayStatusResponse Lightweight gateway status information optimized for frequent polling
 type GatewayStatusResponse struct {
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// Id Handle (URL-friendly slug) for the gateway
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
@@ -1284,8 +1284,8 @@ type GatewayStatusResponse struct {
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
 
-	// Name URL-friendly gateway identifier
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+	// Uuid Unique UUID for the gateway
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // LLMAccessControl defines model for LLMAccessControl.
@@ -1922,20 +1922,20 @@ type Organization struct {
 	// CreatedAt Timestamp when the organization was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Handle URL-friendly unique handle for the organization
-	Handle string `binding:"required" json:"handle" yaml:"handle"`
+	// DisplayName Display name of the organization
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Id Unique identifier for the organization
-	Id *openapi_types.UUID `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
-
-	// Name Display name of the organization
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (URL-friendly slug) for the organization
+	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Region Geographic region where the organization operates
 	Region string `binding:"required" json:"region" yaml:"region"`
 
 	// UpdatedAt Timestamp when the organization was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Unique UUID for the organization
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // Owners API ownership information
@@ -2154,8 +2154,8 @@ type RESTAPIGatewayResponse struct {
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *RESTAPIGatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// Id Handle (URL-friendly slug) for the gateway
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
@@ -2166,9 +2166,6 @@ type RESTAPIGatewayResponse struct {
 	// IsDeployed Whether the API is currently deployed to this gateway
 	IsDeployed bool `json:"isDeployed" yaml:"isDeployed"`
 
-	// Name URL-friendly gateway identifier
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
 	// OrganizationId UUID of the organization this gateway belongs to
 	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
@@ -2177,6 +2174,9 @@ type RESTAPIGatewayResponse struct {
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Unique UUID for the gateway
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
@@ -2275,11 +2275,11 @@ type RouteExceptionMethods string
 type SecretCreateRequest struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Handle Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
-	Handle string `binding:"required" json:"handle" yaml:"handle"`
+	// DisplayName Human-readable display name for list views
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Name Human-readable display name for list views
-	Name string                   `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
+	Id   string                   `binding:"required" json:"id" yaml:"id"`
 	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
 
 	// Value Plaintext secret value — encrypted at rest, never returned in any response
@@ -2307,10 +2307,10 @@ type SecretListResponse struct {
 
 // SecretResponse Returned on create (201) and rotate (200). The plaintext value is never included.
 type SecretResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Handle    *string    `json:"handle,omitempty" yaml:"handle,omitempty"`
-	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// Uuid UUID of the secret
 	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
@@ -2320,9 +2320,9 @@ type SecretResponse struct {
 type SecretSummary struct {
 	CreatedAt   *time.Time             `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
-	Handle      *string                `json:"handle,omitempty" yaml:"handle,omitempty"`
+	DisplayName *string                `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Hash        *string                `json:"hash,omitempty" yaml:"hash,omitempty"`
-	Name        *string                `json:"name,omitempty" yaml:"name,omitempty"`
+	Id          *string                `json:"id,omitempty" yaml:"id,omitempty"`
 	Provider    *SecretSummaryProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
 	Status      *SecretSummaryStatus   `json:"status,omitempty" yaml:"status,omitempty"`
 	Type        *SecretSummaryType     `json:"type,omitempty" yaml:"type,omitempty"`
@@ -2345,8 +2345,8 @@ type SecretSummaryType string
 type SecretUpdateRequest struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Name Updated display name
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+	// DisplayName Updated display name
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
 	// Value New plaintext secret value — re-encrypted at rest
 	Value string `binding:"required" json:"value" yaml:"value"`
@@ -2370,9 +2370,6 @@ type Subscription struct {
 	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Id Subscription UUID
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-
 	// OrganizationId Organization UUID
 	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	Status         *SubscriptionStatus `json:"status,omitempty" yaml:"status,omitempty"`
@@ -2389,6 +2386,9 @@ type Subscription struct {
 	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
 	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Subscription UUID
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SubscriptionStatus defines model for Subscription.Status.
@@ -2404,17 +2404,20 @@ type SubscriptionListResponse struct {
 
 // SubscriptionPlan defines model for SubscriptionPlan.
 type SubscriptionPlan struct {
-	BillingPlan        *string                 `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
-	CreatedAt          *time.Time              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	ExpiryTime         *time.Time              `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
-	Id                 *openapi_types.UUID     `json:"id,omitempty" yaml:"id,omitempty"`
+	BillingPlan *string    `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	ExpiryTime  *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+
+	// Id Handle (slug) for the subscription plan
+	Id                 *string                 `json:"id,omitempty" yaml:"id,omitempty"`
 	OrganizationId     *openapi_types.UUID     `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
-	PlanName           *string                 `json:"planName,omitempty" yaml:"planName,omitempty"`
 	Status             *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	StopOnQuotaReach   *bool                   `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int                    `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string                 `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
 	UpdatedAt          *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Uuid               *openapi_types.UUID     `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
@@ -2543,6 +2546,9 @@ type UpdateGatewayRequest struct {
 
 	// DisplayName Human-readable gateway name
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Id Handle of the gateway — must match the existing handle (immutable)
+	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
@@ -2996,7 +3002,7 @@ type WebSubEventPolicies struct {
 type ArtifactTypeQ string
 
 // GatewayID defines model for GatewayID.
-type GatewayID = openapi_types.UUID
+type GatewayID = string
 
 // ProjectID defines model for ProjectID.
 type ProjectID = string
@@ -3044,7 +3050,7 @@ type MappedKeyId = string
 type OrganizationId = openapi_types.UUID
 
 // ProjectIdQ defines model for projectId-Q.
-type ProjectIdQ = openapi_types.UUID
+type ProjectIdQ = string
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -3069,7 +3075,7 @@ type Unauthorized = Error
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of applications to return
@@ -3208,7 +3214,7 @@ type ListLLMProxiesByProviderParams struct {
 
 // ListLLMProxiesParams defines parameters for ListLLMProxies.
 type ListLLMProxiesParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of LLM proxies to return
@@ -3244,7 +3250,7 @@ type UndeployLLMProxyDeploymentParams struct {
 
 // ListMCPProxiesParams defines parameters for ListMCPProxies.
 type ListMCPProxiesParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of MCP proxies to return
@@ -3290,7 +3296,7 @@ type ListUserAPIKeysParamsType string
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Name **API Name** to check for existence within the organization.

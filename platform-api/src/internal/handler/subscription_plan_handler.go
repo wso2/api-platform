@@ -70,8 +70,8 @@ func validateThrottleLimitPair(count *int, unit *string) string {
 
 // CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans
 type CreateSubscriptionPlanRequest struct {
-	Handle             string  `json:"handle" binding:"required"`
-	Name               string  `json:"name" binding:"required"`
+	Id                 string  `json:"id" binding:"required"`
+	DisplayName        string  `json:"displayName" binding:"required"`
 	BillingPlan        string  `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
@@ -83,8 +83,8 @@ type CreateSubscriptionPlanRequest struct {
 // UpdateSubscriptionPlanRequest is the body for PUT /api/v0.9/subscription-plans/:planId
 // All fields use pointers for patch semantics: nil = omitted, non-nil = set (including clear-to-empty).
 type UpdateSubscriptionPlanRequest struct {
-	Handle             *string `json:"handle,omitempty"`
-	Name               *string `json:"name,omitempty"`
+	Id                 string  `json:"id"`
+	DisplayName        *string `json:"displayName,omitempty"`
 	BillingPlan        *string `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
@@ -127,8 +127,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		throttleLimitUnit = *req.ThrottleLimitUnit
 	}
 	plan := &model.SubscriptionPlan{
-		Handle:             req.Handle,
-		Name:               req.Name,
+		Handle:             req.Id,
+		Name:               req.DisplayName,
 		BillingPlan:        req.BillingPlan,
 		StopOnQuotaReach:   true,
 		ThrottleLimitCount: req.ThrottleLimitCount,
@@ -258,6 +258,12 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
+	if req.Id != "" && req.Id != planId {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"The plan id is immutable and cannot be changed"))
+		return
+	}
+
 	if errMsg := validateThrottleLimitPair(req.ThrottleLimitCount, req.ThrottleLimitUnit); errMsg != "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 		return
@@ -267,11 +273,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		StopOnQuotaReach:   req.StopOnQuotaReach,
 		ThrottleLimitCount: req.ThrottleLimitCount,
 	}
-	if req.Handle != nil {
-		update.Handle = req.Handle
-	}
-	if req.Name != nil {
-		update.Name = req.Name
+	if req.DisplayName != nil {
+		update.Name = req.DisplayName
 	}
 	if req.BillingPlan != nil {
 		update.BillingPlan = req.BillingPlan
@@ -368,9 +371,9 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(mux *http.ServeMux) {
 
 func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) map[string]any {
 	resp := map[string]any{
-		"id":               plan.UUID,
-		"handle":           plan.Handle,
-		"name":             plan.Name,
+		"uuid":             plan.UUID,
+		"id":               plan.Handle,
+		"displayName":      plan.Name,
 		"billingPlan":      plan.BillingPlan,
 		"stopOnQuotaReach": plan.StopOnQuotaReach,
 		"organizationId":   plan.OrganizationUUID,

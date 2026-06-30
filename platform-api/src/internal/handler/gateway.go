@@ -106,7 +106,7 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
 	}
 
 	createdBy, _ := middleware.GetUserIDFromRequest(r)
-	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
+	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Id, req.DisplayName, description, req.Vhost,
 		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
 		errMsg := err.Error()
@@ -247,7 +247,6 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract UUID path parameter
 	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -258,6 +257,12 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 	var req api.UpdateGatewayRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
+	}
+
+	if req.Id != gatewayId {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway id is immutable and cannot be changed"))
 		return
 	}
 

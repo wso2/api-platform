@@ -6379,23 +6379,23 @@ components:
       type: object
       required:
         - id
-        - handle
-        - name
+        - displayName
         - region
       properties:
-        id:
+        uuid:
           type: string
           format: uuid
-          description: Unique identifier for the organization
+          description: Unique UUID for the organization
           readOnly: true
           example: "123e4567-e89b-12d3-a456-426614174000"
-        handle:
+        id:
           type: string
-          description: URL-friendly unique handle for the organization
+          description: Handle (URL-friendly slug) for the organization
           pattern: '^[a-z0-9-]+$'
           minLength: 1
+          readOnly: true
           example: "acme"
-        name:
+        displayName:
           type: string
           description: Display name of the organization
           example: "Acme Corporation"
@@ -7158,21 +7158,21 @@ components:
 
     CreateGatewayRequest:
       description: |
-        Request body for creating a gateway. Organization ID is automatically extracted 
+        Request body for creating a gateway. Organization ID is automatically extracted
         from the JWT token and does not need to be provided.
       type: object
       required:
-        - name
+        - id
         - displayName
         - vhost
         - functionalityType
       properties:
-        name:
+        id:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
           maxLength: 64
-          description: URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+          description: Handle (URL-friendly slug) for the gateway. Immutable after creation.
           example: "prod-gateway-01"
         displayName:
           type: string
@@ -7304,20 +7304,22 @@ components:
     GatewayResponse:
       type: object
       properties:
-        id:
+        uuid:
           type: string
           format: uuid
-          description: Unique identifier for the gateway
+          description: Unique UUID for the gateway
+          readOnly: true
           example: "987e6543-e21b-45d3-a789-426614174999"
+        id:
+          type: string
+          description: Handle (URL-friendly slug) for the gateway
+          readOnly: true
+          example: "prod-gateway-01"
         organizationId:
           type: string
           format: uuid
           description: UUID of the organization this gateway belongs to
           example: "123e4567-e89b-12d3-a456-426614174000"
-        name:
-          type: string
-          description: URL-friendly gateway identifier
-          example: "prod-gateway-01"
         displayName:
           type: string
           description: Human-readable gateway name
@@ -7365,7 +7367,13 @@ components:
 
     UpdateGatewayRequest:
       type: object
+      required:
+        - id
       properties:
+        id:
+          type: string
+          description: Handle of the gateway — must match the existing handle (immutable)
+          example: "prod-gateway-01"
         displayName:
           type: string
           minLength: 1
@@ -7429,14 +7437,16 @@ components:
       type: object
       description: Lightweight gateway status information optimized for frequent polling
       properties:
-        id:
+        uuid:
           type: string
           format: uuid
-          description: Unique identifier for the gateway
+          description: Unique UUID for the gateway
+          readOnly: true
           example: "987e6543-e21b-45d3-a789-426614174999"
-        name:
+        id:
           type: string
-          description: URL-friendly gateway identifier
+          description: Handle (URL-friendly slug) for the gateway
+          readOnly: true
           example: "prod-gateway-01"
         isActive:
           type: boolean
@@ -7780,10 +7790,13 @@ components:
     SubscriptionPlan:
       type: object
       properties:
-        id:
+        uuid:
           type: string
           format: uuid
-        planName:
+        id:
+          type: string
+          description: Handle (slug) for the subscription plan
+        displayName:
           type: string
         billingPlan:
           type: string
@@ -7859,7 +7872,7 @@ components:
     Subscription:
       type: object
       properties:
-        id:
+        uuid:
           type: string
           format: uuid
           description: Subscription UUID
@@ -10216,15 +10229,15 @@ components:
     SecretCreateRequest:
       type: object
       required:
-        - handle
-        - name
+        - id
+        - displayName
         - value
       properties:
-        handle:
+        id:
           type: string
-          description: Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
+          description: Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
           example: wso2-openai-key
-        name:
+        displayName:
           type: string
           description: Human-readable display name for list views
           example: WSO2 OpenAI API Key
@@ -10245,7 +10258,7 @@ components:
       required:
         - value
       properties:
-        name:
+        displayName:
           type: string
           description: Updated display name
         description:
@@ -10262,10 +10275,10 @@ components:
           type: string
           description: UUID of the secret
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-        handle:
+        id:
           type: string
           example: wso2-openai-key
-        name:
+        displayName:
           type: string
           example: WSO2 OpenAI API Key
         createdAt:
@@ -10283,10 +10296,10 @@ components:
           type: string
           description: UUID of the secret
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-        handle:
+        id:
           type: string
           example: wso2-openai-key
-        name:
+        displayName:
           type: string
           example: WSO2 OpenAI API Key
         description:
@@ -10506,11 +10519,10 @@ components:
       in: query
       required: true
       description: |
-        **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
       schema:
         type: string
-        format: uuid
-        example: "yr434567-de34-76uj6-w376-234324532"
+        example: "default-project"
 
     gatewayId-Q:
       name: gatewayId
@@ -10549,11 +10561,10 @@ components:
       in: path
       required: true
       description: |
-        **Gateway ID** consisting of the **UUID** of the Gateway.
+        **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
       schema:
         type: string
-        format: uuid
-        example: "987e6543-e21b-45d3-a789-426614174999"
+        example: "prod-gateway-01"
 
     TokenID:
       name: tokenId

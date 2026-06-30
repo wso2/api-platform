@@ -354,7 +354,7 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	resp := map[string]any{
-		"id":             sub.UUID,
+		"uuid":           sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": sub.OrganizationUUID,
@@ -389,7 +389,7 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	resp := map[string]any{
-		"id":             sub.UUID,
+		"uuid":           sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": sub.OrganizationUUID,

@@ -30,7 +30,6 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type OrganizationHandler struct {
@@ -55,9 +54,9 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	}
 
 	// Validate required fields
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Name is required"))
+			"displayName is required"))
 		return
 	}
 	if req.Region == "" {
@@ -66,21 +65,21 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Auto-generate ID if not provided
-	var id string
-	if req.Id != nil && *req.Id != (openapi_types.UUID{}) {
-		id = utils.OpenAPIUUIDToString(*req.Id)
-	} else {
-		generated, genErr := utils.GenerateUUID()
-		if genErr != nil {
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to generate organization ID"))
-			return
-		}
-		id = generated
+	// UUID is always server-generated
+	id, genErr := utils.GenerateUUID()
+	if genErr != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to generate organization ID"))
+		return
+	}
+
+	// Extract handle from id field (optional — auto-generated from displayName if absent)
+	var handle string
+	if req.Id != nil {
+		handle = *req.Id
 	}
 
 	performedBy, _ := middleware.GetUserIDFromRequest(r)
-	org, err := h.orgService.RegisterOrganization(id, req.Handle, req.Name, req.Region, performedBy)
+	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, performedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",

@@ -148,7 +148,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 	t.Run("keeps properties when nil", func(t *testing.T) {
 		mockGatewayRepo := &mockGatewayRepository{
-			getByUUIDResult: baseGateway,
+			getByNameResult: baseGateway,
 		}
 
 		service := &GatewayService{
@@ -183,7 +183,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		}
 
 		mockGatewayRepo := &mockGatewayRepository{
-			getByUUIDResult: &freshGateway,
+			getByNameResult: &freshGateway,
 		}
 
 		service := &GatewayService{
