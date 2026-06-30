@@ -387,41 +387,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/validate-openapi:
-    post:
-      summary: Validate OpenAPI definition
-      description: |
-        Validates an OpenAPI definition provided either via URL or as a file upload.
-        Returns validation results including any errors found and extracted metadata
-        such as name, and operations if the definition is valid.
-      operationId: ValidateOpenAPI
-      security:
-        - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-      requestBody:
-        description: OpenAPI definition validation details
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ValidateOpenAPIRequest'
-      responses:
-        '200':
-          description: OpenAPI definition validation completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenAPIValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /rest-apis/{apiId}:
     get:
       summary: Get REST API by UUID
@@ -8158,77 +8123,6 @@ components:
           description: Timestamp when API was unpublished
           example: "2025-10-29T21:08:59.834784232+05:30"
 
-    ValidateOpenAPIRequest:
-      type: object
-      description: |
-        Request for validating OpenAPI definition. Can include either a URL, a file upload, 
-        or both. If both are provided, the validation service can choose which to prioritize.
-      properties:
-        url:
-          type: string
-          format: uri
-          description: URL to fetch the OpenAPI definition from
-          example: "https://petstore3.swagger.io/api/v3/openapi.json"
-        definition:
-          type: string
-          format: binary
-          description: OpenAPI definition file upload (YAML or JSON)
-      anyOf:
-        - required: [url]
-        - required: [definition]
-
-    OpenAPIValidationResponse:
-      type: object
-      required:
-        - isRESTAPIDefinitionValid
-      properties:
-        isRESTAPIDefinitionValid:
-          type: boolean
-          description: Indicates if the API definition file is valid
-          example: true
-        errors:
-          type: array
-          description: List of validation errors encountered
-          items:
-            type: string
-          example: [ "Missing OpenAPI definition", "Invalid OpenAPI definition" ]
-        api:
-          allOf:
-            - $ref: '#/components/schemas/RESTAPI'
-            - type: object
-              description: Details for the validated API
-              required:
-                - name
-                - version
-                - operations
-    
-    RESTAPIValidationResponse:
-      type: object
-      required:
-        - valid
-        - error
-      properties:
-        valid:
-          type: boolean
-          description: Whether the API identifier or name-version combination is valid (not already in use) in the organization
-          example: true
-        error:
-          type: object
-          nullable: true
-          description: Error details if validation fails
-          properties:
-            code:
-              type: string
-              description: Error code indicating the type of validation failure
-              example: "api-already-exists"
-            message:
-              type: string
-              description: Human-readable error message
-              example: "The API name–version combination is already in use."
-          required:
-            - code
-            - message
-
     DeployRequest:
       type: object
       required:
@@ -10610,17 +10504,6 @@ components:
       schema:
         type: string
         example: "987e6543-e21b-45d3-a789-426614174999"
-
-    api-identifier-Q:
-      name: identifier
-      in: query
-      required: false
-      description: |
-        **API Identifier** to check for existence within the organization.
-        Either this parameter or both 'name' and 'version' parameters are required.
-      schema:
-        type: string
-        example: "weather-rest-v1"
 
     api-name-Q:
       name: name

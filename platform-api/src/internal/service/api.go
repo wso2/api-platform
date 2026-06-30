@@ -21,9 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"mime/multipart"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,7 +29,6 @@ import (
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
-	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
@@ -766,153 +763,6 @@ func (s *APIService) generateDefaultChannels(asyncAPIType *string) []api.Channel
 	}
 }
 
-// ValidateOpenAPIDefinition validates an OpenAPI definition from multipart form data
-func (s *APIService) ValidateOpenAPIDefinition(url *string, definition *multipart.FileHeader) (*api.OpenAPIValidationResponse, error) {
-	errorsList := make([]string, 0)
-	response := &api.OpenAPIValidationResponse{
-		IsRESTAPIDefinitionValid: false,
-		Errors:                   nil,
-		Api:                      nil,
-	}
-
-	var content []byte
-	var err error
-
-	// If URL is provided, fetch content from URL
-	if url != nil && *url != "" {
-		content, err = s.apiUtil.FetchOpenAPIFromURL(*url)
-		if err != nil {
-			content = make([]byte, 0)
-			errorsList = append(errorsList, fmt.Sprintf("failed to fetch OpenAPI from URL: %s", err.Error()))
-		}
-	}
-
-	// If definition file is provided, read from file
-	if definition != nil {
-		file, err := definition.Open()
-		if err != nil {
-			errorsList = append(errorsList, fmt.Sprintf("failed to open definition file: %s", err.Error()))
-			response.Errors = &errorsList
-			return response, nil
-		}
-		defer file.Close()
-
-		content, err = io.ReadAll(file)
-		if err != nil {
-			errorsList = append(errorsList, fmt.Sprintf("failed to read definition file: %s", err.Error()))
-			response.Errors = &errorsList
-			return response, nil
-		}
-	}
-
-	// If neither URL nor file is provided
-	if len(content) == 0 {
-		errorsList = append(errorsList, "either URL or definition file must be provided")
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Validate the OpenAPI definition
-	if err := s.apiUtil.ValidateOpenAPIDefinition(content); err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("invalid OpenAPI definition: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Parse API specification to extract metadata directly into API DTO using libopenapi
-	parsed, err := s.apiUtil.ParseAPIDefinitionToRESTAPI(content)
-	if err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("failed to parse API specification: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Set the parsed API for response
-	response.IsRESTAPIDefinitionValid = true
-	response.Api = s.restAPIToOpenAPIValidationAPI(parsed)
-	if len(errorsList) > 0 {
-		response.Errors = &errorsList
-	}
-
-	return response, nil
-}
-
-// ValidateAPI validates if an API with the given identifier or name+version combination exists within an organization
-func (s *APIService) ValidateAPI(params *dto.ValidateRESTAPIParams, orgUUID string) (*api.RESTAPIValidationResponse, error) {
-	var identifier, name, version string
-	if params != nil {
-		if params.Identifier != nil {
-			identifier = string(*params.Identifier)
-		}
-		if params.Name != nil {
-			name = string(*params.Name)
-		}
-		if params.Version != nil {
-			version = string(*params.Version)
-		}
-	}
-
-	// Validate request - either identifier OR both name and version must be provided
-	if identifier == "" && (name == "" || version == "") {
-		return nil, errors.New("either 'identifier' or both 'name' and 'version' parameters are required")
-	}
-
-	// Check if organization exists
-	organization, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if organization == nil {
-		return nil, constants.ErrOrganizationNotFound
-	}
-
-	var exists bool
-	var validationError *struct {
-		Code    string `json:"code" yaml:"code"`
-		Message string `json:"message" yaml:"message"`
-	}
-
-	// Check existence based on the provided parameters
-	if identifier != "" {
-		// Validate by identifier
-		exists, err = s.apiRepo.CheckAPIExistsByHandleInOrganization(identifier, orgUUID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check API existence by identifier: %w", err)
-		}
-		if exists {
-			validationError = &struct {
-				Code    string `json:"code" yaml:"code"`
-				Message string `json:"message" yaml:"message"`
-			}{
-				Code:    "api-identifier-already-exists",
-				Message: fmt.Sprintf("An API with identifier '%s' already exists in the organization.", identifier),
-			}
-		}
-	} else {
-		// Validate by name and version
-		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, "")
-		if err != nil {
-			return nil, fmt.Errorf("failed to check API existence by name and version: %w", err)
-		}
-		if exists {
-			validationError = &struct {
-				Code    string `json:"code" yaml:"code"`
-				Message string `json:"message" yaml:"message"`
-			}{
-				Code: "api-name-version-already-exists",
-				Message: fmt.Sprintf("The API name '%s' with version '%s' already exists in the organization.",
-					name, version),
-			}
-		}
-	}
-
-	// Create response
-	return &api.RESTAPIValidationResponse{
-		Valid: !exists,
-		Error: validationError,
-	}, nil
-}
-
 func (s *APIService) isEmptyUpstream(upstream api.Upstream) bool {
 	if !s.isEmptyUpstreamDefinition(upstream.Main) {
 		return false
@@ -961,82 +811,6 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 		Transport:         req.Transport,
 		Upstream:          req.Upstream,
 		Version:           req.Version,
-	}
-}
-
-func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct {
-	Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-	Context           string                                           `binding:"required" json:"context" yaml:"context"`
-	CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-	Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-	LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name              string                                           `binding:"required" json:"name" yaml:"name"`
-	Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
-	Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-	ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-	ReadOnly          *bool                                            `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-	SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-	Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
-	Version           string                                           `binding:"required" json:"version" yaml:"version"`
-} {
-	if restAPI == nil {
-		return nil
-	}
-
-	var status *api.OpenAPIValidationResponseApiLifeCycleStatus
-	if restAPI.LifeCycleStatus != nil {
-		v := api.OpenAPIValidationResponseApiLifeCycleStatus(*restAPI.LifeCycleStatus)
-		status = &v
-	}
-
-	operations := []api.Operation{}
-	if restAPI.Operations != nil {
-		operations = *restAPI.Operations
-	}
-
-	return &struct {
-		Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context           string                                           `binding:"required" json:"context" yaml:"context"`
-		CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-		CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-		Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-		Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-		LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-		Name              string                                           `binding:"required" json:"name" yaml:"name"`
-		Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
-		Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-		ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-		ReadOnly          *bool                                            `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-		SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-		Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-		UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
-		Version           string                                           `binding:"required" json:"version" yaml:"version"`
-	}{
-		Channels:          restAPI.Channels,
-		Context:           restAPI.Context,
-		CreatedAt:         restAPI.CreatedAt,
-		CreatedBy:         restAPI.CreatedBy,
-		Description:       restAPI.Description,
-		Id:                restAPI.Id,
-		Kind:              restAPI.Kind,
-		LifeCycleStatus:   status,
-		Name:              restAPI.Name,
-		Operations:        operations,
-		Policies:          restAPI.Policies,
-		ProjectId:         openapi_types.UUID{},
-		ReadOnly:          restAPI.ReadOnly,
-		SubscriptionPlans: restAPI.SubscriptionPlans,
-		Transport:         restAPI.Transport,
-		UpdatedAt:         restAPI.UpdatedAt,
-		Upstream:          restAPI.Upstream,
-		Version:           restAPI.Version,
 	}
 }
 

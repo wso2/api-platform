@@ -21,11 +21,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"mime/multipart"
 	"net/http"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
-	"platform-api/src/internal/dto"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -451,108 +449,6 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, gatewaysResponse)
 }
 
-// ValidateOpenAPI handles POST /validate/open-api
-func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) {
-	// Parse multipart form
-	err := r.ParseMultipartForm(10 << 20) // 10 MB max
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Failed to parse multipart form"))
-		return
-	}
-
-	var req api.ValidateOpenAPIRequest
-	var definitionHeader *multipart.FileHeader
-
-	// Get URL from form if provided
-	if url := r.FormValue("url"); url != "" {
-		req.Url = &url
-	}
-
-	// Get definition file from form if provided
-	if file, header, err := r.FormFile("definition"); err == nil {
-		definitionHeader = header
-		var openapiFile openapi_types.File
-		openapiFile.InitFromMultipart(header)
-		req.Definition = &openapiFile
-		defer file.Close()
-	}
-
-	// Validate that at least one input is provided
-	if req.Url == nil && req.Definition == nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Either URL or definition file must be provided"))
-		return
-	}
-
-	// Validate OpenAPI definition
-	response, err := h.apiService.ValidateOpenAPIDefinition(req.Url, definitionHeader)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to validate OpenAPI definition"))
-		return
-	}
-
-	// Return validation response (200 OK even if validation fails - errors are in the response body)
-	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-// ValidateAPI handles GET /api/v0.9/rest-apis?name=&version=
-func (h *APIHandler) ValidateAPI(w http.ResponseWriter, r *http.Request) {
-	orgId, exists := middleware.GetOrganizationFromRequest(r)
-	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	var params dto.ValidateRESTAPIParams
-	if v := r.URL.Query().Get("identifier"); v != "" {
-		s := v
-		params.Identifier = &s
-	}
-	if v := r.URL.Query().Get("name"); v != "" {
-		s := v
-		params.Name = &s
-	}
-	if v := r.URL.Query().Get("version"); v != "" {
-		s := v
-		params.Version = &s
-	}
-
-	identifier := ""
-	name := ""
-	version := ""
-	if params.Identifier != nil {
-		identifier = *params.Identifier
-	}
-	if params.Name != nil {
-		name = *params.Name
-	}
-	if params.Version != nil {
-		version = *params.Version
-	}
-	if identifier == "" && (name == "" || version == "") {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Either 'identifier' or both 'name' and 'version' query parameters are required"))
-		return
-	}
-
-	response, err := h.apiService.ValidateAPI(&params, orgId)
-	if err != nil {
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Organization not found"))
-			return
-		}
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to validate API"))
-		return
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(mux *http.ServeMux) {
 	h.slogger.Debug("Registering REST API routes")
@@ -562,7 +458,6 @@ func (h *APIHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+base+"/{apiId}", h.GetAPI)
 	mux.HandleFunc("PUT "+base+"/{apiId}", h.UpdateAPI)
 	mux.HandleFunc("DELETE "+base+"/{apiId}", h.DeleteAPI)
-	mux.HandleFunc("POST "+base+"/validate-openapi", h.ValidateOpenAPI)
 	mux.HandleFunc("GET "+base+"/{apiId}/gateways", h.GetAPIGateways)
 	mux.HandleFunc("POST "+base+"/{apiId}/gateways", h.AddGatewaysToAPI)
 }

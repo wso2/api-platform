@@ -175,16 +175,6 @@ const (
 	Pending  MCPProxyListItemStatus = "pending"
 )
 
-// Defines values for OpenAPIValidationResponseApiLifeCycleStatus.
-const (
-	OpenAPIValidationResponseApiLifeCycleStatusBLOCKED    OpenAPIValidationResponseApiLifeCycleStatus = "BLOCKED"
-	OpenAPIValidationResponseApiLifeCycleStatusCREATED    OpenAPIValidationResponseApiLifeCycleStatus = "CREATED"
-	OpenAPIValidationResponseApiLifeCycleStatusDEPRECATED OpenAPIValidationResponseApiLifeCycleStatus = "DEPRECATED"
-	OpenAPIValidationResponseApiLifeCycleStatusPUBLISHED  OpenAPIValidationResponseApiLifeCycleStatus = "PUBLISHED"
-	OpenAPIValidationResponseApiLifeCycleStatusRETIRED    OpenAPIValidationResponseApiLifeCycleStatus = "RETIRED"
-	OpenAPIValidationResponseApiLifeCycleStatusSTAGED     OpenAPIValidationResponseApiLifeCycleStatus = "STAGED"
-)
-
 // Defines values for OperationPolicyPathMethods.
 const (
 	OperationPolicyPathMethodsAsterisk OperationPolicyPathMethods = "*"
@@ -408,10 +398,10 @@ const (
 
 // Defines values for WebSubAPIListItemLifeCycleStatus.
 const (
-	WebSubAPIListItemLifeCycleStatusCREATED    WebSubAPIListItemLifeCycleStatus = "CREATED"
-	WebSubAPIListItemLifeCycleStatusDEPRECATED WebSubAPIListItemLifeCycleStatus = "DEPRECATED"
-	WebSubAPIListItemLifeCycleStatusPUBLISHED  WebSubAPIListItemLifeCycleStatus = "PUBLISHED"
-	WebSubAPIListItemLifeCycleStatusRETIRED    WebSubAPIListItemLifeCycleStatus = "RETIRED"
+	CREATED    WebSubAPIListItemLifeCycleStatus = "CREATED"
+	DEPRECATED WebSubAPIListItemLifeCycleStatus = "DEPRECATED"
+	PUBLISHED  WebSubAPIListItemLifeCycleStatus = "PUBLISHED"
+	RETIRED    WebSubAPIListItemLifeCycleStatus = "RETIRED"
 )
 
 // Defines values for ArtifactTypeQ.
@@ -1879,69 +1869,6 @@ type MappedAPIKeyListResponse struct {
 	Pagination Pagination     `json:"pagination" yaml:"pagination"`
 }
 
-// OpenAPIValidationResponse defines model for OpenAPIValidationResponse.
-type OpenAPIValidationResponse struct {
-	Api *struct {
-		// Channels List of channels exposed by this API
-		Channels *[]Channel `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context  string     `binding:"required" json:"context" yaml:"context"`
-
-		// CreatedAt Timestamp when the api was created
-		CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-		// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
-		CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-		// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
-		Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-		// Kind Kind of the API based on its communication protocol or architectural style
-		Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-		// LifeCycleStatus Current lifecycle status of the API
-		LifeCycleStatus *OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-		// Name Display name of the API
-		Name string `binding:"required" json:"name" yaml:"name"`
-
-		// Operations List of operations exposed by this API
-		Operations []Operation `json:"operations" yaml:"operations"`
-
-		// Policies List of policies to be applied on the API
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-
-		// ProjectId ID of the project this API belongs to
-		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
-
-		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
-		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-		// When set, only these plans can be used when subscribing to the API.
-		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-		// Transport Supported transports for the API (http and/or https)
-		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
-
-		// UpdatedAt Timestamp when the api was last updated
-		UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-		// Upstream Upstream backend configuration with main and sandbox endpoints
-		Upstream Upstream `json:"upstream" yaml:"upstream"`
-		Version  string   `binding:"required" json:"version" yaml:"version"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-
-	// Errors List of validation errors encountered
-	Errors *[]string `json:"errors,omitempty" yaml:"errors,omitempty"`
-
-	// IsRESTAPIDefinitionValid Indicates if the API definition file is valid
-	IsRESTAPIDefinitionValid bool `binding:"required" json:"isRESTAPIDefinitionValid" yaml:"isRESTAPIDefinitionValid"`
-}
-
-// OpenAPIValidationResponseApiLifeCycleStatus Current lifecycle status of the API
-type OpenAPIValidationResponseApiLifeCycleStatus string
-
 // Operation Defines a single operation (resource) within the API
 type Operation struct {
 	// Description Description of the operation
@@ -2264,21 +2191,6 @@ type RESTAPIListResponse struct {
 	Count      int        `binding:"required" json:"count" yaml:"count"`
 	List       []RESTAPI  `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
-}
-
-// RESTAPIValidationResponse defines model for RESTAPIValidationResponse.
-type RESTAPIValidationResponse struct {
-	// Error Error details if validation fails
-	Error *struct {
-		// Code Error code indicating the type of validation failure
-		Code string `json:"code" yaml:"code"`
-
-		// Message Human-readable error message
-		Message string `json:"message" yaml:"message"`
-	} `binding:"required" json:"error" yaml:"error"`
-
-	// Valid Whether the API identifier or name-version combination is valid (not already in use) in the organization
-	Valid bool `binding:"required" json:"valid" yaml:"valid"`
 }
 
 // RateLimitResetWindow defines model for RateLimitResetWindow.
@@ -2769,23 +2681,6 @@ type UserAPIKeyListResponse struct {
 	Items []UserAPIKeyItem `binding:"required" json:"items" yaml:"items"`
 }
 
-// ValidateOpenAPIRequest Request for validating OpenAPI definition. Can include either a URL, a file upload,
-// or both. If both are provided, the validation service can choose which to prioritize.
-type ValidateOpenAPIRequest struct {
-	// Definition OpenAPI definition file upload (YAML or JSON)
-	Definition *openapi_types.File `json:"definition,omitempty" yaml:"definition,omitempty"`
-
-	// Url URL to fetch the OpenAPI definition from
-	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
-	union json.RawMessage
-}
-
-// ValidateOpenAPIRequest0 defines model for .
-type ValidateOpenAPIRequest0 = interface{}
-
-// ValidateOpenAPIRequest1 defines model for .
-type ValidateOpenAPIRequest1 = interface{}
-
 // WebBrokerAPI defines model for WebBrokerAPI.
 type WebBrokerAPI struct {
 	// AllChannels Policies applied to all channels, organized by event type.
@@ -3099,9 +2994,6 @@ type ProjectID = openapi_types.UUID
 
 // TokenID defines model for TokenID.
 type TokenID = openapi_types.UUID
-
-// ApiIdentifierQ defines model for api-identifier-Q.
-type ApiIdentifierQ = string
 
 // ApiNameQ defines model for api-name-Q.
 type ApiNameQ = string
@@ -3603,9 +3495,6 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 // CreateRESTAPIJSONRequestBody defines body for CreateRESTAPI for application/json ContentType.
 type CreateRESTAPIJSONRequestBody = CreateRESTAPIRequest
 
-// ValidateOpenAPIMultipartRequestBody defines body for ValidateOpenAPI for multipart/form-data ContentType.
-type ValidateOpenAPIMultipartRequestBody = ValidateOpenAPIRequest
-
 // UpdateRESTAPIJSONRequestBody defines body for UpdateRESTAPI for application/json ContentType.
 type UpdateRESTAPIJSONRequestBody = UpdateRESTAPIRequest
 
@@ -3896,116 +3785,6 @@ func (t *UpstreamDefinition) UnmarshalJSON(b []byte) error {
 		err = json.Unmarshal(raw, &t.Ref)
 		if err != nil {
 			return fmt.Errorf("error reading 'ref': %w", err)
-		}
-	}
-
-	if raw, found := object["url"]; found {
-		err = json.Unmarshal(raw, &t.Url)
-		if err != nil {
-			return fmt.Errorf("error reading 'url': %w", err)
-		}
-	}
-
-	return err
-}
-
-// AsValidateOpenAPIRequest0 returns the union data inside the ValidateOpenAPIRequest as a ValidateOpenAPIRequest0
-func (t ValidateOpenAPIRequest) AsValidateOpenAPIRequest0() (ValidateOpenAPIRequest0, error) {
-	var body ValidateOpenAPIRequest0
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromValidateOpenAPIRequest0 overwrites any union data inside the ValidateOpenAPIRequest as the provided ValidateOpenAPIRequest0
-func (t *ValidateOpenAPIRequest) FromValidateOpenAPIRequest0(v ValidateOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeValidateOpenAPIRequest0 performs a merge with any union data inside the ValidateOpenAPIRequest, using the provided ValidateOpenAPIRequest0
-func (t *ValidateOpenAPIRequest) MergeValidateOpenAPIRequest0(v ValidateOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsValidateOpenAPIRequest1 returns the union data inside the ValidateOpenAPIRequest as a ValidateOpenAPIRequest1
-func (t ValidateOpenAPIRequest) AsValidateOpenAPIRequest1() (ValidateOpenAPIRequest1, error) {
-	var body ValidateOpenAPIRequest1
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromValidateOpenAPIRequest1 overwrites any union data inside the ValidateOpenAPIRequest as the provided ValidateOpenAPIRequest1
-func (t *ValidateOpenAPIRequest) FromValidateOpenAPIRequest1(v ValidateOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeValidateOpenAPIRequest1 performs a merge with any union data inside the ValidateOpenAPIRequest, using the provided ValidateOpenAPIRequest1
-func (t *ValidateOpenAPIRequest) MergeValidateOpenAPIRequest1(v ValidateOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t ValidateOpenAPIRequest) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	object := make(map[string]json.RawMessage)
-	if t.union != nil {
-		err = json.Unmarshal(b, &object)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if t.Definition != nil {
-		object["definition"], err = json.Marshal(t.Definition)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'definition': %w", err)
-		}
-	}
-
-	if t.Url != nil {
-		object["url"], err = json.Marshal(t.Url)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'url': %w", err)
-		}
-	}
-	b, err = json.Marshal(object)
-	return b, err
-}
-
-func (t *ValidateOpenAPIRequest) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	if err != nil {
-		return err
-	}
-	object := make(map[string]json.RawMessage)
-	err = json.Unmarshal(b, &object)
-	if err != nil {
-		return err
-	}
-
-	if raw, found := object["definition"]; found {
-		err = json.Unmarshal(raw, &t.Definition)
-		if err != nil {
-			return fmt.Errorf("error reading 'definition': %w", err)
 		}
 	}
 
