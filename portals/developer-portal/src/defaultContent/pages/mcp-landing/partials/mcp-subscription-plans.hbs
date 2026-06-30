@@ -273,16 +273,21 @@
           var args = _switchArgs;
           closeUnsub();
           try {
-            var delResp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(args.subscriptionId)), {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
-            });
-            if (!delResp.ok) {
-              var errData = await delResp.json().catch(function () { return {}; });
-              showAlert('Failed to remove existing subscription: ' + (errData.description || 'Unknown error'), 'error');
-              return;
+            var resp = await fetch(
+              devportalApi.org('/subscriptions/' + encodeURIComponent(args.subscriptionId) + '/change-plan'),
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+                body: JSON.stringify({ planId: args.policyId }),
+              }
+            );
+            if (resp.ok) {
+              window.__subscriptionChanged = true;
+              window.location.reload();
+            } else {
+              var errData = await resp.json().catch(function () { return {}; });
+              showAlert('Failed to switch plan: ' + (errData.description || 'Unknown error'), 'error');
             }
-            await subscribe(args.orgId, args.apiId, args.planName, args.policyId);
           } catch (e) {
             showAlert('Error during plan change: ' + e.message, 'error');
           }
@@ -330,7 +335,7 @@
             var label = displayName || planName;
             showUnsubDialog(
               'Switch to <strong>' + label + '</strong> plan?',
-              'Your ' + (currentPlan || 'current') + ' subscription will be cancelled and a new ' + label + ' subscription will be created.',
+              'Switching from ' + (currentPlan || 'your current plan') + ' to ' + label + '. Your subscription token will remain the same.',
               'Switch plan'
             );
           }

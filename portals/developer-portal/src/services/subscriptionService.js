@@ -215,6 +215,115 @@ const updateSubscription = async (req, res) => {
     }
 };
 
+const changePlan = async (req, res) => {
+    const orgId = req.orgId;
+    const subscriptionId = req.params.subId;
+    const { planId: reqPlanId } = req.body;
+
+    try {
+        const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
+        if (!existing) {
+            return res.status(404).json({
+                code: '404', message: 'Not Found', description: 'Subscription not found',
+            });
+        }
+
+        const apiId = existing.DP_API_METADATA ? existing.DP_API_METADATA.UUID : null;
+        if (!apiId) {
+            return res.status(400).json({
+                code: '400', message: 'Bad Request', description: 'API not found for this subscription',
+            });
+        }
+
+        const apiMetadataResponse = await apiDao.get(orgId, apiId);
+        if (!apiMetadataResponse || apiMetadataResponse.length === 0) {
+            return res.status(404).json({
+                code: '404', message: 'Not Found', description: 'API not found',
+            });
+        }
+        const apiMetadata = apiMetadataResponse[0];
+        const plans = apiMetadata.DP_SUBSCRIPTION_PLANs || [];
+        const newPlan = plans.find(p => p.UUID === reqPlanId);
+        if (!newPlan) {
+            return res.status(400).json({
+                code: '400', message: 'Bad Request', description: 'Subscription plan not found for this API',
+            });
+        }
+
+        const previousPlan = existing.DP_SUBSCRIPTION_PLAN;
+
+        await sequelize.transaction(async (t) => {
+            const updated = await subDao.updatePlan(orgId, subscriptionId, reqPlanId, req.user.sub, t);
+            if (!updated) {
+                const err = new Error('Subscription not found');
+                err.status = 404;
+                throw err;
+            }
+            const payload = {
+                ...buildWebhookPayload(existing, apiMetadata, newPlan),
+                previous_plan: {
+                    ref_id: previousPlan ? (previousPlan.REF_ID || null) : null,
+                    name: previousPlan ? (previousPlan.NAME || null) : null,
+                },
+            };
+            await safePublish('subscription.plan_changed', payload, {
+                transaction: t, orgId, aggregateType: 'subscription', aggregateId: subscriptionId,
+            });
+        });
+
+        logUserAction('SUBSCRIPTION_PLAN_CHANGED', req, { orgId, subscriptionId, planId: reqPlanId });
+        const updated = await subDao.get(orgId, subscriptionId, req.user.sub);
+        return res.status(200).json(formatSubscriptionResponse(updated));
+    } catch (error) {
+        if (error.status === 404) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
+        }
+        logger.error('Error changing subscription plan', { error: error.message, subscriptionId });
+        util.handleError(res, error);
+    }
+};
+
+const regenerateSubscriptionToken = async (req, res) => {
+    const orgId = req.orgId;
+    const subscriptionId = req.params.subId;
+
+    try {
+        const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
+        if (!existing) {
+            return res.status(404).json({
+                code: '404', message: 'Not Found', description: 'Subscription not found',
+            });
+        }
+
+        const apiMetadata = existing.DP_API_METADATA;
+        const plan = existing.DP_SUBSCRIPTION_PLAN;
+        let newToken;
+
+        await sequelize.transaction(async (t) => {
+            newToken = await subDao.regenerateToken(orgId, subscriptionId, req.user.sub, t);
+            if (!newToken) {
+                const err = new Error('Subscription not found');
+                err.status = 404;
+                throw err;
+            }
+            await safePublish('subscription.token_regenerated', buildWebhookPayload(existing, apiMetadata, plan), {
+                transaction: t, orgId, aggregateType: 'subscription', aggregateId: subscriptionId,
+                secretFields: { token: newToken },
+            });
+        });
+
+        logUserAction('SUBSCRIPTION_TOKEN_REGENERATED', req, { orgId, subscriptionId });
+        const updated = await subDao.get(orgId, subscriptionId, req.user.sub);
+        return res.status(200).json(formatSubscriptionResponse(updated));
+    } catch (error) {
+        if (error.status === 404) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
+        }
+        logger.error('Error regenerating subscription token', { error: error.message, subscriptionId });
+        util.handleError(res, error);
+    }
+};
+
 const deleteSubscription = async (req, res) => {
     const orgId = req.orgId;
     const subscriptionId = req.params.subId;
@@ -262,4 +371,6 @@ module.exports = {
     getSubscription,
     updateSubscription,
     deleteSubscription,
+    changePlan,
+    regenerateSubscriptionToken,
 };

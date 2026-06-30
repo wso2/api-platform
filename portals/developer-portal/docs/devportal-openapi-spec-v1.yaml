@@ -1055,6 +1055,56 @@ paths:
         - OAuth2Security:
             - dp:subscription_delete
             - dp:subscription_manage
+  /devportal/v1/subscriptions/{subId}/change-plan:
+    parameters:
+      - $ref: "#/components/parameters/subId"
+    post:
+      tags:
+        - Subscriptions
+      operationId: changePlan
+      summary: Change subscription plan
+      description: >-
+        Changes the subscription plan in-place. The subscription UUID and token remain unchanged;
+        only the plan is updated. A `subscription.plan_changed` webhook event is published to
+        the organization's configured webhook subscribers.
+      requestBody:
+        $ref: "#/components/requestBodies/SubscriptionChangePlanBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/SubscriptionResponse"
+        "400":
+          $ref: "#/components/responses/SimpleBadRequest"
+        "404":
+          $ref: "#/components/responses/SimpleNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:subscription_update
+            - dp:subscription_manage
+  /devportal/v1/subscriptions/{subId}/regenerate-token:
+    parameters:
+      - $ref: "#/components/parameters/subId"
+    post:
+      tags:
+        - Subscriptions
+      operationId: regenerateSubscriptionToken
+      summary: Regenerate subscription token
+      description: >-
+        Regenerates the subscription token, immediately invalidating the old one. A
+        `subscription.token_regenerated` webhook event is published to the organization's
+        configured webhook subscribers so they can update the token at the gateway.
+        The new plaintext token is returned in the response.
+      responses:
+        "200":
+          $ref: "#/components/responses/SubscriptionResponse"
+        "404":
+          $ref: "#/components/responses/SimpleNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:subscription_manage
   /devportal/v1/apis/{apiId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -2444,6 +2494,15 @@ components:
             $ref: "#/components/schemas/SubscriptionUpdateRequest"
           example:
             status: ACTIVE
+    SubscriptionChangePlanBody:
+      required: true
+      description: Subscription plan change payload. `planId` is the Developer Portal subscription plan ID.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SubscriptionChangePlanRequest"
+          example:
+            planId: pol-9a3d1f7e
     ApiKeyBody:
       required: true
       description: >-
@@ -4162,6 +4221,16 @@ components:
             - ACTIVE
             - INACTIVE
           example: ACTIVE
+      additionalProperties: false
+    SubscriptionChangePlanRequest:
+      type: object
+      required:
+        - planId
+      properties:
+        planId:
+          type: string
+          description: Developer Portal subscription plan ID to switch to.
+          example: pol-9a3d1f7e
       additionalProperties: false
     SubscriptionResponse:
       type: object

@@ -127,6 +127,54 @@ async function copySubToken() {
     _manageCopyTimer = setTimeout(resetSubManageCopyBtn, 1600);
 }
 
+/* ── Regenerate token ───────────────────────────────────────────── */
+function askRegenerateToken() {
+    if (!_manageSub) return;
+    const dialog = document.getElementById('subRegenerateDialog');
+    if (dialog) dialog.style.display = 'flex';
+}
+
+function closeRegenerateDialog() {
+    const dialog = document.getElementById('subRegenerateDialog');
+    if (dialog) dialog.style.display = 'none';
+}
+
+async function confirmRegenerateToken() {
+    if (!_manageSub) return;
+    closeRegenerateDialog();
+    const orgId = window.__subscriptionOrgId;
+    if (!orgId) return;
+    try {
+        const resp = await fetch(
+            devportalApi.org(orgId, `/subscriptions/${encodeURIComponent(_manageSub.id)}/regenerate-token`),
+            { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
+        );
+        if (resp.ok) {
+            const data = await resp.json();
+            const newToken = data.subscriptionToken;
+            delete tokenCache[_manageSub.id];
+            if (newToken) tokenCache[_manageSub.id] = newToken;
+            _manageRevealed = true;
+            document.getElementById('subManageTokenVal').textContent = newToken || '•'.repeat(28);
+            const ri = document.getElementById('subManageRevealIcon');
+            if (ri) ri.className = 'bi bi-eye-slash';
+            resetSubManageCopyBtn();
+            if (typeof showAlert === 'function') {
+                await showAlert('Token regenerated. Copy your new token before closing this window.', 'success');
+            }
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            if (typeof showAlert === 'function') {
+                await showAlert('Failed to regenerate token: ' + (data.description || 'Unknown error'), 'error');
+            }
+        }
+    } catch (e) {
+        if (typeof showAlert === 'function') {
+            await showAlert('Error: ' + e.message, 'error');
+        }
+    }
+}
+
 /* ── Suspend / Resume ───────────────────────────────────────────── */
 async function toggleSubSuspend() {
     if (!_manageSub) return;
@@ -223,6 +271,7 @@ async function executeDeleteSubscription(subscriptionId) {
         document.getElementById('subManageClose')?.addEventListener('click', closeSubManage);
         document.getElementById('subManageRevealBtn')?.addEventListener('click', revealSubToken);
         document.getElementById('subManageCopyBtn')?.addEventListener('click', copySubToken);
+        document.getElementById('subManageRegenerateBtn')?.addEventListener('click', askRegenerateToken);
         document.getElementById('subManageSuspendBtn')?.addEventListener('click', toggleSubSuspend);
         document.getElementById('subManageUnsubBtn')?.addEventListener('click', askSubUnsub);
         manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeSubManage(); });
@@ -233,5 +282,12 @@ async function executeDeleteSubscription(subscriptionId) {
         document.getElementById('subUnsubCancelBtn')?.addEventListener('click', closeSubUnsub);
         document.getElementById('subUnsubConfirmBtn')?.addEventListener('click', confirmSubUnsub);
         unsubDialog.addEventListener('click', function (e) { if (e.target === unsubDialog) closeSubUnsub(); });
+    }
+
+    const regenerateDialog = document.getElementById('subRegenerateDialog');
+    if (regenerateDialog) {
+        document.getElementById('subRegenerateCancelBtn')?.addEventListener('click', closeRegenerateDialog);
+        document.getElementById('subRegenerateConfirmBtn')?.addEventListener('click', confirmRegenerateToken);
+        regenerateDialog.addEventListener('click', function (e) { if (e.target === regenerateDialog) closeRegenerateDialog(); });
     }
 })();
