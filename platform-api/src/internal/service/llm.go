@@ -2287,7 +2287,7 @@ func mapAssociatedGatewaysModelToAPI(in []model.AssociatedGatewayMapping) *[]api
 		if a.Metadata != "" {
 			configurations := map[string]interface{}{}
 			if err := json.Unmarshal([]byte(a.Metadata), &configurations); err == nil {
-				ag.Configurations = configurations
+				ag.Configurations = &configurations
 			}
 		}
 		out = append(out, ag)
@@ -2780,8 +2780,8 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 		}
 
 		metadata := ""
-		if len(ag.Configurations) > 0 {
-			metadataJSON, err := json.Marshal(ag.Configurations)
+		if ag.Configurations != nil && len(*ag.Configurations) > 0 {
+			metadataJSON, err := json.Marshal(*ag.Configurations)
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize configurations for gateway %q: %w", ag.Name, err)
 			}
