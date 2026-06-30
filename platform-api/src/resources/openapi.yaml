@@ -6422,17 +6422,17 @@ components:
         from the JWT token and does not need to be provided.
       type: object
       required:
-        - name
+        - displayName
       properties:
         id:
           type: string
-          format: uuid
-          description: UUID of the project
-          minLength: 36
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
-        name:
+          description: Handle (URL-friendly slug) for the project. Auto-generated from displayName if not provided.
+          minLength: 1
+          maxLength: 40
+          example: "default-project"
+        displayName:
           type: string
-          description: Name of the project
+          description: Human-readable name for the project
           minLength: 1
           example: "Default Project"
         description:
@@ -6442,10 +6442,16 @@ components:
 
     UpdateProjectRequest:
       type: object
+      required:
+        - id
       properties:
-        name:
+        id:
           type: string
-          description: Name of the project
+          description: Handle of the project — must match the existing handle (immutable)
+          example: "default-project"
+        displayName:
+          type: string
+          description: Updated human-readable name for the project
           minLength: 1
           example: "Updated Project Name"
         description:
@@ -6456,20 +6462,26 @@ components:
     Project:
       type: object
       required:
-        - name
+        - id
+        - displayName
         - organizationId
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the project
+          description: Handle (URL-friendly slug) for the project
           readOnly: true
-          example: "yr434567-de34-76uj6-w376-234324532"
-        name:
+          example: "default-project"
+        displayName:
           type: string
-          description: Name of the project
+          description: Human-readable name for the project
           minLength: 1
           example: "Default Project"
+        uuid:
+          type: string
+          format: uuid
+          description: Unique UUID for the project
+          readOnly: true
+          example: "yr434567-de34-76uj6-w376-234324532"
         description:
           type: string
           description: Description of the project
@@ -10422,11 +10434,10 @@ components:
       in: path
       required: true
       description: |
-        **Project ID** consisting of the **UUID** of the Project.
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project.
       schema:
         type: string
-        format: uuid
-        example: "yr434567-de34-76uj6-w376-234324532"
+        example: "default-project"
 
     apiId:
       name: apiId

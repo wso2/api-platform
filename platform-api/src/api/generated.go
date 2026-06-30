@@ -906,11 +906,11 @@ type CreateProjectRequest struct {
 	// Description Description of the project
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id UUID of the project
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// DisplayName Human-readable name for the project
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Name Name of the project
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (URL-friendly slug) for the project. Auto-generated from displayName if not provided.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 }
 
 // CreateRESTAPIRequest defines model for CreateRESTAPIRequest.
@@ -1988,17 +1988,20 @@ type Project struct {
 	// Description Description of the project
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id Unique identifier for the project
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// DisplayName Human-readable name for the project
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Name Name of the project
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (URL-friendly slug) for the project
+	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
 	// OrganizationId UUID of the organization this project belongs to
 	OrganizationId *openapi_types.UUID `binding:"required" json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
 	// UpdatedAt Timestamp when the project was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Unique UUID for the project
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // ProjectListResponse defines model for ProjectListResponse.
@@ -2553,8 +2556,11 @@ type UpdateProjectRequest struct {
 	// Description Description of the project
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Name Name of the project
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+	// DisplayName Updated human-readable name for the project
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Id Handle of the project — must match the existing handle (immutable)
+	Id string `binding:"required" json:"id" yaml:"id"`
 }
 
 // UpdateRESTAPIRequest defines model for UpdateRESTAPIRequest.
@@ -2993,7 +2999,7 @@ type ArtifactTypeQ string
 type GatewayID = openapi_types.UUID
 
 // ProjectID defines model for ProjectID.
-type ProjectID = openapi_types.UUID
+type ProjectID = string
 
 // TokenID defines model for TokenID.
 type TokenID = openapi_types.UUID
