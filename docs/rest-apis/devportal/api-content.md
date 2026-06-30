@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiContent"></a>
 
-`POST /devportal/v1/apis/{apiId}/content`
+`POST /devportal/v1/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/content \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -150,13 +150,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdreplaceApiContent"></a>
 
-`PUT /devportal/v1/apis/{apiId}/content`
+`PUT /devportal/v1/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId}/content \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -167,7 +167,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId}/content 
 
 Replaces or adds static content files for an existing API.
 
-The upload format is the same as `POST /devportal/v1/apis/{apiId}/content`.
+The upload format is the same as `POST /devportal/v1/apis/{apiId}/assets`.
 Existing files with the same stored `type` and `fileName` are updated; new files are created.
 Image metadata is updated only when image metadata can be resolved from the upload or request body.
 
@@ -293,13 +293,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdgetApiContentFile"></a>
 
-`GET /devportal/v1/apis/{apiId}/content`
+`GET /devportal/v1/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/content?type=document&fileName=getting-started.md \
+curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
@@ -415,13 +415,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiContentFile"></a>
 
-`DELETE /devportal/v1/apis/{apiId}/content`
+`DELETE /devportal/v1/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/apis/{apiId}/content?type=document \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

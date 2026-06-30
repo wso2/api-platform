@@ -153,7 +153,7 @@ If you need to update the definition file independently of the manifest:
 ```bash
 # OpenAPI YAML
 curl -X POST \
-  "http://localhost:3000/devportal/v1/apis/{apiId}/content" \
+  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
@@ -161,7 +161,7 @@ curl -X POST \
 ```bash
 # AsyncAPI YAML
 curl -X POST \
-  "http://localhost:3000/devportal/v1/apis/{apiId}/content" \
+  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiDefinition=@asyncapi.yaml;type=application/yaml"
 ```

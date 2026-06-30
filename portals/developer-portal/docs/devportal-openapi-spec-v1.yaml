@@ -544,7 +544,7 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_delete
             - dp:sub_plan_manage
-  /devportal/v1/apis/{apiId}/content:
+  /devportal/v1/apis/{apiId}/assets:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -583,7 +583,7 @@ paths:
       description: |
         Replaces or adds static content files for an existing API.
 
-        The upload format is the same as `POST /devportal/v1/apis/{apiId}/content`.
+        The upload format is the same as `POST /devportal/v1/apis/{apiId}/assets`.
         Existing files with the same stored `type` and `fileName` are updated; new files are created.
         Image metadata is updated only when image metadata can be resolved from the upload or request body.
       operationId: replaceApiContent
