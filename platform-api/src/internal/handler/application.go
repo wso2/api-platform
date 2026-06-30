@@ -524,6 +524,9 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid association kind. Only LlmProvider and LlmProxy are supported"))
 	case errors.Is(err, constants.ErrInvalidInput):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application association input"))
+	case errors.Is(err, constants.ErrHandleImmutable):
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"The id is immutable and must match the application being updated"))
 	default:
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", fallback))
 	}

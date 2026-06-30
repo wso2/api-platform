@@ -221,7 +221,7 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		return nil, constants.ErrInvalidInput
 	}
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
-		return nil, constants.ErrInvalidInput
+		return nil, constants.ErrHandleImmutable
 	}
 	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput

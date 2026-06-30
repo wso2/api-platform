@@ -289,6 +289,10 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 				"API not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrHandleImmutable) {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
+		}
 		if errors.Is(err, constants.ErrInvalidLifecycleState) {
 			h.slogger.Error("Invalid lifecycle status", "apiId", apiId, "organizationId", orgId)
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",

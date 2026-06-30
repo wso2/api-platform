@@ -245,6 +245,9 @@ func (h *MCPProxyHandler) handleServiceError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, constants.ErrHandleImmutable):
+		h.slogger.Error("MCP handle immutability violation", "reason", err.Error())
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrInvalidInput):
 		h.slogger.Error("MCP request validation failed", "reason", err.Error())
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))

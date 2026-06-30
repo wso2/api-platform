@@ -2526,6 +2526,9 @@ type UpdateApplicationRequest struct {
 	// DisplayName Display name of the application
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
+	// Id Application handle/identifier. Immutable; must match the application being updated.
+	Id string `binding:"required" json:"id" yaml:"id"`
+
 	// Type Type of the application
 	Type *ApplicationType `json:"type,omitempty" yaml:"type,omitempty"`
 }

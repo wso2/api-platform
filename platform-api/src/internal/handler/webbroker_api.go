@@ -199,6 +199,8 @@ func (h *WebBrokerAPIHandler) handleServiceError(w http.ResponseWriter, err erro
 		return
 	}
 	switch {
+	case errors.Is(err, constants.ErrHandleImmutable):
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrInvalidInput):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrWebBrokerAPINotFound):

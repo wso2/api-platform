@@ -305,6 +305,11 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
+		if errors.Is(err, constants.ErrHandleImmutable) {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"The plan id is immutable and cannot be changed"))
+			return
+		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
 			return

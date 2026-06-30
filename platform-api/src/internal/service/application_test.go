@@ -816,6 +816,25 @@ func TestCreateApplication_RequiresProjectID(t *testing.T) {
 	}
 }
 
+func TestUpdateApplication_RejectsHandleChange(t *testing.T) {
+	orgID := "org-1"
+
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "uuid-1", Handle: "my-app", Name: "My App", ProjectUUID: "proj-1"},
+	}
+	svc := &ApplicationService{appRepo: appRepo}
+
+	resp, err := svc.UpdateApplication("my-app", &api.UpdateApplicationRequest{
+		Id: "renamed-app",
+	}, orgID, "user-1")
+	if !errors.Is(err, constants.ErrHandleImmutable) {
+		t.Fatalf("expected ErrHandleImmutable, got %v", err)
+	}
+	if resp != nil {
+		t.Fatalf("expected nil response on handle mismatch")
+	}
+}
+
 func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 	orgID := "org-1"
 

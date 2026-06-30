@@ -362,8 +362,8 @@ func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
 	req := validTemplateRequest("Name")
 	req.Id = "some-other-handle"
 	_, err := svc.Update("org-1", "mistralai", "alice", req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
-		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	if !errors.Is(err, constants.ErrHandleImmutable) {
+		t.Fatalf("expected ErrHandleImmutable, got: %v", err)
 	}
 }
 

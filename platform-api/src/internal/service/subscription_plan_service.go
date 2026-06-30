@@ -142,20 +142,9 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 		return nil, constants.ErrSubscriptionPlanNotFound
 	}
 
-	if update.Handle != nil {
-		if *update.Handle == "" {
-			return nil, fmt.Errorf("handle is required")
-		}
-		if *update.Handle != existing.Handle {
-			handleExists, err := s.planRepo.ExistsByHandleAndOrg(*update.Handle, orgUUID)
-			if err != nil {
-				return nil, err
-			}
-			if handleExists {
-				return nil, constants.ErrSubscriptionPlanAlreadyExists
-			}
-		}
-		existing.Handle = *update.Handle
+	// The handle (id) is immutable; reject any attempt to change it to a different value.
+	if update.Handle != nil && *update.Handle != "" && *update.Handle != existing.Handle {
+		return nil, constants.ErrHandleImmutable
 	}
 	if update.Name != nil {
 		if *update.Name == "" {

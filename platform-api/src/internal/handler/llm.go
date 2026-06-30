@@ -355,6 +355,9 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))
 			return
+		case errors.Is(err, constants.ErrHandleImmutable):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -572,6 +575,9 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Referenced template not found"))
 			return
 		case errors.Is(err, constants.ErrSecretRefMissing):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
+		case errors.Is(err, constants.ErrHandleImmutable):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
@@ -809,6 +815,9 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 			return
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Referenced provider not found"))
+			return
+		case errors.Is(err, constants.ErrHandleImmutable):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
