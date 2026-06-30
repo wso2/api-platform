@@ -32,8 +32,7 @@ const MIN_EXPIRY_MS = Date.UTC(1970, 0, 1);
 const MAX_EXPIRY_MS = Date.UTC(2100, 11, 31, 23, 59, 59, 999);
 
 function generateSecret() {
-    return 'ak_' + crypto.randomBytes(32).toString('base64').replace(/[+/=]/g, (c) =>
-        c === '+' ? '-' : c === '/' ? '_' : '');
+    return crypto.randomBytes(32).toString('base64url');
 }
 
 function parseAndValidateName(raw) {
