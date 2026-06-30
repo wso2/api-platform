@@ -1546,11 +1546,23 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 		return nil, fmt.Errorf("failed to parse gateway OrganizationID as UUID: %w", err)
 	}
 
+	endpoints := make([]api.GatewayEndpoint, 0, len(gwd.Endpoints))
+	for _, ep := range gwd.Endpoints {
+		epContext := ep.Context
+		endpoints = append(endpoints, api.GatewayEndpoint{
+			Host:     ep.Host,
+			Protocol: api.GatewayEndpointProtocol(ep.Protocol),
+			Port:     ep.Port,
+			Context:  &epContext,
+		})
+	}
+
 	response := api.RESTAPIGatewayResponse{
 		AssociatedAt:      gwd.AssociatedAt,
 		CreatedAt:         utils.TimePtrIfNotZero(gwd.CreatedAt),
 		Description:       utils.StringPtrIfNotEmpty(gwd.Description),
 		DisplayName:       utils.StringPtrIfNotEmpty(gwd.Handle),
+		Endpoints:         &endpoints,
 		FunctionalityType: restAPIGatewayFunctionalityTypePtr(gwd.FunctionalityType),
 		Id:                gatewayID,
 		IsActive:          utils.BoolPtr(gwd.IsActive),

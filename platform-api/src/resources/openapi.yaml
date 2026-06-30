@@ -7808,6 +7808,7 @@ components:
           example: 8443
         context:
           type: string
+          maxLength: 255
           description: Context path for the endpoint
           example: /api/v1
 

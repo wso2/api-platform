@@ -303,6 +303,13 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 				"Gateway not found"))
 			return
 		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "required") || strings.Contains(errMsg, "invalid") ||
+			strings.Contains(errMsg, "must") || strings.Contains(errMsg, "cannot") {
+			h.slogger.Warn("Invalid gateway update request", "error", err)
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			return
+		}
 		h.slogger.Error("Failed to update gateway", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to update gateway"))

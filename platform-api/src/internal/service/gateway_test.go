@@ -18,8 +18,10 @@
 package service
 
 import (
-	"platform-api/src/internal/constants"
 	"testing"
+
+	"platform-api/src/internal/constants"
+	"platform-api/src/internal/model"
 )
 
 // TestValidateGatewayInput tests input validation logic
@@ -321,6 +323,106 @@ func TestTokenHashingRoundTrip(t *testing.T) {
 
 	if hashToken(differentToken) == storedHash {
 		t.Error("hashToken() different token produced same hash")
+	}
+}
+
+// TestValidateGatewayEndpoints tests field-level validation of individual endpoint objects.
+func TestValidateGatewayEndpoints(t *testing.T) {
+	tests := []struct {
+		name        string
+		endpoints   []model.GatewayEndpoint
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:      "valid single endpoint",
+			endpoints: []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 8443}},
+			wantErr:   false,
+		},
+		{
+			name: "valid multiple endpoints",
+			endpoints: []model.GatewayEndpoint{
+				{Host: "api.example.com", Protocol: "https", Port: 443},
+				{Host: "events.example.com", Protocol: "wss", Port: 9000},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "port at minimum boundary",
+			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 1}},
+			wantErr:     false,
+		},
+		{
+			name:        "port at maximum boundary",
+			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 65535}},
+			wantErr:     false,
+		},
+		{
+			name:        "empty host",
+			endpoints:   []model.GatewayEndpoint{{Host: "", Protocol: "https", Port: 443}},
+			wantErr:     true,
+			errContains: "host is required",
+		},
+		{
+			name:        "whitespace-only host",
+			endpoints:   []model.GatewayEndpoint{{Host: "   ", Protocol: "https", Port: 443}},
+			wantErr:     true,
+			errContains: "host is required",
+		},
+		{
+			name:        "empty protocol",
+			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "", Port: 443}},
+			wantErr:     true,
+			errContains: "protocol is required",
+		},
+		{
+			name:        "whitespace-only protocol",
+			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "   ", Port: 443}},
+			wantErr:     true,
+			errContains: "protocol is required",
+		},
+		{
+			name:        "port zero",
+			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 0}},
+			wantErr:     true,
+			errContains: "port must be between",
+		},
+		{
+			name:        "port negative",
+			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: -1}},
+			wantErr:     true,
+			errContains: "port must be between",
+		},
+		{
+			name:        "port above maximum",
+			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 65536}},
+			wantErr:     true,
+			errContains: "port must be between",
+		},
+		{
+			name: "invalid endpoint at second index reports correct index",
+			endpoints: []model.GatewayEndpoint{
+				{Host: "api.example.com", Protocol: "https", Port: 443},
+				{Host: "", Protocol: "https", Port: 443},
+			},
+			wantErr:     true,
+			errContains: "endpoint[1]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateGatewayEndpoints(tt.endpoints)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateGatewayEndpoints() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errContains != "" && err != nil {
+				if !contains(err.Error(), tt.errContains) {
+					t.Errorf("validateGatewayEndpoints() error = %q, want it to contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
 	}
 }
 

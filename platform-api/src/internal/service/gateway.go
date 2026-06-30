@@ -516,6 +516,22 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 // defaultGatewayVersion is the value stored when a client registers a gateway without a version.
 const defaultGatewayVersion = "1.0"
 
+// validateGatewayEndpoints checks that every endpoint has the required fields set.
+func validateGatewayEndpoints(endpoints []model.GatewayEndpoint) error {
+	for i, ep := range endpoints {
+		if strings.TrimSpace(ep.Host) == "" {
+			return fmt.Errorf("endpoint[%d]: host is required", i)
+		}
+		if strings.TrimSpace(ep.Protocol) == "" {
+			return fmt.Errorf("endpoint[%d]: protocol is required", i)
+		}
+		if ep.Port < 1 || ep.Port > 65535 {
+			return fmt.Errorf("endpoint[%d]: port must be between 1 and 65535", i)
+		}
+	}
+	return nil
+}
+
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description string, isCritical bool,
 	functionalityType, version, createdBy string, properties map[string]interface{}, endpoints []model.GatewayEndpoint) (*api.GatewayResponse, error) {
@@ -525,6 +541,9 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description s
 	}
 	if len(endpoints) == 0 {
 		return nil, errors.New("at least one endpoint is required")
+	}
+	if err := validateGatewayEndpoints(endpoints); err != nil {
+		return nil, err
 	}
 
 	version = strings.TrimSpace(version)
@@ -686,6 +705,9 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, descr
 	if endpoints != nil {
 		if len(*endpoints) == 0 {
 			return nil, errors.New("at least one endpoint is required")
+		}
+		if err := validateGatewayEndpoints(*endpoints); err != nil {
+			return nil, err
 		}
 		gateway.Endpoints = *endpoints
 	}
