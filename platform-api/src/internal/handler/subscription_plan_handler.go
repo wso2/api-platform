@@ -52,7 +52,7 @@ func NewSubscriptionPlanHandler(planService *service.SubscriptionPlanService, sl
 }
 
 // validateThrottleLimitPair ensures throttleLimitCount and throttleLimitUnit are provided together,
-// count is at least 1, and unit is one of Min, Hour, Day, Month.
+// count is at least 1, and unit is one of the accepted throttle limit units.
 func validateThrottleLimitPair(count *int, unit *string) string {
 	if (count != nil && unit == nil) || (count == nil && unit != nil) {
 		return "throttleLimitCount and throttleLimitUnit must be provided together"
@@ -61,10 +61,8 @@ func validateThrottleLimitPair(count *int, unit *string) string {
 		if *count < 1 {
 			return "throttleLimitCount must be at least 1"
 		}
-		switch *unit {
-		case "Min", "Hour", "Day", "Month":
-		default:
-			return "throttleLimitUnit must be one of: Min, Hour, Day, Month"
+		if !constants.ValidThrottleLimitUnits[*unit] {
+			return "throttleLimitUnit must be one of: MINUTE, HOUR, DAY, MONTH"
 		}
 	}
 	return ""
@@ -75,7 +73,7 @@ type CreateSubscriptionPlanRequest struct {
 	Handle             string  `json:"handle" binding:"required"`
 	Name               string  `json:"name" binding:"required"`
 	BillingPlan        string  `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
@@ -88,7 +86,7 @@ type UpdateSubscriptionPlanRequest struct {
 	Handle             *string `json:"handle,omitempty"`
 	Name               *string `json:"name,omitempty"`
 	BillingPlan        *string `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
@@ -107,11 +105,6 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid create subscription plan request body", "organizationId", orgId, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 
@@ -137,7 +130,7 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		Handle:             req.Handle,
 		Name:               req.Name,
 		BillingPlan:        req.BillingPlan,
-		StopOnQuotaReach:   1,
+		StopOnQuotaReach:   true,
 		ThrottleLimitCount: req.ThrottleLimitCount,
 		ThrottleLimitUnit:  throttleLimitUnit,
 		Status:             model.SubscriptionPlanStatus(req.Status),
@@ -262,11 +255,6 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 

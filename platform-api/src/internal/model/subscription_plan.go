@@ -33,7 +33,7 @@ type SubscriptionPlanUpdate struct {
 	Handle             *string
 	Name               *string
 	BillingPlan        *string
-	StopOnQuotaReach   *int
+	StopOnQuotaReach   *bool
 	ThrottleLimitCount *int
 	ThrottleLimitUnit  *string
 	ExpiryTime         *time.Time
@@ -52,7 +52,7 @@ type SubscriptionPlan struct {
 	Handle             string                 `json:"handle" db:"handle"`
 	Name               string                 `json:"name" db:"name"`
 	BillingPlan        string                 `json:"billingPlan,omitempty" db:"billing_plan"`
-	StopOnQuotaReach   int                    `json:"stopOnQuotaReach"`
+	StopOnQuotaReach   bool                   `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time             `json:"expiryTime,omitempty" db:"expiry_time"`

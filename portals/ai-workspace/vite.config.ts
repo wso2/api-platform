@@ -75,11 +75,19 @@ export default defineConfig({
       ]
     },
     proxy: {
-      '/api-proxy': {
-        target: 'https://localhost:9243',
+      // In dev, run the BFF locally (default https://localhost:8081) and route
+      // all same-origin BFF traffic to it, mirroring the production topology.
+      //   cd bff && PLATFORM_API_URL=https://localhost:9243 \
+      //     PLATFORM_API_TLS_SKIP_VERIFY=true BFF_ADDR=:8081 go run .
+      '/api': {
+        target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
         changeOrigin: true,
-        secure: false,          // accept self-signed cert on the platform API
-        rewrite: (p) => p.replace(/^\/api-proxy/, ''),
+        secure: false,          // accept the BFF self-signed cert in dev
+      },
+      '/runtime-config.js': {
+        target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
+        changeOrigin: true,
+        secure: false,
       },
     },
   }

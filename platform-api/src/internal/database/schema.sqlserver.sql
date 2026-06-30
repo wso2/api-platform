@@ -145,6 +145,18 @@ CREATE TABLE dbo.subscription_plan_limits (
     UNIQUE(subscription_plan_uuid, limit_type, time_amount, time_unit)
 );
 
+-- API supported subscription plans (many-to-many): which subscription plans an API (artifact) offers.
+IF OBJECT_ID(N'dbo.artifact_subscription_plans', N'U') IS NULL
+CREATE TABLE dbo.artifact_subscription_plans (
+    artifact_uuid VARCHAR(40) NOT NULL,
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(200),
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (artifact_uuid, subscription_plan_uuid),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
+);
+
 -- Subscriptions table (application-level subscriptions for any artifact type)
 -- subscription_token: encrypted value (AES-256-GCM) for retrieval (legacy rows have hash)
 -- subscription_token_hash: SHA-256 hash for uniqueness and gateway sync
@@ -645,6 +657,9 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_s
 CREATE INDEX idx_subscription_plans_status ON dbo.subscription_plans(status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
 CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(subscription_plan_uuid);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_subscription_plans_plan' AND object_id = OBJECT_ID(N'dbo.artifact_subscription_plans'))
+CREATE INDEX idx_artifact_subscription_plans_plan ON dbo.artifact_subscription_plans(subscription_plan_uuid);
 
 -- EventHub tables for multi-replica HA sync and gateway event propagation.
 -- Keyed columns are bounded NVARCHAR to stay within SQL Server index-key limits.
