@@ -275,7 +275,7 @@ Connected (press CTRL+C to quit)
 
 **Deploy API Revision** (with gateway connected):
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v0.9/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
+curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis/<api-uuid>/deployments?revisionId=<revision-uuid>' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -d '[{

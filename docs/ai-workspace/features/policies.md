@@ -167,13 +167,6 @@ When attaching a policy to an LLM Provider or Proxy, you choose its scope:
 
 When both scopes are present, global policies are evaluated first, followed by operation policies.
 
-### Migrating from the legacy `policies` field
-
-The flat `policies` field is deprecated. Existing configurations using it continue to work and are treated identically to `operationPolicies`. When you edit a provider or proxy through the UI, policies are automatically surfaced in the new `globalPolicies` / `operationPolicies` shape:
-
-- A legacy entry with `path: /*` and `methods: [*]` becomes a **global** policy.
-- Any other legacy entry (specific path, or `/*` with specific methods) becomes an **operation** policy.
-
 ## Writing Custom Policies
 
 For self-hosted gateway deployments, you can write custom policies in Go using the Policy SDK. Custom policies are compiled into the gateway policy engine. See [`sdk/gateway/policy/v1alpha/`](../../sdk/gateway/policy/v1alpha/) for the SDK interfaces.
