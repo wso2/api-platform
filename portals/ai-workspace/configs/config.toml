@@ -38,4 +38,4 @@ platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel
 # oidc_org_id_claim     = "org_id"
 # oidc_org_name_claim   = "org_name"
 # oidc_org_handle_claim = "org_handle"
-# oidc_scope = "openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:secret:manage"
+# oidc_scope = "openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:secret:manage"

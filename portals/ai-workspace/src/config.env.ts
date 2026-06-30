@@ -57,7 +57,7 @@ export const DEFAULT_ORG_REGION = getEnvOrDefault('VITE_DEFAULT_ORG_REGION', 'us
 export const OIDC_SCOPE = getEnvOrDefault(
   'VITE_OIDC_SCOPE',
   'openid profile email' +
-  ' ap:organization:read ap:organization:manage ap:organization:subscription:read' +
+  ' ap:organization:read ap:organization:manage' +
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
   ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +
   ' ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage' +
@@ -66,7 +66,7 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage' +
   ' ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage' +
   ' ap:gateway:artifact:read ap:gateway:manifest:read' +
-  ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import' +
+  ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage' +
   ' ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage' +
   ' ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore' +
   ' ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage' +
@@ -91,8 +91,7 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update' +
   ' ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore' +
   ' ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete' +
-  ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage' +
-  ' ap:git:read'
+  ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage'
 );
 
 // OIDC redirect URIs — app-specific, not IDP-specific.

@@ -6253,6 +6253,11 @@ components:
             ap:rest_api:manage: Full access to REST APIs
             ap:rest_api:read: Read REST APIs
             ap:rest_api:update: Update a REST API
+            ap:secret:create: Create a secret
+            ap:secret:delete: Delete a secret
+            ap:secret:manage: Full access to secrets
+            ap:secret:read: Read secrets
+            ap:secret:update: Update a secret
             ap:subscription:create: Create a subscription
             ap:subscription:delete: Delete a subscription
             ap:subscription:manage: Full access to subscriptions
@@ -6292,6 +6297,11 @@ components:
             ap:websub_api:deployment:undeploy: Undeploy a WebSub API deployment
             ap:websub_api:manage: Full access to WebSub APIs
             ap:websub_api:read: Read WebSub APIs
+            ap:websub_api:secret:create: Create a secret for a WebSub API
+            ap:websub_api:secret:delete: Delete a secret of a WebSub API
+            ap:websub_api:secret:manage: Full access to a WebSub API's secrets
+            ap:websub_api:secret:read: Read a WebSub API's secrets
+            ap:websub_api:secret:update: Update a secret of a WebSub API
             ap:websub_api:update: Update a WebSub API
   schemas:
     APIKeyItem:
