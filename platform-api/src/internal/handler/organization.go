@@ -100,14 +100,14 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	httputil.WriteJSON(w, http.StatusCreated, org)
 }
 
-// HeadOrganizationByUuid handles HEAD /api/v0.9/organizations/{organizationId}
+// HeadOrganizationByUuid handles HEAD /api/v0.9/organizations/{uuid}
 func (h *OrganizationHandler) HeadOrganizationByUuid(w http.ResponseWriter, r *http.Request) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	orgID := r.PathValue("organizationId")
+	orgID := r.PathValue("uuid")
 
 	h.slogger.Debug("Organization from token", "organizationId", organizationIdFromContext)
 	// to do: enable this check after finalizing authentication method
@@ -131,9 +131,9 @@ func (h *OrganizationHandler) HeadOrganizationByUuid(w http.ResponseWriter, r *h
 	w.WriteHeader(http.StatusOK)
 }
 
-// GetOrganizationByUUID handles GET /api/v0.9/organizations/{organizationId}
+// GetOrganizationByUUID handles GET /api/v0.9/organizations/{uuid}
 func (h *OrganizationHandler) GetOrganizationByUUID(w http.ResponseWriter, r *http.Request) {
-	orgID := r.PathValue("organizationId")
+	orgID := r.PathValue("uuid")
 
 	org, err := h.orgService.GetOrganizationByUUID(orgID)
 	if err != nil {
@@ -184,6 +184,6 @@ func (h *OrganizationHandler) GetOrganization(w http.ResponseWriter, r *http.Req
 func (h *OrganizationHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/organizations", h.RegisterOrganization)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", h.GetOrganization)
-	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{organizationId}", h.HeadOrganizationByUuid)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{organizationId}", h.GetOrganizationByUUID)
+	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{uuid}", h.HeadOrganizationByUuid)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{uuid}", h.GetOrganizationByUUID)
 }

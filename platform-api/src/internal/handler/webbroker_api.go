@@ -54,9 +54,9 @@ func NewWebBrokerAPIHandler(webbrokerAPIService *service.WebBrokerAPIService, sl
 func (h *WebBrokerAPIHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis", h.CreateWebBrokerAPI)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis", h.ListWebBrokerAPIs)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{apiId}", h.GetWebBrokerAPI)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{apiId}", h.UpdateWebBrokerAPI)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{apiId}", h.DeleteWebBrokerAPI)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{id}", h.GetWebBrokerAPI)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{id}", h.UpdateWebBrokerAPI)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{id}", h.DeleteWebBrokerAPI)
 }
 
 // CreateWebBrokerAPI handles POST /api/v0.9/webbroker-apis
@@ -137,7 +137,7 @@ func (h *WebBrokerAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	id := r.PathValue("apiId")
+	id := r.PathValue("id")
 	resp, err := h.webbrokerAPIService.Get(orgID, id)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -155,7 +155,7 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	id := r.PathValue("apiId")
+	id := r.PathValue("id")
 
 	var req api.WebBrokerAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -182,7 +182,7 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	id := r.PathValue("apiId")
+	id := r.PathValue("id")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.webbrokerAPIService.Delete(orgID, id, deletedBy); err != nil {

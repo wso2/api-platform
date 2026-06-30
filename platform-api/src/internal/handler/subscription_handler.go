@@ -233,7 +233,7 @@ func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Req
 			"Organization claim not found in token"))
 		return
 	}
-	subscriptionId := r.PathValue("subscriptionId")
+	subscriptionId := r.PathValue("uuid")
 	if subscriptionId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
@@ -259,7 +259,7 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 			"Organization claim not found in token"))
 		return
 	}
-	subscriptionId := r.PathValue("subscriptionId")
+	subscriptionId := r.PathValue("uuid")
 	if subscriptionId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
@@ -304,7 +304,7 @@ func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.
 			"Organization claim not found in token"))
 		return
 	}
-	subscriptionId := r.PathValue("subscriptionId")
+	subscriptionId := r.PathValue("uuid")
 	if subscriptionId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
@@ -342,9 +342,9 @@ func requireSubscriptionSubscriberQuery(w http.ResponseWriter, r *http.Request) 
 func (h *SubscriptionHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/subscriptions", h.CreateSubscription)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/subscriptions", h.ListSubscriptions)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/subscriptions/{subscriptionId}", h.GetSubscription)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscriptions/{subscriptionId}", h.UpdateSubscription)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscriptions/{subscriptionId}", h.DeleteSubscription)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/subscriptions/{uuid}", h.GetSubscription)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscriptions/{uuid}", h.UpdateSubscription)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscriptions/{uuid}", h.DeleteSubscription)
 }
 
 func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) map[string]any {

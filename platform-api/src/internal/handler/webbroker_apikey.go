@@ -53,9 +53,9 @@ func NewWebBrokerAPIKeyHandler(webbrokerAPIService *service.WebBrokerAPIService,
 
 // RegisterRoutes registers WebBroker API key routes
 func (h *WebBrokerAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys/{keyName}", h.UpdateAPIKey)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys/{keyName}", h.DeleteAPIKey)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{id}/api-keys", h.CreateAPIKey)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{id}/api-keys/{apiKeyId}", h.UpdateAPIKey)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{id}/api-keys/{apiKeyId}", h.DeleteAPIKey)
 }
 
 // CreateAPIKey handles POST /api/v0.9/webbroker-apis/:apiId/api-keys
@@ -66,7 +66,7 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("id")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -140,13 +140,13 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("id")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
 	}
 
-	keyName := r.PathValue("keyName")
+	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Key name is required"))
 		return
@@ -210,8 +210,8 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
-	keyName := r.PathValue("keyName")
+	apiHandle := r.PathValue("id")
+	keyName := r.PathValue("apiKeyId")
 
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))

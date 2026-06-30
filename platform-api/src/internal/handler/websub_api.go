@@ -54,11 +54,11 @@ func NewWebSubAPIHandler(websubAPIService *service.WebSubAPIService, slogger *sl
 func (h *WebSubAPIHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis", h.CreateWebSubAPI)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis", h.ListWebSubAPIs)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{apiId}", h.GetWebSubAPI)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{apiId}", h.UpdateWebSubAPI)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{apiId}", h.DeleteWebSubAPI)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{apiId}/publications", h.PublishToDevPortal)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{apiId}/publications/{devportalId}", h.UnpublishFromDevPortal)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{id}", h.GetWebSubAPI)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{id}", h.UpdateWebSubAPI)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{id}", h.DeleteWebSubAPI)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{id}/publications", h.PublishToDevPortal)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{id}/publications/{devportalId}", h.UnpublishFromDevPortal)
 }
 
 // CreateWebSubAPI handles POST /api/v0.9/websub-apis
@@ -130,7 +130,7 @@ func (h *WebSubAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	id := r.PathValue("apiId")
+	id := r.PathValue("id")
 	resp, err := h.websubAPIService.Get(orgID, id)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -148,7 +148,7 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	id := r.PathValue("apiId")
+	id := r.PathValue("id")
 
 	var req api.WebSubAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -175,7 +175,7 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	id := r.PathValue("apiId")
+	id := r.PathValue("id")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
@@ -186,12 +186,12 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PublishToDevPortal handles POST /api/v0.9/websub-apis/{apiId}/publications
+// PublishToDevPortal handles POST /api/v0.9/websub-apis/{id}/publications
 func (h *WebSubAPIHandler) PublishToDevPortal(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "DevPortal publication is not yet supported"))
 }
 
-// UnpublishFromDevPortal handles DELETE /api/v0.9/websub-apis/{apiId}/publications/{devportalId}
+// UnpublishFromDevPortal handles DELETE /api/v0.9/websub-apis/{id}/publications/{devportalId}
 func (h *WebSubAPIHandler) UnpublishFromDevPortal(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "DevPortal publication is not yet supported"))
 }

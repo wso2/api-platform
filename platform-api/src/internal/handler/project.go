@@ -100,7 +100,7 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectId := r.PathValue("projectId")
+	projectId := r.PathValue("id")
 	if projectId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
@@ -166,7 +166,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectId := r.PathValue("projectId")
+	projectId := r.PathValue("id")
 	if projectId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
@@ -215,7 +215,7 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectId := r.PathValue("projectId")
+	projectId := r.PathValue("id")
 	if projectId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
@@ -257,7 +257,7 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 func (h *ProjectHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/projects", h.ListProjects)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/projects", h.CreateProject)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/projects/{projectId}", h.GetProject)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/projects/{projectId}", h.UpdateProject)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/projects/{projectId}", h.DeleteProject)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/projects/{id}", h.GetProject)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/projects/{id}", h.UpdateProject)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/projects/{id}", h.DeleteProject)
 }

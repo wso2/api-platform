@@ -80,7 +80,7 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Reque
 	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/llm-proxies/{id}/api-keys/{keyName}
+// DeleteAPIKey handles DELETE /api/v0.9/llm-proxies/{id}/api-keys/{apiKeyId}
 func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -96,7 +96,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	keyName := r.PathValue("keyName")
+	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API key name is required"))
@@ -195,5 +195,5 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 func (h *LLMProxyAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies/{id}/api-keys", h.CreateAPIKey)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{id}/api-keys", h.ListAPIKeys)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{id}/api-keys/{keyName}", h.DeleteAPIKey)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{id}/api-keys/{apiKeyId}", h.DeleteAPIKey)
 }

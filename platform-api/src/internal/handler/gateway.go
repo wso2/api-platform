@@ -173,7 +173,7 @@ func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract UUID path parameter
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -247,7 +247,7 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -294,7 +294,7 @@ func (h *GatewayHandler) DeleteGateway(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract UUID path parameter
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -345,7 +345,7 @@ func (h *GatewayHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -381,7 +381,7 @@ func (h *GatewayHandler) RotateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract ID path parameter
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -426,7 +426,7 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -460,7 +460,7 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"message": "Token revoked successfully"})
 }
 
-// GetGatewayArtifacts handles GET /api/v0.9/gateways/{gatewayId}/live-proxy-artifacts
+// GetGatewayArtifacts handles GET /api/v0.9/gateways/{id}/live-proxy-artifacts
 func (h *GatewayHandler) GetGatewayArtifacts(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -469,7 +469,7 @@ func (h *GatewayHandler) GetGatewayArtifacts(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -505,7 +505,7 @@ func (h *GatewayHandler) GetGatewayArtifacts(w http.ResponseWriter, r *http.Requ
 	httputil.WriteJSON(w, http.StatusOK, artifactListResponse)
 }
 
-// GetGatewayManifest handles GET /api/v0.9/gateways/{gatewayId}/manifest
+// GetGatewayManifest handles GET /api/v0.9/gateways/{id}/manifest
 // Called by APIM to retrieve the manifest pushed by the gateway controller on connect.
 func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
@@ -515,7 +515,7 @@ func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	gatewayId := r.PathValue("gatewayId")
+	gatewayId := r.PathValue("id")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -601,7 +601,7 @@ func (h *GatewayHandler) GetCustomPolicy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	policyUUID := r.PathValue("customPolicyUuid")
+	policyUUID := r.PathValue("uuid")
 	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -637,7 +637,7 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	policyUUID := r.PathValue("customPolicyUuid")
+	policyUUID := r.PathValue("uuid")
 	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -694,17 +694,17 @@ func (h *GatewayHandler) RegisterRoutes(mux *http.ServeMux) {
 	h.slogger.Debug("Registering gateway routes")
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways", h.CreateGateway)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways", h.ListGateways)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}", h.GetGateway)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/gateways/{gatewayId}", h.UpdateGateway)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{gatewayId}", h.DeleteGateway)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.ListTokens)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.RotateToken)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{gatewayId}/tokens/{tokenId}", h.RevokeToken)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/live-proxy-artifacts", h.GetGatewayArtifacts)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/manifest", h.GetGatewayManifest)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{id}", h.GetGateway)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/gateways/{id}", h.UpdateGateway)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{id}", h.DeleteGateway)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{id}/tokens", h.ListTokens)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways/{id}/tokens", h.RotateToken)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{id}/tokens/{tokenId}", h.RevokeToken)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{id}/live-proxy-artifacts", h.GetGatewayArtifacts)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{id}/manifest", h.GetGatewayManifest)
 
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies", h.ListCustomPolicies)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateway-custom-policies/sync", h.SyncCustomPolicy)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.GetCustomPolicy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.DeleteCustomPolicy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies/{uuid}/versions/{version}", h.GetCustomPolicy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateway-custom-policies/{uuid}/versions/{version}", h.DeleteCustomPolicy)
 }

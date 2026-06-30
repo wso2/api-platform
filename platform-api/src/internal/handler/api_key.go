@@ -47,7 +47,7 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService, slogger *slog.Logger
 	}
 }
 
-// CreateAPIKey handles POST /rest-apis/{apiId}/api-keys
+// CreateAPIKey handles POST /rest-apis/{id}/api-keys
 // This endpoint allows users to inject external API keys to all the gateways where the API is deployed
 func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	// Extract organization from JWT token
@@ -62,7 +62,7 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	userId := r.Header.Get("x-user-id")
 
 	// Extract API handle from path parameter (parameter named apiId for backward compatibility, but contains handle)
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("id")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API handle is required"))
@@ -146,7 +146,7 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UpdateAPIKey handles PUT /rest-apis/{apiId}/api-keys/{keyName}
+// UpdateAPIKey handles PUT /rest-apis/{id}/api-keys/{apiKeyId}
 // This endpoint allows external platforms to update/regenerate external API keys on hybrid gateways
 func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	// Extract organization from JWT token
@@ -161,14 +161,14 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	userId := r.Header.Get("x-user-id")
 
 	// Extract API ID and key name from path parameters
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("id")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API handle is required"))
 		return
 	}
 
-	keyName := r.PathValue("keyName")
+	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API key name is required"))
@@ -230,7 +230,7 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// RevokeAPIKey handles DELETE /rest-apis/{apiId}/api-keys/{keyName}
+// RevokeAPIKey handles DELETE /rest-apis/{id}/api-keys/{apiKeyId}
 // This endpoint allows Cloud APIM to revoke external API keys on hybrid gateways
 func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	// Extract organization from JWT token
@@ -242,14 +242,14 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract API ID and key name from path parameters
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("id")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API handle is required"))
 		return
 	}
 
-	keyName := r.PathValue("keyName")
+	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API key name is required"))
@@ -289,8 +289,8 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 // RegisterRoutes registers API key routes with the router
 func (h *APIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
 	h.slogger.Debug("Registering API key routes")
-	base := constants.APIBasePath + "/rest-apis/{apiId}/api-keys"
+	base := constants.APIBasePath + "/rest-apis/{id}/api-keys"
 	mux.HandleFunc("POST "+base, h.CreateAPIKey)
-	mux.HandleFunc("PUT "+base+"/{keyName}", h.UpdateAPIKey)
-	mux.HandleFunc("DELETE "+base+"/{keyName}", h.RevokeAPIKey)
+	mux.HandleFunc("PUT "+base+"/{apiKeyId}", h.UpdateAPIKey)
+	mux.HandleFunc("DELETE "+base+"/{apiKeyId}", h.RevokeAPIKey)
 }

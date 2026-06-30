@@ -53,9 +53,9 @@ func NewWebSubAPIKeyHandler(websubAPIService *service.WebSubAPIService, apiKeySe
 
 // RegisterRoutes registers WebSub API key routes
 func (h *WebSubAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{apiId}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{apiId}/api-keys/{keyName}", h.UpdateAPIKey)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{apiId}/api-keys/{keyName}", h.DeleteAPIKey)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{id}/api-keys", h.CreateAPIKey)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{id}/api-keys/{apiKeyId}", h.UpdateAPIKey)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{id}/api-keys/{apiKeyId}", h.DeleteAPIKey)
 }
 
 // CreateAPIKey handles POST /api/v0.9/websub-apis/:apiId/api-keys
@@ -66,7 +66,7 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("id")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -140,13 +140,13 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("id")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
 	}
 
-	keyName := r.PathValue("keyName")
+	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Key name is required"))
 		return
@@ -211,8 +211,8 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
-	keyName := r.PathValue("keyName")
+	apiHandle := r.PathValue("id")
+	keyName := r.PathValue("apiKeyId")
 
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))

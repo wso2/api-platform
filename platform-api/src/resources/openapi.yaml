@@ -99,7 +99,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /organizations/{organizationId}:
+  /organizations/{uuid}:
     get:
       summary: Get organization by UUID
       description: |
@@ -112,7 +112,7 @@ paths:
       tags:
         - Organizations
       parameters:
-        - $ref: '#/components/parameters/organizationId'
+        - $ref: '#/components/parameters/organizationUuid'
       responses:
         '200':
           description: Organization retrieved successfully
@@ -139,7 +139,7 @@ paths:
       tags:
         - Organizations
       parameters:
-        - $ref: '#/components/parameters/organizationId'
+        - $ref: '#/components/parameters/organizationUuid'
       responses:
         '200':
           description: Organization exists
@@ -215,7 +215,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /projects/{projectId}:
+  /projects/{id}:
     get:
       summary: Get project by UUID
       description: |
@@ -229,7 +229,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/projectId'
       responses:
         '200':
           description: Project retrieved successfully
@@ -259,7 +259,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/projectId'
       requestBody:
         required: true
         content:
@@ -299,7 +299,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/projectId'
       responses:
         '204':
           description: Project deleted successfully
@@ -387,7 +387,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}:
+  /rest-apis/{id}:
     get:
       summary: Get REST API by UUID
       description: |
@@ -488,7 +488,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
 
-  /rest-apis/{apiId}/gateways:
+  /rest-apis/{id}/gateways:
     get:
       summary: Get gateways for REST API
       description: |
@@ -568,7 +568,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/api-keys:
+  /rest-apis/{id}/api-keys:
     post:
       summary: Create API key
       description: |
@@ -617,7 +617,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/api-keys/{keyName}:
+  /rest-apis/{id}/api-keys/{apiKeyId}:
     put:
       summary: Update API key
       description: |
@@ -635,7 +635,7 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/apiId'
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: The unique name/identifier of the API key
@@ -690,7 +690,7 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/apiId'
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: The unique name/identifier of the API key to revoke
@@ -717,7 +717,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments:
+  /rest-apis/{id}/deployments:
     post:
       summary: Create and deploy a new deployment
       description: |
@@ -804,7 +804,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/{deploymentId}:
+  /rest-apis/{id}/deployments/{deploymentId}:
     get:
       summary: Get deployment by ID
       description: |
@@ -868,7 +868,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/{deploymentId}/undeploy:
+  /rest-apis/{id}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy deployment from gateway
       description: |
@@ -921,7 +921,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/{deploymentId}/restore:
+  /rest-apis/{id}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous deployment
       description: |
@@ -1050,7 +1050,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}:
+  /websub-apis/{id}:
     get:
       summary: Get WebSub API by ID
       operationId: getWebSubAPI
@@ -1061,7 +1061,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1089,7 +1089,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1127,7 +1127,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1144,7 +1144,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/api-keys:
+  /websub-apis/{id}/api-keys:
     post:
       summary: Create an API key for WebSub API
       operationId: createWebSubAPIKey
@@ -1156,7 +1156,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1183,7 +1183,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/api-keys/{keyName}:
+  /websub-apis/{id}/api-keys/{apiKeyId}:
     put:
       summary: Update an API key for WebSub API
       description: |
@@ -1199,12 +1199,12 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
             type: string
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           schema:
@@ -1248,12 +1248,12 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
             type: string
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           schema:
@@ -1268,7 +1268,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/deployments:
+  /websub-apis/{id}/deployments:
     post:
       summary: Deploy WebSub API to a gateway
       operationId: deployWebSubAPI
@@ -1280,7 +1280,7 @@ paths:
       tags:
         - WebSubAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1317,7 +1317,7 @@ paths:
       tags:
         - WebSubAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1345,7 +1345,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/deployments/{deploymentId}:
+  /websub-apis/{id}/deployments/{deploymentId}:
     get:
       summary: Get WebSub API deployment by ID
       operationId: getWebSubAPIDeployment
@@ -1357,7 +1357,7 @@ paths:
       tags:
         - WebSubAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1391,7 +1391,7 @@ paths:
       tags:
         - WebSubAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1413,7 +1413,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/deployments/{deploymentId}/undeploy:
+  /websub-apis/{id}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy WebSub API from gateway
       operationId: undeployWebSubAPI
@@ -1425,7 +1425,7 @@ paths:
       tags:
         - WebSubAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1458,7 +1458,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/deployments/{deploymentId}/restore:
+  /websub-apis/{id}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous WebSub API deployment
       operationId: restoreWebSubAPIDeployment
@@ -1470,7 +1470,7 @@ paths:
       tags:
         - WebSubAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1575,7 +1575,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}:
+  /webbroker-apis/{id}:
     get:
       summary: Get WebBroker API by ID
       operationId: getWebBrokerAPI
@@ -1586,7 +1586,7 @@ paths:
       tags:
         - WebBrokerAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1614,7 +1614,7 @@ paths:
       tags:
         - WebBrokerAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1652,7 +1652,7 @@ paths:
       tags:
         - WebBrokerAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1669,7 +1669,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/api-keys:
+  /webbroker-apis/{id}/api-keys:
     post:
       summary: Create an API key for WebBroker API
       operationId: createWebBrokerAPIKey
@@ -1681,7 +1681,7 @@ paths:
       tags:
         - WebBrokerAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1708,7 +1708,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/api-keys/{keyName}:
+  /webbroker-apis/{id}/api-keys/{apiKeyId}:
     put:
       summary: Update an API key for WebBroker API
       description: |
@@ -1724,12 +1724,12 @@ paths:
       tags:
         - WebBrokerAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
             type: string
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           schema:
@@ -1773,12 +1773,12 @@ paths:
       tags:
         - WebBrokerAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
             type: string
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           schema:
@@ -1793,7 +1793,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/deployments:
+  /webbroker-apis/{id}/deployments:
     post:
       summary: Deploy WebBroker API to a gateway
       operationId: deployWebBrokerAPI
@@ -1805,7 +1805,7 @@ paths:
       tags:
         - WebBrokerAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1842,7 +1842,7 @@ paths:
       tags:
         - WebBrokerAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1870,7 +1870,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/deployments/{deploymentId}:
+  /webbroker-apis/{id}/deployments/{deploymentId}:
     get:
       summary: Get WebBroker API deployment by ID
       operationId: getWebBrokerAPIDeployment
@@ -1882,7 +1882,7 @@ paths:
       tags:
         - WebBrokerAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1916,7 +1916,7 @@ paths:
       tags:
         - WebBrokerAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1938,7 +1938,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy:
+  /webbroker-apis/{id}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy WebBroker API from gateway
       operationId: undeployWebBrokerAPI
@@ -1950,7 +1950,7 @@ paths:
       tags:
         - WebBrokerAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -1983,7 +1983,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/deployments/{deploymentId}/restore:
+  /webbroker-apis/{id}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous WebBroker API deployment
       operationId: restoreWebBrokerAPIDeployment
@@ -1995,7 +1995,7 @@ paths:
       tags:
         - WebBrokerAPI Deployments
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -3121,7 +3121,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/api-keys/{keyName}:
+  /llm-providers/{id}/api-keys/{apiKeyId}:
     delete:
       summary: Delete an API key for an LLM provider
       description: |
@@ -3143,7 +3143,7 @@ paths:
           schema:
             type: string
           example: wso2-openai-provider
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: Name of the API key to delete
@@ -3733,7 +3733,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/api-keys/{keyName}:
+  /llm-proxies/{id}/api-keys/{apiKeyId}:
     delete:
       summary: Delete an API key for an LLM proxy
       description: |
@@ -3755,7 +3755,7 @@ paths:
           schema:
             type: string
           example: wso2-openai-proxy
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: Name of the API key to delete
@@ -4354,7 +4354,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}:
+  /gateways/{id}:
     get:
       summary: Get gateway by UUID
       description: |
@@ -4368,7 +4368,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '200':
           description: Gateway retrieved successfully
@@ -4398,7 +4398,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       requestBody:
         description: Gateway object that needs to be updated
         required: true
@@ -4438,7 +4438,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '204':
           description: Gateway deleted successfully
@@ -4470,7 +4470,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}/tokens:
+  /gateways/{id}/tokens:
     get:
       summary: List active gateway tokens
       description: |
@@ -4485,7 +4485,7 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '200':
           description: List of active tokens
@@ -4515,7 +4515,7 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '201':
           description: New token generated successfully
@@ -4538,7 +4538,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}/tokens/{tokenId}:
+  /gateways/{id}/tokens/{tokenId}:
     delete:
       summary: Revoke gateway token
       description: |
@@ -4553,8 +4553,8 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
-        - $ref: '#/components/parameters/TokenID'
+        - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/tokenId'
       responses:
         '200':
           description: Token revoked successfully
@@ -4581,7 +4581,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}/live-proxy-artifacts:
+  /gateways/{id}/live-proxy-artifacts:
     get:
       summary: Get gateway artifacts
       description: |
@@ -4597,8 +4597,8 @@ paths:
         - Gateways
         - Artifacts
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
-        - $ref: '#/components/parameters/ArtifactType-Q'
+        - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/artifactType-Q'
       responses:
         '200':
           description: Paginated list of artifacts deployed to the gateway
@@ -4615,7 +4615,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}/manifest:
+  /gateways/{id}/manifest:
     get:
       summary: Get gateway policy manifest
       description: |
@@ -4630,7 +4630,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '200':
           description: Gateway policy manifest
@@ -4743,7 +4743,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateway-custom-policies/{customPolicyUuid}/versions/{version}:
+  /gateway-custom-policies/{uuid}/versions/{version}:
     get:
       summary: Get a specific custom policy version
       description: Returns a custom policy by its UUID and version for the current organization.
@@ -4755,7 +4755,7 @@ paths:
       tags:
         - Gateway Policies
       parameters:
-        - name: customPolicyUuid
+        - name: uuid
           in: path
           required: true
           schema:
@@ -4795,7 +4795,7 @@ paths:
       tags:
         - Gateway Policies
       parameters:
-        - name: customPolicyUuid
+        - name: uuid
           in: path
           required: true
           schema:
@@ -4909,7 +4909,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}:
+  /applications/{id}:
     get:
       summary: Get application by handle
       description: |
@@ -5006,7 +5006,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/api-keys:
+  /applications/{id}/api-keys:
     get:
       summary: List application API key mappings
       description: |
@@ -5094,7 +5094,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/api-keys/{keyId}:
+  /applications/{id}/api-keys/{apiKeyId}:
     delete:
       summary: Remove application API key mapping
       description: |
@@ -5126,7 +5126,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/associations:
+  /applications/{id}/associations:
     get:
       summary: List application associations
       description: |
@@ -5210,7 +5210,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/associations/{associationId}:
+  /applications/{id}/associations/{associationId}:
     delete:
       summary: Remove application association
       description: |
@@ -5240,7 +5240,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/associations/{associationId}/api-keys:
+  /applications/{id}/associations/{associationId}/api-keys:
     get:
       summary: List application API key mappings for an association
       description: |
@@ -5288,7 +5288,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/secrets:
+  /websub-apis/{id}/secrets:
     post:
       summary: Generate an HMAC secret for a WebSub API
       description: |
@@ -5305,7 +5305,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           description: Unique handle of the WebSub API
@@ -5353,7 +5353,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -5372,7 +5372,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/secrets/{secretName}:
+  /websub-apis/{id}/secrets/{secretName}:
     delete:
       summary: Delete an HMAC secret for a WebSub API
       description: Permanently removes the named HMAC secret. The secret will no longer be accepted for signature verification.
@@ -5385,7 +5385,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -5406,7 +5406,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/secrets/{secretName}/regenerate:
+  /websub-apis/{id}/secrets/{secretName}/regenerate:
     post:
       summary: Regenerate an HMAC secret value
       description: |
@@ -5422,7 +5422,7 @@ paths:
       tags:
         - WebSubAPIs
       parameters:
-        - name: apiId
+        - name: id
           in: path
           required: true
           schema:
@@ -5511,7 +5511,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /subscription-plans/{planId}:
+  /subscription-plans/{uuid}:
     get:
       summary: Get subscription plan by ID
       operationId: GetSubscriptionPlan
@@ -5522,7 +5522,7 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: planId
+        - name: uuid
           in: path
           required: true
           schema:
@@ -5551,7 +5551,7 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: planId
+        - name: uuid
           in: path
           required: true
           schema:
@@ -5592,7 +5592,7 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: planId
+        - name: uuid
           in: path
           required: true
           schema:
@@ -5717,7 +5717,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /subscriptions/{subscriptionId}:
+  /subscriptions/{uuid}:
     get:
       summary: Get subscription by ID
       description: |
@@ -5731,7 +5731,7 @@ paths:
       tags:
         - Subscriptions
       parameters:
-        - name: subscriptionId
+        - name: uuid
           in: path
           required: true
           description: Subscription UUID
@@ -5775,7 +5775,7 @@ paths:
       tags:
         - Subscriptions
       parameters:
-        - name: subscriptionId
+        - name: uuid
           in: path
           required: true
           description: Subscription UUID
@@ -5825,7 +5825,7 @@ paths:
       tags:
         - Subscriptions
       parameters:
-        - name: subscriptionId
+        - name: uuid
           in: path
           required: true
           description: Subscription UUID
@@ -5986,7 +5986,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /secrets/{handle}:
+  /secrets/{id}:
     get:
       summary: Get a secret by handle
       description: Returns metadata for a single secret. The plaintext value is never returned.
@@ -5998,7 +5998,7 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
           description: The secret handle
@@ -6034,7 +6034,7 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
           description: The secret handle
@@ -6082,7 +6082,7 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
           description: The secret handle
@@ -10560,29 +10560,29 @@ components:
             message: Service Unavailable
             description: Secrets management is not configured — set PLATFORM_SECRET_ENCRYPTION_KEY
   parameters:
-    organizationId:
-      name: organizationId
+    organizationUuid:
+      name: uuid
       in: path
       required: true
       description: |
-        **Organization ID** consisting of the **UUID** of the Organization.
+        **Organization UUID** consisting of the **UUID** of the Organization.
       schema:
         type: string
         format: uuid
         example: "123e4567-e89b-12d3-a456-426614174000"
 
-    ProjectID:
-      name: projectId
+    projectId:
+      name: id
       in: path
       required: true
       description: |
-        **Project ID** consisting of the **handle** (unique slug identifier) of the Project.
+        **Project ID** (handle — unique slug identifier) of the Project.
       schema:
         type: string
         example: "default-project"
 
     apiId:
-      name: apiId
+      name: id
       in: path
       description: |
         **API ID** consisting of the **handle** (unique identifier) of the API.
@@ -10592,7 +10592,7 @@ components:
         example: my-rest-api-handle
 
     appId:
-      name: appId
+      name: id
       in: path
       description: |
         **Application ID** consisting of the **handle** of the application.
@@ -10612,7 +10612,7 @@ components:
         example: provider-handle
 
     keyId:
-      name: keyId
+      name: apiKeyId
       in: path
       description: |
         **API Key ID** consisting of the **UUID** of the API key.
@@ -10623,7 +10623,7 @@ components:
         example: "d2612fbe-b297-4f3c-9d2d-cc821b4dc8d2"
 
     mappedKeyId:
-      name: keyId
+      name: apiKeyId
       in: path
       description: |
         **API Key ID** consisting of the **name** of the API key.
@@ -10685,17 +10685,17 @@ components:
         type: string
         example: "v1"
 
-    GatewayID:
-      name: gatewayId
+    gatewayId:
+      name: id
       in: path
       required: true
       description: |
-        **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
+        **Gateway ID** (handle — unique slug identifier) of the Gateway.
       schema:
         type: string
         example: "prod-gateway-01"
 
-    TokenID:
+    tokenId:
       name: tokenId
       in: path
       required: true
@@ -10706,7 +10706,7 @@ components:
         format: uuid
         example: "abc12345-f678-90de-f123-456789abcdef"
 
-    ArtifactType-Q:
+    artifactType-Q:
       name: artifactType
       in: query
       required: false

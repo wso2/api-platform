@@ -218,7 +218,7 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 		return
 	}
 
-	planId := r.PathValue("planId")
+	planId := r.PathValue("uuid")
 	if planId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
@@ -245,7 +245,7 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	planId := r.PathValue("planId")
+	planId := r.PathValue("uuid")
 	if planId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
@@ -336,7 +336,7 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	planId := r.PathValue("planId")
+	planId := r.PathValue("uuid")
 	if planId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
@@ -364,9 +364,9 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 func (h *SubscriptionPlanHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/subscription-plans", h.CreateSubscriptionPlan)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans", h.ListSubscriptionPlans)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans/{planId}", h.GetSubscriptionPlan)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscription-plans/{planId}", h.UpdateSubscriptionPlan)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscription-plans/{planId}", h.DeleteSubscriptionPlan)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans/{uuid}", h.GetSubscriptionPlan)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscription-plans/{uuid}", h.UpdateSubscriptionPlan)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscription-plans/{uuid}", h.DeleteSubscriptionPlan)
 }
 
 func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) map[string]any {

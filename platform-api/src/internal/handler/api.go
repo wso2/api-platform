@@ -176,7 +176,7 @@ func (h *APIHandler) GetAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("id")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -256,7 +256,7 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("id")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -335,7 +335,7 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("id")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -372,7 +372,7 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("id")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -429,7 +429,7 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("id")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -459,11 +459,11 @@ func (h *APIHandler) RegisterRoutes(mux *http.ServeMux) {
 	base := constants.APIBasePath + "/rest-apis"
 	mux.HandleFunc("POST "+base, h.CreateAPI)
 	mux.HandleFunc("GET "+base, h.ListAPIs)
-	mux.HandleFunc("GET "+base+"/{apiId}", h.GetAPI)
-	mux.HandleFunc("PUT "+base+"/{apiId}", h.UpdateAPI)
-	mux.HandleFunc("DELETE "+base+"/{apiId}", h.DeleteAPI)
-	mux.HandleFunc("GET "+base+"/{apiId}/gateways", h.GetAPIGateways)
-	mux.HandleFunc("POST "+base+"/{apiId}/gateways", h.AddGatewaysToAPI)
+	mux.HandleFunc("GET "+base+"/{id}", h.GetAPI)
+	mux.HandleFunc("PUT "+base+"/{id}", h.UpdateAPI)
+	mux.HandleFunc("DELETE "+base+"/{id}", h.DeleteAPI)
+	mux.HandleFunc("GET "+base+"/{id}/gateways", h.GetAPIGateways)
+	mux.HandleFunc("POST "+base+"/{id}/gateways", h.AddGatewaysToAPI)
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {
