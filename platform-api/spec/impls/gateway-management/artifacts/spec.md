@@ -323,7 +323,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 **Core Architecture:**
 - Gateways are scoped to organizations at the database level (each gateway belongs to exactly one organization via foreign key)
 - Gateway names are unique per organization, allowing different organizations to use the same gateway names
-- Gateways are exposed as root API resources at `/api/v1/gateways` (not nested under organizations in the URL)
+- Gateways are exposed as root API resources at `/api/v0.9/gateways` (not nested under organizations in the URL)
 - Organization ID is automatically extracted from JWT token claims, not provided in request body or URL path
 - Deleting an organization cascades to delete all its gateways and their tokens
 

@@ -85,7 +85,7 @@ Inside the `gateway/build.yaml`, ensure the policy module is added under `polici
 Deny access to certain tools while allowing all others:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: mcp-server-api-v1.0
@@ -113,7 +113,7 @@ spec:
 Allow access to only whitelisted resources:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: mcp-server-api-v1.0
@@ -141,7 +141,7 @@ spec:
 Apply different access control rules to different capability types:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: mcp-server-api-v1.0

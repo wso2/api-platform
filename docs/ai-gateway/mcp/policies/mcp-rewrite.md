@@ -84,7 +84,7 @@ Inside the `gateway/build.yaml`, ensure the policy module is added under `polici
 Expose tools with different names than the backend:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: mcp-server-api-v1.0
@@ -116,7 +116,7 @@ spec:
 Expose resources with user-friendly URIs mapped to backend resources:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: mcp-server-api-v1.0
@@ -148,7 +148,7 @@ spec:
 Rewrite prompts and tools with metadata:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: mcp-server-api-v1.0

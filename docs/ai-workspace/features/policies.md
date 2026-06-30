@@ -152,6 +152,21 @@ Policy chains execute in the following order for each request:
 6. Guardrails (response direction)
 7. Response policies (semantic cache write, etc.)
 
+## Policy Scope
+
+When attaching a policy to an LLM Provider or Proxy, you choose its scope:
+
+| Scope | Field | Counter behaviour |
+|-------|-------|-------------------|
+| **Global** | `globalPolicies` | One shared counter across **all** routes on the provider/proxy |
+| **Operation** | `operationPolicies` | Independent counter **per route** (path + method) |
+
+**Global** policies apply to every request regardless of path. A rate limit placed globally is exhausted by traffic on any route — hitting `/chat/completions` enough times will also block `/embeddings`. Use this to enforce an API-wide ceiling.
+
+**Operation** policies apply only to the routes you specify. Each route tracks its own counter independently, so `/chat/completions` and `/embeddings` are limited separately. Use this for per-endpoint control.
+
+When both scopes are present, global policies are evaluated first, followed by operation policies.
+
 ## Writing Custom Policies
 
 For self-hosted gateway deployments, you can write custom policies in Go using the Policy SDK. Custom policies are compiled into the gateway policy engine. See [`sdk/gateway/policy/v1alpha/`](../../sdk/gateway/policy/v1alpha/) for the SDK interfaces.

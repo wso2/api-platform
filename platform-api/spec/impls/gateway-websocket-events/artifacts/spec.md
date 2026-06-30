@@ -36,7 +36,7 @@ As the platform, when I receive an API deployment call, I need to send the API d
 
 **Acceptance Scenarios**:
 
-1. **Given** a gateway has an established connection to the platform, **When** an administrator calls the API deployment endpoint (`POST /api/v1/apis/:api_uuid/deploy-revision`) targeting that gateway, **Then** the platform sends a deployment event to the gateway via the established connection
+1. **Given** a gateway has an established connection to the platform, **When** an administrator calls the API deployment endpoint (`POST /api/v0.9/rest-apis/:api_uuid/deployments`) targeting that gateway, **Then** the platform sends a deployment event to the gateway via the established connection
 2. **Given** a deployment event is sent to a connected gateway, **When** the event is delivered, **Then** the event payload includes the API UUID, revision details, and deployment configuration (vhost) but excludes the API YAML (gateway retrieves this separately via an internal API endpoint)
 3. **Given** multiple gateways are connected to the platform, **When** an API deployment targets a specific gateway, **Then** only that gateway receives the deployment notification (not all connected gateways)
 4. **Given** an API deployment call is made, **When** the target gateway is not currently connected, **Then** the platform logs a delivery failure with the gateway identifier and event details
@@ -148,7 +148,7 @@ As a platform architect, I need the event delivery system to use an abstraction 
 - **FR-004**: When a gateway establishes a connection successfully, the platform MUST store the connection handle associated with the gateway identifier in the connection registry
 - **FR-005**: When a gateway disconnects, the platform MUST immediately remove the gateway from the connection registry and log the disconnection event
 - **FR-006**: The platform MUST detect ungraceful disconnections within 30 seconds using heartbeat/keepalive mechanisms
-- **FR-007**: When an API deployment action occurs (via `POST /api/v1/apis/:api_uuid/deploy-revision`), the platform MUST look up the target gateway's connections from the registry and broadcast the deployment event to all active connections for that gateway ID
+- **FR-007**: When an API deployment action occurs (via `POST /api/v0.9/rest-apis/:api_uuid/deployments`), the platform MUST look up the target gateway's connections from the registry and broadcast the deployment event to all active connections for that gateway ID
 - **FR-008**: API deployment events MUST include the API UUID, revision details, and deployment configuration (vhost) but MUST NOT include the API YAML (which the gateway retrieves separately)
 - **FR-009**: When sending an event to a gateway, if the gateway is not currently connected, the platform MUST log a delivery failure with the gateway identifier, event type, and timestamp
 - **FR-010**: The platform MUST support multiple event types (e.g., "api.deployed", "api.undeployed", "gateway.config.updated") with each event having a type identifier

@@ -55,7 +55,7 @@ Implementation follows existing pattern:
 
 ###  V. RESTful API Standards
 
-- Endpoints under `/api/v1/gateways`
+- Endpoints under `/api/v0.9/gateways`
 - Standard HTTP methods (POST, GET, DELETE)
 - Resource-oriented URLs
 - JSON content type
@@ -228,18 +228,18 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error)
 **Endpoints**:
 ```go
 // Enhanced gateway management endpoints
-func (h *GatewayHandler) CreateGateway(c *gin.Context)     // POST /api/v1/gateways
-func (h *GatewayHandler) ListGateways(c *gin.Context)      // GET /api/v1/gateways  
-func (h *GatewayHandler) GetGateway(c *gin.Context)        // GET /api/v1/gateways/{gatewayId}
-func (h *GatewayHandler) UpdateGateway(c *gin.Context)     // PUT /api/v1/gateways/{gatewayId}
-func (h *GatewayHandler) DeleteGateway(c *gin.Context)     // DELETE /api/v1/gateways/{gatewayId}
+func (h *GatewayHandler) CreateGateway(c *gin.Context)     // POST /api/v0.9/gateways
+func (h *GatewayHandler) ListGateways(c *gin.Context)      // GET /api/v0.9/gateways  
+func (h *GatewayHandler) GetGateway(c *gin.Context)        // GET /api/v0.9/gateways/{gatewayId}
+func (h *GatewayHandler) UpdateGateway(c *gin.Context)     // PUT /api/v0.9/gateways/{gatewayId}
+func (h *GatewayHandler) DeleteGateway(c *gin.Context)     // DELETE /api/v0.9/gateways/{gatewayId}
 
 // Lightweight status polling endpoint
-func (h *GatewayHandler) GetGatewayStatus(c *gin.Context)  // GET /api/v1/status/gateways
+func (h *GatewayHandler) GetGatewayStatus(c *gin.Context)  // GET /api/v0.9/status/gateways
 
 // Token management endpoints
-func (h *GatewayHandler) RotateToken(c *gin.Context)       // POST /api/v1/gateways/{gatewayId}/tokens
-func (h *GatewayHandler) RevokeToken(c *gin.Context)       // DELETE /api/v1/gateways/{gatewayId}/tokens/{tokenId}
+func (h *GatewayHandler) RotateToken(c *gin.Context)       // POST /api/v0.9/gateways/{gatewayId}/tokens
+func (h *GatewayHandler) RevokeToken(c *gin.Context)       // DELETE /api/v0.9/gateways/{gatewayId}/tokens/{tokenId}
 ```
 
 ### Phase 6: Server Wiring
@@ -250,7 +250,7 @@ Wire dependencies and register routes.
 
 **Integration**:
 - ✅ Dependency injection for GatewayHandler, GatewayService, and GatewayRepository
-- ✅ Route registration for all gateway endpoints under `/api/v1/gateways`
+- ✅ Route registration for all gateway endpoints under `/api/v0.9/gateways`
 - ✅ JWT middleware integration for organization-scoped access control
 - ✅ Proper error handling and response formatting
 
