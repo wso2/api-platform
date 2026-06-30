@@ -73,7 +73,7 @@ type CreateSubscriptionPlanRequest struct {
 	Handle             string  `json:"handle" binding:"required"`
 	Name               string  `json:"name" binding:"required"`
 	BillingPlan        string  `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
@@ -86,7 +86,7 @@ type UpdateSubscriptionPlanRequest struct {
 	Handle             *string `json:"handle,omitempty"`
 	Name               *string `json:"name,omitempty"`
 	BillingPlan        *string `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
@@ -105,11 +105,6 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid create subscription plan request body", "organizationId", orgId, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 
@@ -135,7 +130,7 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		Handle:             req.Handle,
 		Name:               req.Name,
 		BillingPlan:        req.BillingPlan,
-		StopOnQuotaReach:   1,
+		StopOnQuotaReach:   true,
 		ThrottleLimitCount: req.ThrottleLimitCount,
 		ThrottleLimitUnit:  throttleLimitUnit,
 		Status:             model.SubscriptionPlanStatus(req.Status),
@@ -260,11 +255,6 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 

@@ -299,7 +299,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 			Handle:             plan.Handle,
 			PlanName:           plan.Name,
 			BillingPlan:        plan.BillingPlan,
-			StopOnQuotaReach:   plan.StopOnQuotaReach != 0,
+			StopOnQuotaReach:   plan.StopOnQuotaReach,
 			ThrottleLimitCount: plan.ThrottleLimitCount,
 			ThrottleLimitUnit:  plan.ThrottleLimitUnit,
 			ExpiryTime:         plan.ExpiryTime,

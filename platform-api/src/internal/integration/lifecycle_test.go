@@ -107,7 +107,7 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		slug := fmt.Sprintf("plan-%d-%s", i, id()[:6])
 		plan := &model.SubscriptionPlan{
 			UUID: id(), Handle: slug, Name: fmt.Sprintf("Plan %d", i),
-			BillingPlan: "free", StopOnQuotaReach: 1,
+			BillingPlan: "free", StopOnQuotaReach: true,
 			ThrottleLimitCount: &count, ThrottleLimitUnit: "min",
 			OrganizationUUID: org.ID, Status: model.SubscriptionPlanStatus("ACTIVE"),
 		}
@@ -129,8 +129,8 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		if p.ThrottleLimitCount == nil || *p.ThrottleLimitCount != count {
 			t.Fatalf("[%s] list hydrate: ThrottleLimitCount = %v, want %d", it.driver, p.ThrottleLimitCount, count)
 		}
-		if p.ThrottleLimitUnit != "min" || p.StopOnQuotaReach != 1 {
-			t.Fatalf("[%s] list hydrate: unit=%q stop=%d, want unit=min stop=1", it.driver, p.ThrottleLimitUnit, p.StopOnQuotaReach)
+		if p.ThrottleLimitUnit != "min" || !p.StopOnQuotaReach {
+			t.Fatalf("[%s] list hydrate: unit=%q stop=%v, want unit=min stop=true", it.driver, p.ThrottleLimitUnit, p.StopOnQuotaReach)
 		}
 	}
 	got, err := planRepo.GetByID(plans[0].UUID, org.ID)
@@ -145,7 +145,7 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 	// report no throttle with the default stop_on_quota_reach.
 	got.ThrottleLimitCount = nil
 	got.ThrottleLimitUnit = ""
-	got.StopOnQuotaReach = 1
+	got.StopOnQuotaReach = true
 	if err := planRepo.Update(got); err != nil {
 		t.Fatalf("[%s] Update (clear throttle) failed: %v", it.driver, err)
 	}
