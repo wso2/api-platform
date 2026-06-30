@@ -82,7 +82,7 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 	// Insert into webbroker_apis table
 	query := `
 		INSERT INTO webbroker_apis (
-			uuid, organization_uuid, handle, name, version, project_uuid, description, created_by, lifecycle_status, configuration, origin, created_at, updated_at
+			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, lifecycle_status, configuration, origin, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
@@ -103,7 +103,7 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 		FROM webbroker_apis
 		WHERE handle = ? AND organization_uuid = ?`
@@ -115,7 +115,7 @@ func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBroker
 func (r *WebBrokerAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 		FROM webbroker_apis
 		WHERE uuid = ? AND organization_uuid = ?`
@@ -132,7 +132,7 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	if projectUUID != "" {
 		query = `
 			SELECT
-				uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 			FROM webbroker_apis
 			WHERE organization_uuid = ? AND project_uuid = ?
@@ -142,7 +142,7 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	} else {
 		query = `
 			SELECT
-				uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
+				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
 				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 			FROM webbroker_apis
 			WHERE organization_uuid = ?
@@ -217,7 +217,7 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 	// Update webbroker_apis table (name/version/updated_at now live here)
 	query = `
 		UPDATE webbroker_apis
-		SET name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
 		a.Name, a.Version, a.Description, a.LifeCycleStatus, configurationJSON, a.UpdatedBy, now,

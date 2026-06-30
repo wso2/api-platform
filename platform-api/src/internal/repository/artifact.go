@@ -117,17 +117,17 @@ func (r *ArtifactRepo) Exists(kind, handle, orgUUID string) (bool, error) {
 // GetAPIMetadataByHandle retrieves minimal API metadata by handle across all API type tables.
 func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error) {
 	query := `
-		SELECT uuid, handle, name, version, type, organization_uuid
+		SELECT uuid, handle, display_name, version, type, organization_uuid
 		FROM (
-			SELECT uuid, handle, name, version, 'RestApi'      AS type, organization_uuid FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'RestApi'      AS type, organization_uuid FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'LlmProxy'     AS type, organization_uuid FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'LlmProxy'     AS type, organization_uuid FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'Mcp'          AS type, organization_uuid FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'Mcp'          AS type, organization_uuid FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'WebSubApi'    AS type, organization_uuid FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'WebSubApi'    AS type, organization_uuid FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'WebBrokerApi' AS type, organization_uuid FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'WebBrokerApi' AS type, organization_uuid FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
 		) combined
 	`
 	metadata := &model.APIMetadata{}
@@ -148,18 +148,18 @@ func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.AP
 // derived from the matching kind-specific table.
 func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {
 	query := `
-		SELECT uuid, handle, name, version, type, organization_uuid, origin FROM (
-			SELECT uuid, handle, name, version, 'RestApi'      AS type, organization_uuid, origin FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
+		SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (
+			SELECT uuid, handle, display_name, version, 'RestApi'      AS type, organization_uuid, origin FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'WebSubApi'    AS type, organization_uuid, origin FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'WebSubApi'    AS type, organization_uuid, origin FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'WebBrokerApi' AS type, organization_uuid, origin FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'WebBrokerApi' AS type, organization_uuid, origin FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'LlmProvider'  AS type, organization_uuid, origin FROM llm_providers  WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'LlmProvider'  AS type, organization_uuid, origin FROM llm_providers  WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'LlmProxy'     AS type, organization_uuid, origin FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'LlmProxy'     AS type, organization_uuid, origin FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'Mcp'          AS type, organization_uuid, origin FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'Mcp'          AS type, organization_uuid, origin FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
 		) combined
 		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)
@@ -181,18 +181,18 @@ func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, err
 // derived from the matching kind-specific table.
 func (r *ArtifactRepo) GetByUUID(uuid, orgUUID string) (*model.Artifact, error) {
 	query := `
-		SELECT uuid, handle, name, version, type, organization_uuid, origin FROM (
-			SELECT uuid, handle, name, version, 'RestApi'      AS type, organization_uuid, origin FROM rest_apis      WHERE uuid = ? AND organization_uuid = ?
+		SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (
+			SELECT uuid, handle, display_name, version, 'RestApi'      AS type, organization_uuid, origin FROM rest_apis      WHERE uuid = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'WebSubApi'    AS type, organization_uuid, origin FROM websub_apis    WHERE uuid = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'WebSubApi'    AS type, organization_uuid, origin FROM websub_apis    WHERE uuid = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'WebBrokerApi' AS type, organization_uuid, origin FROM webbroker_apis WHERE uuid = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'WebBrokerApi' AS type, organization_uuid, origin FROM webbroker_apis WHERE uuid = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'LlmProvider'  AS type, organization_uuid, origin FROM llm_providers  WHERE uuid = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'LlmProvider'  AS type, organization_uuid, origin FROM llm_providers  WHERE uuid = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'LlmProxy'     AS type, organization_uuid, origin FROM llm_proxies    WHERE uuid = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'LlmProxy'     AS type, organization_uuid, origin FROM llm_proxies    WHERE uuid = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, 'Mcp'          AS type, organization_uuid, origin FROM mcp_proxies    WHERE uuid = ? AND organization_uuid = ?
+			SELECT uuid, handle, display_name, version, 'Mcp'          AS type, organization_uuid, origin FROM mcp_proxies    WHERE uuid = ? AND organization_uuid = ?
 		) combined
 		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)
