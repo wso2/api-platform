@@ -42,7 +42,7 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 	project.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO projects (uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at)
+		INSERT INTO projects (uuid, handle, display_name, organization_uuid, description, created_by, created_at, updated_by, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query), project.ID, project.Handle, project.Name, project.OrganizationID, project.Description,
@@ -58,7 +58,7 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
-		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		SELECT uuid, handle, display_name, organization_uuid, description, created_by, created_at, updated_by, updated_at
 		FROM projects
 		WHERE uuid = ?
 	`
@@ -82,9 +82,9 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
-		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		SELECT uuid, handle, display_name, organization_uuid, description, created_by, created_at, updated_by, updated_at
 		FROM projects
-		WHERE name = ? AND organization_uuid = ?
+		WHERE display_name = ? AND organization_uuid = ?
 	`
 	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
@@ -106,7 +106,7 @@ func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Proje
 func (r *ProjectRepo) GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
-		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		SELECT uuid, handle, display_name, organization_uuid, description, created_by, created_at, updated_by, updated_at
 		FROM projects
 		WHERE handle = ? AND organization_uuid = ?
 	`
@@ -129,7 +129,7 @@ func (r *ProjectRepo) GetProjectByHandleAndOrgID(handle, orgID string) (*model.P
 // GetProjectsByOrganizationID retrieves all projects for an organization
 func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Project, error) {
 	query := `
-		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		SELECT uuid, handle, display_name, organization_uuid, description, created_by, created_at, updated_by, updated_at
 		FROM projects
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -162,7 +162,7 @@ func (r *ProjectRepo) UpdateProject(project *model.Project) error {
 	project.UpdatedAt = time.Now()
 	query := `
 		UPDATE projects
-		SET name = ?, description = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, description = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?
 	`
 	_, err := r.db.Exec(r.db.Rebind(query), project.Name, project.Description, project.UpdatedBy, project.UpdatedAt, project.ID)
@@ -180,7 +180,7 @@ func (r *ProjectRepo) DeleteProject(projectId string) error {
 func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Project, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, handle, name, organization_uuid, description, created_at, updated_at
+		SELECT uuid, handle, display_name, organization_uuid, description, created_at, updated_at
 		FROM projects
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC

@@ -44,7 +44,7 @@ func (r *WebSubAPIHmacSecretRepo) Create(secret *model.WebSubAPIHmacSecret) erro
 	secret.CreatedAt = now
 	secret.UpdatedAt = now
 	query := `
-		INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, handle, name, encrypted_secret, status, created_by, created_at, updated_by, updated_at)
+		INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, handle, display_name, encrypted_secret, status, created_by, created_at, updated_by, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.Exec(r.db.Rebind(query),
 		secret.UUID, secret.ArtifactUUID, secret.Handle, secret.Name,
@@ -56,7 +56,7 @@ func (r *WebSubAPIHmacSecretRepo) Create(secret *model.WebSubAPIHmacSecret) erro
 // GetByArtifactAndName fetches a specific HMAC secret by artifact UUID and handle
 func (r *WebSubAPIHmacSecretRepo) GetByArtifactAndName(artifactUUID, handle string) (*model.WebSubAPIHmacSecret, error) {
 	query := `
-		SELECT uuid, artifact_uuid, handle, name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
+		SELECT uuid, artifact_uuid, handle, display_name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
 		FROM websub_api_hmac_secrets
 		WHERE artifact_uuid = ? AND handle = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), artifactUUID, handle)
@@ -77,7 +77,7 @@ func (r *WebSubAPIHmacSecretRepo) GetByArtifactAndName(artifactUUID, handle stri
 // ListByArtifact returns all HMAC secrets for an artifact
 func (r *WebSubAPIHmacSecretRepo) ListByArtifact(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error) {
 	query := `
-		SELECT uuid, artifact_uuid, handle, name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
+		SELECT uuid, artifact_uuid, handle, display_name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
 		FROM websub_api_hmac_secrets
 		WHERE artifact_uuid = ?
 		ORDER BY created_at ASC`

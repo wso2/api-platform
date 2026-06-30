@@ -71,7 +71,7 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 
 	query := r.db.Rebind(`
 		INSERT INTO secrets (
-			uuid, organization_uuid, handle, name, description,
+			uuid, organization_uuid, handle, display_name, description,
 			ciphertext, hash, type, provider, status,
 			created_at, created_by, updated_at, updated_by
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -101,7 +101,7 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 	return tx.Commit()
 }
 
-const secretCols = `SELECT uuid, organization_uuid, handle, name, description,
+const secretCols = `SELECT uuid, organization_uuid, handle, display_name, description,
 	       ciphertext, hash, type, provider, status,
 	       created_at, created_by, updated_at, updated_by FROM secrets`
 
@@ -206,7 +206,7 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 
 	query := r.db.Rebind(`
 		UPDATE secrets
-		SET name = ?, description = ?, ciphertext = ?, hash = ?,
+		SET display_name = ?, description = ?, ciphertext = ?, hash = ?,
 		    status = ?, updated_at = ?, updated_by = ?
 		WHERE organization_uuid = ? AND handle = ?
 	`)
@@ -257,7 +257,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	refsQuery := r.db.Rebind(`
 		SELECT DISTINCT
 			COALESCE(ra.handle, lp.handle, lpr.handle, mcp.handle, asr.artifact_uuid) AS handle,
-			COALESCE(ra.name,   lp.name,   lpr.name,   mcp.name,   '')               AS name,
+			COALESCE(ra.display_name,   lp.display_name,   lpr.display_name,   mcp.display_name,   '')               AS display_name,
 			art.type
 		FROM artifact_secret_refs asr
 		JOIN artifacts art ON art.uuid = asr.artifact_uuid
@@ -316,7 +316,7 @@ func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, er
 	query := r.db.Rebind(`
 		SELECT DISTINCT
 			COALESCE(ra.handle, lp.handle, lpr.handle, mcp.handle, asr.artifact_uuid) AS handle,
-			COALESCE(ra.name,   lp.name,   lpr.name,   mcp.name,   '')               AS name,
+			COALESCE(ra.display_name,   lp.display_name,   lpr.display_name,   mcp.display_name,   '')               AS display_name,
 			art.type
 		FROM artifact_secret_refs asr
 		JOIN artifacts art ON art.uuid = asr.artifact_uuid

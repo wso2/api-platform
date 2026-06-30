@@ -19,7 +19,7 @@
 CREATE TABLE IF NOT EXISTS organizations (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS organizations (
 CREATE TABLE IF NOT EXISTS projects (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS applications (
     handle VARCHAR(40) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     type VARCHAR(50) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
 CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
     expiry_time DATETIME,
     organization_uuid VARCHAR(40) NOT NULL,
@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
     vhost VARCHAR(255) NOT NULL,
@@ -253,7 +253,7 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
     uuid VARCHAR(40) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
@@ -294,7 +294,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
     group_id VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
@@ -317,7 +317,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
 CREATE TABLE IF NOT EXISTS llm_providers (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
     template_uuid VARCHAR(40) NOT NULL,
@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS llm_providers (
 CREATE TABLE IF NOT EXISTS llm_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -366,7 +366,7 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
 CREATE TABLE IF NOT EXISTS mcp_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40),
     description VARCHAR(1023),
@@ -389,7 +389,7 @@ CREATE TABLE IF NOT EXISTS websub_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -413,7 +413,7 @@ CREATE TABLE IF NOT EXISTS websub_api_hmac_secrets (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255),
+    display_name VARCHAR(255),
     encrypted_secret BLOB NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -428,7 +428,7 @@ CREATE TABLE IF NOT EXISTS webbroker_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -451,7 +451,7 @@ CREATE INDEX IF NOT EXISTS idx_webbroker_apis_project ON webbroker_apis(project_
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(63) NOT NULL,
+    display_name VARCHAR(63) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes BLOB NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -464,7 +464,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, name)
+    UNIQUE(artifact_uuid, display_name)
 );
 
 -- Application API Key mappings table
@@ -586,7 +586,7 @@ CREATE TABLE IF NOT EXISTS secrets (
     uuid              VARCHAR(40)   PRIMARY KEY,
     organization_uuid VARCHAR(40)   NOT NULL,
     handle            VARCHAR(40)   NOT NULL,
-    name              VARCHAR(255)  NOT NULL,
+    display_name              VARCHAR(255)  NOT NULL,
     description       VARCHAR(1023),
     ciphertext        BLOB          NOT NULL,
     hash              VARCHAR(255)  NOT NULL,
