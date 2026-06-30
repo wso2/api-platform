@@ -92,7 +92,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	deployment, err := h.websubAPIDeploymentService.DeployWebSubAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {

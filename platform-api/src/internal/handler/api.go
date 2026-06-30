@@ -91,7 +91,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	apiResponse, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
@@ -279,7 +279,7 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	apiResponse, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId, updatedBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -340,7 +340,7 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 	err := h.apiService.DeleteAPIByHandle(apiId, orgId, deletedBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -506,7 +506,7 @@ func (h *APIHandler) ImportAPIProject(w http.ResponseWriter, r *http.Request) {
 	// Create Git service
 	gitService := service.NewGitService()
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	// Import API project
 	apiResponse, err := h.apiService.ImportAPIProject(&req, orgId, createdBy, gitService)
 	if err != nil {
@@ -735,7 +735,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	// Import API from OpenAPI definition
 	apiResponse, err := h.apiService.ImportFromOpenAPI(&apiDetails, req.Url, definitionHeader, orgId, createdBy)
 	if err != nil {

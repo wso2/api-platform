@@ -71,7 +71,7 @@ func (h *MCPProxyHandler) CreateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if req.ProjectId == nil {
 		h.slogger.Debug("No project ID provided for MCP proxy, proceeding without project association", "mcpProxyId", req.Id)
@@ -170,7 +170,7 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	resp, err := h.service.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -189,7 +189,7 @@ func (h *MCPProxyHandler) DeleteMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	id := r.PathValue("id")
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.service.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)

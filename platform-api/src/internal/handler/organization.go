@@ -79,7 +79,7 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 		id = generated
 	}
 
-	performedBy, _ := middleware.GetUsernameFromRequest(r)
+	performedBy, _ := middleware.GetUserIDFromRequest(r)
 	org, err := h.orgService.RegisterOrganization(id, req.Handle, req.Name, req.Region, performedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {

@@ -92,7 +92,7 @@ func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(w http.ResponseWriter
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	deployment, err := h.webbrokerAPIDeploymentService.DeployWebBrokerAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {

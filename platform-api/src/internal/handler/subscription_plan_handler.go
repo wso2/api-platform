@@ -154,9 +154,9 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		plan.ExpiryTime = &t
 	}
 
-	actor, ok := middleware.GetUsernameFromRequest(r)
+	actor, ok := middleware.GetUserIDFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
 		return
 	}
 	created, err := h.planService.CreatePlan(orgId, actor, plan)
@@ -310,9 +310,9 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		update.ExpiryTime = &t
 	}
 
-	actor, ok := middleware.GetUsernameFromRequest(r)
+	actor, ok := middleware.GetUserIDFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
 		return
 	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
@@ -346,9 +346,9 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	actor, ok := middleware.GetUsernameFromRequest(r)
+	actor, ok := middleware.GetUserIDFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
 		return
 	}
 	err := h.planService.DeletePlan(planId, orgId, actor)

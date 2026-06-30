@@ -76,7 +76,7 @@ func (h *WebSubAPIHandler) CreateWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	resp, err := h.websubAPIService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -157,7 +157,7 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	resp, err := h.websubAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -176,7 +176,7 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 	}
 
 	id := r.PathValue("apiId")
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)

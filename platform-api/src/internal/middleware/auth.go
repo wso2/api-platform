@@ -190,7 +190,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	}
 
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, keyUserID, sub)
+	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, ""))
 	ctx = context.WithValue(ctx, keyUsername, claimsObj.Username)
 	ctx = context.WithValue(ctx, keyEmail, claimsObj.Email)
 	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
@@ -229,11 +229,9 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) 
 			orgName := getStringClaim(mapClaims, claimNames.OrgNameClaim)
 			orgHandle := getStringClaim(mapClaims, claimNames.OrgHandleClaim)
 
-			userID := authCtx.UserID
-			if claimNames.UserIDClaim != "" {
-				if v := getStringClaim(mapClaims, claimNames.UserIDClaim); v != "" {
-					userID = v
-				}
+			userID := resolveUserID(mapClaims, claimNames.UserIDClaim)
+			if userID == "" {
+				userID = authCtx.UserID
 			}
 
 			username := getStringClaim(mapClaims, claimNames.UsernameClaim)
@@ -347,6 +345,21 @@ func getStringClaim(claims jwt.MapClaims, name string) string {
 	}
 	v, _ := claims[name].(string)
 	return v
+}
+
+// resolveUserID returns the stable user identifier used for audit fields
+// (createdBy/updatedBy/etc.). It prefers an explicitly configured claim name,
+// then the conventional "user_id" claim, and finally falls back to "sub".
+// Returns an empty string only when none of these are present.
+func resolveUserID(claims jwt.MapClaims, configuredClaim string) string {
+	if v := getStringClaim(claims, configuredClaim); v != "" {
+		return v
+	}
+	if v := getStringClaim(claims, "user_id"); v != "" {
+		return v
+	}
+	sub, _ := claims["sub"].(string)
+	return sub
 }
 
 func audienceToString(claims jwt.MapClaims) string {
@@ -485,6 +498,7 @@ func NewTestContextMiddleware(next http.Handler) http.Handler {
 		}
 		if user := r.Header.Get("X-Test-User"); user != "" {
 			ctx = context.WithValue(ctx, keyUsername, user)
+			ctx = context.WithValue(ctx, keyUserID, user)
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
