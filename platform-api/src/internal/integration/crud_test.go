@@ -179,7 +179,7 @@ func TestLifecycle_GatewayCreateListAndTokenGenerate(t *testing.T) {
 			Name:              fmt.Sprintf("gateway %d", i),
 			Handle:            fmt.Sprintf("gw-%d-%s", i, id()[:6]),
 			Description:       "created by integration test",
-			Vhost:             "localhost",
+			Endpoints:         []model.GatewayEndpoint{{Host: "localhost", Protocol: "https", Port: 443}},
 			FunctionalityType: "REGULAR",
 			Version:           "1.0.0",
 			Properties:        map[string]interface{}{"region": "us"},
