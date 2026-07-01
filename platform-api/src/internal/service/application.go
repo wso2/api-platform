@@ -283,8 +283,6 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Ap
 
 	if req.Description != nil {
 		app.Description = strings.TrimSpace(*req.Description)
-	} else {
-		app.Description = ""
 	}
 
 	if req.Type != "" {

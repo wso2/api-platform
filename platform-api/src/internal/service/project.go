@@ -213,8 +213,6 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 
 	if req.Description != nil {
 		project.Description = *req.Description
-	} else {
-		project.Description = ""
 	}
 	project.UpdatedAt = time.Now()
 	project.UpdatedBy = actor

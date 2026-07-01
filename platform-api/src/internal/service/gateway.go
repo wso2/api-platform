@@ -658,8 +658,6 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 	gateway.Name = req.DisplayName
 	if req.Description != nil {
 		gateway.Description = *req.Description
-	} else {
-		gateway.Description = ""
 	}
 	if req.IsCritical != nil {
 		gateway.IsCritical = *req.IsCritical
