@@ -257,7 +257,7 @@ func login() (string, error) {
 
 func createProject() (string, error) {
 	st, body, err := apiCall(http.MethodPost, "/api/v0.9/projects", suite.token,
-		map[string]string{"id": "e2e-proj", "displayName": "e2e-proj", "description": "e2e"})
+		map[string]string{"name": "e2e-proj", "description": "e2e"})
 	if err != nil {
 		return "", err
 	}
@@ -270,7 +270,7 @@ func createProject() (string, error) {
 
 func createGatewayAndToken(name string) (gatewayID, token string, err error) {
 	st, body, err := apiCall(http.MethodPost, "/api/v0.9/gateways", suite.token, map[string]any{
-		"id": name, "displayName": name, "vhost": ingressHost, "functionalityType": "regular",
+		"name": name, "displayName": name, "endpoints": []string{"https://" + ingressHost}, "functionalityType": "regular",
 	})
 	if err != nil {
 		return "", "", err
