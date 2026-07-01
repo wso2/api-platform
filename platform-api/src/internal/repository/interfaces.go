@@ -136,9 +136,6 @@ type DeploymentRepository interface {
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 	HasActiveDeployment(artifactUUID, orgUUID string) (bool, error)
 	GetLatestDeploymentTime(artifactUUID, orgUUID string) (*time.Time, error)
-	// GetLiveGatewayIDs returns the gateways on which the artifact is currently live
-	// (status DEPLOYED, DEPLOYING, or UNDEPLOYING) — i.e. still present on the gateway.
-	GetLiveGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 
 	// Gateway deployment methods
 	GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)

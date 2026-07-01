@@ -99,7 +99,6 @@ var (
 	ErrDeploymentAlreadyDeployed     = errors.New("cannot restore to the currently deployed deployment")
 	ErrInvalidDeploymentRestoreState = errors.New("deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible")
 	ErrGatewayIDMismatch             = errors.New("gateway ID mismatch: deployment is bound to a different gateway")
-	ErrAssociationGatewayDeployed    = errors.New("cannot remove gateway association: the provider is actively deployed on the gateway - undeploy it first")
 )
 
 var (

@@ -793,40 +793,6 @@ func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]
 	return gatewayIDs, nil
 }
 
-// GetLiveGatewayIDs returns the gateways on which the artifact is currently live, i.e.
-// deployed or in a transitional state where it is still present on the gateway. Fully
-// undeployed/archived/failed gateways are excluded.
-func (r *DeploymentRepo) GetLiveGatewayIDs(artifactUUID, orgUUID string) ([]string, error) {
-	query := `
-		SELECT gateway_uuid FROM deployment_status
-		WHERE artifact_uuid = ? AND organization_uuid = ? AND status IN (?, ?, ?)`
-
-	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID,
-		string(model.DeploymentStatusDeployed),
-		string(model.DeploymentStatusDeploying),
-		string(model.DeploymentStatusUndeploying),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var gatewayIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		gatewayIDs = append(gatewayIDs, id)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating live gateway IDs: %w", err)
-	}
-
-	return gatewayIDs, nil
-}
-
 // GetControlPlaneDeploymentsByGateway retrieves the control-plane-owned deployments for a
 // specific gateway. Data-plane-originated (gateway_api) artifacts are excluded because they are
 // owned by the gateway and pushed up to the CP (DP->CP); syncing them back down would make the

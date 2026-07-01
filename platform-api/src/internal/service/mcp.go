@@ -359,10 +359,9 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
-	// replaces the full set. A gateway the proxy is actively deployed on must remain
-	// associated, so the update is rejected if it would drop such a gateway. Deployments
-	// themselves are never modified here.
-	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, req.AssociatedGateways)
+	// replaces the full set, removing any mapping no longer listed. Deployment state is not
+	// consulted and deployment records are never modified here.
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
 	if err != nil {
 		return nil, err
 	}
