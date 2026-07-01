@@ -5815,8 +5815,11 @@ components:
             value: "MyValue"
         version:
           type: string
-          description: Semantic version of the policy
-          example: "1.0.0"
+          description: >
+            Version of the policy. Only major-only version is allowed (e.g., v0, v1).
+            Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+          pattern: '^v\d+$'
+          example: v1
 
     AddGatewayToRESTAPIRequest:
       title: AddGatewayToAPIRequest object with basic gateway details
@@ -7276,7 +7279,11 @@ components:
           example: budgetControl
         version:
           type: string
-          example: v1.0.0
+          description: >
+            Version of the policy. Only major-only version is allowed (e.g., v0, v1).
+            Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+          pattern: '^v\d+$'
+          example: v1
         paths:
           type: array
           items:
@@ -7314,6 +7321,10 @@ components:
           example: token-based-ratelimit
         version:
           type: string
+          description: >
+            Version of the policy. Only major-only version is allowed (e.g., v0, v1).
+            Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+          pattern: '^v\d+$'
           example: v1
         executionCondition:
           type: string

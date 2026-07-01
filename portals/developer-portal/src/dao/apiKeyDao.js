@@ -24,7 +24,7 @@ const constants = require('../utils/constants');
 
 const API_METADATA_INCLUDE = {
     model: APIMetadata,
-    attributes: ['uuid', 'name', 'version', 'handle']
+    attributes: ['uuid', 'name', 'version', 'handle', 'ref_id']
 };
 
 function appMappingInclude(required = false, appId = null) {

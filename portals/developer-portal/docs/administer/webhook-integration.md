@@ -249,6 +249,12 @@ Fired whenever a single key's application association changes: the key is associ
   "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
+    "name": "my-key",
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    },
     "application": {
       "id": "app-uuid",
       "name": "My App"

@@ -45,6 +45,18 @@ export interface ProjectListResponse {
 // ============================================================================
 // Project API Functions
 // ============================================================================
+export const DEFAULT_PROJECT_NAME = 'Default';
+
+/**
+ * Create the starter "Default Project" for a newly provisioned organization.
+ */
+export async function createDefaultProject(): Promise<void> {
+  try {
+    await createProject({ name: DEFAULT_PROJECT_NAME }, PLATFORM_API_BASE_URL);
+  } catch (error) {
+    logger.error('Failed to create default project for new organization:', error);
+  }
+}
 
 /**
  * Create a new project.

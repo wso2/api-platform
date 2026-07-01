@@ -26,7 +26,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { logger } from '../utils/logger';
-import { getProjects } from '../apis/projectApis';
+import { getProjects, createDefaultProject } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
 import { useChoreoUser } from './ChoreoUserContext';
 import { useAppAuth } from './AppAuthContext';
@@ -106,7 +106,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const fetchProjectsForOrg = useCallback(async (): Promise<ProjectBase[]> => {
     setIsProjectsLoading(true);
     try {
-      const projectList = await getProjects();
+      let projectList = await getProjects();
+      if (projectList.length === 0) {
+        await createDefaultProject();
+        projectList = await getProjects();
+      }
       setProjectsForCurrentOrganization(projectList);
       setCurrentProjectState(null);
       return projectList;
