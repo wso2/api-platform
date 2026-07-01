@@ -20,6 +20,7 @@ const path = require('path');
 const logger = require('../config/logger');
 const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
+const apiFileDao = require('../dao/apiFileDao');
 const viewDao = require('../dao/viewDao');
 const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
@@ -60,7 +61,7 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.apiWorkflows = apiWorkflows;
 
         const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
-        templateContent.orgAPIs = allAPIs.map(api => ({
+        templateContent.orgAPIs = await Promise.all(allAPIs.map(async api => ({
             apiId: api.uuid,
             apiName: api.name,
             apiHandle: api.handle,
@@ -73,7 +74,8 @@ const loadViewSettingsPage = async (req, res) => {
             tags: (api.dp_tags || []).map(tag => tag.name),
             agentVisibility: api.agent_visibility,
             subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.name),
-        }));
+            existingDocs: await apiFileDao.listDocNames(orgId, api.uuid),
+        })));
 
         let orgLabels = [];
         try {

@@ -1016,18 +1016,6 @@ const getAPIDocTypes = async (orgId, apiId) => {
     }
 }
 
-const listApiDocs = async (req, res) => {
-    const orgId = req.orgId;
-    const { apiId } = req.params;
-    try {
-        const names = await apiFileDao.listDocNames(orgId, apiId);
-        res.status(200).json(names.map(fileName => ({ fileName })));
-    } catch (error) {
-        logger.error('API doc list failed', { error: error.message, orgId, apiId });
-        util.handleError(res, error);
-    }
-};
-
 const deleteAPIFile = async (req, res) => {
     logger.info('Deleting API file...', {
         orgId: req.orgId,
@@ -1971,7 +1959,6 @@ module.exports = {
     updateAPIContent,
     getAPIFile,
     getAPIDocTypes,
-    listApiDocs,
     deleteAPIFile,
     getMetadataListFromDB,
     getMetadataFromDB,
