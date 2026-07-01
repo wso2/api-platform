@@ -539,6 +539,11 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 		return nil, err
 	}
 
+	normalizedEndpoints := make([]string, len(endpoints))
+	for i, endpoint := range endpoints {
+		normalizedEndpoints[i] = strings.TrimSpace(endpoint)
+	}
+
 	version = strings.TrimSpace(version)
 	if version == "" {
 		version = defaultGatewayVersion
@@ -586,7 +591,7 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 		Name:              displayName,
 		Description:       description,
 		Properties:        properties,
-		Endpoints:         endpoints,
+		Endpoints:         normalizedEndpoints,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
 		Version:           version,

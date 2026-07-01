@@ -372,6 +372,7 @@ components:
         endpoints:
           type: array
           description: Network endpoints exposed by this gateway, each as a full URL string
+          minItems: 1
           items:
             type: string
             maxLength: 255

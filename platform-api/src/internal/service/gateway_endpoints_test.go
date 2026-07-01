@@ -117,6 +117,24 @@ func TestRegisterGatewayEndpoints(t *testing.T) {
 		}
 	})
 
+	t.Run("endpoint with surrounding whitespace — trimmed before persisting", func(t *testing.T) {
+		svc, repo := newService()
+		response, err := register(svc, "gw-padded-endpoint", []string{"  https://api.example.com:8443  "})
+		if err != nil {
+			t.Fatalf("RegisterGateway() error = %v", err)
+		}
+		want := []string{"https://api.example.com:8443"}
+		if repo.createdGateway == nil {
+			t.Fatal("Create() was not called")
+		}
+		if !reflect.DeepEqual(repo.createdGateway.Endpoints, want) {
+			t.Errorf("stored endpoints = %q, want %q", repo.createdGateway.Endpoints, want)
+		}
+		if response.Endpoints == nil || !reflect.DeepEqual(*response.Endpoints, want) {
+			t.Errorf("response endpoints = %q, want %q", response.Endpoints, want)
+		}
+	})
+
 	t.Run("multiple endpoints — order preserved", func(t *testing.T) {
 		svc, repo := newService()
 		endpoints := []string{
@@ -139,47 +157,70 @@ func TestRegisterGatewayEndpoints(t *testing.T) {
 	})
 }
 
-// TestUpdateGatewayPreservesEndpoints locks in that endpoints are immutable after creation —
-// UpdateGateway never reads api.GatewayResponse.Endpoints, so whatever the gateway already has
-// (as loaded from the repository) must survive an update untouched, same as vhost was immutable.
-func TestUpdateGatewayPreservesEndpoints(t *testing.T) {
+// TestUpdateGatewayEndpoints covers endpoint handling on UPDATE:
+//  1. endpoints provided — replaces the existing endpoints
+//  2. endpoints omitted (nil) — existing endpoints are left untouched
+func TestUpdateGatewayEndpoints(t *testing.T) {
 	const orgID = "123e4567-e89b-12d3-a456-426614174001"
 	const gatewayID = "123e4567-e89b-12d3-a456-426614174002"
 
 	existingEndpoints := []string{"https://old.example.com:8080"}
 
-	baseGateway := &model.Gateway{
-		ID:             gatewayID,
-		OrganizationID: orgID,
-		Handle:         "my-gateway",
-		Endpoints:      existingEndpoints,
+	newService := func() (*GatewayService, *mockGatewayRepository) {
+		baseGateway := &model.Gateway{
+			ID:             gatewayID,
+			OrganizationID: orgID,
+			Handle:         "my-gateway",
+			Endpoints:      append([]string{}, existingEndpoints...),
+		}
+		repo := &mockGatewayRepository{getByNameResult: baseGateway}
+		svc := &GatewayService{
+			gatewayRepo: repo,
+			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
+			auditRepo:   &noopAuditRepo{},
+		}
+		return svc, repo
 	}
 
-	repo := &mockGatewayRepository{getByNameResult: baseGateway}
-	svc := &GatewayService{
-		gatewayRepo: repo,
-		orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
-		auditRepo:   &noopAuditRepo{},
-	}
+	t.Run("endpoints provided — replaced", func(t *testing.T) {
+		svc, repo := newService()
+		newEndpoints := []string{"https://new.example.com:8443"}
+		response, err := svc.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+			DisplayName: "my-gateway",
+			Endpoints:   &newEndpoints,
+		})
+		if err != nil {
+			t.Fatalf("UpdateGateway() error = %v", err)
+		}
 
-	newDescription := "Updated description"
-	attemptedEndpoints := []string{"https://attempted-override.example.com"}
-	response, err := svc.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
-		DisplayName: baseGateway.Name,
-		Description: &newDescription,
-		Endpoints:   &attemptedEndpoints,
+		if repo.updatedGateway == nil {
+			t.Fatal("UpdateGateway() did not call the repository's UpdateGateway method")
+		}
+		if !reflect.DeepEqual(repo.updatedGateway.Endpoints, newEndpoints) {
+			t.Errorf("stored endpoints = %v, want %v", repo.updatedGateway.Endpoints, newEndpoints)
+		}
+		if response.Endpoints == nil || !reflect.DeepEqual(*response.Endpoints, newEndpoints) {
+			t.Errorf("response endpoints = %v, want %v", response.Endpoints, newEndpoints)
+		}
 	})
-	if err != nil {
-		t.Fatalf("UpdateGateway() error = %v", err)
-	}
 
-	if repo.updatedGateway == nil {
-		t.Fatal("UpdateGateway() did not call the repository's UpdateGateway method")
-	}
-	if !reflect.DeepEqual(repo.updatedGateway.Endpoints, existingEndpoints) {
-		t.Errorf("stored endpoints = %v, want existing endpoints %v to be preserved", repo.updatedGateway.Endpoints, existingEndpoints)
-	}
-	if response.Endpoints == nil || !reflect.DeepEqual(*response.Endpoints, existingEndpoints) {
-		t.Errorf("response endpoints = %v, want existing endpoints %v to be preserved", response.Endpoints, existingEndpoints)
-	}
+	t.Run("endpoints omitted — preserved", func(t *testing.T) {
+		svc, repo := newService()
+		response, err := svc.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+			DisplayName: "my-gateway",
+		})
+		if err != nil {
+			t.Fatalf("UpdateGateway() error = %v", err)
+		}
+
+		if repo.updatedGateway == nil {
+			t.Fatal("UpdateGateway() did not call the repository's UpdateGateway method")
+		}
+		if !reflect.DeepEqual(repo.updatedGateway.Endpoints, existingEndpoints) {
+			t.Errorf("stored endpoints = %v, want existing endpoints %v to be preserved", repo.updatedGateway.Endpoints, existingEndpoints)
+		}
+		if response.Endpoints == nil || !reflect.DeepEqual(*response.Endpoints, existingEndpoints) {
+			t.Errorf("response endpoints = %v, want existing endpoints %v to be preserved", response.Endpoints, existingEndpoints)
+		}
+	})
 }
