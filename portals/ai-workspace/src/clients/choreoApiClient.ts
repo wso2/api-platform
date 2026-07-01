@@ -99,15 +99,18 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
+    let data: unknown;
     try {
-      const body = await res.json();
-      message = body?.description ?? body?.message ?? body?.error ?? message;
+      data = await res.json();
+      const d = data as Record<string, unknown>;
+      message = (d?.description ?? d?.message ?? d?.error ?? message) as string;
     } catch { /* body not JSON */ }
     logger.error(`[platformApiClient] ${method} ${url} → ${res.status}: ${message}`);
-    // Attach the HTTP status so callers (e.g. ErrorAlert) can react to it —
-    // notably surfacing a logout action on 401 instead of a futile retry.
-    const err = new Error(message) as Error & { status?: number };
+    // Attach status and raw parsed body so callers can inspect structured error
+    // payloads (e.g. 409 DeleteSecretConflict) without re-fetching.
+    const err = new Error(message) as Error & { status?: number; data?: unknown };
     err.status = res.status;
+    err.data = data;
     throw err;
   }
 

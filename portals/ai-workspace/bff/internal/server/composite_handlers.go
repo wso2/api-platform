@@ -33,7 +33,12 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
+
+// platformAPITimeout caps every outbound Platform API call — both the
+// synchronous forwarding path and the async compensation DELETE.
+const platformAPITimeout = 30 * time.Second
 
 // secretHandleRE matches {{ secret "handle" }} placeholders embedded in JSON
 // bodies. The quotes may be JSON-escaped (\") when the placeholder appears as
@@ -41,13 +46,21 @@ import (
 // the first capture group.
 var secretHandleRE = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
 
-// extractSecretHandle returns the first secret handle found in body, or "".
-func extractSecretHandle(body []byte) string {
-	m := secretHandleRE.FindSubmatch(body)
-	if len(m) < 2 {
-		return ""
+// extractSecretHandles returns all distinct secret handles found in body.
+func extractSecretHandles(body []byte) []string {
+	matches := secretHandleRE.FindAllSubmatch(body, -1)
+	seen := make(map[string]struct{}, len(matches))
+	handles := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if len(m) >= 2 {
+			h := string(m[1])
+			if _, dup := seen[h]; !dup {
+				seen[h] = struct{}{}
+				handles = append(handles, h)
+			}
+		}
 	}
-	return string(m[1])
+	return handles
 }
 
 // platformDo performs a single authenticated request against the Platform API,
@@ -80,8 +93,13 @@ func (s *Server) platformDo(ctx context.Context, jwt, method, path string, heade
 
 // platformClient returns an *http.Client backed by the same transport used by
 // the reverse proxy (shared connection pool, same TLS skip-verify setting).
+// Timeout bounds every outbound call so an unresponsive upstream cannot block
+// a goroutine or an in-flight request indefinitely.
 func (s *Server) platformClient() *http.Client {
-	return &http.Client{Transport: s.proxy.Transport}
+	return &http.Client{
+		Transport: s.proxy.Transport,
+		Timeout:   platformAPITimeout,
+	}
 }
 
 // deleteSecretAsync fires a best-effort DELETE /secrets/{handle} in a new
@@ -89,8 +107,10 @@ func (s *Server) platformClient() *http.Client {
 // are logged but do not affect the caller.
 func (s *Server) deleteSecretAsync(jwt, handle, apiBase string) {
 	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), platformAPITimeout)
+		defer cancel()
 		path := apiBase + "/secrets/" + handle
-		resp, err := s.platformDo(context.Background(), jwt, http.MethodDelete, path, nil, nil)
+		resp, err := s.platformDo(ctx, jwt, http.MethodDelete, path, nil, nil)
 		if err != nil {
 			slog.Warn("bff: secret compensation DELETE failed", "handle", handle, "err", err)
 			return
@@ -118,6 +138,8 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 		return
 	}
 
+	const maxBodyBytes = 1 << 20 // 1 MiB — ample for any LLM provider or MCP server payload
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
@@ -132,9 +154,9 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 	}
 	defer resp.Body.Close()
 
-	// On failure, compensate by deleting the secret that was already created.
+	// On failure, compensate by deleting every secret that was already created.
 	if resp.StatusCode >= 400 {
-		if handle := extractSecretHandle(body); handle != "" {
+		for _, handle := range extractSecretHandles(body) {
 			s.deleteSecretAsync(jwt, handle, apiBasePath)
 		}
 	}

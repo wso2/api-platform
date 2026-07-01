@@ -74,6 +74,16 @@ export interface DeleteSecretConflict {
   references: SecretReference[];
 }
 
+export class SecretConflictError extends Error {
+  readonly status = 409;
+  readonly conflict: DeleteSecretConflict;
+  constructor(conflict: DeleteSecretConflict) {
+    super(conflict.error);
+    this.name = 'SecretConflictError';
+    this.conflict = conflict;
+  }
+}
+
 // ============================================================================
 // API
 // ============================================================================
@@ -128,10 +138,21 @@ export async function updateSecret(
 
 /**
  * Soft-deletes a secret (sets status to DEPRECATED).
- * Returns 409 with a DeleteSecretConflict body if the secret is still referenced.
+ * Throws SecretConflictError (with a populated .conflict.references list) if
+ * the secret is still referenced by a deployed resource.
  */
 export async function deleteSecret(handle: string): Promise<void> {
-  return del<void>(`/secrets/${handle}`);
+  try {
+    return await del<void>(`/secrets/${handle}`);
+  } catch (err: unknown) {
+    if (err instanceof Error && (err as { status?: number }).status === 409) {
+      const data = (err as { data?: unknown }).data as DeleteSecretConflict | undefined;
+      if (data?.references) {
+        throw new SecretConflictError(data);
+      }
+    }
+    throw err;
+  }
 }
 
 /**
