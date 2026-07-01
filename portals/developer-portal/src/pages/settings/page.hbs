@@ -1039,14 +1039,8 @@
       document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
       setSelectedPolicies(api.subscriptionPolicies || []);
-      /* load existing docs */
-      fetch(window.devportalApi.org('/apis/' + encodeURIComponent(api.apiId) + '/docs'), {
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() }
-      }).then(function(r) { return r.ok ? r.json() : []; })
-        .then(function(list) {
-          existingDocs = (list || []).map(function(d) { return d.fileName; });
-          renderExistingDocs();
-        }).catch(function() {});
+      /* existing docs are embedded server-side in cfg-org-apis-data */
+      existingDocs = api.existingDocs || [];
     } else {
       /* add mode */
       editingId = null;
@@ -1073,7 +1067,7 @@
     var specOnFile = document.getElementById('wz-spec-onfile');
     if (specOnFile) specOnFile.style.display = editMode ? 'flex' : 'none';
     document.getElementById('wz-docs-list').innerHTML = '';
-    document.getElementById('wz-existing-docs-list').innerHTML = '';
+    renderExistingDocs();
     document.getElementById('wz-docs-empty').style.display = 'block';
     updateWizardStep(0);
   }
