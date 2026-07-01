@@ -5150,7 +5150,7 @@ components:
           description: Handle (URL-friendly slug) for the organization
           pattern: '^[a-z0-9-]+$'
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           readOnly: true
           example: "acme"
         displayName:
@@ -5188,7 +5188,7 @@ components:
           type: string
           description: Handle (URL-friendly slug) for the project. Auto-generated from displayName if not provided.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: "default-project"
         displayName:
           type: string
@@ -5212,7 +5212,7 @@ components:
           type: string
           description: Handle (URL-friendly slug) for the project
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           readOnly: true
           example: "default-project"
         displayName:
@@ -5265,7 +5265,7 @@ components:
           type: string
           description: Unique handle/identifier for the application. Can be provided during creation or auto-generated.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: my-app-handle
         displayName:
           type: string
@@ -5303,7 +5303,7 @@ components:
           type: string
           description: Application handle/identifier
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: "my-app-handle"
         displayName:
           type: string
@@ -5389,7 +5389,7 @@ components:
           type: string
           description: ID or handle of the association target
           minLength: 1
-          maxLength: 63
+          maxLength: 40
           example: provider-handle
         kind:
           type: string
@@ -5411,7 +5411,7 @@ components:
           type: string
           description: Handle/ID of the associated target
           minLength: 1
-          maxLength: 63
+          maxLength: 40
           example: provider-handle
         displayName:
           type: string
@@ -5562,7 +5562,7 @@ components:
           type: string
           description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: my-rest-api-handle
         displayName:
           description: Human-readable name for the API
@@ -5909,7 +5909,7 @@ components:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           description: Handle (URL-friendly slug) for the gateway. Immutable after creation.
           example: "prod-gateway-01"
         displayName:
@@ -6048,7 +6048,7 @@ components:
           type: string
           description: Handle (URL-friendly slug) for the gateway
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           readOnly: true
           example: "prod-gateway-01"
         organizationId:
@@ -6152,7 +6152,7 @@ components:
           type: string
           description: Handle (URL-friendly slug) for the gateway
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           readOnly: true
           example: "prod-gateway-01"
         isActive:
@@ -6314,7 +6314,7 @@ components:
             Unique identifier for this API key within the API (optional; if omitted,
             generated from displayName)
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: "production-key-01"
         displayName:
           type: string
@@ -6435,7 +6435,7 @@ components:
           type: string
           description: Handle (URL-friendly slug) for the plan. Immutable after creation.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: "gold"
         displayName:
           type: string
@@ -6656,7 +6656,7 @@ components:
           type: string
           description: Handle of the artifact
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: "inventory-api"
         name:
           type: string
@@ -6955,7 +6955,7 @@ components:
           type: string
           description: Unique handle for the template
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: openai
         groupId:
           type: string
@@ -7129,7 +7129,7 @@ components:
         id:
           type: string
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: openai
         groupId:
           type: string
@@ -7509,7 +7509,7 @@ components:
           type: string
           description: Unique handle for the provider
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: wso2-openai-provider
         displayName:
           type: string
@@ -7638,7 +7638,7 @@ components:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           description: Handle of the gateway this artifact can be deployed to
           example: prod-eu
         configurations:
@@ -7658,7 +7658,7 @@ components:
         id:
           type: string
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: wso2-openai-provider
         displayName:
           type: string
@@ -7707,7 +7707,7 @@ components:
           type: string
           description: Unique model provider identifier
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: claude
         displayName:
           type: string
@@ -7730,7 +7730,7 @@ components:
           type: string
           description: Unique model identifier
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: claude-3-5-sonnet
         displayName:
           type: string
@@ -7772,7 +7772,7 @@ components:
           type: string
           description: Unique handle for the proxy
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: wso2-con-assistant
         displayName:
           type: string
@@ -7884,7 +7884,7 @@ components:
         id:
           type: string
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: wso2-con-assistant
         displayName:
           type: string
@@ -7959,7 +7959,7 @@ components:
           type: string
           description: Unique id of a deployed llm provider
           minLength: 1
-          maxLength: 63
+          maxLength: 40
           example: wso2-openai-provider
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
@@ -7973,7 +7973,7 @@ components:
           type: string
           description: Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
         displayName:
@@ -8032,7 +8032,7 @@ components:
           type: string
           description: Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
         displayName:
@@ -8094,7 +8094,7 @@ components:
           type: string
           description: Unique handle for the proxy
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: weather-mcp-proxy
         displayName:
           type: string
@@ -8198,7 +8198,7 @@ components:
         id:
           type: string
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: weather-mcp-proxy
         displayName:
           type: string
@@ -8334,7 +8334,7 @@ components:
           type: string
           description: Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: wso2-openai-key
         displayName:
           type: string
@@ -8364,7 +8364,7 @@ components:
           type: string
           description: Secret handle — if provided, must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: "wso2-openai-key"
         displayName:
           type: string
@@ -8390,7 +8390,7 @@ components:
         id:
           type: string
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: wso2-openai-key
         displayName:
           type: string
@@ -8418,7 +8418,7 @@ components:
         id:
           type: string
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           example: wso2-openai-key
         displayName:
           type: string
