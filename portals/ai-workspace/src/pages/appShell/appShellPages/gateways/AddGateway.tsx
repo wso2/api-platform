@@ -132,7 +132,7 @@ export default function AddGateway() {
     try {
       const createdGateway = await createGateway({
         displayName,
-        name,
+        id: name,
         vhost: normalizeVhost(vhost),
         functionalityType,
         description: description || undefined,

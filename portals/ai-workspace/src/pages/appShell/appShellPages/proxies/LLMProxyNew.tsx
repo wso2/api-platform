@@ -292,13 +292,13 @@ function LLMProxyNewContent({
       return '';
     }
     if (preselectedProvider?.id === lockedProviderId) {
-      return truncateProviderDisplayName(preselectedProvider.name);
+      return truncateProviderDisplayName(preselectedProvider.displayName);
     }
     const option = providerOptions.find(
       (provider) => provider.id === lockedProviderId
     );
-    if (option?.name) {
-      return truncateProviderDisplayName(option.name);
+    if (option?.displayName) {
+      return truncateProviderDisplayName(option.displayName);
     }
     return truncateProviderDisplayName(lockedProviderId);
   }, [
@@ -325,7 +325,7 @@ function LLMProxyNewContent({
 
     const payload: CreateProxyRequest = {
       id: generatedId,
-      name: trimmedName,
+      displayName: trimmedName,
       description:
         formState.description.trim() ||
         intl.formatMessage({
@@ -429,7 +429,7 @@ function LLMProxyNewContent({
         formState.providerId,
         currentOrganization.uuid,
         {
-          name: buildApiKeyResourceName(trimmedDisplayName),
+          id: buildApiKeyResourceName(trimmedDisplayName),
           displayName: trimmedDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',
@@ -629,7 +629,7 @@ function LLMProxyNewContent({
                     ) : (
                       providerOptions.map((provider) => (
                         <MenuItem key={provider.id} value={provider.id}>
-                          {truncateProviderDisplayName(provider.name)}
+                          {truncateProviderDisplayName(provider.displayName)}
                         </MenuItem>
                       ))
                     )}

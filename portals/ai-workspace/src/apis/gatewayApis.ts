@@ -30,7 +30,7 @@ export async function getGateways(
 ): Promise<GatewayListResponse> {
   try {
     const response = await get<GatewayListResponse>(
-      `/gateways?organizationId=${encodeURIComponent(organizationId)}`,
+      `/gateways`,
       undefined,
       PLATFORM_API_BASE_URL
     );
@@ -41,6 +41,7 @@ export async function getGateways(
   }
 }
 
+// TODO: /gateways/{gatewayId}/configs does not exist in openapi.yaml — needs backend clarification
 /**
  * Get gateway configurations by gateway ID.
  */
@@ -50,7 +51,7 @@ export async function getGatewayConfigs(
 ): Promise<GatewayConfigs> {
   try {
     const response = await get<GatewayConfigs>(
-      `/gateways/${encodeURIComponent(gatewayId)}/configs?organizationId=${encodeURIComponent(organizationId)}`,
+      `/gateways/${encodeURIComponent(gatewayId)}/configs`,
       undefined,
       PLATFORM_API_BASE_URL
     );
@@ -61,21 +62,6 @@ export async function getGatewayConfigs(
   }
 }
 
-interface RawDeploymentListResponse {
-  count: number;
-  list?: DeploymentResponseToPlatformGateway[];
-  deployments?: DeploymentResponseToPlatformGateway[];
-}
-
-function normalizeDeploymentListResponse(
-  raw: RawDeploymentListResponse
-): DeploymentListResponseToPlatformGateway {
-  return {
-    count: raw.count,
-    deployments: raw.deployments ?? raw.list ?? [],
-  };
-}
-
 /**
  * Fetch all deployments of an API to platform gateways
  */
@@ -84,12 +70,18 @@ export async function getApiPlatformGatewayDeployments(
   organizationId: string
 ): Promise<DeploymentListResponseToPlatformGateway> {
   try {
-    const raw = await get<RawDeploymentListResponse>(
-      `/apis/${apiId}/platform-gateway-deployments?organizationId=${encodeURIComponent(organizationId)}`,
+    const response = await get<{
+      count: number;
+      list: DeploymentResponseToPlatformGateway[];
+    }>(
+      `/rest-apis/${encodeURIComponent(apiId)}/deployments`,
       undefined,
       PLATFORM_API_BASE_URL
     );
-    return normalizeDeploymentListResponse(raw);
+    return {
+      count: response.count,
+      deployments: response.list ?? [],
+    };
   } catch (error) {
     logger.error('Failed to fetch platform gateway deployments:', error);
     throw error;
@@ -106,7 +98,7 @@ export async function deployApiToPlatformGateway(
 ): Promise<DeploymentResponseToPlatformGateway> {
   try {
     const response = await post<DeploymentResponseToPlatformGateway>(
-      `/apis/${apiId}/platform-gateway-deployments?organizationId=${encodeURIComponent(organizationId)}`,
+      `/rest-apis/${encodeURIComponent(apiId)}/deployments`,
       requestBody,
       PLATFORM_API_BASE_URL
     );
@@ -128,7 +120,7 @@ export async function restorePlatformGatewayDeployment(
 ): Promise<DeploymentResponseToPlatformGateway> {
   try {
     const response = await post<DeploymentResponseToPlatformGateway>(
-      `/apis/${apiId}/platform-gateway-deployments/restore?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/rest-apis/${encodeURIComponent(apiId)}/deployments/${encodeURIComponent(deploymentId)}/restore?gatewayId=${encodeURIComponent(gatewayId)}`,
       null,
       PLATFORM_API_BASE_URL
     );
@@ -150,7 +142,7 @@ export async function undeployFromPlatformGateway(
 ): Promise<DeploymentResponseToPlatformGateway> {
   try {
     const response = await post<DeploymentResponseToPlatformGateway>(
-      `/apis/${apiId}/platform-gateway-deployments/undeploy?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/rest-apis/${encodeURIComponent(apiId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?gatewayId=${encodeURIComponent(gatewayId)}`,
       null,
       PLATFORM_API_BASE_URL
     );
@@ -171,7 +163,7 @@ export async function deletePlatformGatewayDeployment(
 ): Promise<void> {
   try {
     await del<void>(
-      `/apis/${apiId}/platform-gateway-deployments/${deploymentId}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/rest-apis/${encodeURIComponent(apiId)}/deployments/${encodeURIComponent(deploymentId)}`,
       undefined,
       PLATFORM_API_BASE_URL
     );

@@ -268,11 +268,17 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
       return;
     }
 
+    const entityID = resolveEntityId(deleteTarget);
+    if (!entityID) {
+      showSnackbar('Associated entity id is missing.', 'error');
+      return;
+    }
+
     try {
       setIsRemovingKey(true);
 
       await removeApplicationAPIKey(applicationId, mappedKeyId, {
-        entityID: resolveEntityId(deleteTarget),
+        entityID,
       });
 
       setDeleteTarget(null);

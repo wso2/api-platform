@@ -21,7 +21,7 @@ import type { ProviderTemplate } from './types';
 import { familyHandle } from './providerTemplateDisplay';
 
 export function buildTemplateManifestYaml(t: ProviderTemplate): string {
-  const spec: Record<string, unknown> = { displayName: t.name };
+  const spec: Record<string, unknown> = { displayName: t.displayName };
 
   const groupId = t.groupId?.trim() || familyHandle(t.id);
   if (groupId) spec.groupId = groupId;

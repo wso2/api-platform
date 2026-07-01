@@ -218,7 +218,7 @@ export default function ServiceProviderDeploymentsCard({
         provider.id,
         currentOrganization.uuid,
         {
-          name: keyName,
+          id: keyName,
           displayName: apiKeyDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',

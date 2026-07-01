@@ -189,7 +189,7 @@ export function GatewayDeployProvider({
       if (resourceType === 'proxy') {
         return getLLMProxyDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
       } else if (resourceType === 'mcp-server') {
-        return getMCPServerDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
+        return getMCPServerDeployment(apiId, deploymentId, PLATFORM_API_BASE_URL);
       }
       return getLLMProviderDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
     },
@@ -272,7 +272,6 @@ export function GatewayDeployProvider({
               )
             : getMCPServerDeployments(
                 apiId,
-                organizationId,
                 PLATFORM_API_BASE_URL,
                 gateway.id
               )
@@ -401,7 +400,6 @@ export function GatewayDeployProvider({
             : resourceType === 'mcp-server'
               ? await deployMCPServer(
                   apiId,
-                  organizationId,
                   {
                     name: deploymentName,
                     base: 'current',
@@ -485,7 +483,6 @@ export function GatewayDeployProvider({
           await undeployMCPServerDeployment(
             apiId,
             deploymentId,
-            organizationId,
             PLATFORM_API_BASE_URL,
             gatewayId
           );
@@ -550,7 +547,6 @@ export function GatewayDeployProvider({
               ? await restoreMCPServerDeployment(
                   apiId,
                   deploymentId,
-                  organizationId,
                   PLATFORM_API_BASE_URL,
                   gatewayId
                 )
@@ -618,7 +614,6 @@ export function GatewayDeployProvider({
           await deleteMCPServerDeployment(
             apiId,
             deploymentId,
-            organizationId,
             PLATFORM_API_BASE_URL
           );
         } else {

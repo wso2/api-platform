@@ -212,7 +212,7 @@ export default function LLMProxyProviderTab() {
               ) : (
                 providerOptions.map((p) => (
                   <MenuItem key={p.id} value={p.id}>
-                    {p.name}
+                    {p.displayName}
                   </MenuItem>
                 ))
               )}

@@ -79,7 +79,7 @@ export function MCPServerProvider({ children, mcpServerId }: MCPServerProviderPr
     try {
       setIsLoading(true);
       setError(null);
-      const fetchedMCPServer = await mcpProxiesApis.getMCPServer(mcpServerId, organizationId, apimBaseUrl);
+      const fetchedMCPServer = await mcpProxiesApis.getMCPServer(mcpServerId, apimBaseUrl);
       setMCPServer(fetchedMCPServer);
     } catch (err) {
       logger.error(`Failed to fetch MCP server ${mcpServerId}:`, err);
@@ -99,7 +99,7 @@ export function MCPServerProvider({ children, mcpServerId }: MCPServerProviderPr
       throw new Error('MCP Server ID or Organization ID is missing');
     }
     try {
-      const updatedMCPServer = await mcpProxiesApis.updateMCPServer(mcpServerId, updates, organizationId, apimBaseUrl);
+      const updatedMCPServer = await mcpProxiesApis.updateMCPServer(mcpServerId, updates, apimBaseUrl);
       setMCPServer(updatedMCPServer);
       return updatedMCPServer;
     } catch (err) {
@@ -113,7 +113,7 @@ export function MCPServerProvider({ children, mcpServerId }: MCPServerProviderPr
       throw new Error('MCP Server ID or Organization ID is missing');
     }
     try {
-      await mcpProxiesApis.deleteMCPServer(mcpServerId, organizationId, apimBaseUrl);
+      await mcpProxiesApis.deleteMCPServer(mcpServerId, apimBaseUrl);
       setMCPServer(null);
     } catch (err) {
       logger.error('Failed to delete MCP server:', err);

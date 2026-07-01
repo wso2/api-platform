@@ -387,7 +387,7 @@ export default function LLMProxyOverviewTab() {
       expiresAt.setDate(expiresAt.getDate() + 90);
 
       const response = await createProxyAPIKey({
-        name: buildApiKeyResourceName(trimmedDisplayName),
+        id: buildApiKeyResourceName(trimmedDisplayName),
         displayName: apiKeyDisplayName,
         expiresAt: expiresAt.toISOString(),
         issuer: 'api-platform-ai-workspace',

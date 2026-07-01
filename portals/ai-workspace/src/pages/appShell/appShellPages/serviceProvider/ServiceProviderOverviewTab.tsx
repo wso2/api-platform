@@ -506,7 +506,7 @@ export default function ServiceProviderOverviewTab({
         provider.id,
         currentOrganization.uuid,
         {
-          name: buildApiKeyResourceName(trimmedDisplayName),
+          id: buildApiKeyResourceName(trimmedDisplayName),
           displayName: apiKeyDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',
@@ -576,9 +576,10 @@ export default function ServiceProviderOverviewTab({
 
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
+      // removed: ProjectBase no longer carries a `handler` alias field, so
+      // match on `id` only.
       const proxyProject = projectsForCurrentOrganization.find(
-        (project) =>
-          project.id === proxyProjectId || project.handler === proxyProjectId
+        (project) => project.id === proxyProjectId
       );
 
       if (!currentOrganization || !proxyProject) {

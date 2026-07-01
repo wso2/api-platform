@@ -111,8 +111,8 @@ export default function ProjectsList({ disableRedirect }: ProjectsListProps) {
   const latestProjects = useMemo(() => {
     return [...projectsForCurrentOrganization]
       .sort((a, b) => {
-        const aTime = new Date(a.updatedAt || a.createdDate || 0).getTime();
-        const bTime = new Date(b.updatedAt || b.createdDate || 0).getTime();
+        const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
         return bTime - aTime;
       })
       .slice(0, 5);
@@ -261,8 +261,7 @@ export default function ProjectsList({ disableRedirect }: ProjectsListProps) {
                         </Avatar>
                         <Box sx={{ minWidth: 0 }}>
                           <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                            {/* {project.name} */}
-                            {truncateWords(project.name || 'No Name', 12)}
+                            {truncateWords(project.displayName || 'No Name', 12)}
                           </Typography>
                           <Typography
                             variant="body2"
@@ -282,7 +281,7 @@ export default function ProjectsList({ disableRedirect }: ProjectsListProps) {
                         <Clock size={14} />
                         <Typography variant="caption" color="text.secondary" noWrap>
                           {formatRelativeTime(
-                            project.updatedAt || project.createdDate
+                            project.updatedAt || project.createdAt
                           )}
                         </Typography>
                       </Stack>
@@ -322,8 +321,8 @@ function ServiceProvidersSummaryCardSection({
   const providerItems = useMemo<ServiceProviderSummaryItem[]>(
     () =>
       providersResponse.list.map((provider) => ({
-        id: provider.id ?? provider.name,
-        name: provider.name,
+        id: provider.id ?? provider.displayName,
+        displayName: provider.displayName,
         status: provider.status ?? 'Unknown',
         lastUpdated:
           provider.lastUpdated ?? provider.updatedAt ?? provider.createdAt,

@@ -162,7 +162,7 @@ const ROWS_PER_PAGE_OPTIONS = [5, 10, 25];
 
 type DrawerEntity = {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
 };
 
@@ -670,7 +670,7 @@ function AssociationSelectionDrawer<T extends DrawerEntity>({
                         color: 'primary.contrastText',
                       }}
                     >
-                      {getInitials(item.name)}
+                      {getInitials(item.displayName)}
                     </Avatar>
                     <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
                       <Stack
@@ -679,11 +679,11 @@ function AssociationSelectionDrawer<T extends DrawerEntity>({
                         alignItems="center"
                         flexWrap="wrap"
                       >
-                        <Tooltip title={item.name.length > 20 ? item.name : ''}>
+                        <Tooltip title={item.displayName.length > 20 ? item.displayName : ''}>
                           <Typography variant="body2" fontWeight={600} noWrap>
-                            {item.name.length > 30
-                              ? `${item.name.slice(0, 30)}...`
-                              : item.name}
+                            {item.displayName.length > 30
+                              ? `${item.displayName.slice(0, 30)}...`
+                              : item.displayName}
                           </Typography>
                         </Tooltip>
                         {itemMeta.chip}
@@ -1014,7 +1014,7 @@ export default function AssociationsTab() {
     const query = searchValue.trim().toLowerCase();
     if (!query) return allAssociations;
     return allAssociations.filter((a) => {
-      const haystack = [a.id, a.name, a.kind]
+      const haystack = [a.id, a.displayName, a.kind]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -1319,11 +1319,13 @@ export default function AssociationsTab() {
       const mappedKeys = mappedKeysResponse.list ?? [];
       if (mappedKeys.length > 0) {
         await Promise.all(
-          mappedKeys.map((key) =>
-            removeAPIKey(resolveMappedKeyId(key), {
-              entityID: resolveEntityId(key),
-            })
-          )
+          mappedKeys
+            .filter((key) => Boolean(resolveEntityId(key)))
+            .map((key) =>
+              removeAPIKey(resolveMappedKeyId(key), {
+                entityID: resolveEntityId(key) as string,
+              })
+            )
         );
       }
       await removeAssociation(deleteTarget.id);
@@ -1422,9 +1424,14 @@ export default function AssociationsTab() {
   const handleRemoveKey = async (assocId: string, key: MappedAPIKey) => {
     const mappedKeyId = resolveMappedKeyId(key);
     if (removingKeyIds.has(mappedKeyId)) return;
+    const entityID = resolveEntityId(key);
+    if (!entityID) {
+      showSnackbar('Associated entity id is missing.', 'error');
+      return;
+    }
     setRemovingKeyIds((prev) => new Set(prev).add(mappedKeyId));
     try {
-      await removeAPIKey(mappedKeyId, { entityID: resolveEntityId(key) });
+      await removeAPIKey(mappedKeyId, { entityID });
       setApiKeysMap((prev) => {
         const next = new Map(prev);
         const currentKeys = next.get(assocId) ?? [];
@@ -1455,7 +1462,7 @@ export default function AssociationsTab() {
     return filterItemsByQuery(
       orgProviders,
       providerDrawerSearch,
-      (provider) => [provider.name, provider.description, provider.template]
+      (provider) => [provider.displayName, provider.description, provider.template]
     );
   }, [orgProviders, providerDrawerSearch]);
 
@@ -1470,7 +1477,7 @@ export default function AssociationsTab() {
   // Proxy drawer computed
   const filteredOrgProxies = useMemo(() => {
     return filterItemsByQuery(orgProxies, proxyDrawerSearch, (proxy) => [
-      proxy.name,
+      proxy.displayName,
       proxy.description,
       proxy.version,
       proxy.context,
@@ -1656,7 +1663,7 @@ export default function AssociationsTab() {
                           </IconButton>
                         </ListingTable.Cell>
                         <ListingTable.Cell>
-                          {assoc.name || '—'}
+                          {assoc.displayName || '—'}
                         </ListingTable.Cell>
                         <ListingTable.Cell>
                           <Typography variant="body2">
@@ -1698,7 +1705,7 @@ export default function AssociationsTab() {
                                     void handleOpenManageKeysDrawer(assoc)
                                   }
                                   aria-label={`Add API key for ${
-                                    assoc.name || assoc.id
+                                    assoc.displayName || assoc.id
                                   }`}
                                 >
                                   <Plus size={16} />
@@ -1709,7 +1716,7 @@ export default function AssociationsTab() {
                               size="small"
                               color="error"
                               onClick={() => setDeleteTarget(assoc)}
-                              aria-label={`Remove ${assoc.name || assoc.id}`}
+                              aria-label={`Remove ${assoc.displayName || assoc.id}`}
                             >
                               <Trash2 size={16} />
                             </IconButton>
@@ -2085,9 +2092,9 @@ export default function AssociationsTab() {
                 >
                   {getInitials(
                     (managedIsProvider
-                      ? managedProvider?.name
-                      : managedProxy?.name) ||
-                      manageKeysDrawerTarget.name ||
+                      ? managedProvider?.displayName
+                      : managedProxy?.displayName) ||
+                      manageKeysDrawerTarget.displayName ||
                       ''
                   )}
                 </Avatar>
@@ -2100,9 +2107,9 @@ export default function AssociationsTab() {
                   >
                     <Typography variant="body2" fontWeight={600} noWrap>
                       {(managedIsProvider
-                        ? managedProvider?.name
-                        : managedProxy?.name) ||
-                        manageKeysDrawerTarget.name ||
+                        ? managedProvider?.displayName
+                        : managedProxy?.displayName) ||
+                        manageKeysDrawerTarget.displayName ||
                         '—'}
                     </Typography>
                     {/* Provider: template chip */}
@@ -2259,7 +2266,7 @@ export default function AssociationsTab() {
         <DialogContent>
           <DialogContentText>
             Are you sure you want to remove{' '}
-            <strong>{deleteTarget?.name || deleteTarget?.id}</strong> from this
+            <strong>{deleteTarget?.displayName || deleteTarget?.id}</strong> from this
             application?
           </DialogContentText>
         </DialogContent>

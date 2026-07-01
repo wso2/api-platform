@@ -55,7 +55,7 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
     if (!serverId || !organizationId) return;
     let cancelled = false;
     mcpProxiesApis
-      .getMCPServer(serverId, organizationId, apimBaseUrl)
+      .getMCPServer(serverId, apimBaseUrl)
       .then((res) => { if (!cancelled) setServer(res); })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -80,7 +80,7 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
       </Button>
 
       <ExternalServerStepBanner
-        serverName={server?.name}
+        serverName={server?.displayName}
         hasPolicies={hasPolicies}
         hasDeployments={hasDeployments}
         onStepClick={handleStepClick}

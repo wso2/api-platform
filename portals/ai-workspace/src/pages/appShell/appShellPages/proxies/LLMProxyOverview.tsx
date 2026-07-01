@@ -165,7 +165,7 @@ function ProxyOverviewContent() {
     const providerId = getProviderId(providerValue);
     if (!providerId) return '\u2014';
     const found = providersResponse.list.find((p) => p.id === providerId);
-    return found?.name ?? providerId;
+    return found?.displayName ?? providerId;
   };
 
   useEffect(() => {
@@ -330,7 +330,7 @@ function ProxyOverviewContent() {
                     fontSize: 32,
                   }}
                 >
-                  {(proxy.name || '\u2014').trim().slice(0, 2).toUpperCase()}
+                  {(proxy.displayName || '\u2014').trim().slice(0, 2).toUpperCase()}
                 </Avatar>
 
                 <Box sx={{ minWidth: 0 }}>
@@ -341,7 +341,7 @@ function ProxyOverviewContent() {
                     flexWrap="wrap"
                   >
                     <Typography variant="h3">
-                      {truncateProviderDisplayName(proxy.name || '\u2014')}
+                      {truncateProviderDisplayName(proxy.displayName || '\u2014')}
                     </Typography>
                     <Chip
                       label={`${proxy.version || '1.0'}`}
@@ -515,7 +515,7 @@ function ProxyOverviewContent() {
         <DialogTitle>Delete App LLM Proxy</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete <strong>{proxy.name}</strong>? This
+            Are you sure you want to delete <strong>{proxy.displayName}</strong>? This
             action cannot be undone.
           </DialogContentText>
         </DialogContent>

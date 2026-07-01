@@ -118,7 +118,6 @@ export default function EditGateway() {
 
     try {
       await updateGatewayById(gatewayId, {
-        name: gatewayName!,
         displayName,
         vhost: normalizeVhost(vhost),
         functionalityType,

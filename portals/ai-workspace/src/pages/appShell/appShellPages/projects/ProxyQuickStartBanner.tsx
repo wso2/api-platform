@@ -95,7 +95,7 @@ const INITIAL_COMPLETION_STATE: CompletionState = {
 function getLatestProject(projects: ProjectBase[]): ProjectBase | null {
   const sortedProjects = sortByLatest(projects, (project) => [
     project.updatedAt,
-    project.createdDate,
+    project.createdAt,
   ]);
   return sortedProjects[0] ?? null;
 }

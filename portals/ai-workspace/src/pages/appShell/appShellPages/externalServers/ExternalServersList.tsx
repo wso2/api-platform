@@ -101,7 +101,6 @@ export default function ExternalServersList(): JSX.Element {
         setIsServersLoading(true);
         setHasFetchedServers(false);
         const response = await mcpProxiesApis.getMCPServers(
-          organizationId,
           projectId,
           apimBaseUrl
         );
@@ -148,7 +147,7 @@ export default function ExternalServersList(): JSX.Element {
     if (!query) return servers;
 
     return servers.filter((server) =>
-      [server.name, server.description, server.context, server.version]
+      [server.displayName, server.description, server.context, server.version]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -160,7 +159,7 @@ export default function ExternalServersList(): JSX.Element {
     if (!deleteTarget || !organizationId) return;
     const serverId = deleteTarget.id;
     try {
-      await mcpProxiesApis.deleteMCPServer(serverId, organizationId, apimBaseUrl);
+      await mcpProxiesApis.deleteMCPServer(serverId, apimBaseUrl);
       setServers((prev) => prev.filter((s) => s.id !== serverId));
       showSnackbar('MCP Proxy deleted successfully.', 'success');
     } catch {
@@ -240,7 +239,7 @@ export default function ExternalServersList(): JSX.Element {
                 ) : (
                   projectsForCurrentOrganization.map((project) => (
                     <MenuItem key={project.id} value={project.id}>
-                      {project.name}
+                      {project.displayName}
                     </MenuItem>
                   ))
                 )}
@@ -488,7 +487,7 @@ export default function ExternalServersList(): JSX.Element {
                                   fontSize: 16,
                                 }}
                               >
-                                {(server.name || '—')
+                                {(server.displayName || '—')
                                   .trim()
                                   .slice(0, 2)
                                   .toUpperCase()}
@@ -503,7 +502,7 @@ export default function ExternalServersList(): JSX.Element {
                                   whiteSpace: 'nowrap',
                                 }}
                               >
-                                {server.name}
+                                {server.displayName}
                               </Typography>
                             </Box>
                           </TableCell>
@@ -530,7 +529,7 @@ export default function ExternalServersList(): JSX.Element {
                                 event.stopPropagation();
                                 setDeleteTarget(server);
                               }}
-                              aria-label={`Delete ${server.name}`}
+                              aria-label={`Delete ${server.displayName}`}
                             >
                               <Trash2 size={16} />
                             </IconButton>
@@ -561,7 +560,7 @@ export default function ExternalServersList(): JSX.Element {
         <DialogTitle>Delete external server</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete {deleteTarget?.name}?
+            Are you sure you want to delete {deleteTarget?.displayName}?
           </DialogContentText>
         </DialogContent>
         <DialogActions>

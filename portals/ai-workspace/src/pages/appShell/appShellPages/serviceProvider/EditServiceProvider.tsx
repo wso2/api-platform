@@ -64,7 +64,7 @@ function EditServiceProviderForm() {
 
   useEffect(() => {
     if (provider) {
-      setName(provider.name || '');
+      setName(provider.displayName || '');
       setDescription(provider.description || '');
       setVersion(provider.version || '');
       setContext(provider.context || '');
@@ -87,7 +87,7 @@ function EditServiceProviderForm() {
     try {
       const fullPayload = {
         ...provider,
-        name,
+        displayName: name,
         description: description || undefined,
         version: version || undefined,
         context: context || undefined,

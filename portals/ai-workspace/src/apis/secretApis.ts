@@ -25,8 +25,8 @@ import { postForm } from '../clients/choreoApiClient';
 export type SecretType = 'GENERIC' | 'CERTIFICATE';
 
 export interface CreateSecretRequest {
-  handle: string;
-  name: string;
+  id: string;
+  displayName: string;
   description?: string;
   value: string;
   type?: SecretType;
@@ -34,8 +34,8 @@ export interface CreateSecretRequest {
 
 export interface CreateSecretResponse {
   uuid: string;
-  handle: string;
-  name: string;
+  id: string;
+  displayName: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,8 +57,8 @@ export async function createSecret(
   baseUrl: string
 ): Promise<CreateSecretResponse> {
   const form = new FormData();
-  form.append('handle', request.handle);
-  form.append('name', request.name);
+  form.append('id', request.id);
+  form.append('displayName', request.displayName);
   if (request.description) form.append('description', request.description);
   form.append('value', request.value);
   if (request.type) form.append('type', request.type);

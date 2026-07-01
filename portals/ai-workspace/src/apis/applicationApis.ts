@@ -55,19 +55,19 @@ const buildQueryString = (
 /**
  * Create a new Application
  *
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param application - The application details
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the created application
  */
 export async function createApplication(
   application: CreateApplicationRequest,
-  organizationId: string,
   baseUrl: string
 ): Promise<Application> {
   try {
     const response = await post<Application>(
-      `/applications${buildQueryString({ organizationId })}`,
+      '/applications',
       application,
       baseUrl
     );
@@ -81,20 +81,22 @@ export async function createApplication(
 /**
  * Get all Applications
  *
- * @param organizationId - The organization ID
+ * Organization is resolved from the JWT token on the server side.
+ * `projectId` is required by the spec.
+ *
+ * @param projectId - The project ID (required)
  * @param baseUrl - The APIM base URL
  * @param options - Optional list filters
  * @returns Promise with the list of applications
  */
 export async function getApplications(
-  organizationId: string,
+  projectId: string,
   baseUrl: string,
-  options?: ApplicationListQueryParams
+  options?: Omit<ApplicationListQueryParams, 'projectId'>
 ): Promise<ApplicationListResponse> {
   try {
     const query = buildQueryString({
-      organizationId,
-      projectId: options?.projectId,
+      projectId,
       limit: options?.limit,
       offset: options?.offset,
     });
@@ -113,20 +115,19 @@ export async function getApplications(
 /**
  * Get a single Application by ID
  *
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param appId - The application ID
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the application details
  */
 export async function getApplication(
   appId: string,
-  organizationId: string,
   baseUrl: string
 ): Promise<Application> {
   try {
-    const query = buildQueryString({ organizationId });
     const response = await get<Application>(
-      `/applications/${encodeURIComponent(appId)}${query}`,
+      `/applications/${encodeURIComponent(appId)}`,
       undefined,
       baseUrl
     );
@@ -138,25 +139,34 @@ export async function getApplication(
 }
 
 /**
- * Update an existing Application
+ * Update an existing Application.
+ *
+ * The spec's PUT /applications/{applicationId} requestBody is the full
+ * Application schema (id, displayName, projectId, type required). Since
+ * callers often only have a partial update DTO, this fetches the current
+ * application first and merges the partial `updates` on top before sending.
+ *
+ * Organization is resolved from the JWT token on the server side.
  *
  * @param appId - The application ID
  * @param updates - The fields to update
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the updated application
  */
 export async function updateApplication(
   appId: string,
   updates: UpdateApplicationRequest,
-  organizationId: string,
   baseUrl: string
 ): Promise<Application> {
   try {
-    const query = buildQueryString({ organizationId });
+    const current = await getApplication(appId, baseUrl);
+    const fullApplication: Application = {
+      ...current,
+      ...updates,
+    };
     const response = await put<Application>(
-      `/applications/${encodeURIComponent(appId)}${query}`,
-      updates,
+      `/applications/${encodeURIComponent(appId)}`,
+      fullApplication,
       baseUrl
     );
     return response;
@@ -169,20 +179,19 @@ export async function updateApplication(
 /**
  * Delete an Application
  *
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param appId - The application ID
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise that resolves when the application is deleted
  */
 export async function deleteApplication(
   appId: string,
-  organizationId: string,
   baseUrl: string
 ): Promise<void> {
   try {
-    const query = buildQueryString({ organizationId });
     await del<void>(
-      `/applications/${encodeURIComponent(appId)}${query}`,
+      `/applications/${encodeURIComponent(appId)}`,
       undefined,
       baseUrl
     );
@@ -200,20 +209,17 @@ export async function deleteApplication(
  * List application API key mappings
  *
  * @param appId - The application ID
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @param options - Optional list pagination filters
  * @returns Promise with the mapped API keys
  */
 export async function getApplicationAPIKeys(
   appId: string,
-  organizationId: string,
   baseUrl: string,
   options?: APIKeyMappingListQueryParams
 ): Promise<MappedAPIKeyListResponse> {
   try {
     const query = buildQueryString({
-      organizationId,
       limit: options?.limit,
       offset: options?.offset,
     });
@@ -234,20 +240,17 @@ export async function getApplicationAPIKeys(
  *
  * @param appId - The application ID
  * @param request - The add request
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the updated mapped API keys
  */
 export async function addApplicationAPIKeys(
   appId: string,
   request: AddApplicationAPIKeysRequest,
-  organizationId: string,
   baseUrl: string
 ): Promise<MappedAPIKeyListResponse> {
   try {
-    const query = buildQueryString({ organizationId });
     const response = await post<MappedAPIKeyListResponse>(
-      `/applications/${encodeURIComponent(appId)}/api-keys${query}`,
+      `/applications/${encodeURIComponent(appId)}/api-keys`,
       request,
       baseUrl
     );
@@ -263,22 +266,19 @@ export async function addApplicationAPIKeys(
  *
  * @param appId - The application ID
  * @param mappedKeyId - The mapped API key ID to remove
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
- * @param options - Optional delete query options
+ * @param options - Delete query options; `entityID` is required by the spec
  * @returns Promise that resolves when the mapping is removed
  */
 export async function removeApplicationAPIKey(
   appId: string,
   mappedKeyId: string,
-  organizationId: string,
   baseUrl: string,
-  options?: RemoveApplicationAPIKeyOptions
+  options: RemoveApplicationAPIKeyOptions
 ): Promise<void> {
   try {
     const query = buildQueryString({
-      organizationId,
-      entityID: options?.entityID,
+      entityID: options.entityID,
     });
     await del<void>(
       `/applications/${encodeURIComponent(appId)}/api-keys/${encodeURIComponent(mappedKeyId)}${query}`,
@@ -296,13 +296,11 @@ export async function removeApplicationAPIKey(
 
 export async function listApplicationAssociations(
   appId: string,
-  organizationId: string,
   baseUrl: string,
   options?: AssociationListQueryParams
 ): Promise<ApplicationAssociationListResponse> {
   try {
     const query = buildQueryString({
-      organizationId,
       limit: options?.limit,
       offset: options?.offset,
     });
@@ -321,13 +319,11 @@ export async function listApplicationAssociations(
 export async function addApplicationAssociations(
   appId: string,
   request: AddApplicationAssociationsRequest,
-  organizationId: string,
   baseUrl: string
 ): Promise<ApplicationAssociationListResponse> {
   try {
-    const query = buildQueryString({ organizationId });
     const response = await post<ApplicationAssociationListResponse>(
-      `/applications/${encodeURIComponent(appId)}/associations${query}`,
+      `/applications/${encodeURIComponent(appId)}/associations`,
       request,
       baseUrl
     );
@@ -341,13 +337,11 @@ export async function addApplicationAssociations(
 export async function removeApplicationAssociation(
   appId: string,
   associationId: string,
-  organizationId: string,
   baseUrl: string
 ): Promise<void> {
   try {
-    const query = buildQueryString({ organizationId });
     await del<void>(
-      `/applications/${encodeURIComponent(appId)}/associations/${encodeURIComponent(associationId)}${query}`,
+      `/applications/${encodeURIComponent(appId)}/associations/${encodeURIComponent(associationId)}`,
       undefined,
       baseUrl
     );
@@ -363,13 +357,11 @@ export async function removeApplicationAssociation(
 export async function listApplicationAssociationAPIKeys(
   appId: string,
   associationId: string,
-  organizationId: string,
   baseUrl: string,
   options?: AssociationListQueryParams
 ): Promise<MappedAPIKeyListResponse> {
   try {
     const query = buildQueryString({
-      organizationId,
       limit: options?.limit,
       offset: options?.offset,
     });

@@ -98,7 +98,7 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
       </Button>
       <Box mt={1}>
         <LLLMStepBanner
-          providerName={provider?.name}
+          providerName={provider?.displayName}
           onStepClick={handleLLLMStepBannerClick}
           refreshTrigger={stepBannerRefreshTrigger}
         />

@@ -132,8 +132,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const toOrganization = (p: PlatformOrganization): Organization => ({
     id: p.id,
     uuid: p.id,
-    handle: p.handle,
-    name: p.name,
+    handle: p.id,
+    name: p.displayName,
     region: p.region,
     owner: { id: 0, idpId: '' },
   });
@@ -154,9 +154,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           setProvisioningOrgName(displayName);
           try {
             await registerOrganization({
-              id: tokenOrg.id,
-              name: displayName,
-              handle: tokenOrg.handle,
+              id: tokenOrg.handle,
+              displayName,
               region: DEFAULT_ORG_REGION,
             });
           } catch (provisionErr: any) {

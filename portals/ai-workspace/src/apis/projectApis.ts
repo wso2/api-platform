@@ -26,12 +26,14 @@ import type { ProjectBase } from '../utils/types';
 // ============================================================================
 
 export interface CreateProjectRequest {
-  name: string;
+  displayName: string;
   description?: string;
 }
 
 export interface UpdateProjectRequest {
-  name: string;
+  id: string;
+  displayName: string;
+  organizationId: string;
   description?: string;
 }
 
@@ -121,7 +123,9 @@ export async function getProject(
 }
 
 /**
- * Update an existing project's name / description.
+ * Update an existing project.
+ * The spec's PUT /projects/{projectId} requestBody is the full Project object,
+ * so `request` must include `id` and `organizationId` alongside the editable fields.
  */
 export async function updateProject(
   projectId: string,

@@ -113,7 +113,7 @@ export default function ProviderTemplatesList({
     if (!query) return templates;
     return templates.filter(
       (template) =>
-        template.name.toLowerCase().includes(query) ||
+        template.displayName.toLowerCase().includes(query) ||
         (template.description ?? '').toLowerCase().includes(query)
     );
   }, [templates, searchQuery]);
@@ -144,7 +144,7 @@ export default function ProviderTemplatesList({
     if (!query) return builtInTemplates;
     return builtInTemplates.filter(
       (template) =>
-        template.name.toLowerCase().includes(query) ||
+        template.displayName.toLowerCase().includes(query) ||
         (template.description ?? '').toLowerCase().includes(query)
     );
   }, [builtInTemplates, searchQuery]);
@@ -206,16 +206,16 @@ export default function ProviderTemplatesList({
                 '& img': { objectFit: 'contain' },
               }}
             >
-              {!hasLogo ? getInitials(template.name) : null}
+              {!hasLogo ? getInitials(template.displayName) : null}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography
                 variant="h5"
                 noWrap
                 sx={{ fontWeight: 600 }}
-                title={template.name}
+                title={template.displayName}
               >
-                {truncateProviderDisplayName(template.name)}
+                {truncateProviderDisplayName(template.displayName)}
               </Typography>
               <Typography
                 variant="body2"

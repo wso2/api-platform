@@ -251,8 +251,8 @@ function CreateProviderTemplateVersionForm({
     else delete metadata.openapiSpecUrl;
 
     const payload: ProviderTemplate = {
-      id: toTemplateId(`${template.name ?? ''} ${version.trim()}`),
-      name: template.name,
+      id: toTemplateId(`${template.displayName ?? ''} ${version.trim()}`),
+      displayName: template.displayName,
       version: version.trim(),
       description: description.trim() || undefined,
       resourceMappings: template.resourceMappings,
@@ -330,7 +330,7 @@ function CreateProviderTemplateVersionForm({
                     defaultMessage={'Name'}
                   />
                 </FormLabel>
-                <TextField fullWidth value={template.name} disabled />
+                <TextField fullWidth value={template.displayName} disabled />
               </FormControl>
             </Grid>
 

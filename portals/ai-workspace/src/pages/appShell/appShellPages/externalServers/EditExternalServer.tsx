@@ -121,12 +121,11 @@ export default function EditExternalServer() {
         setIsLoading(true);
         const response = await mcpProxiesApis.getMCPServer(
           serverId,
-          organizationId,
           apimBaseUrl
         );
         if (!cancelled) {
           setServer(response);
-          setName(response.name || '');
+          setName(response.displayName || '');
           setDescription(response.description || '');
           setVersion(response.version || '');
           setContext(response.context || '');
@@ -165,7 +164,7 @@ export default function EditExternalServer() {
     try {
       const fullPayload = {
         ...server,
-        name,
+        displayName: name,
         description: description || undefined,
         version: version || undefined,
         context: context || undefined,
@@ -177,7 +176,6 @@ export default function EditExternalServer() {
       await mcpProxiesApis.updateMCPServer(
         serverId,
         fullPayload,
-        organizationId,
         apimBaseUrl
       );
 

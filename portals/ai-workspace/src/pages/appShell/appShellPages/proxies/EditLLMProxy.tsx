@@ -68,7 +68,7 @@ function EditLLMProxyForm() {
 
   useEffect(() => {
     if (proxy) {
-      setName(proxy.name || '');
+      setName(proxy.displayName || '');
       setDescription(proxy.description || '');
       setVersion(proxy.version || '');
       setContext(proxy.context || '');
@@ -91,7 +91,7 @@ function EditLLMProxyForm() {
     try {
       const fullPayload = {
         ...proxy,
-        name,
+        displayName: name,
         description: description || undefined,
         version: version || undefined,
         context: context || undefined,

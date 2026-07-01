@@ -98,19 +98,19 @@ function buildModelProvidersFromTemplate(templateId?: string): ModelProvider[] {
 export function buildFullProviderRequest(
   request: CreateLLMProviderRequest
 ): LLMProvider {
-  const toProviderId = (name: string): string =>
-    name
+  const toProviderId = (displayName: string): string =>
+    displayName
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
 
-  const resolvedId = request.id?.trim() || toProviderId(request.name);
+  const resolvedId = request.id?.trim() || toProviderId(request.displayName);
 
   return {
     // Use values from the request
     id: resolvedId,
-    name: request.name,
+    displayName: request.displayName,
     description: request.description,
     version: request.version,
     vhost: request.vhost,

@@ -109,7 +109,6 @@ export default function ApplicationOverview() {
 
       const fetchedApplication = await applicationApis.getApplication(
         applicationId,
-        currentOrganization.uuid,
         apimBaseUrl
       );
       setApplication(fetchedApplication);
@@ -200,7 +199,7 @@ export default function ApplicationOverview() {
                   color: 'primary.contrastText',
                 }}
               >
-                {(application.name || '—')
+                {(application.displayName || '—')
                   .trim()
                   .slice(0, 2)
                   .toUpperCase()}
@@ -214,7 +213,7 @@ export default function ApplicationOverview() {
                   flexWrap="wrap"
                 >
                   <Typography variant="h3">
-                    {application.name || '—'}
+                    {application.displayName || '—'}
                   </Typography>
                   <Tooltip title="Edit Application">
                     <IconButton

@@ -31,12 +31,10 @@ import { logger } from '../utils/logger';
  * the bearer token when proxying to the Platform API.
  */
 export interface PlatformOrganization {
-  /** UUID v4 — client-generated and sent on registration */
+  /** Handle (URL-friendly slug), pattern: ^[a-z0-9-]+$ — readOnly, server-assigned */
   id: string;
-  /** URL-friendly unique handle, pattern: ^[a-z0-9-]+$ */
-  handle: string;
   /** Display name */
-  name: string;
+  displayName: string;
   /** Geographic region, e.g. "us", "eu", "ap" */
   region: string;
   createdAt?: string;
@@ -45,7 +43,7 @@ export interface PlatformOrganization {
 
 export type RegisterOrganizationRequest = Pick<
   PlatformOrganization,
-  'id' | 'handle' | 'name' | 'region'
+  'id' | 'displayName' | 'region'
 >;
 
 // ============================================================================
@@ -107,7 +105,7 @@ const httpError = (message: string, status: number): Error & { status: number } 
 export async function registerOrganization(
   org: RegisterOrganizationRequest,
 ): Promise<PlatformOrganization> {
-  logger.info('Registering organization:', org.handle);
+  logger.info('Registering organization:', org.id);
 
   const response = await fetch(platformUrl('/organizations'), {
     method: 'POST',
@@ -121,7 +119,7 @@ export async function registerOrganization(
     logger.error('registerOrganization failed:', response.status, message);
 
     if (response.status === 409) {
-      throw httpError(`Organization with handle "${org.handle}" already exists.`, 409);
+      throw httpError(`Organization with handle "${org.id}" already exists.`, 409);
     }
     if (response.status === 400) {
       throw httpError(`Invalid organization data: ${message}`, 400);
