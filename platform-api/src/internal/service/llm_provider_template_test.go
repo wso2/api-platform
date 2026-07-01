@@ -473,6 +473,92 @@ func TestLLMProviderTemplateServiceCreateVersion_RejectsInvalidVersionFormat(t *
 	}
 }
 
+func TestLLMProviderTemplateServiceCreateVersion_RejectsV0(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
+
+	// Versions start at v1.0; v0.x is not creatable.
+	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v0.0"}
+	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
+	if !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for v0.0, got: %v", err)
+	}
+	if repo.createdVersion != nil {
+		t.Fatalf("did not expect CreateNewVersion to be called for v0.0")
+	}
+}
+
+// ---- CopyVersion ----
+
+func TestLLMProviderTemplateServiceCopyVersion_ClonesSourceAndOverrides(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
+	desc := "original description"
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{
+			ID:          "mistralai-v1-0",
+			GroupID:     "mistralai",
+			Name:        "Mistral",
+			Description: desc,
+			ManagedBy:   "customer",
+			Version:     "v1.0",
+			OpenAPISpec: "openapi: 3.0.0",
+		}, nil
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
+
+	newDesc := "copied for v2"
+	overrides := &api.CreateLLMProviderTemplateVersionRequest{Description: &newDesc}
+	resp, err := svc.CopyVersion("org-1", "mistralai-v1-0", "mistralai-v2-0", "v2.0", "test-user", overrides)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if resp == nil || resp.Version != "v2.0" {
+		t.Fatalf("expected copied version v2.0, got: %#v", resp)
+	}
+	if repo.createdVersion == nil {
+		t.Fatal("expected CreateNewVersion to be called")
+	}
+	// Config copied from the source, description overridden by the body.
+	if repo.createdVersion.OpenAPISpec != "openapi: 3.0.0" {
+		t.Errorf("expected openapi copied from source, got: %q", repo.createdVersion.OpenAPISpec)
+	}
+	if repo.createdVersion.Description != newDesc {
+		t.Errorf("expected description override %q, got: %q", newDesc, repo.createdVersion.Description)
+	}
+	if repo.createdVersion.ID != "mistralai-v2-0" {
+		t.Errorf("expected derived handle mistralai-v2-0, got: %q", repo.createdVersion.ID)
+	}
+}
+
+func TestLLMProviderTemplateServiceCopyVersion_NotFoundWhenSourceMissing(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return nil, nil
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
+
+	_, err := svc.CopyVersion("org-1", "nope-v1-0", "nope-v2-0", "v2.0", "test-user", nil)
+	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProviderTemplateServiceCopyVersion_RejectsMismatchedToTemplateID(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{ID: "mistralai-v1-0", GroupID: "mistralai", Name: "Mistral", Version: "v1.0"}, nil
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
+
+	_, err := svc.CopyVersion("org-1", "mistralai-v1-0", "other-family-v2-0", "v2.0", "test-user", nil)
+	if !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for mismatched toTemplateId, got: %v", err)
+	}
+	if repo.createdVersion != nil {
+		t.Fatalf("did not expect CreateNewVersion to be called")
+	}
+}
+
 // ---- ListVersions / GetVersion ----
 
 func TestLLMProviderTemplateServiceListVersions_NotFoundWhenNoVersions(t *testing.T) {

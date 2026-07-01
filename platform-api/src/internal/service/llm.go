@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"platform-api/src/api"
@@ -207,12 +208,12 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	return mapTemplateModelToAPI(m), nil
 }
 
-func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, allVersions bool) (*api.LLMProviderTemplateListResponse, error) {
-	listFn := s.repo.List
-	countFn := s.repo.Count
-	if allVersions {
-		listFn = s.repo.ListAllVersions
-		countFn = s.repo.CountAllVersions
+func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, latestOnly bool) (*api.LLMProviderTemplateListResponse, error) {
+	listFn := s.repo.ListAllVersions
+	countFn := s.repo.CountAllVersions
+	if latestOnly {
+		listFn = s.repo.List
+		countFn = s.repo.Count
 	}
 	items, err := listFn(orgUUID, limit, offset)
 	if err != nil {
@@ -413,6 +414,15 @@ func makeTemplateHandle(baseHandle, version string) string {
 	return baseHandle + "-" + strings.ReplaceAll(strings.ToLower(strings.TrimSpace(version)), ".", "-")
 }
 
+func templateVersionCreatable(v string) bool {
+	major, _, ok := strings.Cut(strings.TrimPrefix(v, "v"), ".")
+	if !ok {
+		return false
+	}
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= 1
+}
+
 func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
 	if groupID == "" || req == nil {
 		return nil, constants.ErrInvalidInput
@@ -421,7 +431,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 		return nil, constants.ErrInvalidInput
 	}
 	version, ok := normalizeTemplateVersion(req.Version)
-	if !ok {
+	if !ok || !templateVersionCreatable(version) {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -476,6 +486,84 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	}
 
 	return mapTemplateModelToAPI(m), nil
+}
+
+func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemplateID, toVersion, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
+	fromTemplateID = strings.TrimSpace(fromTemplateID)
+	if fromTemplateID == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	version, ok := normalizeTemplateVersion(toVersion)
+	if !ok || !templateVersionCreatable(version) {
+		return nil, constants.ErrInvalidInput
+	}
+
+	source, err := s.repo.GetByID(fromTemplateID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve source template version: %w", err)
+	}
+	if source == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	groupID := source.GroupID
+
+	if h := strings.TrimSpace(toTemplateID); h != "" && h != makeTemplateHandle(groupID, version) {
+		return nil, constants.ErrInvalidInput
+	}
+
+	seed := mapTemplateModelToAPI(source)
+	merged := &api.CreateLLMProviderTemplateVersionRequest{
+		Name:             seed.Name,
+		Version:          version,
+		Description:      seed.Description,
+		ManagedBy:        seed.ManagedBy,
+		Metadata:         seed.Metadata,
+		Openapi:          seed.Openapi,
+		PromptTokens:     seed.PromptTokens,
+		CompletionTokens: seed.CompletionTokens,
+		TotalTokens:      seed.TotalTokens,
+		RemainingTokens:  seed.RemainingTokens,
+		RequestModel:     seed.RequestModel,
+		ResponseModel:    seed.ResponseModel,
+		ResourceMappings: seed.ResourceMappings,
+	}
+	if req != nil {
+		if strings.TrimSpace(req.Name) != "" {
+			merged.Name = req.Name
+		}
+		if req.Description != nil {
+			merged.Description = req.Description
+		}
+		if req.Openapi != nil {
+			merged.Openapi = req.Openapi
+		}
+		if req.Metadata != nil {
+			merged.Metadata = req.Metadata
+		}
+		if req.PromptTokens != nil {
+			merged.PromptTokens = req.PromptTokens
+		}
+		if req.CompletionTokens != nil {
+			merged.CompletionTokens = req.CompletionTokens
+		}
+		if req.TotalTokens != nil {
+			merged.TotalTokens = req.TotalTokens
+		}
+		if req.RemainingTokens != nil {
+			merged.RemainingTokens = req.RemainingTokens
+		}
+		if req.RequestModel != nil {
+			merged.RequestModel = req.RequestModel
+		}
+		if req.ResponseModel != nil {
+			merged.ResponseModel = req.ResponseModel
+		}
+		if req.ResourceMappings != nil {
+			merged.ResourceMappings = req.ResourceMappings
+		}
+	}
+
+	return s.CreateVersion(orgUUID, groupID, createdBy, merged)
 }
 
 func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
@@ -619,7 +707,7 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 	return nil
 }
 
-// SetEnabledByHandle enables or disables the single template version identified by its unique handle. 
+// SetEnabledByHandle enables or disables the single template version identified by its unique handle.
 // The handle is resolved to its (groupId, version) and the existing version-level rules apply (built-ins are read-only).
 func (s *LLMProviderTemplateService) SetEnabledByHandle(orgUUID, handle string, enabled bool) (*api.LLMProviderTemplate, error) {
 	if strings.TrimSpace(handle) == "" {

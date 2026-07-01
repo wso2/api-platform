@@ -1012,14 +1012,11 @@ paths:
 
   /llm-provider-templates:
     post:
-      summary: Create a new LLM provider template, or a new version within a family
+      summary: Create a new LLM provider template family
       description: |
-        Without query params: creates a new template family (starts at v1.0),
-        with an `LLMProviderTemplate` body.
-
-        With `query=groupId:<id>` (URL-encoded): creates a new version within
-        that existing family (demotes the previous latest), with a
-        `CreateLLMProviderTemplateVersionRequest` body. Organization is
+        Creates a new template family, starting at v1.0, with an
+        `LLMProviderTemplate` body. To add a new version to an existing family,
+        use `POST /llm-provider-templates/copy` instead. Organization is
         identified via the JWT token.
       operationId: createLLMProviderTemplate
       security:
@@ -1028,30 +1025,13 @@ paths:
             - ap:llm_template:manage
       tags:
         - LLM Provider Templates
-      parameters:
-        - name: query
-          in: query
-          required: false
-          description: >-
-            When set, create a new version within an existing template family
-            instead of a new family. URL-encoded DSL holding the family id,
-            e.g. query=groupId:openai (sent as groupId%3Aopenai).
-          schema:
-            type: string
-          example: groupId:openai
       requestBody:
         required: true
-        description: >-
-          Without `query`, send an `LLMProviderTemplate` to create a new family.
-          With `query=groupId:<id>`, send a
-          `CreateLLMProviderTemplateVersionRequest` to add a version to that
-          family.
+        description: The template family to create (starts at v1.0).
         content:
           application/json:
             schema:
-              anyOf:
-                - $ref: '#/components/schemas/LLMProviderTemplate'
-                - $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
+              $ref: '#/components/schemas/LLMProviderTemplate'
       responses:
         '201':
           description: LLM provider template created successfully
@@ -1072,16 +1052,96 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-provider-templates/copy:
+    post:
+      summary: Create a new version by copying an existing one
+      description: |
+        Creates a new version within a template family by cloning an existing
+        version (`fromTemplateId`) and applying optional field overrides from
+        the body. The new version lands in the same family as the source and
+        becomes the latest.
+
+        Versions start at v1.0 and only go higher — `toVersion` must match the
+        `v<major>.<minor>` pattern with a major of at least 1 (e.g. v2.0); v0.x
+        is rejected. `toTemplateId`, when supplied, must equal the handle
+        derived from the family and `toVersion`. Organization is identified via
+        the JWT token.
+      operationId: copyLLMProviderTemplateVersion
+      security:
+        - OAuth2Security:
+            - ap:llm_template:create
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: fromTemplateId
+          in: query
+          required: true
+          description: Handle (id) of the source version to copy from.
+          schema:
+            type: string
+          example: openai-v3-0
+        - name: toTemplateId
+          in: query
+          required: false
+          description: >-
+            Expected handle of the new version. Must equal the handle derived
+            from the source family and toVersion; used to validate the target.
+          schema:
+            type: string
+          example: openai-v4-0
+        - name: toVersion
+          in: query
+          required: true
+          description: >-
+            New version identifier, e.g. v4.0. Must match v<major>.<minor> with
+            a major of at least 1, and be unique within the family.
+          schema:
+            type: string
+          example: v4.0
+      requestBody:
+        required: false
+        description: >-
+          Optional overrides applied on top of the copied config. Any field
+          present replaces the value cloned from the source version.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
+      responses:
+        '201':
+          description: New version created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
     get:
-      summary: List templates, or list a family's versions
+      summary: List templates, list a family's versions, or get a single version
       description: |
         Behavior depends on query params:
-          - no `query`            -> list templates (one entry per family; `versions=all` returns every version row)
-          - `query=groupId:<id>` -> list all versions of that family
-        The `query` value is URL-encoded so its `:` survives query parsing
-        (?query=groupId%3Aopenai). To fetch a single version, use
-        `GET /llm-provider-templates/{id}`. Organization is identified via the
-        JWT token.
+          - no `query` (or `query=latest:true`) -> list templates. By default every version of every family (full history, e.g. all 5 openai + all 9 deepseek); with `latest=true` only the latest version of each family (built-in and custom)
+          - `query=groupId:<id>`              -> list all versions of that family
+          - `query=groupId:<id>&version:<ver>` -> return the single full template for that (groupId, version)
+        The `query` value is URL-encoded so its `:` and `&` survive query
+        parsing (?query=groupId%3Aopenai%26version%3Av1.0). Organization is
+        identified via the JWT token.
+
+        Note: with `version`, the response is a single `LLMProviderTemplate`
+        object (the same body as `GET /llm-provider-templates/{id}`); otherwise
+        it is an `LLMProviderTemplateListResponse`.
       operationId: listLLMProviderTemplates
       security:
         - OAuth2Security:
@@ -1094,12 +1154,25 @@ paths:
           in: query
           required: false
           description: >-
-            URL-encoded DSL selecting a template family: `query=groupId:<id>`
-            lists that family's versions. The value is percent-encoded
-            (e.g. groupId%3Aopenai).
+            URL-encoded search DSL. `query=groupId:<id>` lists that family's
+            versions; adding `&version:<ver>` returns the single full template
+            for that version. Terms are `&`-separated and the whole value is
+            percent-encoded (e.g. groupId%3Aopenai%26version%3Av1.0). The version
+            may instead be supplied via the standalone `version` query param.
           schema:
             type: string
-          example: groupId:openai
+          example: groupId:openai&version:v1.0
+        - name: version
+          in: query
+          required: false
+          description: >-
+            Selects a single version within the family named by `query=groupId:<id>`,
+            returning the full template for that (groupId, version). Alternative to
+            packing `&version:<ver>` inside the `query` value; ignored when `query`
+            has no groupId.
+          schema:
+            type: string
+          example: v1.0
         - name: limit
           in: query
           description: Maximum number of LLM provider templates to return
@@ -1115,23 +1188,30 @@ paths:
             type: integer
             minimum: 0
             default: 0
-        - name: versions
+        - name: latest
           in: query
           description: |
-            Which versions to include. The default ("latest") returns one entry
-            per template — its latest version, for the catalog. Use "all" to
-            return every version row across all templates.
+            Which versions to include. By default (false) the response contains
+            every version row across all templates (full history). Set to true
+            to return only the latest version of each family (one entry per
+            built-in/custom bucket), for the catalog listing. May also be passed
+            inside the query DSL as `query=latest:true`.
           schema:
-            type: string
-            enum: [latest, all]
-            default: latest
+            type: boolean
+            default: false
       responses:
         '200':
-          description: A list response — either templates (latest per family) or a family's versions.
+          description: >-
+            Without `version`: a list response — either templates (all versions
+            by default, or the latest of each family when `latest=true`) or
+            a family's versions. With `groupId`+`version`: the single full
+            template for that version.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderTemplateListResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/LLMProviderTemplateListResponse'
+                  - $ref: '#/components/schemas/LLMProviderTemplate'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

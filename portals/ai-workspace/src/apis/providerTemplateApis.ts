@@ -78,10 +78,13 @@ export async function createProviderTemplate(
 }
 
 /**
- * Get all Provider Templates
- * 
+ * Get Provider Templates for the catalog listing.
+ *
+ * Requests `latest=true` so the backend returns only the latest version
+ * of each family (one entry per family) rather than the full version history.
+ *
  * @param organizationId - The organization ID
- * @returns Promise with the list of provider templates
+ * @returns Promise with the list of provider templates (latest per family)
  * 
  * @example
  * ```ts
@@ -92,7 +95,7 @@ export async function createProviderTemplate(
 export async function getProviderTemplates(organizationId: string, baseUrl: string): Promise<ProviderTemplatesResponse> {
   try {
     const response = await get<ProviderTemplatesResponse>(
-      `/llm-provider-templates`,
+      `/llm-provider-templates?latest=true&organizationId=${encodeURIComponent(organizationId)}`,
       undefined,
       baseUrl
     );
@@ -163,31 +166,43 @@ export async function getProviderTemplateVersions(
 }
 
 /**
- * Create a new version of an existing Provider Template.
+ * Create a new version of an existing Provider Template by copying an existing
+ * version and applying overrides.
  *
- * The supplied template must include a `version` (e.g. "v2.0") that is unique
- * for the template; the new version becomes the latest.
+ * The server clones `fromTemplateId`'s config into the new `toVersion` (in the
+ * same family) and overrides any fields present in `overrides`. The new version
+ * becomes the latest. Versions start at v1.0 and only go higher.
  *
- * @param groupId - The template family group id (version routes are keyed by group id, not the per-version handle)
- * @param template - The new version's configuration (must include `version`)
+ * @param fromTemplateId - Handle (id) of the source version to copy from
+ * @param toTemplateId - Expected handle of the new version (derived from family + version)
+ * @param toVersion - New version identifier, e.g. "v2.0" (must be >= v1.0 and unique)
+ * @param overrides - Fields to override on top of the copied config
  * @param organizationId - The organization ID
  * @returns Promise with the newly created version
  */
 export async function createProviderTemplateVersion(
-  groupId: string,
-  template: ProviderTemplate,
+  fromTemplateId: string,
+  toTemplateId: string,
+  toVersion: string,
+  overrides: Partial<ProviderTemplate>,
   organizationId: string,
   baseUrl: string
 ): Promise<ProviderTemplate> {
   try {
+    const params = new URLSearchParams({
+      fromTemplateId,
+      toTemplateId,
+      toVersion,
+      organizationId,
+    });
     const response = await post<ProviderTemplate>(
-      `/llm-provider-templates?query=${buildTemplateQuery(groupId)}&organizationId=${encodeURIComponent(organizationId)}`,
-      template,
+      `/llm-provider-templates/copy?${params.toString()}`,
+      overrides,
       baseUrl
     );
     return response;
   } catch (error) {
-    logger.error(`Failed to create new version for provider template ${groupId}:`, error);
+    logger.error(`Failed to create new version from ${fromTemplateId}:`, error);
     throw error;
   }
 }

@@ -121,6 +121,20 @@ func queryPath(gid string) string {
 	return tmplBase + "?query=" + url.QueryEscape("groupId:"+gid)
 }
 
+// queryVersionPath builds the URL-encoded ?query=groupId:<gid>&version:<ver>
+// collection path, which selects a single template version.
+func queryVersionPath(gid, version string) string {
+	return tmplBase + "?query=" + url.QueryEscape("groupId:"+gid+"&version:"+version)
+}
+
+// copyVersionPath builds the /copy path that clones fromID into a new version
+// (toVersion) of the same family. toID is the derived destination handle.
+func copyVersionPath(fromID, toID, toVersion string) string {
+	return tmplBase + "/copy?fromTemplateId=" + url.QueryEscape(fromID) +
+		"&toTemplateId=" + url.QueryEscape(toID) +
+		"&toVersion=" + url.QueryEscape(toVersion)
+}
+
 // createFamily POSTs a new custom family and returns its handle + groupId.
 func createFamily(t *testing.T, r http.Handler, name string) (handle, groupID string) {
 	t.Helper()
@@ -209,12 +223,12 @@ func TestLLMTemplateHTTP_Versions(t *testing.T) {
 	r, _, cleanup := setupLLMTemplateEnv(t)
 	defer cleanup()
 
-	_, groupID := createFamily(t, r, "Versioned")
+	v1Handle, groupID := createFamily(t, r, "Versioned")
+	v2Handle := groupID + "-v2-0"
 
-	// Create v2.0 in the family.
-	v2 := `{"name":"Versioned","version":"v2.0","metadata":{"endpointUrl":"https://api.example.com"}}`
-	if w := doJSON(t, r, http.MethodPost, queryPath(groupID), v2, true); w.Code != http.StatusCreated {
-		t.Fatalf("create v2.0: expected 201, got %d: %s", w.Code, w.Body.String())
+	// Clone v1.0 into a new v2.0 in the family via /copy.
+	if w := doJSON(t, r, http.MethodPost, copyVersionPath(v1Handle, v2Handle, "v2.0"), "", true); w.Code != http.StatusCreated {
+		t.Fatalf("copy to v2.0: expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// List versions -> 2 rows.
@@ -228,24 +242,93 @@ func TestLLMTemplateHTTP_Versions(t *testing.T) {
 	}
 
 	// Duplicate version -> 409.
-	if w := doJSON(t, r, http.MethodPost, queryPath(groupID), v2, true); w.Code != http.StatusConflict {
+	if w := doJSON(t, r, http.MethodPost, copyVersionPath(v1Handle, v2Handle, "v2.0"), "", true); w.Code != http.StatusConflict {
 		t.Errorf("duplicate version: expected 409, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// Invalid version format -> 400.
-	bad := `{"name":"Versioned","version":"2.0","metadata":{"endpointUrl":"https://x"}}`
-	if w := doJSON(t, r, http.MethodPost, queryPath(groupID), bad, true); w.Code != http.StatusBadRequest {
+	if w := doJSON(t, r, http.MethodPost, copyVersionPath(v1Handle, groupID+"-2-0", "2.0"), "", true); w.Code != http.StatusBadRequest {
 		t.Errorf("invalid version: expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Version in a non-existent family -> 404.
-	if w := doJSON(t, r, http.MethodPost, queryPath("no-such-family"), v2, true); w.Code != http.StatusNotFound {
-		t.Errorf("version for missing family: expected 404, got %d: %s", w.Code, w.Body.String())
+	// v0.x is not creatable (versions start at v1.0) -> 400.
+	if w := doJSON(t, r, http.MethodPost, copyVersionPath(v1Handle, groupID+"-v0-0", "v0.0"), "", true); w.Code != http.StatusBadRequest {
+		t.Errorf("v0.0 version: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// toTemplateId that doesn't match the family/version -> 400.
+	if w := doJSON(t, r, http.MethodPost, copyVersionPath(v1Handle, "other-family-v3-0", "v3.0"), "", true); w.Code != http.StatusBadRequest {
+		t.Errorf("mismatched toTemplateId: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Copy from a non-existent source version -> 404.
+	if w := doJSON(t, r, http.MethodPost, copyVersionPath("no-such-family-v1-0", "no-such-family-v2-0", "v2.0"), "", true); w.Code != http.StatusNotFound {
+		t.Errorf("copy from missing source: expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// List versions of a non-existent family -> 404.
 	if w := doJSON(t, r, http.MethodGet, queryPath("no-such-family"), "", true); w.Code != http.StatusNotFound {
 		t.Errorf("list missing family: expected 404, got %d", w.Code)
+	}
+}
+
+// ---- Get single version via ?query=groupId&version -----------------------
+
+func TestLLMTemplateHTTP_GetVersionByQuery(t *testing.T) {
+	r, _, cleanup := setupLLMTemplateEnv(t)
+	defer cleanup()
+
+	v1Handle, groupID := createFamily(t, r, "Query Version")
+
+	// Add v2.0 so the family has more than one version.
+	if w := doJSON(t, r, http.MethodPost, copyVersionPath(v1Handle, groupID+"-v2-0", "v2.0"), "", true); w.Code != http.StatusCreated {
+		t.Fatalf("create v2.0: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// groupId + version -> the single full template (object, not a list).
+	w := doJSON(t, r, http.MethodGet, queryVersionPath(groupID, "v1.0"), "", true)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get version: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	m := bodyMap(t, w)
+	if _, isList := m["list"]; isList {
+		t.Errorf("expected a single template object, got a list response: %s", w.Body.String())
+	}
+	if m["groupId"] != groupID {
+		t.Errorf("expected groupId %q, got %v", groupID, m["groupId"])
+	}
+	if m["version"] != "v1.0" {
+		t.Errorf("expected version v1.0, got %v", m["version"])
+	}
+
+	// Same selection via the standalone ?version= param (query holds only the
+	// groupId) -> the single full template, not the family's version list.
+	standalone := tmplBase + "?query=" + url.QueryEscape("groupId:"+groupID) + "&version=v1.0"
+	w = doJSON(t, r, http.MethodGet, standalone, "", true)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get version (standalone param): expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	m = bodyMap(t, w)
+	if _, isList := m["list"]; isList {
+		t.Errorf("standalone version: expected a single template object, got a list response: %s", w.Body.String())
+	}
+	if m["version"] != "v1.0" {
+		t.Errorf("standalone version: expected version v1.0, got %v", m["version"])
+	}
+
+	// Unknown version within an existing family -> 404.
+	if w := doJSON(t, r, http.MethodGet, queryVersionPath(groupID, "v9.9"), "", true); w.Code != http.StatusNotFound {
+		t.Errorf("unknown version: expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Malformed version -> 400.
+	if w := doJSON(t, r, http.MethodGet, queryVersionPath(groupID, "2.0"), "", true); w.Code != http.StatusBadRequest {
+		t.Errorf("malformed version: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Version in a non-existent family -> 404.
+	if w := doJSON(t, r, http.MethodGet, queryVersionPath("no-such-family", "v1.0"), "", true); w.Code != http.StatusNotFound {
+		t.Errorf("version for missing family: expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -256,12 +339,6 @@ func TestLLMTemplateHTTP_BlankGroupIDQuery(t *testing.T) {
 	defer cleanup()
 
 	blank := tmplBase + "?query=" + url.QueryEscape("groupId:")
-
-	// POST with a blank groupId must NOT create a new family.
-	body := `{"name":"Should Not Create","version":"v1.0","metadata":{"endpointUrl":"https://api.example.com"}}`
-	if w := doJSON(t, r, http.MethodPost, blank, body, true); w.Code != http.StatusBadRequest {
-		t.Errorf("POST blank groupId: expected 400, got %d: %s", w.Code, w.Body.String())
-	}
 
 	// GET with a blank groupId must NOT list the whole collection.
 	if w := doJSON(t, r, http.MethodGet, blank, "", true); w.Code != http.StatusBadRequest {
@@ -323,9 +400,8 @@ func TestLLMTemplateHTTP_DeleteByHandle(t *testing.T) {
 	defer cleanup()
 
 	// Custom family + a second version; delete the second version.
-	_, groupID := createFamily(t, r, "Delete Me")
-	v2 := `{"name":"Delete Me","version":"v2.0","metadata":{"endpointUrl":"https://x"}}`
-	w := doJSON(t, r, http.MethodPost, queryPath(groupID), v2, true)
+	v1Handle, groupID := createFamily(t, r, "Delete Me")
+	w := doJSON(t, r, http.MethodPost, copyVersionPath(v1Handle, groupID+"-v2-0", "v2.0"), "", true)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create v2.0: got %d: %s", w.Code, w.Body.String())
 	}

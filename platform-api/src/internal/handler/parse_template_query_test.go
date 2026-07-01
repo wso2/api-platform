@@ -18,33 +18,34 @@ package handler
 
 import "testing"
 
-func TestParseTemplateQueryGroupID(t *testing.T) {
+func TestParseTemplateQuery(t *testing.T) {
 	cases := []struct {
 		name        string
 		raw         string
 		wantGroupID string
+		wantVersion string
 		wantFound   bool
 	}{
-		{"empty", "", "", false},
-		{"groupId only", "groupId:openai", "openai", true},
-		{"slug groupId", "groupId:deep-seek", "deep-seek", true},
-		{"extra keys ignored", "groupId:openai&version:v2", "openai", true},
-		{"order independent", "version:v2&groupId:openai", "openai", true},
-		{"unknown key ignored", "displayName:ab&groupId:openai", "openai", true},
-		{"whitespace trimmed", " groupId : openai ", "openai", true},
-		{"malformed token skipped", "garbage&groupId:openai", "openai", true},
-		{"no groupId key", "version:v2", "", false},
-		{"blank groupId value", "groupId:", "", true},
-		{"blank groupId whitespace", "groupId:   ", "", true},
-		{"blank groupId with other keys", "version:v2&groupId:", "", true},
+		{"empty", "", "", "", false},
+		{"groupId only", "groupId:openai", "openai", "", true},
+		{"slug groupId", "groupId:deep-seek", "deep-seek", "", true},
+		{"groupId and version", "groupId:openai&version:v1.0", "openai", "v1.0", true},
+		{"order independent", "version:v2.0&groupId:openai", "openai", "v2.0", true},
+		{"unknown key ignored", "displayName:ab&groupId:openai", "openai", "", true},
+		{"whitespace trimmed", " groupId : openai & version : v1.0 ", "openai", "v1.0", true},
+		{"malformed token skipped", "garbage&groupId:openai&version:v3.0", "openai", "v3.0", true},
+		{"version without groupId is not found", "version:v2.0", "", "v2.0", false},
+		{"blank groupId value", "groupId:", "", "", true},
+		{"blank groupId whitespace", "groupId:   ", "", "", true},
+		{"blank groupId with version", "version:v2.0&groupId:", "", "v2.0", true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, found := parseTemplateQueryGroupID(tc.raw)
-			if got != tc.wantGroupID || found != tc.wantFound {
-				t.Fatalf("parseTemplateQueryGroupID(%q) = (%q, %t), want (%q, %t)",
-					tc.raw, got, found, tc.wantGroupID, tc.wantFound)
+			q, found := parseTemplateQuery(tc.raw)
+			if q.GroupID != tc.wantGroupID || q.Version != tc.wantVersion || found != tc.wantFound {
+				t.Fatalf("parseTemplateQuery(%q) = (%+v, %t), want (groupId=%q version=%q, %t)",
+					tc.raw, q, found, tc.wantGroupID, tc.wantVersion, tc.wantFound)
 			}
 		})
 	}
