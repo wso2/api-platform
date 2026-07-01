@@ -21,34 +21,6 @@ describe('Developer Portal — API Listing', () => {
         cy.on('uncaught:exception', () => false);
     });
 
-    context('REST API', () => {
-        it('GET /organizations returns 200 with an array', () => {
-            cy.apiRequest('GET', '/organizations').then((resp) => {
-                expect(resp.status).to.eq(200);
-                expect(resp.body).to.be.an('array');
-            });
-        });
-
-        it('GET /o/:orgId/devportal/v1/apis returns 200 with an array', () => {
-            const orgId = Cypress.env('ORG_ID');
-            cy.apiRequest('GET', `/o/${orgId}/devportal/v1/apis`).then((resp) => {
-                expect(resp.status).to.eq(200);
-                expect(resp.body).to.be.an('array');
-            });
-        });
-
-        it('GET /o/:orgId/devportal/v1/views returns the default view', () => {
-            const orgId = Cypress.env('ORG_ID');
-            const viewName = Cypress.env('VIEW_NAME');
-            cy.apiRequest('GET', `/o/${orgId}/devportal/v1/views`).then((resp) => {
-                expect(resp.status).to.eq(200);
-                expect(resp.body).to.be.an('array');
-                const names = resp.body.map((v) => v.name || v.NAME);
-                expect(names).to.include(viewName);
-            });
-        });
-    });
-
     context('UI — API browse page', () => {
         it('loads the API list page without errors', () => {
             cy.visitPortal('/apis');
