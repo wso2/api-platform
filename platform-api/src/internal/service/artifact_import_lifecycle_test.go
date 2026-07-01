@@ -823,11 +823,11 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 	// CP-origin MCP proxy via the service.
 	proj := importTestProjectID
 	if _, err := svc.Create(importTestOrgID, "tester", &api.MCPProxy{
-		Id:        strPointer("cp-mcp"),
-		DisplayName:      "CP MCP",
-		Version:   "v1.0",
-		ProjectId: &proj,
-		Upstream:  api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
+		Id:          strPointer("cp-mcp"),
+		DisplayName: "CP MCP",
+		Version:     "v1.0",
+		ProjectId:   &proj,
+		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
 	}); err != nil {
 		t.Fatalf("create CP MCP proxy: %v", err)
 	}
@@ -894,7 +894,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 
 		// Changing a gateway-consumed field (a token-extraction identifier) is rejected.
 		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
-			DisplayName:         "T",
+			DisplayName:  "T",
 			PromptTokens: &api.ExtractionIdentifier{Location: api.ExtractionIdentifierLocation("payload"), Identifier: "$.usage.prompt_tokens"},
 		}); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
 			t.Errorf("Template Update(DP, extraction change) = %v, want ErrArtifactRuntimeImmutable", err)
@@ -904,8 +904,8 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 		// time) leaves the runtime artifact untouched and is allowed.
 		specURL := "https://example.com/openapi.yaml"
 		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
-			DisplayName:     "Renamed",
-			Metadata: &api.LLMProviderTemplateMetadata{OpenapiSpecUrl: &specURL},
+			DisplayName: "Renamed",
+			Metadata:    &api.LLMProviderTemplateMetadata{OpenapiSpecUrl: &specURL},
 		}); err != nil {
 			t.Errorf("Template Update(DP, openapi/metadata edit) = %v, want success", err)
 		}
@@ -932,7 +932,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 			t.Fatalf("Provider Update(DP) = %v, want success", err)
 		}
 		if updated.DisplayName != "P" {
-			t.Errorf("provider name (runtime) must be preserved, got %q", updated.Name)
+			t.Errorf("provider name (runtime) must be preserved, got %q", updated.DisplayName)
 		}
 		if updated.Description == nil || *updated.Description != "a new description" {
 			t.Errorf("provider description should be applied, got %v", updated.Description)
