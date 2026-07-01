@@ -6426,6 +6426,43 @@ components:
           description: The internal ID of the updated key
           example: "production-key-01"
 
+    SubscriptionPlanLimit:
+      type: object
+      required:
+        - timeUnit
+        - limitCount
+      properties:
+        limitType:
+          type: string
+          description: >-
+            Kind of quota this limit enforces. Only REQUEST_COUNT is currently
+            enforced; other values are accepted by the schema for forward
+            compatibility but are rejected by the API today.
+          enum: [REQUEST_COUNT, BANDWIDTH, TOTAL_TOKEN_COUNT]
+          default: REQUEST_COUNT
+        timeUnit:
+          type: string
+          description: Throttle window unit
+          enum: [MINUTE, HOUR, DAY, MONTH]
+          example: "HOUR"
+        timeAmount:
+          type: integer
+          minimum: 1
+          description: Number of timeUnit windows the limit applies over (e.g. 2 with timeUnit=HOUR means "per 2 hours")
+          default: 1
+        limitCount:
+          type: integer
+          minimum: 1
+          description: Number of requests (or units, for BANDWIDTH/TOTAL_TOKEN_COUNT) allowed in the throttle window
+          example: 10000
+        limitCountUnit:
+          type: string
+          description: Unit for limitCount when limitType is BANDWIDTH (e.g. MB, GB)
+        stopOnQuotaReach:
+          type: boolean
+          description: Whether to block requests when this limit's quota is exhausted
+          default: true
+
     CreateSubscriptionPlanRequest:
       type: object
       required:
@@ -6447,20 +6484,15 @@ components:
           type: string
           description: Billing plan type (e.g. Free, Commercial)
           example: "Free"
-        stopOnQuotaReach:
-          type: boolean
-          description: Whether to block requests when quota is exhausted
-          default: true
-        throttleLimitCount:
-          type: integer
-          minimum: 1
-          description: Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
-          example: 10000
-        throttleLimitUnit:
-          type: string
-          description: Throttle window unit (must be paired with throttleLimitCount)
-          enum: [MINUTE, HOUR, DAY, MONTH]
-          example: "HOUR"
+        limits:
+          type: array
+          description: >-
+            Throttling limits for the plan (e.g. requests per hour, requests per month).
+            The table backing this API already supports multiple limits per plan, but
+            the platform-api currently only persists and enforces the first entry in
+            this array; any additional entries are accepted but ignored.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanLimit'
         expiryTime:
           type: string
           format: date-time
@@ -6469,12 +6501,6 @@ components:
           type: string
           enum: [ACTIVE, INACTIVE]
           default: ACTIVE
-      if:
-        anyOf:
-          - required: [throttleLimitCount]
-          - required: [throttleLimitUnit]
-      then:
-        required: [throttleLimitCount, throttleLimitUnit]
 
     SubscriptionPlan:
       type: object
@@ -6493,12 +6519,13 @@ components:
           maxLength: 128
         billingPlan:
           type: string
-        stopOnQuotaReach:
-          type: boolean
-        throttleLimitCount:
-          type: integer
-        throttleLimitUnit:
-          type: string
+        limits:
+          type: array
+          description: >-
+            Throttling limits configured for the plan. Only one entry is currently
+            supported and returned, even though the underlying storage allows multiple.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanLimit'
         expiryTime:
           type: string
           format: date-time

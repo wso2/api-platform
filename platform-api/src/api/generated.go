@@ -74,14 +74,6 @@ const (
 	CreateSubscriptionPlanRequestStatusINACTIVE CreateSubscriptionPlanRequestStatus = "INACTIVE"
 )
 
-// Defines values for CreateSubscriptionPlanRequestThrottleLimitUnit.
-const (
-	DAY    CreateSubscriptionPlanRequestThrottleLimitUnit = "DAY"
-	HOUR   CreateSubscriptionPlanRequestThrottleLimitUnit = "HOUR"
-	MINUTE CreateSubscriptionPlanRequestThrottleLimitUnit = "MINUTE"
-	MONTH  CreateSubscriptionPlanRequestThrottleLimitUnit = "MONTH"
-)
-
 // Defines values for CreateSubscriptionRequestStatus.
 const (
 	CreateSubscriptionRequestStatusACTIVE   CreateSubscriptionRequestStatus = "ACTIVE"
@@ -277,6 +269,21 @@ const (
 const (
 	SubscriptionPlanStatusACTIVE   SubscriptionPlanStatus = "ACTIVE"
 	SubscriptionPlanStatusINACTIVE SubscriptionPlanStatus = "INACTIVE"
+)
+
+// Defines values for SubscriptionPlanLimitLimitType.
+const (
+	BANDWIDTH       SubscriptionPlanLimitLimitType = "BANDWIDTH"
+	REQUESTCOUNT    SubscriptionPlanLimitLimitType = "REQUEST_COUNT"
+	TOTALTOKENCOUNT SubscriptionPlanLimitLimitType = "TOTAL_TOKEN_COUNT"
+)
+
+// Defines values for SubscriptionPlanLimitTimeUnit.
+const (
+	DAY    SubscriptionPlanLimitTimeUnit = "DAY"
+	HOUR   SubscriptionPlanLimitTimeUnit = "HOUR"
+	MINUTE SubscriptionPlanLimitTimeUnit = "MINUTE"
+	MONTH  SubscriptionPlanLimitTimeUnit = "MONTH"
 )
 
 // Defines values for TimeUnit.
@@ -884,24 +891,15 @@ type CreateSubscriptionPlanRequest struct {
 	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
 	// Id Handle (URL-friendly slug) for the plan. Immutable after creation.
-	Id     *string                              `json:"id,omitempty" yaml:"id,omitempty"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Limits Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored.
+	Limits *[]SubscriptionPlanLimit             `json:"limits,omitempty" yaml:"limits,omitempty"`
 	Status *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
-
-	// StopOnQuotaReach Whether to block requests when quota is exhausted
-	StopOnQuotaReach *bool `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
-
-	// ThrottleLimitCount Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
-	ThrottleLimitCount *int `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
-
-	// ThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
-	ThrottleLimitUnit *CreateSubscriptionPlanRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
 }
 
 // CreateSubscriptionPlanRequestStatus defines model for CreateSubscriptionPlanRequest.Status.
 type CreateSubscriptionPlanRequestStatus string
-
-// CreateSubscriptionPlanRequestThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
-type CreateSubscriptionPlanRequestThrottleLimitUnit string
 
 // CreateSubscriptionRequest defines model for CreateSubscriptionRequest.
 type CreateSubscriptionRequest struct {
@@ -2252,17 +2250,44 @@ type SubscriptionPlan struct {
 	// Id Handle (slug) for the subscription plan
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
+	// Limits Throttling limits configured for the plan. Only one entry is currently supported and returned, even though the underlying storage allows multiple.
+	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
+
 	// OrganizationId Handle (URL-friendly slug) of the organization this plan belongs to
-	OrganizationId     *string                 `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
-	Status             *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	StopOnQuotaReach   *bool                   `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
-	ThrottleLimitCount *int                    `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
-	ThrottleLimitUnit  *string                 `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
-	UpdatedAt          *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	OrganizationId *string                 `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	Status         *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt      *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
 type SubscriptionPlanStatus string
+
+// SubscriptionPlanLimit defines model for SubscriptionPlanLimit.
+type SubscriptionPlanLimit struct {
+	// LimitCount Number of requests (or units, for BANDWIDTH/TOTAL_TOKEN_COUNT) allowed in the throttle window
+	LimitCount int `binding:"required" json:"limitCount" yaml:"limitCount"`
+
+	// LimitCountUnit Unit for limitCount when limitType is BANDWIDTH (e.g. MB, GB)
+	LimitCountUnit *string `json:"limitCountUnit,omitempty" yaml:"limitCountUnit,omitempty"`
+
+	// LimitType Kind of quota this limit enforces. Only REQUEST_COUNT is currently enforced; other values are accepted by the schema for forward compatibility but are rejected by the API today.
+	LimitType *SubscriptionPlanLimitLimitType `json:"limitType,omitempty" yaml:"limitType,omitempty"`
+
+	// StopOnQuotaReach Whether to block requests when this limit's quota is exhausted
+	StopOnQuotaReach *bool `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+
+	// TimeAmount Number of timeUnit windows the limit applies over (e.g. 2 with timeUnit=HOUR means "per 2 hours")
+	TimeAmount *int `json:"timeAmount,omitempty" yaml:"timeAmount,omitempty"`
+
+	// TimeUnit Throttle window unit
+	TimeUnit SubscriptionPlanLimitTimeUnit `binding:"required" json:"timeUnit" yaml:"timeUnit"`
+}
+
+// SubscriptionPlanLimitLimitType Kind of quota this limit enforces. Only REQUEST_COUNT is currently enforced; other values are accepted by the schema for forward compatibility but are rejected by the API today.
+type SubscriptionPlanLimitLimitType string
+
+// SubscriptionPlanLimitTimeUnit Throttle window unit
+type SubscriptionPlanLimitTimeUnit string
 
 // SubscriptionPlanListResponse defines model for SubscriptionPlanListResponse.
 type SubscriptionPlanListResponse struct {

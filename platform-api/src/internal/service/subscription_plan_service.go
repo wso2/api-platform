@@ -176,6 +176,10 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 	}
 	if update.ThrottleLimitCount != nil {
 		existing.ThrottleLimitCount = update.ThrottleLimitCount
+	} else if update.ClearLimit {
+		existing.ThrottleLimitCount = nil
+		existing.ThrottleLimitUnit = ""
+		existing.StopOnQuotaReach = true
 	}
 	if update.ThrottleLimitUnit != nil {
 		if !constants.ValidThrottleLimitUnits[*update.ThrottleLimitUnit] {
