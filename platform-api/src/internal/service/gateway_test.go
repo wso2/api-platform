@@ -18,8 +18,9 @@
 package service
 
 import (
-	"platform-api/src/internal/constants"
 	"testing"
+
+	"platform-api/src/internal/constants"
 )
 
 // TestValidateGatewayInput tests input validation logic
@@ -321,6 +322,80 @@ func TestTokenHashingRoundTrip(t *testing.T) {
 
 	if hashToken(differentToken) == storedHash {
 		t.Error("hashToken() different token produced same hash")
+	}
+}
+
+// TestValidateGatewayEndpoints tests URL-level validation of endpoint strings.
+func TestValidateGatewayEndpoints(t *testing.T) {
+	tests := []struct {
+		name        string
+		endpoints   []string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:      "valid single endpoint",
+			endpoints: []string{"https://api.example.com:8443"},
+			wantErr:   false,
+		},
+		{
+			name:      "valid multiple endpoints",
+			endpoints: []string{"https://api.example.com:443", "wss://events.example.com:9000"},
+			wantErr:   false,
+		},
+		{
+			name:      "valid endpoint with path",
+			endpoints: []string{"https://api.example.com:8443/api/v1"},
+			wantErr:   false,
+		},
+		{
+			name:        "empty string",
+			endpoints:   []string{""},
+			wantErr:     true,
+			errContains: "url is required",
+		},
+		{
+			name:        "whitespace-only string",
+			endpoints:   []string{"   "},
+			wantErr:     true,
+			errContains: "url is required",
+		},
+		{
+			name:        "missing scheme",
+			endpoints:   []string{"api.example.com:443"},
+			wantErr:     true,
+			errContains: "not a valid URL",
+		},
+		{
+			name:        "path only",
+			endpoints:   []string{"/api/v1"},
+			wantErr:     true,
+			errContains: "not a valid URL",
+		},
+		{
+			name: "invalid endpoint at second index reports correct index",
+			endpoints: []string{
+				"https://api.example.com:443",
+				"",
+			},
+			wantErr:     true,
+			errContains: "endpoint[1]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateGatewayEndpoints(tt.endpoints)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateGatewayEndpoints() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errContains != "" && err != nil {
+				if !contains(err.Error(), tt.errContains) {
+					t.Errorf("validateGatewayEndpoints() error = %q, want it to contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
 	}
 }
 

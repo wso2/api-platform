@@ -108,7 +108,7 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		"1.0",
 		"test-user",
 		properties,
-		[]model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 8443}},
+		[]string{"https://api.example.com:8443"},
 	)
 	if err != nil {
 		t.Fatalf("RegisterGateway() error = %v", err)

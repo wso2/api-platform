@@ -203,10 +203,7 @@ CREATE TABLE IF NOT EXISTS gateways (
 CREATE TABLE IF NOT EXISTS gateway_endpoints (
     id SERIAL PRIMARY KEY,
     gateway_uuid VARCHAR(40) NOT NULL,
-    host VARCHAR(255) NOT NULL,
-    protocol VARCHAR(10) NOT NULL,
-    port INTEGER NOT NULL,
-    context VARCHAR(255) NOT NULL DEFAULT '',
+    url VARCHAR(255) NOT NULL,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gateway_endpoints_gateway_uuid ON gateway_endpoints(gateway_uuid);
