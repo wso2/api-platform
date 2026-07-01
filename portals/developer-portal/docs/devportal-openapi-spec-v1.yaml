@@ -1616,34 +1616,15 @@ paths:
       summary: List key managers
       operationId: getKeyManagers
       description: >-
-        Returns all key manager configurations for the organization. Admin appKeyMappings are never included in the response. Admin use
-        only.
+        Returns key manager configurations for the organization. Admins receive the full configuration for every key
+        manager, including disabled ones; other callers receive the minimal, developer-facing view of enabled key
+        managers only, with no admin credentials. Admin appKeyMappings are never included in the response.
       parameters:
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/KeyManagerListResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:km_read
-  /devportal/v1/key-managers/discover:
-    get:
-      tags:
-        - Key Managers
-      summary: Discover available key managers
-      operationId: discoverKeyManagers
-      description: >-
-        Returns the minimal public view of enabled key managers for developer use. Does not include admin credentials.
-        Endpoint data such as tokenEndpoint is included so clients can direct token requests to the correct server.
-      parameters:
-        - $ref: "#/components/parameters/limit"
-        - $ref: "#/components/parameters/offset"
-      responses:
-        "200":
-          $ref: "#/components/responses/KeyManagerPublicListResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -3274,7 +3255,9 @@ components:
           schema:
             $ref: "#/components/schemas/KeyManagerResponseSchema"
     KeyManagerListResponse:
-      description: List of key manager configurations.
+      description: >-
+        List of key manager configurations. Admins receive KeyManagerResponseSchema items; other callers receive
+        the minimal KeyManagerPublicResponseSchema items.
       content:
         application/json:
           schema:
@@ -3283,20 +3266,9 @@ components:
               list:
                 type: array
                 items:
-                  $ref: "#/components/schemas/KeyManagerResponseSchema"
-              pagination:
-                $ref: "#/components/schemas/Pagination"
-    KeyManagerPublicListResponse:
-      description: List of enabled key managers (developer-facing, minimal view).
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              list:
-                type: array
-                items:
-                  $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
+                  oneOf:
+                    - $ref: "#/components/schemas/KeyManagerResponseSchema"
+                    - $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
               pagination:
                 $ref: "#/components/schemas/Pagination"
     WebhookSubscriberResponse:

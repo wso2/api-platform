@@ -117,7 +117,6 @@ Base URLs:
 
 - [Create a key manager](key-managers.md#create-a-key-manager)
 - [List key managers](key-managers.md#list-key-managers)
-- [Discover available key managers](key-managers.md#discover-available-key-managers)
 - [Get a key manager](key-managers.md#get-a-key-manager)
 - [Update a key manager](key-managers.md#update-a-key-manager)
 - [Delete a key manager](key-managers.md#delete-a-key-manager)

@@ -161,7 +161,7 @@ curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers \
 
 ```
 
-Returns all key manager configurations for the organization. Admin appKeyMappings are never included in the response. Admin use only.
+Returns key manager configurations for the organization. Admins receive the full configuration for every key manager, including disabled ones; other callers receive the minimal, developer-facing view of enabled key managers only, with no admin credentials. Admin appKeyMappings are never included in the response.
 
 ### Authentication
 
@@ -215,7 +215,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of key manager configurations.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of key manager configurations. Admins receive KeyManagerResponseSchema items; other callers receive the minimal KeyManagerPublicResponseSchema items.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-key-managers-responseschema">Response Schema</h3>
@@ -224,13 +224,34 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)]|false|none|[Key manager configuration.]|
-|»» id|string|false|none|Key manager UUID.|
-|»» orgId|string|false|none|none|
-|»» name|string|false|none|none|
-|»» type|string|false|none|none|
-|»» enabled|boolean|false|none|none|
-|»» tokenEndpoint|string(uri)|false|none|none|
+|» list|[oneOf]|false|none|none|
+
+*oneOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|false|none|Key manager configuration.|
+|»»» id|string|false|none|Key manager UUID.|
+|»»» orgId|string|false|none|none|
+|»»» name|string|false|none|none|
+|»»» type|string|false|none|none|
+|»»» enabled|boolean|false|none|none|
+|»»» tokenEndpoint|string(uri)|false|none|none|
+
+*xor*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)|false|none|Minimal developer-facing key manager view.|
+|»»» id|string|false|none|none|
+|»»» name|string|false|none|none|
+|»»» type|string|false|none|none|
+|»»» tokenEndpoint|string(uri)|false|none|none|
+
+*continued*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -244,99 +265,6 @@ Status Code **200**
 |type|WSO2IS|
 |type|KEYCLOAK|
 |type|GENERIC_OIDC|
-
-## Discover available key managers
-
-<a id="opIddiscoverKeyManagers"></a>
-
-`GET /devportal/v1/key-managers/discover`
-
-> Code samples
-
-```shell
-
-curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers/discover \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
-
-```
-
-Returns the minimal public view of enabled key managers for developer use. Does not include admin credentials. Endpoint data such as tokenEndpoint is included so clients can direct token requests to the correct server.
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="discover-available-key-managers-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|limit|query|integer|false|Maximum number of records to return.|
-|offset|query|integer|false|Number of records to skip before returning results.|
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "list": [
-    {
-      "id": "km-uuid-12345",
-      "name": "Asgardeo",
-      "type": "ASGARDEO",
-      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
-    }
-  ],
-  "pagination": {
-    "total": 42,
-    "limit": 20,
-    "offset": 0
-  }
-}
-```
-
-> 500 Response
-
-```json
-{
-  "status": "error",
-  "code": "INTERNAL_SERVER_ERROR",
-  "message": "An unexpected error occurred."
-}
-```
-
-<h3 id="discover-available-key-managers-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of enabled key managers (developer-facing, minimal view).|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="discover-available-key-managers-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» list|[[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)]|false|none|[Minimal developer-facing key manager view.]|
-|»» id|string|false|none|none|
-|»» name|string|false|none|none|
-|»» type|string|false|none|none|
-|»» tokenEndpoint|string(uri)|false|none|none|
-|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
-|»» total|integer|true|none|Total number of records matching the query.|
-|»» limit|integer|true|none|Maximum number of records returned in this response.|
-|»» offset|integer|true|none|Number of records skipped before this page.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
 |type|KEYCLOAK|
