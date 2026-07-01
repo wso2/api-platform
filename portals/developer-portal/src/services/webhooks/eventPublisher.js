@@ -29,6 +29,8 @@ const VALID_EVENT_TYPES = new Set([
     'subscription.created',
     'subscription.updated',
     'subscription.deleted',
+    'subscription.plan_changed',
+    'subscription.token_regenerated',
     'apikey.generated',
     'apikey.regenerated',
     'apikey.revoked',

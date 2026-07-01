@@ -471,3 +471,177 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Change subscription plan
+
+<a id="opIdchangePlan"></a>
+
+`POST /devportal/v1/subscriptions/{subId}/change-plan`
+
+> Code samples
+
+```shell
+
+curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions/{subId}/change-plan \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
+
+```
+
+Changes the subscription plan in-place. The subscription UUID and token remain unchanged; only the plan is updated. A `subscription.plan_changed` webhook event is published to the organization's configured webhook subscribers.
+
+> Payload
+
+```json
+{
+  "planId": "pol-9a3d1f7e"
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="change-subscription-plan-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[SubscriptionChangePlanRequest](schemas.md#schemasubscriptionchangeplanrequest)|true|Subscription plan change payload. `planId` is the Developer Portal subscription plan ID.|
+|subId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "subscriptionId": "sub-12345",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
+  "subscriptionPlanName": "Gold",
+  "status": "ACTIVE",
+  "createdBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z"
+}
+```
+
+> 400 Response
+
+```json
+{
+  "code": "400",
+  "message": "Bad Request",
+  "description": "apiId is required"
+}
+```
+
+> 404 Response
+
+```json
+{
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="change-subscription-plan-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Regenerate subscription token
+
+<a id="opIdregenerateSubscriptionToken"></a>
+
+`POST /devportal/v1/subscriptions/{subId}/regenerate-token`
+
+> Code samples
+
+```shell
+
+curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions/{subId}/regenerate-token \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Regenerates the subscription token, immediately invalidating the old one. A `subscription.token_regenerated` webhook event is published to the organization's configured webhook subscribers so they can update the token at the gateway. The new plaintext token is returned in the response.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="regenerate-subscription-token-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|subId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "subscriptionId": "sub-12345",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
+  "subscriptionPlanName": "Gold",
+  "status": "ACTIVE",
+  "createdBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z"
+}
+```
+
+> 404 Response
+
+```json
+{
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="regenerate-subscription-token-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|

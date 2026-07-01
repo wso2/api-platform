@@ -144,7 +144,7 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
             sanitizedParam7 +
             '" plan. Switching to "' +
             sanitizedParam5 +
-            '" will delete your existing subscription and generate a new token. Do you want to proceed?';
+            '" will update your subscription immediately. Your existing token will remain valid.';
         modalFunction.innerText = 'Confirm';
         modalFunction.onclick = function() {
             if (typeof runPendingPlanSwitch === 'function') {

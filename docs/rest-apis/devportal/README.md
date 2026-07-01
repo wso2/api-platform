@@ -80,6 +80,8 @@ Base URLs:
 - [Get a subscription](subscriptions.md#get-a-subscription)
 - [Update a subscription](subscriptions.md#update-a-subscription)
 - [Delete a subscription](subscriptions.md#delete-a-subscription)
+- [Change subscription plan](subscriptions.md#change-subscription-plan)
+- [Regenerate subscription token](subscriptions.md#regenerate-subscription-token)
 
 ### [API Keys](api-keys.md)
 

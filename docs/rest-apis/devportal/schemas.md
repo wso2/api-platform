@@ -1056,6 +1056,26 @@ xor
 |status|ACTIVE|
 |status|INACTIVE|
 
+<h2 id="tocS_SubscriptionChangePlanRequest">SubscriptionChangePlanRequest</h2>
+
+<a id="schemasubscriptionchangeplanrequest"></a>
+<a id="schema_SubscriptionChangePlanRequest"></a>
+<a id="tocSsubscriptionchangeplanrequest"></a>
+<a id="tocssubscriptionchangeplanrequest"></a>
+
+```json
+{
+  "planId": "pol-9a3d1f7e"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|planId|string|true|none|Developer Portal subscription plan ID to switch to.|
+
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
 
 <a id="schemasubscriptionresponse"></a>
