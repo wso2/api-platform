@@ -52,6 +52,11 @@ const CONFIG_DEFAULTS = {
     mode: 'production',
     defaultOrgName: '',
     baseUrl: 'http://localhost:3000',
+    // Declared here so DP_GENERATEDEFAULTSUBPLANS's case-insensitive key lookup finds this
+    // exact casing instead of creating a stray all-lowercase key that seederService.js's
+    // config.generateDefaultSubPlans check would never see. mergeDefaults() only fills this
+    // in when missing, so an explicit value already set in configs/config.yaml is untouched.
+    generateDefaultSubPlans: false,
     db: {
         dialect: 'sqlite',
         storage: './devportal.db',

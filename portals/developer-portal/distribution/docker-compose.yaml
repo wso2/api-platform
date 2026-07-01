@@ -21,8 +21,8 @@
 # the docker-compose.yml one level up.
 #
 # Quick start:
-#   1. Copy configs/config-platform-api.toml.example to configs/config-platform-api.toml
-#      and adjust users/org as needed.
+#   1. (Optional) Edit configs/config-platform-api.toml to adjust users/org as needed
+#      — ships with a default admin/admin user, ready to use as-is.
 #   2. docker compose up
 #   3. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
@@ -59,7 +59,7 @@
 services:
   # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.10.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
