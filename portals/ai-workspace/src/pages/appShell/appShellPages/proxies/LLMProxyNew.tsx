@@ -45,6 +45,12 @@ import {
 import { ChevronLeft, Copy } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { createLLMProviderAPIKey } from '../../../../apis/llmProviderApis';
+import {
+  createSecret,
+  deleteSecret,
+  buildSecretPlaceholder,
+  generateSecretHandle,
+} from '../../../../apis/secretApis';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { useProxies } from '../../../../contexts/proxy';
 import {
@@ -323,47 +329,68 @@ function LLMProxyNewContent({
       return;
     }
 
-    const payload: CreateProxyRequest = {
-      id: generatedId,
-      displayName: trimmedName,
-      description:
-        formState.description.trim() ||
-        intl.formatMessage({
-          id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.no.description.provided.for.this.proxy',
-          defaultMessage: 'No description provided for this proxy.',
-        }),
-      version: formState.version.trim() || 'v1.0',
-      projectId: payloadProjectId,
-      context: effectiveContext,
-      provider: {
-        id: formState.providerId,
-        auth: selectedProviderRequiresApiKey
-          ? {
-              type: 'api-key',
-              header: selectedProviderApiKeyName,
-              value:
-                manualApiKeyValue.trim() || selectedProviderApiKeyValue || '',
-            }
-          : {
-              type: providerDetail?.upstream?.main?.auth?.type ?? '',
-              header: providerDetail?.upstream?.main?.auth?.header ?? '',
-              value: providerDetail?.upstream?.main?.auth?.value ?? '',
-            },
-      },
-      openapi: providerDetail?.openapi ?? '',
-      policies: [],
-      security: {
-        enabled: Boolean(providerDetail?.security?.enabled),
-        apiKey: {
-          enabled: Boolean(providerDetail?.security?.apiKey?.enabled),
-          key: providerDetail?.security?.apiKey?.key ?? '',
-          in: providerDetail?.security?.apiKey?.in ?? 'header',
-        },
-      },
-    };
-
+    let createdSecretHandle: string | null = null;
     try {
       setIsCreating(true);
+
+      // Encrypt the provider API key as a secret before storing it in the proxy
+      // config — even though it is a platform-issued key, it is still a credential
+      // that should not be persisted in plain text.
+      let providerAuthType = providerDetail?.upstream?.main?.auth?.type ?? '';
+      let providerAuthHeader = providerDetail?.upstream?.main?.auth?.header ?? '';
+      let providerAuthValue = providerDetail?.upstream?.main?.auth?.value ?? '';
+      if (selectedProviderRequiresApiKey) {
+        const rawKey = manualApiKeyValue.trim() || selectedProviderApiKeyValue || '';
+        const secretHandle = generateSecretHandle();
+        const secretResponse = await createSecret({
+          id: secretHandle,
+          displayName: `${generatedId} Provider API Key`,
+          description: `Auto-generated secret for LLM proxy ${generatedId}`,
+          value: rawKey,
+          type: 'GENERIC',
+        });
+        logger.info('Created secret for LLM proxy provider auth', {
+          secretHandle: secretResponse.id,
+          proxyId: generatedId,
+        });
+        createdSecretHandle = secretResponse.id;
+        providerAuthType = 'api-key';
+        providerAuthHeader = selectedProviderApiKeyName;
+        providerAuthValue = buildSecretPlaceholder(secretResponse.id);
+      }
+
+      const payload: CreateProxyRequest = {
+        id: generatedId,
+        displayName: trimmedName,
+        description:
+          formState.description.trim() ||
+          intl.formatMessage({
+            id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.no.description.provided.for.this.proxy',
+            defaultMessage: 'No description provided for this proxy.',
+          }),
+        version: formState.version.trim() || 'v1.0',
+        projectId: payloadProjectId,
+        context: effectiveContext,
+        provider: {
+          id: formState.providerId,
+          auth: {
+            type: providerAuthType,
+            header: providerAuthHeader,
+            value: providerAuthValue,
+          },
+        },
+        openapi: providerDetail?.openapi ?? '',
+        policies: [],
+        security: {
+          enabled: Boolean(providerDetail?.security?.enabled),
+          apiKey: {
+            enabled: Boolean(providerDetail?.security?.apiKey?.enabled),
+            key: providerDetail?.security?.apiKey?.key ?? '',
+            in: providerDetail?.security?.apiKey?.in ?? 'header',
+          },
+        },
+      };
+
       const newProxy = await createProxy(payload);
       navigate(
         isProjectLevel
@@ -378,6 +405,15 @@ function LLMProxyNewContent({
         }
       );
     } catch (error) {
+      // Compensate: delete the orphaned secret if proxy creation failed.
+      if (createdSecretHandle) {
+        deleteSecret(createdSecretHandle).catch((err) => {
+          logger.warn('Could not delete orphaned secret after proxy creation failure', {
+            secretHandle: createdSecretHandle,
+            err,
+          });
+        });
+      }
       const description =
         (error as any)?.response?.data?.description ||
         (error as any)?.response?.data?.message ||

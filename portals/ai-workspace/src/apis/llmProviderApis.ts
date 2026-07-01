@@ -18,7 +18,7 @@
 
 import { get, post, put, del } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
-import { PLATFORM_API_BASE_URL } from '../config.env';
+import { PLATFORM_API_BASE_URL, BFF_COMPOSITE_BASE_URL } from '../config.env';
 
 // ============================================================================
 // Type Definitions (moved to `src/utils/types.ts`)
@@ -165,15 +165,17 @@ const sanitizeUpdatePayload = (
 export async function createLLMProvider(
   provider: CreateLLMProviderRequest,
   organizationId: string,
-  baseUrl: string
+  _baseUrl: string
 ): Promise<LLMProvider> {
   try {
     // TODO: Remove buildFullProviderRequest once backend supports partial creation
     const fullProvider = buildFullProviderRequest(provider);
+    // Routed through the BFF composite endpoint so the BFF can compensate by
+    // deleting the pre-created secret if the provider creation fails.
     const response = await post<LLMProvider>(
       `/llm-providers`,
       fullProvider,
-      baseUrl
+      BFF_COMPOSITE_BASE_URL
     );
     return response;
   } catch (error) {

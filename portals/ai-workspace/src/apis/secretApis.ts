@@ -16,13 +16,14 @@
  * under the License.
  */
 
-import { postForm } from '../clients/choreoApiClient';
+import { get, del, postForm, putForm } from '../clients/choreoApiClient';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type SecretType = 'GENERIC' | 'CERTIFICATE';
+export type SecretStatus = 'ACTIVE' | 'DEPRECATED';
 
 export interface CreateSecretRequest {
   id: string;
@@ -32,12 +33,55 @@ export interface CreateSecretRequest {
   type?: SecretType;
 }
 
-export interface CreateSecretResponse {
+export interface UpdateSecretRequest {
+  value: string;
+  name?: string;
+  description?: string;
+}
+
+export interface SecretMetadata {
   uuid: string;
   id: string;
   displayName: string;
+  description?: string;
+  type: SecretType;
+  provider: string;
+  status: SecretStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateSecretResponse extends SecretMetadata {}
+export interface UpdateSecretResponse extends SecretMetadata {}
+
+export interface ListSecretsResponse {
+  list: SecretMetadata[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}
+
+export interface SecretReference {
+  type: string;
+  handle: string;
+  name: string;
+}
+
+export interface DeleteSecretConflict {
+  error: string;
+  references: SecretReference[];
+}
+
+export class SecretConflictError extends Error {
+  readonly status = 409;
+  readonly conflict: DeleteSecretConflict;
+  constructor(conflict: DeleteSecretConflict) {
+    super(conflict.error);
+    this.name = 'SecretConflictError';
+    this.conflict = conflict;
+  }
 }
 
 // ============================================================================
@@ -45,16 +89,11 @@ export interface CreateSecretResponse {
 // ============================================================================
 
 /**
- * Creates an encrypted secret in the Platform API.
+ * Creates an encrypted secret via the BFF proxy.
  * Sent as multipart/form-data; the API never returns the plaintext value.
- *
- * @param request - Secret creation payload
- * @param baseUrl - Platform API base URL
- * @returns The created secret metadata
  */
 export async function createSecret(
   request: CreateSecretRequest,
-  baseUrl: string
 ): Promise<CreateSecretResponse> {
   const form = new FormData();
   form.append('id', request.id);
@@ -62,7 +101,58 @@ export async function createSecret(
   if (request.description) form.append('description', request.description);
   form.append('value', request.value);
   if (request.type) form.append('type', request.type);
-  return postForm<CreateSecretResponse>('/secrets', form, baseUrl);
+  return postForm<CreateSecretResponse>('/secrets', form);
+}
+
+/**
+ * Lists all secrets in the organization (metadata only — values are never returned).
+ */
+export async function listSecrets(
+  params?: { limit?: number; offset?: number },
+): Promise<ListSecretsResponse> {
+  return get<ListSecretsResponse>('/secrets', params);
+}
+
+/**
+ * Returns metadata for a single secret by handle.
+ */
+export async function getSecret(handle: string): Promise<SecretMetadata> {
+  return get<SecretMetadata>(`/secrets/${handle}`);
+}
+
+/**
+ * Rotates a secret's value. All {{ secret "handle" }} references remain valid —
+ * the gateway picks up the new value on its next sync cycle.
+ * Sent as multipart/form-data; the new plaintext value is never returned.
+ */
+export async function updateSecret(
+  handle: string,
+  request: UpdateSecretRequest,
+): Promise<UpdateSecretResponse> {
+  const form = new FormData();
+  form.append('value', request.value);
+  if (request.name) form.append('name', request.name);
+  if (request.description) form.append('description', request.description);
+  return putForm<UpdateSecretResponse>(`/secrets/${handle}`, form);
+}
+
+/**
+ * Soft-deletes a secret (sets status to DEPRECATED).
+ * Throws SecretConflictError (with a populated .conflict.references list) if
+ * the secret is still referenced by a deployed resource.
+ */
+export async function deleteSecret(handle: string): Promise<void> {
+  try {
+    return await del<void>(`/secrets/${handle}`);
+  } catch (err: unknown) {
+    if (err instanceof Error && (err as { status?: number }).status === 409) {
+      const data = (err as { data?: unknown }).data as DeleteSecretConflict | undefined;
+      if (data?.references) {
+        throw new SecretConflictError(data);
+      }
+    }
+    throw err;
+  }
 }
 
 /**
@@ -73,18 +163,19 @@ export function buildSecretPlaceholder(secretName: string): string {
 }
 
 /**
- * Generates a deterministic secret handle from a provider ID and field name.
- * Ensures the handle conforms to the allowed character set (lowercase alphanumeric + hyphens).
- *
- * Example: generateSecretHandle('wso2-openai', 'api-key') → 'wso2-openai-api-key'
+ * Generates a unique secret handle. Each call returns a different value so
+ * re-creating a resource with the same name never collides with a prior
+ * (possibly soft-deleted) secret.
  */
-export function generateSecretHandle(providerId: string, fieldName = 'api-key'): string {
-  const handle = `${providerId}-${fieldName}`
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  if (!handle) {
-    throw new Error(`Cannot generate a valid secret handle from providerId="${providerId}" and fieldName="${fieldName}"`);
-  }
-  return handle;
+export function generateSecretHandle(): string {
+  return crypto.randomUUID();
+}
+
+/**
+ * Extracts the secret handle from a {{ secret "handle" }} placeholder string.
+ * Returns null if the value is not a placeholder.
+ */
+export function extractSecretHandle(placeholder: string): string | null {
+  const match = placeholder.match(/^\{\{\s*secret\s+"([^"]+)"\s*\}\}$/);
+  return match ? match[1] : null;
 }
