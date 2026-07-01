@@ -114,20 +114,6 @@ const (
 	APISubTypeSOAP      = "SOAP"
 )
 
-// Artifact Type Constants
-const (
-	ArtifactTypeAPI        = "API"
-	ArtifactTypeMCP        = "MCP"
-	ArtifactTypeAPIProduct = "API_PRODUCT"
-)
-
-// ValidArtifactTypes Valid artifact types deployed to gateways
-var ValidArtifactTypes = map[string]bool{
-	ArtifactTypeAPI:        true,
-	ArtifactTypeMCP:        true,
-	ArtifactTypeAPIProduct: true,
-}
-
 // Constants for association types
 const (
 	AssociationTypeGateway = "gateway"

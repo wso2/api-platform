@@ -186,6 +186,25 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	return org, nil
 }
 
+// ListOrganizations returns a paginated list of organizations.
+func (s *OrganizationService) ListOrganizations(limit, offset int) ([]api.Organization, error) {
+	orgModels, err := s.orgRepo.ListOrganizations(limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	orgs := make([]api.Organization, 0, len(orgModels))
+	for _, orgModel := range orgModels {
+		org, convErr := s.modelToAPI(orgModel)
+		if convErr != nil {
+			return nil, convErr
+		}
+		orgs = append(orgs, *org)
+	}
+
+	return orgs, nil
+}
+
 func (s *OrganizationService) GetOrganizationByHandle(handle string) (*api.Organization, error) {
 	orgModel, err := s.orgRepo.GetOrganizationByHandle(handle)
 	if err != nil {

@@ -74,28 +74,44 @@ paths:
             $ref: '#/components/responses/InternalServerError'
 
     get:
-      summary: Get current user's organization
+      summary: List organizations
       description: |
-        Retrieves the organization details for the organization specified in the JWT token's 
-        `organization` claim.
-      operationId: GetOrganization
+        Retrieves the list of organizations. Results are returned in a paginated
+        collection envelope.
+      operationId: ListOrganizations
       security:
         - OAuth2Security:
             - ap:organization:read
             - ap:organization:manage
       tags:
         - Organizations
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of organizations to return per page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          description: Zero-based index of the first organization to return.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
-          description: Organization retrieved successfully
+          description: Organizations retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Organization'
+                $ref: '#/components/schemas/OrganizationListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3553,40 +3569,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}/live-proxy-artifacts:
-    get:
-      summary: Get gateway artifacts
-      description: |
-        Retrieves all artifacts (APIs, MCPs, API Products) deployed to a specific gateway with pagination support.
-        Currently, only APIs are supported as artifacts. Future versions will include MCPs and API Products.
-        Access is validated against the organization in the JWT token.
-      operationId: GetGatewayArtifacts
-      security:
-        - OAuth2Security:
-            - ap:gateway:artifact:read
-            - ap:gateway:manage
-      tags:
-        - Gateways
-        - Artifacts
-      parameters:
-        - $ref: '#/components/parameters/gatewayId'
-        - $ref: '#/components/parameters/artifactType-Q'
-      responses:
-        '200':
-          description: Paginated list of artifacts deployed to the gateway
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GatewayArtifactListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /gateways/{gatewayId}/manifest:
     get:
       summary: Get gateway policy manifest
@@ -4929,7 +4911,6 @@ components:
             ap:application:manage: Full access to applications
             ap:application:read: Read applications
             ap:application:update: Update an application
-            ap:gateway:artifact:read: Read gateway live proxy artifacts
             ap:gateway:create: Create a gateway
             ap:gateway:delete: Delete a gateway
             ap:gateway:manage: Full access to gateways
@@ -6204,6 +6185,24 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    OrganizationListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
     RESTAPIListResponse:
       type: object
       required:
@@ -6483,10 +6482,6 @@ components:
           minLength: 1
           maxLength: 128
           example: "Gold"
-        billingPlan:
-          type: string
-          description: Billing plan type (e.g. Free, Commercial)
-          example: "Free"
         limits:
           type: array
           description: >-
@@ -6520,8 +6515,6 @@ components:
           description: Human-readable name for the subscription plan
           minLength: 1
           maxLength: 128
-        billingPlan:
-          type: string
         limits:
           type: array
           description: >-
@@ -6672,65 +6665,6 @@ components:
           description: List of specific errors (useful for validation errors)
           items:
             type: object
-
-    GatewayArtifact:
-      type: object
-      required:
-        - id
-        - name
-        - type
-        - createdAt
-        - updatedAt
-      properties:
-        id:
-          type: string
-          description: Handle of the artifact
-          minLength: 3
-          maxLength: 40
-          example: "inventory-api"
-        name:
-          type: string
-          description: Name of the artifact
-          example: "Inventory API"
-        type:
-          type: string
-          enum: ["REST_API", "MCP", "API_PRODUCT"]
-          description: Type of artifact deployed to the gateway
-          example: "REST_API"
-        subType:
-          type: string
-          enum: ["REST", "ASYNC", "GQL", "WEBSOCKET", "SOAP"]
-          description: Subtype of the artifact (for APIs - type of API)
-          example: "REST"
-        createdAt:
-          type: string
-          format: date-time
-          description: Timestamp when the artifact was created
-          example: "2025-10-27T10:30:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the artifact was last updated
-          example: "2025-10-27T11:45:00Z"
-
-    GatewayArtifactListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of items in current response
-          example: 5
-        list:
-          type: array
-          description: Array of gateway artifact objects
-          items:
-            $ref: '#/components/schemas/GatewayArtifact'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
 
     DeployRequest:
       type: object
@@ -8694,16 +8628,6 @@ components:
         type: string
         format: uuid
         example: "abc12345-f678-90de-f123-456789abcdef"
-
-    artifactType-Q:
-      name: artifactType
-      in: query
-      required: false
-      description: Filter artifacts by type
-      schema:
-        type: string
-        enum: ["REST_API", "MCP", "API_PRODUCT"]
-      example: "REST_API"
 
     deploymentId:
       name: deploymentId

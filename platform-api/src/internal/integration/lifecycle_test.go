@@ -107,7 +107,7 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		slug := fmt.Sprintf("plan-%d-%s", i, id()[:6])
 		plan := &model.SubscriptionPlan{
 			UUID: id(), Handle: slug, Name: fmt.Sprintf("Plan %d", i),
-			BillingPlan: "free", StopOnQuotaReach: true,
+			StopOnQuotaReach: true,
 			ThrottleLimitCount: &count, ThrottleLimitUnit: "min",
 			OrganizationUUID: org.ID, Status: model.SubscriptionPlanStatus("ACTIVE"),
 		}

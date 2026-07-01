@@ -104,7 +104,6 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
-    billing_plan VARCHAR(255),
     expiry_time TIMESTAMPTZ,
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',

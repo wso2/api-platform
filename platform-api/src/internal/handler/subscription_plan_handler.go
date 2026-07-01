@@ -133,7 +133,6 @@ func firstLimit(limits []SubscriptionPlanLimitRequest) *SubscriptionPlanLimitReq
 type CreateSubscriptionPlanRequest struct {
 	Id          string                         `json:"id" binding:"required"`
 	DisplayName string                         `json:"displayName" binding:"required"`
-	BillingPlan string                         `json:"billingPlan,omitempty"`
 	Limits      []SubscriptionPlanLimitRequest `json:"limits,omitempty"`
 	ExpiryTime  *string                        `json:"expiryTime,omitempty"`
 	Status      string                         `json:"status,omitempty"`
@@ -166,7 +165,6 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 	plan := &model.SubscriptionPlan{
 		Handle:           req.Id,
 		Name:             req.DisplayName,
-		BillingPlan:      req.BillingPlan,
 		StopOnQuotaReach: true,
 		Status:           model.SubscriptionPlanStatus(req.Status),
 	}
@@ -314,9 +312,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 	update := &model.SubscriptionPlanUpdate{
-		Name:        &displayName,
-		BillingPlan: req.BillingPlan,
-		ExpiryTime:  req.ExpiryTime,
+		Name:       &displayName,
+		ExpiryTime: req.ExpiryTime,
 	}
 	if req.Limits != nil {
 		if limit := firstLimit(apiLimitsToRequests(*req.Limits)); limit != nil {
@@ -423,7 +420,6 @@ func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.Subscri
 	resp := map[string]any{
 		"id":             plan.Handle,
 		"displayName":    plan.Name,
-		"billingPlan":    plan.BillingPlan,
 		"organizationId": h.planService.ResolveOrgHandle(plan.OrganizationUUID),
 		"status":         string(plan.Status),
 		"createdAt":      plan.CreatedAt,

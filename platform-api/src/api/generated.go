@@ -99,22 +99,6 @@ const (
 	ExtractionIdentifierLocationQueryParam ExtractionIdentifierLocation = "queryParam"
 )
 
-// Defines values for GatewayArtifactSubType.
-const (
-	ASYNC     GatewayArtifactSubType = "ASYNC"
-	GQL       GatewayArtifactSubType = "GQL"
-	REST      GatewayArtifactSubType = "REST"
-	SOAP      GatewayArtifactSubType = "SOAP"
-	WEBSOCKET GatewayArtifactSubType = "WEBSOCKET"
-)
-
-// Defines values for GatewayArtifactType.
-const (
-	GatewayArtifactTypeAPIPRODUCT GatewayArtifactType = "API_PRODUCT"
-	GatewayArtifactTypeMCP        GatewayArtifactType = "MCP"
-	GatewayArtifactTypeRESTAPI    GatewayArtifactType = "REST_API"
-)
-
 // Defines values for GatewayResponseFunctionalityType.
 const (
 	GatewayResponseFunctionalityTypeAi      GatewayResponseFunctionalityType = "ai"
@@ -329,13 +313,6 @@ const (
 	Revoked UserAPIKeyItemStatus = "revoked"
 )
 
-// Defines values for ArtifactTypeQ.
-const (
-	ArtifactTypeQAPIPRODUCT ArtifactTypeQ = "API_PRODUCT"
-	ArtifactTypeQMCP        ArtifactTypeQ = "MCP"
-	ArtifactTypeQRESTAPI    ArtifactTypeQ = "REST_API"
-)
-
 // Defines values for DeploymentStatusQ.
 const (
 	DeploymentStatusQARCHIVED    DeploymentStatusQ = "ARCHIVED"
@@ -344,13 +321,6 @@ const (
 	DeploymentStatusQFAILED      DeploymentStatusQ = "FAILED"
 	DeploymentStatusQUNDEPLOYED  DeploymentStatusQ = "UNDEPLOYED"
 	DeploymentStatusQUNDEPLOYING DeploymentStatusQ = "UNDEPLOYING"
-)
-
-// Defines values for GetGatewayArtifactsParamsArtifactType.
-const (
-	GetGatewayArtifactsParamsArtifactTypeAPIPRODUCT GetGatewayArtifactsParamsArtifactType = "API_PRODUCT"
-	GetGatewayArtifactsParamsArtifactTypeMCP        GetGatewayArtifactsParamsArtifactType = "MCP"
-	GetGatewayArtifactsParamsArtifactTypeRESTAPI    GetGatewayArtifactsParamsArtifactType = "REST_API"
 )
 
 // Defines values for ListLLMProviderTemplatesParamsVersions.
@@ -881,9 +851,6 @@ type CreateRESTAPIRequestLifeCycleStatus string
 
 // CreateSubscriptionPlanRequest defines model for CreateSubscriptionPlanRequest.
 type CreateSubscriptionPlanRequest struct {
-	// BillingPlan Billing plan type (e.g. Free, Commercial)
-	BillingPlan *string `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
-
 	// DisplayName Human-readable name for the subscription plan
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
@@ -1051,43 +1018,6 @@ type ExtractionIdentifier struct {
 // ExtractionIdentifierLocation Where to find the token information
 type ExtractionIdentifierLocation string
 
-// GatewayArtifact defines model for GatewayArtifact.
-type GatewayArtifact struct {
-	// CreatedAt Timestamp when the artifact was created
-	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-
-	// Id Handle of the artifact
-	Id string `binding:"required" json:"id" yaml:"id"`
-
-	// Name Name of the artifact
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// SubType Subtype of the artifact (for APIs - type of API)
-	SubType *GatewayArtifactSubType `json:"subType,omitempty" yaml:"subType,omitempty"`
-
-	// Type Type of artifact deployed to the gateway
-	Type GatewayArtifactType `binding:"required" json:"type" yaml:"type"`
-
-	// UpdatedAt Timestamp when the artifact was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-}
-
-// GatewayArtifactSubType Subtype of the artifact (for APIs - type of API)
-type GatewayArtifactSubType string
-
-// GatewayArtifactType Type of artifact deployed to the gateway
-type GatewayArtifactType string
-
-// GatewayArtifactListResponse defines model for GatewayArtifactListResponse.
-type GatewayArtifactListResponse struct {
-	// Count Number of items in current response
-	Count int `binding:"required" json:"count" yaml:"count"`
-
-	// List Array of gateway artifact objects
-	List       []GatewayArtifact `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination        `json:"pagination" yaml:"pagination"`
-}
-
 // GatewayListResponse defines model for GatewayListResponse.
 type GatewayListResponse struct {
 	// Count Number of items in current response
@@ -1216,9 +1146,11 @@ type LLMModelProvider struct {
 
 // LLMPolicy defines model for LLMPolicy.
 type LLMPolicy struct {
-	Name    string          `binding:"required" json:"name" yaml:"name"`
-	Paths   []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version string          `binding:"required" json:"version" yaml:"version"`
+	Name  string          `binding:"required" json:"name" yaml:"name"`
+	Paths []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMPolicyPath defines model for LLMPolicyPath.
@@ -1785,7 +1717,9 @@ type OperationPolicy struct {
 	ExecutionCondition *string               `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
 	Name               string                `binding:"required" json:"name" yaml:"name"`
 	Paths              []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version            string                `binding:"required" json:"version" yaml:"version"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // OperationPolicyPath defines model for OperationPolicyPath.
@@ -1833,6 +1767,14 @@ type Organization struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
+// OrganizationListResponse defines model for OrganizationListResponse.
+type OrganizationListResponse struct {
+	// Count Number of items in current response
+	Count      int            `binding:"required" json:"count" yaml:"count"`
+	List       []Organization `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination     `json:"pagination" yaml:"pagination"`
+}
+
 // Pagination defines model for Pagination.
 type Pagination struct {
 	// Limit Maximum number of items returned per page
@@ -1856,7 +1798,7 @@ type Policy struct {
 	// Params Key-value pairs of parameters for the policy
 	Params *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
 
-	// Version Semantic version of the policy
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
 	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
@@ -2240,8 +2182,7 @@ type SubscriptionListResponse struct {
 
 // SubscriptionPlan defines model for SubscriptionPlan.
 type SubscriptionPlan struct {
-	BillingPlan *string    `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// DisplayName Human-readable name for the subscription plan
 	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`
@@ -2478,9 +2419,6 @@ type ApiId = string
 // AppId defines model for appId.
 type AppId = string
 
-// ArtifactTypeQ defines model for artifactType-Q.
-type ArtifactTypeQ string
-
 // AssociationId defines model for associationId.
 type AssociationId = string
 
@@ -2588,15 +2526,6 @@ type SyncCustomPolicyParams struct {
 	// PolicyVersion Version of the custom policy in MAJOR.MINOR.PATCH format
 	PolicyVersion string `form:"policyVersion" json:"policyVersion" yaml:"policyVersion"`
 }
-
-// GetGatewayArtifactsParams defines parameters for GetGatewayArtifacts.
-type GetGatewayArtifactsParams struct {
-	// ArtifactType Filter artifacts by type
-	ArtifactType *GetGatewayArtifactsParamsArtifactType `form:"artifactType,omitempty" json:"artifactType,omitempty" yaml:"artifactType,omitempty"`
-}
-
-// GetGatewayArtifactsParamsArtifactType defines parameters for GetGatewayArtifacts.
-type GetGatewayArtifactsParamsArtifactType string
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
@@ -2752,6 +2681,15 @@ type ListUserAPIKeysParams struct {
 
 // ListUserAPIKeysParamsType defines parameters for ListUserAPIKeys.
 type ListUserAPIKeysParamsType string
+
+// ListOrganizationsParams defines parameters for ListOrganizations.
+type ListOrganizationsParams struct {
+	// Limit Maximum number of organizations to return per page.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first organization to return.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {

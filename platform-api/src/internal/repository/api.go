@@ -283,39 +283,6 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	return apis, rows.Err()
 }
 
-// GetDeployedAPIsByGatewayUUID retrieves all APIs deployed to a specific gateway
-func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
-	query := `
-		SELECT a.uuid, a.display_name, a.description, a.version, a.created_by,
-		       a.project_uuid, a.organization_uuid, a.origin, a.created_at, a.updated_at
-		FROM rest_apis a
-		INNER JOIN deployment_status ad ON a.uuid = ad.artifact_uuid AND ad.organization_uuid = a.organization_uuid
-		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ? AND ad.status = ?
-		ORDER BY a.created_at DESC
-	`
-
-	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID, string(model.DeploymentStatusDeployed))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var apis []*model.API
-	for rows.Next() {
-		api := &model.API{Kind: constants.RestApi}
-		var createdBy sql.NullString
-		if err := rows.Scan(&api.ID, &api.Name, &api.Description,
-			&api.Version, &createdBy, &api.ProjectID, &api.OrganizationID, &api.Origin,
-			&api.CreatedAt, &api.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan API row: %w", err)
-		}
-		api.CreatedBy = createdBy.String
-		apis = append(apis, api)
-	}
-
-	return apis, rows.Err()
-}
-
 // GetAPIsByGatewayUUID retrieves all APIs associated with a specific gateway
 func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `

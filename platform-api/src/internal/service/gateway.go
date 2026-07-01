@@ -919,64 +919,6 @@ func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bo
 	return s.gatewayRepo.UpdateActiveStatus(gatewayId, isActive)
 }
 
-// GetGatewayArtifacts retrieves all artifacts (APIs) deployed to a specific gateway with pagination and optional type filtering
-func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType string) (*api.GatewayArtifactListResponse, error) {
-	// First validate that the gateway exists and belongs to the organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
-	if err != nil {
-		return nil, err
-	}
-	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
-	}
-	if gateway.OrganizationID != orgID {
-		return nil, constants.ErrGatewayNotFound
-	}
-
-	// Get all APIs deployed to this gateway
-	// TODO(RakhithaRR): In future, when MCP and API_PRODUCT are supported, this method should be updated to query those artifacts as well,
-	//  and apply type filtering at the database level for efficiency
-	apis, err := s.apiRepo.GetDeployedAPIsByGatewayUUID(gatewayID, orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert APIs to GatewayArtifact API types and apply type filtering
-	artifacts := make([]api.GatewayArtifact, 0)
-	var subType *api.GatewayArtifactSubType
-
-	for _, apiModel := range apis {
-		// Skip if artifactType filter is specified and doesn't match "API"
-		if artifactType != "" && artifactType != constants.ArtifactTypeAPI {
-			continue
-		}
-
-		sub := api.GatewayArtifactSubType(constants.APISubTypeHTTP)
-		subType = &sub
-		artifactTypeEnum := api.GatewayArtifactType(constants.ArtifactTypeAPI)
-
-		if artifact := gatewayArtifactModelToAPI(apiModel, artifactTypeEnum, subType); artifact != nil {
-			artifacts = append(artifacts, *artifact)
-		}
-	}
-
-	// If filtering by MCP or API_PRODUCT, return empty list for now (future implementation)
-	if artifactType != "" && (artifactType == constants.ArtifactTypeMCP || artifactType == constants.ArtifactTypeAPIProduct) {
-		// For future implementation when MCP and API_PRODUCT are supported
-		artifacts = []api.GatewayArtifact{}
-	}
-
-	return &api.GatewayArtifactListResponse{
-		Count: len(artifacts),
-		List:  artifacts,
-		Pagination: api.Pagination{
-			Total:  len(artifacts),
-			Offset: 0,
-			Limit:  len(artifacts),
-		},
-	}, nil
-}
-
 // validateGatewayInput validates gateway registration inputs
 func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, functionalityType string) error {
 	// Organization ID validation
@@ -1115,21 +1057,5 @@ func tokenRotationModelToAPI(tokenID string, token string, createdAt time.Time) 
 		Token:     &token,
 		CreatedAt: &createdAt,
 		Message:   &message,
-	}
-}
-
-// gatewayArtifactModelToAPI converts an API model to GatewayArtifact API type
-func gatewayArtifactModelToAPI(apiModel *model.API, artifactType api.GatewayArtifactType, subType *api.GatewayArtifactSubType) *api.GatewayArtifact {
-	if apiModel == nil {
-		return nil
-	}
-
-	return &api.GatewayArtifact{
-		Id:        apiModel.Handle,
-		Name:      apiModel.Name,
-		Type:      artifactType,
-		SubType:   subType,
-		CreatedAt: apiModel.CreatedAt,
-		UpdatedAt: apiModel.UpdatedAt,
 	}
 }
