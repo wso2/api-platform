@@ -403,7 +403,7 @@ describe('AI Workspace — MCP server secret management', () => {
       cy.get('input[placeholder="Header"]', { timeout: 10000 })
         .should('be.visible')
         .type(authHeader);
-      cy.get('input[placeholder="Value"]', { timeout: 1/cl0000 })
+      cy.get('input[placeholder="Value"]', { timeout: 10000 })
         .should('be.visible')
         .type(authValue, authValueParseSpecial ? {} : { parseSpecialCharSequences: false });
     }

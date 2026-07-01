@@ -818,8 +818,9 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 	// DP-origin MCP proxy via the gateway import flow.
 	mustImport(t, d, dpMCPReq("dp-mcp-ro", "dp-mcp", "DP MCP"))
 
-	// CP-origin MCP proxy via the service.
-	proj := importTestProjectID
+	// CP-origin MCP proxy via the service. ProjectId is the project handle
+	// ("default" for the seeded project), resolved to the UUID on create.
+	proj := "default"
 	if _, err := svc.Create(importTestOrgID, "tester", &api.MCPProxy{
 		Id:        strPointer("cp-mcp"),
 		DisplayName:      "CP MCP",
