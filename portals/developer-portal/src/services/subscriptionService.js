@@ -228,7 +228,7 @@ const changePlan = async (req, res) => {
             });
         }
 
-        const apiId = existing.DP_API_METADATA ? existing.DP_API_METADATA.UUID : null;
+        const apiId = existing.dp_api_metadata ? existing.dp_api_metadata.uuid : null;
         if (!apiId) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request', description: 'API not found for this subscription',
@@ -242,15 +242,15 @@ const changePlan = async (req, res) => {
             });
         }
         const apiMetadata = apiMetadataResponse[0];
-        const plans = apiMetadata.DP_SUBSCRIPTION_PLANs || [];
-        const newPlan = plans.find(p => p.UUID === reqPlanId);
+        const plans = apiMetadata.dp_subscription_plans || [];
+        const newPlan = plans.find(p => p.uuid === reqPlanId);
         if (!newPlan) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request', description: 'Subscription plan not found for this API',
             });
         }
 
-        const previousPlan = existing.DP_SUBSCRIPTION_PLAN;
+        const previousPlan = existing.dp_subscription_plan;
 
         await sequelize.transaction(async (t) => {
             const updated = await subDao.updatePlan(orgId, subscriptionId, reqPlanId, req.user.sub, t);
@@ -262,8 +262,8 @@ const changePlan = async (req, res) => {
             const payload = {
                 ...buildWebhookPayload(existing, apiMetadata, newPlan),
                 previous_plan: {
-                    ref_id: previousPlan ? (previousPlan.REF_ID || null) : null,
-                    name: previousPlan ? (previousPlan.NAME || null) : null,
+                    ref_id: previousPlan ? (previousPlan.ref_id || null) : null,
+                    name: previousPlan ? (previousPlan.name || null) : null,
                 },
             };
             await safePublish('subscription.plan_changed', payload, {
@@ -295,8 +295,8 @@ const regenerateSubscriptionToken = async (req, res) => {
             });
         }
 
-        const apiMetadata = existing.DP_API_METADATA;
-        const plan = existing.DP_SUBSCRIPTION_PLAN;
+        const apiMetadata = existing.dp_api_metadata;
+        const plan = existing.dp_subscription_plan;
         let newToken;
 
         await sequelize.transaction(async (t) => {
