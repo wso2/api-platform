@@ -270,7 +270,7 @@ func createProject() (string, error) {
 
 func createGatewayAndToken(name string) (gatewayID, token string, err error) {
 	st, body, err := apiCall(http.MethodPost, "/api/v0.9/gateways", suite.token, map[string]any{
-		"name": name, "displayName": name, "vhost": ingressHost, "functionalityType": "regular",
+		"name": name, "displayName": name, "endpoints": []string{"https://" + ingressHost}, "functionalityType": "regular",
 	})
 	if err != nil {
 		return "", "", err
