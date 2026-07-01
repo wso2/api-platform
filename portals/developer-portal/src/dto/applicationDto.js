@@ -18,9 +18,8 @@
  */
 class ApplicationDTO {
     constructor(app) {
-        this.id = app.uuid;
+        this.id = app.handle;
         this.displayName = app.display_name;
-        this.handle = app.handle;
         this.description = app.description;
         if (app.dp_app_key_mappings) {
             this.appKeyMappings = app.dp_app_key_mappings.map(map => new AppMappingDTO(map));

@@ -18,8 +18,7 @@
  */
 class SubscriptionPlan {
     constructor(subscriptionPlan) {
-        this.id = subscriptionPlan.uuid;
-        this.handle = subscriptionPlan.handle;
+        this.id = subscriptionPlan.handle;
         this.name = subscriptionPlan.name;
         this.description = subscriptionPlan.description;
         this.refId = subscriptionPlan.ref_id;

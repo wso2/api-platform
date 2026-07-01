@@ -766,7 +766,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApplicationResponse"
               example:
-                id: app-12345
+                id: my-weather-app
                 displayName: Weather App
                 description: Application used to call Weather APIs.
                 appKeyMappings: []
@@ -874,7 +874,7 @@ paths:
                 $ref: "#/components/schemas/SubscriptionResponse"
               example:
                 subscriptionId: sub-12345
-                apiId: api-7f4c2a6b
+                apiId: weather-api-v1
                 subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
                 subscriptionPlanName: Gold
                 status: ACTIVE
@@ -2007,13 +2007,16 @@ components:
       required: true
       schema:
         type: string
-        example: api-7f4c2a6b
+        example: weather-api-v1
+      description: The API's handle (unique per org).
     planId:
       name: planId
       in: path
       required: true
       schema:
         type: string
+        example: Gold
+      description: The subscription plan's handle (unique per org).
     subId:
       name: subId
       in: path
@@ -2033,7 +2036,8 @@ components:
       required: true
       schema:
         type: string
-        example: app-12345
+        example: my-weather-app
+      description: The application's handle (unique per org).
     keyMappingId:
       name: keyMappingId
       in: path
@@ -2070,6 +2074,7 @@ components:
       schema:
         type: string
         example: workflow-12345
+      description: The API workflow's handle (unique per org and view).
     apiContentTypeQuery:
       name: type
       in: query
@@ -2163,7 +2168,7 @@ components:
       required: true
       schema:
         type: string
-        example: api-7f4c2a6b
+        example: weather-api-v1
       description: Developer Portal API ID.
     apiIdQueryOptional:
       name: apiId
@@ -2171,7 +2176,7 @@ components:
       required: false
       schema:
         type: string
-        example: api-7f4c2a6b
+        example: weather-api-v1
       description: Optional Developer Portal API ID used to filter results.
     appIdQueryOptional:
       name: appId
@@ -2179,7 +2184,7 @@ components:
       required: false
       schema:
         type: string
-        example: app-12345
+        example: my-weather-app
       description: Optional application ID used to filter API keys associated with that application.
     labelId:
       name: labelId
@@ -2323,8 +2328,8 @@ components:
           schema:
             $ref: "#/components/schemas/SubscriptionCreateRequest"
           example:
-            apiId: api-7f4c2a6b
-            subscriptionPlanId: pol-7f4c2a6b
+            apiId: weather-api-v1
+            subscriptionPlanId: Gold
     SubscriptionUpdateBody:
       required: true
       description: Subscription status update payload.
@@ -2342,7 +2347,7 @@ components:
           schema:
             $ref: "#/components/schemas/SubscriptionChangePlanRequest"
           example:
-            planId: pol-9a3d1f7e
+            planId: Gold
     ApiKeyBody:
       required: true
       description: >-
@@ -2426,11 +2431,11 @@ components:
               appId:
                 type: string
                 description: Developer Portal application ID to associate the key with.
-                example: app-12345
+                example: my-weather-app
             additionalProperties: false
           example:
             keyId: key-12345
-            appId: app-12345
+            appId: my-weather-app
     ApiKeyDissociateBody:
       required: true
       description: Identifies the API key to remove the application association from.
@@ -3030,9 +3035,8 @@ components:
           schema:
             $ref: "#/components/schemas/ApiMetadataCreateResponse"
           example:
-            id: api-7f4c2a6b
+            id: weather-api-v1
             refId: cp-api-12345
-            handle: weather-api-v1
             name: Weather API
             apiTitle: Weather Forecast API
             version: v1
@@ -3048,7 +3052,7 @@ components:
               productionURL: https://api.example.com/weather
               sandboxURL: https://sandbox.example.com/weather
             subscriptionPlans:
-              - handle: Gold
+              - id: Gold
     ApiMetadataResponse:
       description: API metadata DTO returned by the service.
       content:
@@ -3056,9 +3060,8 @@ components:
           schema:
             $ref: "#/components/schemas/ApiMetadataResponse"
           example:
-            id: api-7f4c2a6b
+            id: weather-api-v1
             refId: cp-api-12345
-            handle: weather-api-v1
             name: Weather API
             apiTitle: Weather Forecast API
             remotes: []
@@ -3073,7 +3076,7 @@ components:
               sandboxURL: https://sandbox.example.com/weather
               productionURL: https://api.example.com/weather
             subscriptionPlans:
-              - handle: Gold
+              - id: Gold
     ApiMetadataListResponse:
       description: List of API metadata DTOs.
       content:
@@ -3089,9 +3092,8 @@ components:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
-              - id: api-7f4c2a6b
+              - id: weather-api-v1
                 refId: cp-api-12345
-                handle: weather-api-v1
                 name: Weather API
                 version: v1
                 status: PUBLISHED
@@ -3173,9 +3175,8 @@ components:
           schema:
             $ref: "#/components/schemas/ApplicationResponse"
           example:
-            id: app-12345
+            id: my-weather-app
             displayName: Weather App
-            handle: weather-app
             description: Application used to call Weather APIs.
             appKeyMappings: []
     ApplicationListResponse:
@@ -3193,7 +3194,7 @@ components:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
-              - id: app-12345
+              - id: my-weather-app
                 displayName: Weather App
                 description: Application used to call Weather APIs.
                 appKeyMappings:
@@ -3212,7 +3213,7 @@ components:
             $ref: "#/components/schemas/SubscriptionResponse"
           example:
             subscriptionId: sub-12345
-            apiId: api-7f4c2a6b
+            apiId: weather-api-v1
             subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
             subscriptionPlanName: Gold
             status: ACTIVE
@@ -3350,7 +3351,6 @@ components:
           example:
             apiWorkflowId: workflow-12345
             name: Weather onboarding
-            handle: weather-onboarding
             description: Guides users through the Weather API onboarding workflow.
             agentPrompt: Follow this workflow to onboard a Weather API user.
             status: PUBLISHED
@@ -3653,6 +3653,7 @@ components:
           properties:
             id:
               type: string
+              description: The API's handle (unique per org). Not the internal database uuid.
             refId:
               type: string
               nullable: true
@@ -3675,6 +3676,7 @@ components:
           properties:
             id:
               type: string
+              description: The API's handle (unique per org). Not the internal database uuid.
             refId:
               type: string
               nullable: true
@@ -3743,12 +3745,6 @@ components:
           description: >-
             External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec`
             block sets `referenceId` — the create response echoes the parsed YAML back.
-        handle:
-          type: string
-          nullable: true
-          description: >-
-            Present when the API was created from a `devportal.yaml` artifact — the parser sets it from
-            `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.
         agentVisibility:
           type: string
           enum:
@@ -3803,8 +3799,7 @@ components:
       properties:
         id:
           type: string
-        handle:
-          type: string
+          description: The plan's handle (unique per org). Not the internal database uuid.
         name:
           type: string
         description:
@@ -3840,13 +3835,11 @@ components:
       properties:
         id:
           type: string
-          example: app-12345
+          example: my-weather-app
+          description: The application's handle (unique per org). Not the internal database uuid.
         displayName:
           type: string
           example: Weather App
-        handle:
-          type: string
-          example: weather-app
         description:
           type: string
           example: Application used to call Weather APIs.
@@ -4049,7 +4042,7 @@ components:
         apiId:
           type: string
           description: Developer Portal API ID.
-          example: api-7f4c2a6b
+          example: weather-api-v1
         subscriptionPlanId:
           type: string
           description: Developer Portal subscription plan ID.
@@ -4079,11 +4072,11 @@ components:
             against the API derived from the existing subscription record and the request is rejected with
             400 if they don't match. It is never used as a fallback: if the API cannot be derived from the
             subscription record, the request fails with 400 regardless of this value.
-          example: api-5f2b8c1a
+          example: weather-api-v1
         planId:
           type: string
           description: Developer Portal subscription plan ID to switch to.
-          example: pol-9a3d1f7e
+          example: Gold
       additionalProperties: false
     SubscriptionResponse:
       type: object
@@ -4095,7 +4088,7 @@ components:
         apiId:
           type: string
           description: Developer Portal API ID.
-          example: api-7f4c2a6b
+          example: weather-api-v1
         subscriptionToken:
           type: string
           nullable: true
@@ -4138,7 +4131,7 @@ components:
           description: >-
             Optional application ID to associate the key with, for analytics attribution only — it has no effect on
             the key's validity or authorization. Must belong to the same organization and be owned by the caller.
-          example: app-12345
+          example: my-weather-app
         expiresAt:
           oneOf:
             - type: string
@@ -4161,12 +4154,12 @@ components:
         apiId:
           type: string
           description: Developer Portal API ID the key belongs to.
-          example: api-7f4c2a6b
+          example: weather-api-v1
         appId:
           type: string
           nullable: true
           description: ID of the application this key is associated with, if any. Analytics attribution only.
-          example: app-12345
+          example: my-weather-app
         appDisplayName:
           type: string
           nullable: true
@@ -4231,7 +4224,7 @@ components:
           properties:
             id:
               type: string
-              example: app-12345
+              example: my-weather-app
             displayName:
               type: string
               example: My Mobile App
@@ -4621,12 +4614,10 @@ components:
         apiWorkflowId:
           type: string
           example: workflow-12345
+          description: The workflow's handle (unique per org and view). Not the internal database uuid.
         name:
           type: string
           example: Weather onboarding
-        handle:
-          type: string
-          example: weather-onboarding
         description:
           type: string
         agentPrompt:

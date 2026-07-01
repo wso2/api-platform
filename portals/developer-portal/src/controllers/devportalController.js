@@ -106,7 +106,12 @@ const updateApplication = async (req, res) => {
     const orgId = req.orgId || '';
     const userId = req.auth?.userId || req.user?.sub;
     try {
-        const appId = req.params.applicationId;
+        const appHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, appHandle);
+        if (!appRecord) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        const appId = appRecord.uuid;
         const applicationData = parseApplicationDataFromRequest(req);
         const [updatedRows, updatedApp] = await appDao.update(orgId, appId, userId, applicationData);
         if (!updatedRows) {
@@ -185,24 +190,33 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
 const getApplication = async (req, res) => {
     const orgId = req.orgId || '';
     const userId = req.auth?.userId || req.user?.sub;
-    const applicationId = req.params.applicationId;
+    const applicationHandle = req.params.applicationId;
     try {
-        const app = await appDao.get(orgId, applicationId, userId);
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        const app = await appDao.get(orgId, appRecord.uuid, userId);
         if (!app) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
         }
         return res.status(200).json(new ApplicationDTO(app.dataValues));
     } catch (error) {
-        logger.error('Error occurred while getting the application', { orgId, appId: applicationId, error: error.message });
+        logger.error('Error occurred while getting the application', { orgId, appId: applicationHandle, error: error.message });
         util.handleError(res, error);
     }
 };
 
 const deleteApplication = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
-    const applicationId = req.params.applicationId;
+    const applicationHandle = req.params.applicationId;
     const orgId = req.orgId || '';
     try {
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        const applicationId = appRecord.uuid;
         const ownedApp = await appDao.get(orgId, applicationId, userId);
         if (!ownedApp) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
@@ -234,8 +248,13 @@ const generateKeys = async (req, res) => {
     let orgId, appId, userId;
     try {
         orgId = req.orgId;
-        appId = req.params.applicationId;
         userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const appHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, appHandle);
+        if (!appRecord) {
+            return res.status(404).json({ message: 'Application not found' });
+        }
+        appId = appRecord.uuid;
         logger.info('Initiate create application key mapping...', { orgId: orgId, appId: appId });
         const {
             keyManager: kmName,
@@ -294,7 +313,14 @@ const generateKeys = async (req, res) => {
 
 const generateOAuthKeys = async (req, res) => {
     try {
-        const applicationId = req.params.applicationId;
+        const orgId = req.orgId;
+        const userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const applicationHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            throw new CustomError(404, 'Application not found');
+        }
+        const applicationId = appRecord.uuid;
         const keyMappingId = req.params.keyMappingId;
 
         const { ApplicationKeyMapping } = require('../models/application');
@@ -340,7 +366,14 @@ const generateOAuthKeys = async (req, res) => {
 
 const revokeOAuthKeys = async (req, res) => {
     try {
-        const applicationId = req.params.applicationId;
+        const orgId = req.orgId;
+        const userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const applicationHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            throw new CustomError(404, 'Application not found');
+        }
+        const applicationId = appRecord.uuid;
         const keyMappingId = req.params.keyMappingId;
 
         const { ApplicationKeyMapping } = require('../models/application');

@@ -352,7 +352,6 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "description": "string",
   "type": "REST",
   "referenceId": "string",
-  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -385,7 +384,6 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "subscriptionPlans": [
     {
       "id": "string",
-      "handle": "string",
       "name": "string",
       "description": "string",
       "requestCount": "string",
@@ -410,7 +408,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» id|string|false|none|none|
+|» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
 |» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
 |» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
@@ -434,7 +432,6 @@ and
   "description": "string",
   "type": "REST",
   "referenceId": "string",
-  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -469,7 +466,6 @@ and
   "subscriptionPlans": [
     {
       "id": "string",
-      "handle": "string",
       "name": "string",
       "description": "string",
       "requestCount": "string",
@@ -494,7 +490,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» id|string|false|none|none|
+|» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
 |» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |» planId|string|false|none|none|
@@ -520,7 +516,6 @@ and
   "description": "string",
   "type": "REST",
   "referenceId": "string",
-  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -562,7 +557,6 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |description|string|false|none|none|
 |type|string|false|none|none|
 |referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
-|handle|string¦null|false|none|Present when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
@@ -665,7 +659,6 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 ```json
 {
   "id": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "requestCount": "string",
@@ -679,8 +672,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |name|string|false|none|none|
 |description|string|false|none|none|
 |requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
@@ -720,9 +712,8 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```json
 {
-  "id": "app-12345",
+  "id": "my-weather-app",
   "displayName": "Weather App",
-  "handle": "weather-app",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": [
     {
@@ -739,9 +730,8 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
+|id|string|false|none|The application's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
-|handle|string|false|none|none|
 |description|string|false|none|none|
 |appKeyMappings|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 
@@ -1020,7 +1010,7 @@ xor
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionPlanId": "plan-7f4c2a6b"
 }
 
@@ -1069,8 +1059,8 @@ xor
 
 ```json
 {
-  "apiId": "api-5f2b8c1a",
-  "planId": "pol-9a3d1f7e"
+  "apiId": "weather-api-v1",
+  "planId": "Gold"
 }
 
 ```
@@ -1092,7 +1082,7 @@ xor
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -1134,7 +1124,7 @@ Subscription payload.
 {
   "name": "weather_prod_key",
   "subscriptionId": "sub-abc123",
-  "appId": "app-12345",
+  "appId": "my-weather-app",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
 
@@ -1172,8 +1162,8 @@ xor
 {
   "keyId": "key-12345",
   "name": "weather_prod_key",
-  "apiId": "api-7f4c2a6b",
-  "appId": "app-12345",
+  "apiId": "weather-api-v1",
+  "appId": "my-weather-app",
   "appDisplayName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
@@ -1254,7 +1244,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 {
   "keyId": "key-12345",
   "application": {
-    "id": "app-12345",
+    "id": "my-weather-app",
     "displayName": "My Mobile App"
   }
 }
@@ -1755,7 +1745,6 @@ Access token response proxied from the key manager's token endpoint. Field names
 {
   "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -1773,9 +1762,8 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiWorkflowId|string|false|none|none|
+|apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
 |name|string|false|none|none|
-|handle|string|false|none|none|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|

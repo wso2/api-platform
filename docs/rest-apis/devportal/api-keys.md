@@ -42,7 +42,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the `{apiId}` path parameter.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -146,7 +146,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |appId|query|string|false|Optional application ID used to filter API keys associated with that application.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -158,8 +158,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     {
       "keyId": "key-12345",
       "name": "weather_prod_key",
-      "apiId": "api-7f4c2a6b",
-      "appId": "app-12345",
+      "apiId": "weather-api-v1",
+      "appId": "my-weather-app",
       "appDisplayName": "My Mobile App",
       "status": "ACTIVE",
       "expiresAt": "2026-12-31T23:59:59Z",
@@ -306,7 +306,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» expiresAt|body|any|false|New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. Omit to leave the current expiry unchanged.|
 |»» *anonymous*|body|string(date-time)|false|none|
 |»» *anonymous*|body|number|false|none|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -412,7 +412,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to revoke by its `keyId`.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -490,7 +490,7 @@ Associates (or re-associates) an existing API key with an application, for analy
 ```json
 {
   "keyId": "key-12345",
-  "appId": "app-12345"
+  "appId": "my-weather-app"
 }
 ```
 
@@ -508,7 +508,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|object|true|Identifies the API key and the application to associate it with.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
 |» appId|body|string|true|Developer Portal application ID to associate the key with.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -518,7 +518,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "keyId": "key-12345",
   "application": {
-    "id": "app-12345",
+    "id": "my-weather-app",
     "displayName": "My Mobile App"
   }
 }
@@ -625,7 +625,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to remove the application association from.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -699,7 +699,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 
@@ -711,8 +711,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     {
       "keyId": "key-12345",
       "name": "weather_prod_key",
-      "apiId": "api-7f4c2a6b",
-      "appId": "app-12345",
+      "apiId": "weather-api-v1",
+      "appId": "my-weather-app",
       "appDisplayName": "My Mobile App",
       "status": "ACTIVE",
       "expiresAt": "2026-12-31T23:59:59Z",

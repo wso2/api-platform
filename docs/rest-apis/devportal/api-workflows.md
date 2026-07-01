@@ -127,7 +127,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     {
       "apiWorkflowId": "workflow-12345",
       "name": "Weather onboarding",
-      "handle": "weather-onboarding",
       "description": "string",
       "agentPrompt": "string",
       "status": "PUBLISHED",
@@ -161,9 +160,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[APIWorkflowResponse](schemas.md#schemaapiworkflowresponse)]|false|none|none|
-|»» apiWorkflowId|string|false|none|none|
+|»» apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
 |»» name|string|false|none|none|
-|»» handle|string|false|none|none|
 |»» description|string|false|none|none|
 |»» agentPrompt|string|false|none|none|
 |»» status|string|false|none|none|
@@ -220,7 +218,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |viewName|path|string|true|none|
-|apiWorkflowId|path|string|true|none|
+|apiWorkflowId|path|string|true|The API workflow's handle (unique per org and view).|
 
 > Example responses
 
@@ -230,7 +228,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
@@ -309,7 +306,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|[APIWorkflowUpdateRequest](schemas.md#schemaapiworkflowupdaterequest)|true|API workflow update payload. Include only the fields that should change.|
 |viewName|path|string|true|none|
-|apiWorkflowId|path|string|true|none|
+|apiWorkflowId|path|string|true|The API workflow's handle (unique per org and view).|
 
 > Example responses
 
@@ -362,7 +359,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |viewName|path|string|true|none|
-|apiWorkflowId|path|string|true|none|
+|apiWorkflowId|path|string|true|The API workflow's handle (unique per org and view).|
 
 > Example responses
 

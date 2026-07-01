@@ -172,25 +172,6 @@ const deletePlan = async (orgId, planName, t) => {
     }
 }
 
-const deleteById = async (orgId, planId, t) => {
-
-    try {
-        const subscriptionPlanResponse = await SubscriptionPlan.destroy({
-            where: {
-                uuid: planId,
-                org_uuid: orgId
-            },
-            transaction: t
-        });
-        return subscriptionPlanResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.ValidationError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
 const getByName = async (orgId, planName, t) => {
 
     try {
@@ -211,26 +192,6 @@ const getByName = async (orgId, planName, t) => {
         throw new Sequelize.DatabaseError(error);
     }
 };
-
-const get = async (planId, orgId, t) => {
-    try {
-        const subscriptionPlanResponse = await SubscriptionPlan.findOne({
-            where: {
-                org_uuid: orgId,
-                uuid: planId
-            },
-            include: PLAN_INCLUDE,
-            order: LIMIT_ORDER,
-            transaction: t
-        });
-        return subscriptionPlanResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const listByApi = async (apiId, t) => {
 
@@ -326,9 +287,7 @@ module.exports = {
     put,
     update,
     delete: deletePlan,
-    deleteById,
     getByName,
-    get,
     listByApi,
     list,
     createApiMapping,

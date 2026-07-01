@@ -61,9 +61,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "api-7f4c2a6b",
+  "id": "weather-api-v1",
   "refId": "cp-api-12345",
-  "handle": "weather-api-v1",
   "name": "Weather API",
   "apiTitle": "Weather Forecast API",
   "version": "v1",
@@ -83,7 +82,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "handle": "Gold"
+      "id": "Gold"
     }
   ]
 }
@@ -222,9 +221,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "id": "api-7f4c2a6b",
+      "id": "weather-api-v1",
       "refId": "cp-api-12345",
-      "handle": "weather-api-v1",
       "name": "Weather API",
       "version": "v1",
       "status": "PUBLISHED",
@@ -319,7 +317,6 @@ Status Code **200**
 |»»» description|string|false|none|none|
 |»»» type|string|false|none|none|
 |»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
-|»»» handle|string¦null|false|none|Present when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
@@ -338,7 +335,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
-|»»» id|string|false|none|none|
+|»»» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
 |»»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |»»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |»»» planId|string|false|none|none|
@@ -346,8 +343,7 @@ Status Code **200**
 |»»»» sandboxURL|string|false|none|none|
 |»»»» productionURL|string|false|none|none|
 |»»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
-|»»»» id|string|false|none|none|
-|»»»» handle|string|false|none|none|
+|»»»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |»»»» name|string|false|none|none|
 |»»»» description|string|false|none|none|
 |»»»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
@@ -415,7 +411,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -423,9 +419,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "api-7f4c2a6b",
+  "id": "weather-api-v1",
   "refId": "cp-api-12345",
-  "handle": "weather-api-v1",
   "name": "Weather API",
   "apiTitle": "Weather Forecast API",
   "remotes": [],
@@ -443,7 +438,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "handle": "Gold"
+      "id": "Gold"
     }
   ]
 }
@@ -568,7 +563,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
 |» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `handle`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ handle }` objects — only `handle` is read; the plan must already exist in the organization).|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -576,9 +571,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "api-7f4c2a6b",
+  "id": "weather-api-v1",
   "refId": "cp-api-12345",
-  "handle": "weather-api-v1",
   "name": "Weather API",
   "apiTitle": "Weather Forecast API",
   "remotes": [],
@@ -596,7 +590,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "handle": "Gold"
+      "id": "Gold"
     }
   ]
 }
@@ -713,7 +707,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 

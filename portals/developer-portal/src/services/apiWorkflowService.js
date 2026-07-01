@@ -217,7 +217,7 @@ const createAPIWorkflow = async (req, res) => {
         await t.commit();
         logger.info('API Workflow created', { apiWorkflowId: apiWorkflow.uuid, orgId, viewId });
         res.status(201).json({
-            apiWorkflowId: apiWorkflow.uuid,
+            apiWorkflowId: apiWorkflow.handle,
             name: apiWorkflow.name,
             status: apiWorkflow.status
         });
@@ -233,7 +233,7 @@ const createAPIWorkflow = async (req, res) => {
 
 const updateAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiWorkflowId, viewName } = req.params;
+    const { apiWorkflowId: apiWorkflowHandle, viewName } = req.params;
     const userId = util.resolveActor(req);
     const { name, handle, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
     if (status !== undefined && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
@@ -255,7 +255,12 @@ const updateAPIWorkflow = async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const [count] = await apiWorkflowDao.update(orgId, viewId, apiWorkflowId, {
+        const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
+        if (!existing) {
+            await t.rollback();
+            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
+        }
+        const [count] = await apiWorkflowDao.update(orgId, viewId, existing.uuid, {
             name,
             handle,
             description,
@@ -272,7 +277,7 @@ const updateAPIWorkflow = async (req, res) => {
         }
 
         await t.commit();
-        logger.info('API Workflow updated', { apiWorkflowId, orgId, viewId });
+        logger.info('API Workflow updated', { apiWorkflowId: existing.uuid, orgId, viewId });
         res.status(200).json({ message: 'API Workflow updated successfully' });
     } catch (error) {
         await t.rollback();
@@ -286,17 +291,22 @@ const updateAPIWorkflow = async (req, res) => {
 
 const deleteAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiWorkflowId, viewName } = req.params;
+    const { apiWorkflowId: apiWorkflowHandle, viewName } = req.params;
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const count = await apiWorkflowDao.delete(orgId, viewId, apiWorkflowId, t);
+        const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
+        if (!existing) {
+            await t.rollback();
+            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
+        }
+        const count = await apiWorkflowDao.delete(orgId, viewId, existing.uuid, t);
         if (count === 0) {
             await t.rollback();
             return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
         }
         await t.commit();
-        logger.info('API Workflow deleted', { apiWorkflowId, orgId, viewId });
+        logger.info('API Workflow deleted', { apiWorkflowId: existing.uuid, orgId, viewId });
         res.status(200).json({ message: 'API Workflow deleted successfully' });
     } catch (error) {
         await t.rollback();
@@ -307,10 +317,10 @@ const deleteAPIWorkflow = async (req, res) => {
 
 const getAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiWorkflowId, viewName } = req.params;
+    const { apiWorkflowId: apiWorkflowHandle, viewName } = req.params;
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const apiWorkflow = await apiWorkflowDao.get(orgId, viewId, apiWorkflowId);
+        const apiWorkflow = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!apiWorkflow) {
             return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
         }
@@ -361,9 +371,8 @@ const parseFileContent = (raw) => {
 const toAPIWorkflowDTO = (apiWorkflow) => {
     const fileContent = parseFileContent(apiWorkflow.file_content);
     return {
-    apiWorkflowId: apiWorkflow.uuid,
+    apiWorkflowId: apiWorkflow.handle,
     name: apiWorkflow.name,
-    handle: apiWorkflow.handle,
     description: apiWorkflow.description,
     agentPrompt: apiWorkflow.agent_prompt,
     status: apiWorkflow.status,

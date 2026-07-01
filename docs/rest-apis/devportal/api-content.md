@@ -53,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 #### Detailed descriptions
 
@@ -196,7 +196,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 #### Detailed descriptions
 
@@ -325,7 +325,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
@@ -446,7 +446,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|false|File name selector used to delete a single stored API content file.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org).|
 
 > Example responses
 
