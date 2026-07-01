@@ -33,6 +33,11 @@ import { logger } from '../utils/logger';
 export interface PlatformOrganization {
   /** Handle (URL-friendly slug), pattern: ^[a-z0-9-]+$ — readOnly, server-assigned */
   id: string;
+  /**
+   * Stable unique identifier (from the IdP org_id claim). Optional on creation —
+   * the server generates one when omitted.
+   */
+  uuid?: string;
   /** Display name */
   displayName: string;
   /** Geographic region, e.g. "us", "eu", "ap" */
@@ -43,7 +48,7 @@ export interface PlatformOrganization {
 
 export type RegisterOrganizationRequest = Pick<
   PlatformOrganization,
-  'id' | 'displayName' | 'region'
+  'id' | 'uuid' | 'displayName' | 'region'
 >;
 
 // ============================================================================

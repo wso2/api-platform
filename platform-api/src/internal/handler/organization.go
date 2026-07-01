@@ -65,11 +65,22 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// UUID is always server-generated
-	id, genErr := utils.GenerateUUID()
-	if genErr != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to generate organization ID"))
-		return
+	// UUID is optional in the request: use the client-provided value if present
+	// (e.g. the IdP org_id claim), otherwise server-generate one.
+	var id string
+	if req.Uuid != nil && *req.Uuid != "" {
+		if err := utils.ValidateUUID(*req.Uuid); err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "uuid must be a valid UUID"))
+			return
+		}
+		id = *req.Uuid
+	} else {
+		genID, genErr := utils.GenerateUUID()
+		if genErr != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to generate organization ID"))
+			return
+		}
+		id = genID
 	}
 
 	// Extract handle from id field (optional — auto-generated from displayName if absent)

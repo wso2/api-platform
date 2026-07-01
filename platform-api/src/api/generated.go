@@ -1831,6 +1831,10 @@ type Organization struct {
 
 	// UpdatedAt Timestamp when the organization was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Stable unique identifier for the organization. Optional on creation;
+	// server-generated if omitted.
+	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // Pagination defines model for Pagination.

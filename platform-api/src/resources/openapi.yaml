@@ -5153,6 +5153,14 @@ components:
           maxLength: 40
           readOnly: true
           example: "acme"
+        uuid:
+          type: string
+          format: uuid
+          description: >-
+            Stable unique identifier for the organization. Optional on creation:
+            if provided it is used as-is, otherwise
+            the server generates one. Immutable once set.
+          example: "01890a5d-ac96-774b-bcce-b302099a8057"
         displayName:
           type: string
           description: Human-readable name for the organization

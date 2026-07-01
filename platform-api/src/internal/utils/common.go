@@ -391,6 +391,14 @@ func GenerateUUID() (string, error) {
 	return u.String(), nil
 }
 
+// ValidateUUID returns an error if the given string is not a valid UUID.
+func ValidateUUID(id string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid UUID: %w", err)
+	}
+	return nil
+}
+
 // ValidateURL validates a URL with additional checks
 func ValidateURL(rawURL string) error {
 	if rawURL == "" {

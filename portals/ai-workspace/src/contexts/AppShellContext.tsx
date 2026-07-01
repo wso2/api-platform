@@ -135,7 +135,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
   const toOrganization = (p: PlatformOrganization): Organization => ({
     id: p.id,
-    uuid: p.id,
+    uuid: p.uuid ?? p.id,
     handle: p.id,
     name: p.displayName,
     region: p.region,
@@ -159,6 +159,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           try {
             await registerOrganization({
               id: tokenOrg.handle,
+              // org_id claim → stable uuid; omit if absent so the server generates one.
+              uuid: tokenOrg.id || undefined,
               displayName,
               region: DEFAULT_ORG_REGION,
             });

@@ -161,6 +161,8 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
           setOrgState('provisioning');
           await registerOrganization({
             id: org.handle,
+            // org_id claim → stable uuid; omit if absent so the server generates one.
+            uuid: org.id || undefined,
             displayName: org.name || org.handle,
             region: DEFAULT_ORG_REGION,
           });

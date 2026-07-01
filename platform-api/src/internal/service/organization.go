@@ -236,6 +236,7 @@ func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Org
 
 	return &api.Organization{
 		Id:          &orgModel.Handle,
+		Uuid:        &orgModel.ID,
 		DisplayName: orgModel.Name,
 		Region:      orgModel.Region,
 		CreatedAt:   utils.TimePtrIfNotZero(orgModel.CreatedAt),
