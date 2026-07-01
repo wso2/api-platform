@@ -706,7 +706,7 @@ func loadArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID stri
 		FROM artifact_gateway_mappings m
 		JOIN gateways g ON g.uuid = m.gateway_uuid
 		WHERE m.artifact_uuid = ? AND m.organization_uuid = ?
-		ORDER BY m.created_at`
+		ORDER BY m.created_at, m.gateway_uuid`
 	rows, err := db.Query(db.Rebind(query), artifactUUID, orgUUID)
 	if err != nil {
 		return nil, err

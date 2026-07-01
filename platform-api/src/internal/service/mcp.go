@@ -551,7 +551,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		specVersion = &sv
 	}
 
-	return &api.MCPProxy{
+	out := &api.MCPProxy{
 		Id:             &m.Handle,
 		DisplayName:    m.Name,
 		Description:    &desc,

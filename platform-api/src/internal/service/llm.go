@@ -1119,13 +1119,6 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, err
 	}
 
-	// Resolve any associated gateways up-front so they can be persisted within the
-	// same transaction as the proxy create.
-	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
-	if err != nil {
-		return nil, err
-	}
-
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
@@ -2401,7 +2394,7 @@ func mapAssociatedGatewaysModelToAPI(in []model.AssociatedGatewayMapping) *[]api
 	}
 	out := make([]api.AssociatedGateway, 0, len(in))
 	for _, a := range in {
-		ag := api.AssociatedGateway{Name: a.GatewayHandle}
+		ag := api.AssociatedGateway{Id: a.GatewayHandle}
 		if a.Metadata != "" {
 			configurations := map[string]interface{}{}
 			if err := json.Unmarshal([]byte(a.Metadata), &configurations); err == nil {
@@ -2845,9 +2838,9 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 	resolved := make([]model.AssociatedGatewayMapping, 0, len(*associatedGateways))
 	seen := make(map[string]struct{}, len(*associatedGateways))
 	for _, ag := range *associatedGateways {
-		gw, err := gatewayRepo.GetByHandleAndOrgID(ag.Name, orgUUID)
+		gw, err := gatewayRepo.GetByHandleAndOrgID(ag.Id, orgUUID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to validate associated gateway %q: %w", ag.Name, err)
+			return nil, fmt.Errorf("failed to validate associated gateway %q: %w", ag.Id, err)
 		}
 		if gw == nil {
 			return nil, constants.ErrGatewayNotFound
@@ -2856,7 +2849,7 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 		// Associations are a set (enforced by the artifact_gateway_mappings primary key).
 		// Reject duplicate gateways up-front rather than letting the repo insert fail.
 		if _, dup := seen[gw.ID]; dup {
-			return nil, fmt.Errorf("%w: duplicate associated gateway %q", constants.ErrInvalidInput, ag.Name)
+			return nil, fmt.Errorf("%w: duplicate associated gateway %q", constants.ErrInvalidInput, ag.Id)
 		}
 		seen[gw.ID] = struct{}{}
 
@@ -2864,7 +2857,7 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 		if ag.Configurations != nil && len(*ag.Configurations) > 0 {
 			metadataJSON, err := json.Marshal(*ag.Configurations)
 			if err != nil {
-				return nil, fmt.Errorf("failed to serialize configurations for gateway %q: %w", ag.Name, err)
+				return nil, fmt.Errorf("failed to serialize configurations for gateway %q: %w", ag.Id, err)
 			}
 			metadata = string(metadataJSON)
 		}
