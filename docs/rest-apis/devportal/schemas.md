@@ -1997,28 +1997,6 @@ continued
 |viewName|string|false|none|none|
 |handle|string|false|none|none|
 
-<h2 id="tocS_LoginRequest">LoginRequest</h2>
-
-<a id="schemaloginrequest"></a>
-<a id="schema_LoginRequest"></a>
-<a id="tocSloginrequest"></a>
-<a id="tocsloginrequest"></a>
-
-```json
-{
-  "username": "string",
-  "password": "pa$$word"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|username|string|true|none|none|
-|password|string(password)|true|none|none|
-
 <h2 id="tocS_TempArazzoFileRequest">TempArazzoFileRequest</h2>
 
 <a id="schematemparazzofilerequest"></a>

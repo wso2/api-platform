@@ -50,7 +50,6 @@ tags:
   - name: Application Keys
   - name: API Workflows
   - name: Utilities
-  - name: Authentication
   - name: Key Managers
   - name: Webhook Events
   - name: Webhook Subscribers
@@ -1934,44 +1933,6 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /login:
-    post:
-      tags:
-        - Authentication
-      operationId: login
-      summary: Log in
-      description: >-
-        Authenticates against the Platform API and establishes a session cookie. The Platform API base URL must be
-        configured; otherwise the service is unavailable.
-      security: []
-      requestBody:
-        $ref: "#/components/requestBodies/LoginBody"
-      responses:
-        "200":
-          description: Login successful. A session cookie is set.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-              example:
-                message: Login successful
-        "401":
-          description: Invalid appKeyMappings.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-              example:
-                message: Invalid appKeyMappings
-        "503":
-          description: >-
-            The Platform API is not configured, unreachable, or returned a token missing required claims.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-              example:
-                message: Authentication service unavailable
   /devportal/v1/webhook-events:
     get:
       tags:
@@ -2768,12 +2729,6 @@ components:
             apis:
               - name: Weather API
                 version: v1
-    LoginBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/LoginRequest"
     FileUploadBody:
       required: true
       description: ZIP file upload. Organization content uploads are limited to 50 MB.
@@ -4930,17 +4885,6 @@ components:
         handle:
           type: string
           example: weather-onboarding
-    LoginRequest:
-      type: object
-      required:
-        - username
-        - password
-      properties:
-        username:
-          type: string
-        password:
-          type: string
-          format: password
     TempArazzoFileRequest:
       type: object
       required:

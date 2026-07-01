@@ -119,8 +119,6 @@ Base URLs:
 
 - [Create a temporary Arazzo file](utilities.md#create-a-temporary-arazzo-file)
 
-### [Authentication](authentication.md)
-
 ### [Key Managers](key-managers.md)
 
 - [Create a key manager](key-managers.md#create-a-key-manager)
