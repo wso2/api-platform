@@ -10,7 +10,7 @@
   <select id="ak-app-filter" class="ak-form-input" style="width:auto;min-width:12rem;">
     <option value="">All apps</option>
     {{#each applications}}
-    <option value="{{this.appId}}" {{#if (eq this.appId @root.selectedAppId)}}selected{{/if}}>{{this.name}}</option>
+    <option value="{{this.appId}}" {{#if (eq this.appId @root.selectedAppId)}}selected{{/if}}>{{this.displayName}}</option>
     {{/each}}
   </select>
 </div>
@@ -56,15 +56,15 @@
           </span>
         </td>
         <td class="ak-expires">{{#if this.expiresAt}}{{formatExpiresAt this.expiresAt}}{{else}}Never{{/if}}</td>
-        <td class="ak-app">{{#if this.appName}}{{this.appName}}{{else}}-{{/if}}</td>
+        <td class="ak-app">{{#if this.appDisplayName}}{{this.appDisplayName}}{{else}}-{{/if}}</td>
         <td>
           {{#unless @root.isReadOnlyMode}}
           <div class="ak-actions">
             <button type="button" class="ak-btn-app btn-app-key"
               data-key-id="{{this.keyId}}" data-key-name="{{this.name}}"
-              data-app-id="{{this.appId}}" data-app-name="{{this.appName}}"
+              data-app-id="{{this.appId}}" data-app-display-name="{{this.appDisplayName}}"
               {{#unless (eq this.status 'active')}}disabled title="Key is revoked"{{/unless}}>
-              <i class="bi bi-grid"></i> {{#if this.appName}}Change app{{else}}Associate app{{/if}}
+              <i class="bi bi-grid"></i> {{#if this.appDisplayName}}Change app{{else}}Associate app{{/if}}
             </button>
             <button type="button" class="ak-btn-regen btn-regenerate-key"
               data-key-id="{{this.keyId}}" data-key-name="{{this.name}}"

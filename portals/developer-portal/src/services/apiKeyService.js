@@ -106,18 +106,18 @@ async function resolveSubscription(orgId, subscriptionId) {
 
 /**
  * Validate that an app exists, belongs to orgId, and was created by actor.
- * Returns { id, name } or null. Throws 404 only when an appId was actually given.
+ * Returns { id, display_name, handle } or null. Throws 404 only when an appId was actually given.
  */
 async function resolveApp(orgId, appId, actor) {
     if (!appId) return null;
     const app = await applicationDao.get(orgId, appId, actor);
     if (!app) throw Object.assign(new Error('Application not found'), { status: 404 });
-    return { id: app.uuid, name: app.name };
+    return { id: app.uuid, display_name: app.display_name, handle: app.handle };
 }
 
 function applicationOf(key) {
     const app = key.dp_api_key_app_mapping?.dp_application;
-    return app ? { id: app.uuid, name: app.name } : null;
+    return app ? { id: app.uuid, display_name: app.display_name, handle: app.handle } : null;
 }
 
 /**
@@ -303,7 +303,7 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
     });
 
     logger.info('API key associated to application', { keyId, orgId, appId: application.id, actor });
-    return { keyId, application };
+    return { keyId, application: { id: application.id, displayName: application.display_name, handle: application.handle } };
 }
 
 /**

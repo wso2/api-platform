@@ -188,7 +188,7 @@
                 applications.forEach(function (app) {
                     const opt = document.createElement('option');
                     opt.value = app.appId;
-                    opt.textContent = app.name;
+                    opt.textContent = app.displayName;
                     if (app.appId === currentAppId) opt.selected = true;
                     select.appendChild(opt);
                 });

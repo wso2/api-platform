@@ -16,8 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const filteredCards = allCards.filter((card) => {
-            const appName = card.getAttribute('data-name').toLowerCase();
-            return appName.includes(query);
+            const appDisplayName = card.getAttribute('data-display-name').toLowerCase();
+            return appDisplayName.includes(query);
         });
         applicationsContainer.innerHTML = '';
         filteredCards.forEach((card) => {

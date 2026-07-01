@@ -47,7 +47,7 @@ function mapKey(k) {
         revokedAt: k.revoked_at || undefined,
         apiId: k.api_uuid,
         appId: app ? app.uuid : null,
-        appName: app ? app.name : null
+        appDisplayName: app ? app.display_name : null
     };
 }
 

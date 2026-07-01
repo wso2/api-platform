@@ -32,7 +32,7 @@ function appMappingInclude(required = false, appId = null) {
     const opts = {
         model: APIKeyAppMapping,
         required,
-        include: [{ model: Application, attributes: ['uuid', 'name'] }],
+        include: [{ model: Application, attributes: ['uuid', 'display_name', 'handle'] }],
     };
     if (appId) opts.where = { app_uuid: appId };
     return opts;

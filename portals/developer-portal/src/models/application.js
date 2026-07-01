@@ -40,7 +40,7 @@ const Application = sequelize.define('dp_application', {
         type: DataTypes.STRING,
         allowNull: false
     },
-    name: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },

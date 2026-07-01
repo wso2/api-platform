@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS "dp_key_managers" ("uuid" VARCHAR(40) , "org_uuid" VA
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_key_manager_org_name" ON "dp_key_managers" ("org_uuid", "name");
 
 -- dp_applications
-CREATE TABLE IF NOT EXISTS "dp_applications" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "name" VARCHAR(255) NOT NULL, "handle" VARCHAR(255) NOT NULL, "description" VARCHAR(1023), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+CREATE TABLE IF NOT EXISTS "dp_applications" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "display_name" VARCHAR(255) NOT NULL, "handle" VARCHAR(255) NOT NULL, "description" VARCHAR(1023), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
 
 CREATE INDEX IF NOT EXISTS "idx_application_org_created_by" ON "dp_applications" ("org_uuid", "created_by");
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_application_org_handle" ON "dp_applications" ("org_uuid", "handle");

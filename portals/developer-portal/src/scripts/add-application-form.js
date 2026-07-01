@@ -159,7 +159,7 @@ applicationForm.addEventListener('submit', async (e) => {
             },
             credentials: 'include',
             body: JSON.stringify({
-                name,
+                displayName: name,
                 description,
             }),
         });

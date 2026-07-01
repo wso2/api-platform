@@ -275,7 +275,7 @@ function loadApplications() {
         const items = Array.isArray(doc.items) ? doc.items : [];
         return items.map(item => ({
             id: item.metadata?.name,
-            name: item.spec?.displayName || item.metadata?.name,
+            displayName: item.spec?.displayName || item.metadata?.name,
             description: item.spec?.description || '',
         }));
     } catch (_) {

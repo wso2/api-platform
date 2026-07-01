@@ -973,4 +973,5 @@ module.exports = {
     resolveApiType,
     toPaginatedList,
     resolveActor,
+    filePrefix,
 }
