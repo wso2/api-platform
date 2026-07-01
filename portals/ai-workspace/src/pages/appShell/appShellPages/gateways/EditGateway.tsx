@@ -80,7 +80,7 @@ export default function EditGateway() {
       try {
         const response = await getGateways(currentOrganization.uuid);
         const foundGateway = response.data?.list?.find(
-          (gw) => gw.name === gatewayName
+          (gw) => gw.id === gatewayName
         );
 
         if (foundGateway) {

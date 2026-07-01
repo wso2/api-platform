@@ -149,7 +149,7 @@ export default function AddGateway() {
       // Redirect to the gateway view page
       const viewPath = buildOrgPath(
         currentOrganization,
-        `/gateways/view/${createdGateway.name}`,
+        `/gateways/view/${createdGateway.id}`,
       );
       navigate(viewPath);
     } catch (error: any) {
