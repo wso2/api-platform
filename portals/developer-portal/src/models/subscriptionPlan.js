@@ -19,7 +19,7 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
-const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
+const SubscriptionPlan = sequelize.define('dp_subscription_plan', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,

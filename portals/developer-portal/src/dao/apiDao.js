@@ -340,7 +340,7 @@ const searchFallback = async (orgId, searchTerm, viewName, t) => {
             status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
             [Op.or]: [
                 Sequelize.where(
-                    Sequelize.cast(Sequelize.col('DP_API_METADATA.metadata_search'), 'TEXT'),
+                    Sequelize.cast(Sequelize.col('dp_api_metadata.metadata_search'), 'TEXT'),
                     { [Op.like]: pattern }
                 ),
                 { uuid: { [Op.in]: taggedAPIIDs } },

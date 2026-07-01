@@ -22,7 +22,7 @@ const { Organization } = require('./organization')
 const Labels = require('./label');
 const Tags = require('./tag');
 
-const APIMetadata = sequelize.define('DP_API_METADATA', {
+const APIMetadata = sequelize.define('dp_api_metadata', {
   uuid: {
     type: DataTypes.STRING(40),
     defaultValue: Sequelize.UUIDV4,
@@ -139,7 +139,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   ]
 });
 
-const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
+const APILabels = sequelize.define('dp_api_label_mapping', {
 
   uuid: {
       type: DataTypes.STRING(40),
@@ -188,7 +188,7 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
   ]
 });
 
-const APITags = sequelize.define('DP_API_TAG_MAPPING', {
+const APITags = sequelize.define('dp_api_tag_mapping', {
 
   uuid: {
       type: DataTypes.STRING(40),
@@ -249,36 +249,36 @@ APITags.belongsTo(APIMetadata, {
 
 APIContent.belongsTo(APIMetadata, {
   foreignKey: 'api_uuid',
-  onDelete: 'CASCADE'
+  onDelete: 'CASCADE',
 });
 APIMetadata.belongsTo(Organization, {
   foreignKey: 'org_uuid'
 });
 APIMetadata.hasMany(APIContent, {
   foreignKey: 'api_uuid',
-  onDelete: 'CASCADE'
+  onDelete: 'CASCADE',
 });
 
 APIMetadata.belongsToMany(Labels, {
   through: APILabels,
   foreignKey: "api_uuid",
-  otherKey: "label_uuid"
+  otherKey: "label_uuid",
 });
 Labels.belongsToMany(APIMetadata, {
   through: APILabels,
   foreignKey: "label_uuid",
-  otherKey: "api_uuid"
+  otherKey: "api_uuid",
  });
 
 APIMetadata.belongsToMany(Tags, {
   through: APITags,
   foreignKey: "api_uuid",
-  otherKey: "tag_uuid"
+  otherKey: "tag_uuid",
 });
 Tags.belongsToMany(APIMetadata, {
   through: APITags,
   foreignKey: "tag_uuid",
-  otherKey: "api_uuid"
+  otherKey: "api_uuid",
 });
 
 module.exports = {

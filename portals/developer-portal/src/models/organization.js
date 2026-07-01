@@ -19,7 +19,7 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const View = require('./view');
 
-const Organization = sequelize.define('DP_ORGANIZATION', {
+const Organization = sequelize.define('dp_organization', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
@@ -83,7 +83,7 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
     returning: true
 });
 
-const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
+const OrgContent = sequelize.define('dp_organization_asset', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,

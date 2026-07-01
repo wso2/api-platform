@@ -18,7 +18,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 
-const View = sequelize.define('DP_VIEW', {
+const View = sequelize.define('dp_view', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,

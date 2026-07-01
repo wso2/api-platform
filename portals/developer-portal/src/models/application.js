@@ -25,7 +25,7 @@ const APISubscriptionPlan = require('./apiSubscriptionPlan');
 const { KeyManager } = require('./keyManager');
 
 
-const Application = sequelize.define('DP_APPLICATION', {
+const Application = sequelize.define('dp_application', {
 
     uuid: {
         type: DataTypes.STRING(40),
@@ -76,7 +76,7 @@ const Application = sequelize.define('DP_APPLICATION', {
     ],
 });
 
-const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
+const ApplicationKeyMapping = sequelize.define('dp_app_key_mapping', {
 
     uuid: {
         type: DataTypes.STRING(40),
@@ -128,7 +128,7 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
     ],
 });
 
-const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
+const SubscriptionMapping = sequelize.define('dp_subscription', {
 
     uuid: {
         type: DataTypes.STRING(40),
@@ -194,8 +194,8 @@ SubscriptionPlan.belongsToMany(APIMetadata, {
     otherKey: "api_uuid",
 });
 
-SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'api_uuid', as: 'DP_API_METADATA' });
-SubscriptionMapping.belongsTo(SubscriptionPlan, { foreignKey: 'plan_uuid', as: 'DP_SUBSCRIPTION_PLAN' });
+SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'api_uuid' });
+SubscriptionMapping.belongsTo(SubscriptionPlan, { foreignKey: 'plan_uuid' });
 
 Application.belongsTo(Organization, {
     foreignKey: 'org_uuid'
@@ -204,10 +204,10 @@ Organization.hasMany(Application, {
     foreignKey: 'org_uuid'
 })
 ApplicationKeyMapping.belongsTo(Application, {
-    foreignKey: 'app_uuid'
+    foreignKey: 'app_uuid',
 })
 Application.hasMany(ApplicationKeyMapping, {
-    foreignKey: 'app_uuid'
+    foreignKey: 'app_uuid',
 })
 ApplicationKeyMapping.belongsTo(KeyManager, {
     foreignKey: 'km_uuid'

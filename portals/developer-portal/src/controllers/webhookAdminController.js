@@ -32,7 +32,7 @@ function formatDelivery(d) {
 }
 
 function formatEvent(row) {
-    const deliveries = (row.DP_EVENT_DELIVERIES || []).map(formatDelivery);
+    const deliveries = (row.dp_event_deliveries || []).map(formatDelivery);
     return {
         eventId: row.uuid,
         eventType: row.type,

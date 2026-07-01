@@ -21,8 +21,8 @@ class ApplicationDTO {
         this.id = app.uuid;
         this.name = app.name;
         this.description = app.description;
-        if (app.DP_APP_KEY_MAPPINGs) {
-            this.appKeyMappings = app.DP_APP_KEY_MAPPINGs.map(map => new AppMappingDTO(map));
+        if (app.dp_app_key_mappings) {
+            this.appKeyMappings = app.dp_app_key_mappings.map(map => new AppMappingDTO(map));
         }
     }
 

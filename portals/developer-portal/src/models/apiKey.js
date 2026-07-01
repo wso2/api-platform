@@ -21,7 +21,7 @@ const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
 const { SubscriptionMapping } = require('./application');
 
-const APIKey = sequelize.define('DP_API_KEY', {
+const APIKey = sequelize.define('dp_api_key', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
@@ -99,7 +99,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
 
 APIKey.belongsTo(Organization, { foreignKey: 'org_uuid' });
 Organization.hasMany(APIKey, { foreignKey: 'org_uuid' });
-APIKey.belongsTo(APIMetadata, { foreignKey: 'api_uuid', as: 'DP_API_METADATA' });
+APIKey.belongsTo(APIMetadata, { foreignKey: 'api_uuid' });
 APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'subscription_uuid', onDelete: 'SET NULL' });
 SubscriptionMapping.hasMany(APIKey, { foreignKey: 'subscription_uuid', onDelete: 'SET NULL' });
 

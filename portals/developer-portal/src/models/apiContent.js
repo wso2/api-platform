@@ -18,7 +18,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 
-const APIContent = sequelize.define('DP_API_CONTENT', {
+const APIContent = sequelize.define('dp_api_content', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,

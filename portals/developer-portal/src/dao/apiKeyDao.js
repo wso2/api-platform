@@ -23,7 +23,7 @@ const { Application } = require('../models/application');
 const constants = require('../utils/constants');
 
 const API_METADATA_INCLUDE = {
-    model: APIMetadata, as: 'DP_API_METADATA',
+    model: APIMetadata,
     attributes: ['uuid', 'name', 'version', 'handle']
 };
 

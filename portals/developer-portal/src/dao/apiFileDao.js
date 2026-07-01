@@ -484,8 +484,8 @@ const getDocByName = async (type, name, orgId, apiId, t) => {
 const getDocTypes = async (orgId, apiId) => {
     const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
     const fileNamesExpr = isPostgres
-        ? [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.file_name")), "file_names"]
-        : [Sequelize.fn("GROUP_CONCAT", Sequelize.col("DP_API_CONTENT.file_name"), "|||"), "file_names"];
+        ? [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_name")), "file_names"]
+        : [Sequelize.fn("GROUP_CONCAT", Sequelize.col("dp_api_content.file_name"), "|||"), "file_names"];
 
     try {
         const rows = await APIContent.findAll({
@@ -499,7 +499,7 @@ const getDocTypes = async (orgId, apiId) => {
                     ]
                 },
             },
-            group: ["DP_API_CONTENT.type"],
+            group: ["dp_api_content.type"],
             include: [
                 {
                     model: APIMetadata,
@@ -549,11 +549,11 @@ const getDocs = async (orgId, apiId) => {
             return await APIContent.findAll({
                 attributes: [
                     "type",
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.file_name")), "file_names"],
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.file_content")), "api_files"]
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_name")), "file_names"],
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_content")), "api_files"]
                 ],
                 where,
-                group: ["DP_API_CONTENT.type"],
+                group: ["dp_api_content.type"],
                 include
             });
         }
@@ -593,11 +593,11 @@ const getDocLinks = async (orgId, apiId) => {
             return await APIContent.findAll({
                 attributes: [
                     "type",
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.file_name")), "file_names"],
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.file_content")), "api_files"]
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_name")), "file_names"],
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_content")), "api_files"]
                 ],
                 where,
-                group: ["DP_API_CONTENT.type"],
+                group: ["dp_api_content.type"],
                 include
             });
         }

@@ -37,7 +37,7 @@ function normalizeOptionalId(value) {
 }
 
 function mapKey(k) {
-    const app = k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION;
+    const app = k.dp_api_key_app_mapping?.dp_application;
     return {
         keyId: k.uuid,
         name: k.name,

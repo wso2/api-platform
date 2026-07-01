@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 
-const Tags = sequelize.define('DP_TAG', {
+const Tags = sequelize.define('dp_tag', {
 
     uuid: {
         type: DataTypes.STRING(40),

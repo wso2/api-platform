@@ -70,9 +70,9 @@ const loadViewSettingsPage = async (req, res) => {
             apiStatus: api.status,
             productionUrl: api.production_url,
             sandboxUrl: api.sandbox_url,
-            tags: (api.DP_TAGs || []).map(tag => tag.name),
+            tags: (api.dp_tags || []).map(tag => tag.name),
             agentVisibility: api.agent_visibility,
-            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.name),
+            subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.name),
         }));
 
         let orgLabels = [];

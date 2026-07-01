@@ -166,7 +166,7 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
         order: [['occurred_at', 'DESC']],
         limit,
         offset,
-        include: [{ model: DPEventDelivery, attributes: ['uuid', 'subscriber_id', 'status', 'delivered_at'] }]
+        include: [{ model: DPEventDelivery, attributes: ['uuid', 'subscriber_id', 'status', 'delivered_at'] }],
     });
 }
 
@@ -175,7 +175,7 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
  */
 async function get(eventId) {
     return DPEvent.findByPk(eventId, {
-        include: [{ model: DPEventDelivery }]
+        include: [{ model: DPEventDelivery }],
     });
 }
 

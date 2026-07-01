@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 // Outbox table — one row per domain event. Payload never contains plaintext key secrets.
-const DPEvent = sequelize.define('DP_EVENT', {
+const DPEvent = sequelize.define('dp_event', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,

@@ -55,7 +55,7 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
 }
 
 function formatSubscriptionResponse(sub) {
-    const plan = sub.DP_SUBSCRIPTION_PLAN || {};
+    const plan = sub.dp_subscription_plan || {};
     return {
         subscriptionId: sub.uuid,
         subscriptionToken: sub.token,
@@ -82,7 +82,7 @@ const createSubscription = async (req, res) => {
 
         const apiMetadata = apiMetadataResponse[0];
 
-        const plans = apiMetadata.DP_SUBSCRIPTION_PLANs || [];
+        const plans = apiMetadata.dp_subscription_plans || [];
         if (plans.length === 0) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request',
@@ -199,7 +199,7 @@ const updateSubscription = async (req, res) => {
                 throw err;
             }
             await publishWebhookEvent('subscription.updated',
-                buildWebhookPayload({ ...existing.get({ plain: true }), status: status }, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN),
+                buildWebhookPayload({ ...existing.get({ plain: true }), status: status }, existing.dp_api_metadata, existing.dp_subscription_plan),
                 { transaction: t, orgId: orgId, aggregateType: 'subscription', aggregateId: subscriptionId });
         });
         sub = await subDao.get(orgId, subscriptionId, req.user.sub);
@@ -227,8 +227,8 @@ const deleteSubscription = async (req, res) => {
             });
         }
 
-        const apiMetadata = existing.DP_API_METADATA;
-        const plan = existing.DP_SUBSCRIPTION_PLAN;
+        const apiMetadata = existing.dp_api_metadata;
+        const plan = existing.dp_subscription_plan;
 
         await sequelize.transaction(async (t) => {
             const deleted = await subDao.delete(orgId, subscriptionId, req.user.sub, t);

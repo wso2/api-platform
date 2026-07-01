@@ -27,12 +27,10 @@ class APIDTO {
         Object.assign(this, new APIInfo(api));
         this.endPoints = new Endpoints(api);
 
-        if (api.DP_SUBSCRIPTION_PLANs) {
-            this.subscriptionPlans = api.DP_SUBSCRIPTION_PLANs.map(plan => new APISubscriptionPlan(plan));
+        if (api.dp_subscription_plans) {
+            this.subscriptionPlans = api.dp_subscription_plans.map(plan => new APISubscriptionPlan(plan));
         }
-        if (api.DP_APPLICATIONs && api.DP_APPLICATIONs.length > 0) {
-            this.planId = api.DP_APPLICATIONs[0]?.DP_SUBSCRIPTION?.dataValues?.plan_uuid;
-        }
+
     }
 
     setResponseData(data) {
@@ -63,15 +61,15 @@ class APIInfo {
         if (apiInfo.business_owner || apiInfo.technical_owner) {
             this.owners = new Owner(apiInfo);
         }
-        if (apiInfo.DP_API_CONTENTs) {
-            const images = apiInfo.DP_API_CONTENTs.filter(content => content.type === constants.DOC_TYPES.IMAGES);
+        if (apiInfo.dp_api_contents) {
+            const images = apiInfo.dp_api_contents.filter(content => content.type === constants.DOC_TYPES.IMAGES);
             this.apiImageMetadata = getAPIImages(images);
         }
-        if (apiInfo.DP_TAGs) {
-            this.tags = apiInfo.DP_TAGs.map(tag => tag.dataValues ? tag.dataValues.name : tag);
+        if (apiInfo.dp_tags) {
+            this.tags = apiInfo.dp_tags.map(tag => tag.dataValues ? tag.dataValues.name : tag);
         }
-        if (apiInfo.DP_LABELs) {
-            this.labels = apiInfo.DP_LABELs.map(label => label.dataValues ? label.dataValues.name : label);
+        if (apiInfo.dp_labels) {
+            this.labels = apiInfo.dp_labels.map(label => label.dataValues ? label.dataValues.name : label);
         }
     }
 }

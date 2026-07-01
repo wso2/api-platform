@@ -509,7 +509,7 @@ const updateAPIMetadata = async (req, res) => {
                 }
                 // Get subscription plan IDs and fail if any plan is not found
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
-                updatedAPI[0].dataValues["DP_SUBSCRIPTION_PLANs"] = await subscriptionPlanDao.listByApi(apiId, t);
+                updatedAPI[0].dataValues["dp_subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
             // update api definition file (only when a new file was uploaded)
             if (apiDefinitionFile) {

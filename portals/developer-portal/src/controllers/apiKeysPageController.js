@@ -98,8 +98,8 @@ const loadAPIApiKeys = async (req, res, next) => {
                 createdAt: k.created_at,
                 revokedAt: k.revoked_at || undefined,
                 apiId: k.api_uuid,
-                appId: k.DP_API_KEY_APP_MAPPING?.app_uuid || null,
-                appName: k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION?.name || null,
+                appId: k.dp_api_key_app_mapping?.app_uuid || null,
+                appName: k.dp_api_key_app_mapping?.dp_application?.name || null,
                 maskedApiKey: '••••••••'
             }));
             apiKeysCount = apiKeys.length;

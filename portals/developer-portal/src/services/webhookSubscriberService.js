@@ -122,7 +122,7 @@ const getWebhookSubscriber = async (req, res) => {
 };
 
 function _formatDeliverySummary(delivery) {
-    const event = delivery.DP_EVENT;
+    const event = delivery.dp_event;
     return {
         deliveryId: delivery.uuid,
         eventType: event ? event.type : null,

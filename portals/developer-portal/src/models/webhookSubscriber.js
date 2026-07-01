@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
-const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
+const WebhookSubscriber = sequelize.define('dp_webhook_subscriber', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,

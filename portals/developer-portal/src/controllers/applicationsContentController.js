@@ -381,16 +381,16 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
             name: k.name,
             status: String(k.status || 'ACTIVE').toLowerCase(),
             apiId: k.api_uuid,
-            apiName: formatApiDisplayName(k.DP_API_METADATA, k.api_uuid)
+            apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
         }));
 
         // Capped — this just populates a UI picker, not a full export of the org's keys.
         const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
-            if (k.DP_API_KEY_APP_MAPPING?.app_uuid === applicationId) return;
+            if (k.dp_api_key_app_mapping?.app_uuid === applicationId) return;
             const apiId = k.api_uuid;
-            const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
+            const apiName = formatApiDisplayName(k.dp_api_metadata, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
             byApi.get(apiId).keys.push({ keyId: k.uuid, name: k.name });
         });

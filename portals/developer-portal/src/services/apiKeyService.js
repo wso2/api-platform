@@ -96,7 +96,7 @@ async function resolveSubscription(orgId, subscriptionId) {
     if (!subscriptionId) return null;
     const sub = await subDao.getById(orgId, subscriptionId);
     if (!sub) return null;
-    const plan = sub.DP_SUBSCRIPTION_PLAN;
+    const plan = sub.dp_subscription_plan;
     return {
         ref_id: sub.uuid,
         plan_ref_id: plan ? (plan.ref_id || null) : null,
@@ -116,7 +116,7 @@ async function resolveApp(orgId, appId, actor) {
 }
 
 function applicationOf(key) {
-    const app = key.DP_API_KEY_APP_MAPPING?.DP_APPLICATION;
+    const app = key.dp_api_key_app_mapping?.dp_application;
     return app ? { id: app.uuid, name: app.name } : null;
 }
 
@@ -317,7 +317,7 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-    if (!existing.DP_API_KEY_APP_MAPPING) return { keyId, application: null };
+    if (!existing.dp_api_key_app_mapping) return { keyId, application: null };
 
     await sequelize.transaction(async (t) => {
         await apiKeyDao.setApplication(orgId, keyId, null, actor, t);

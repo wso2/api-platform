@@ -21,7 +21,7 @@ const View = require('./view');
 const Labels = require('./label');
 
 
-const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
+const ViewLabels = sequelize.define('dp_view_label_mapping', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,

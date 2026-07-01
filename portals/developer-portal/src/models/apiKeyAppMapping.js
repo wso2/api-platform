@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const APIKey = require('./apiKey');
 const { Application } = require('./application');
 
-const APIKeyAppMapping = sequelize.define('DP_API_KEY_APP_MAPPING', {
+const APIKeyAppMapping = sequelize.define('dp_api_key_app_mapping', {
     key_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,

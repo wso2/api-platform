@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
-const APIFlow = sequelize.define('DP_API_WORKFLOW', {
+const APIFlow = sequelize.define('dp_api_workflow', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
