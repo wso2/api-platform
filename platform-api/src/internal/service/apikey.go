@@ -334,10 +334,16 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	}
 	allowedTargets := constants.APIKeyAllowedTargetsAll
 
+	displayName := strings.TrimSpace(req.DisplayName)
+	if displayName == "" {
+		displayName = keyName
+	}
+
 	dbKey := &model.APIKey{
 		UUID:           apiKeyUUID,
 		ArtifactUUID:   apiId,
 		Name:           keyName,
+		DisplayName:    displayName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         constants.APIKeyStatusActive,

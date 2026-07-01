@@ -56,6 +56,8 @@ type ArtifactRepository interface {
 	GetByHandle(handle, orgUUID string) (*model.Artifact, error)
 	GetByUUID(uuid, orgUUID string) (*model.Artifact, error)
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
+	GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error)
+	GetMetadataByUUIDs(uuids []string, orgUUID string) (map[string]*model.APIMetadata, error)
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 	ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error)
 }

@@ -43,6 +43,12 @@ func (g *guardStubArtifactRepo) ExistsByUUIDs(u []string, o string) ([]string, e
 func (g *guardStubArtifactRepo) GetAPIMetadataByHandle(h, o string) (*model.APIMetadata, error) {
 	return nil, nil
 }
+func (g *guardStubArtifactRepo) GetAPIMetadataByHandleAndKind(h, k, o string) (*model.APIMetadata, error) {
+	return nil, nil
+}
+func (g *guardStubArtifactRepo) GetMetadataByUUIDs(u []string, o string) (map[string]*model.APIMetadata, error) {
+	return map[string]*model.APIMetadata{}, nil
+}
 
 // TestUndeployDeployment_BlockedForDPOrigin verifies the control plane refuses to
 // undeploy a data-plane-originated (origin=DP) artifact: its deploy/undeploy lifecycle

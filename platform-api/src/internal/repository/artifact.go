@@ -121,6 +121,81 @@ func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.AP
 	return metadata, nil
 }
 
+// GetAPIMetadataByHandleAndKind retrieves minimal API metadata by handle from the
+// table backing the given kind. Unlike GetAPIMetadataByHandle it does not union across
+// every table, so the caller resolves the handle against exactly one artifact kind.
+// Returns (nil, nil) when no matching artifact exists.
+func (r *ArtifactRepo) GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error) {
+	entry, ok := r.reg.TableByKindKey(kind)
+	if !ok {
+		return nil, fmt.Errorf("invalid artifact kind: %q", kind)
+	}
+	query := fmt.Sprintf(
+		"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid FROM %s WHERE handle = ? AND organization_uuid = ?",
+		entry.KindAlias, entry.Table,
+	)
+
+	metadata := &model.APIMetadata{}
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(
+		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Version, &metadata.Kind, &metadata.OrganizationID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return metadata, nil
+}
+
+// GetMetadataByUUIDs returns a map of artifact UUID to minimal metadata (handle, kind, ...)
+// for the given UUIDs, resolved across all registered artifact tables. Missing UUIDs are
+// simply absent from the returned map. Used for bulk handle/kind resolution (avoids N+1 queries).
+func (r *ArtifactRepo) GetMetadataByUUIDs(uuids []string, orgUUID string) (map[string]*model.APIMetadata, error) {
+	result := make(map[string]*model.APIMetadata)
+	if len(uuids) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(uuids))
+	for i := range uuids {
+		placeholders[i] = "?"
+	}
+	inClause := strings.Join(placeholders, ", ")
+
+	entries := r.reg.Entries()
+	parts := make([]string, len(entries))
+	args := make([]interface{}, 0, len(entries)*(len(uuids)+1))
+	for i, e := range entries {
+		parts[i] = fmt.Sprintf(
+			"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid FROM %s WHERE uuid IN (%s) AND organization_uuid = ?",
+			e.KindAlias, e.Table, inClause,
+		)
+		for _, u := range uuids {
+			args = append(args, u)
+		}
+		args = append(args, orgUUID)
+	}
+	query := "SELECT uuid, handle, display_name, version, type, organization_uuid FROM (\n\t\t\t" +
+		strings.Join(parts, "\n\t\t\tUNION ALL\n\t\t\t") +
+		"\n\t\t) combined"
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		m := &model.APIMetadata{}
+		if err := rows.Scan(&m.ID, &m.Handle, &m.Name, &m.Version, &m.Kind, &m.OrganizationID); err != nil {
+			return nil, err
+		}
+		result[m.ID] = m
+	}
+	return result, rows.Err()
+}
+
 // GetByHandle finds an artifact by handle across all registered artifact tables.
 // Returns the artifact with its supplemental fields derived from the matching table.
 func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {

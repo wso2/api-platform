@@ -302,6 +302,7 @@ func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
 			UUID:           id(),
 			ArtifactUUID:   artifactUUID,
 			Name:           fmt.Sprintf("key-%d", i),
+			DisplayName:    fmt.Sprintf("Key %d", i),
 			MaskedAPIKey:   "ab12",
 			APIKeyHashes:   `{"sha256":"` + id() + `"}`,
 			Status:         "active",

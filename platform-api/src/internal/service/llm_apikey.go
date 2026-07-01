@@ -84,7 +84,8 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 			continue
 		}
 		item := api.APIKeyItem{
-			Name:           k.Name,
+			Id:             &k.Name,
+			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
@@ -215,10 +216,6 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		expiresAt = &expiresAtStr
 	}
 
-	if displayName == "" {
-		displayName = name
-	}
-
 	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
 	if err != nil {
 		s.slogger.Error("Failed to get gateways for API key broadcast", "providerId", providerID, "error", err)
@@ -259,6 +256,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		UUID:           apiKeyUUID,
 		ArtifactUUID:   provider.UUID,
 		Name:           name,
+		DisplayName:    displayName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",

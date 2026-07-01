@@ -146,7 +146,7 @@ function getLatestSelectableKey(
 ): UserAPIKey | null {
   return getLatestActiveKey(
     keys.filter((key) => {
-      const keyName = key.name ?? '';
+      const keyName = key.id ?? '';
       return Boolean(keyName) && !unavailableKeyNames.has(keyName);
     })
   );
@@ -302,7 +302,7 @@ function buildDisabledKeyStateByEntity(
     const disabledReasons = new Map<string, string>();
 
     keys.forEach((key) => {
-      const keyName = key.name ?? '';
+      const keyName = key.id ?? '';
       if (!keyName || !unavailableKeyNames.has(keyName)) {
         return;
       }
@@ -343,7 +343,7 @@ async function loadEntityKeys({
         updateMapSelection(
           prev,
           entityId,
-          latestKey?.name ? new Set([latestKey.name]) : new Set()
+          latestKey?.id ? new Set([latestKey.id]) : new Set()
         )
       );
     }
@@ -367,7 +367,7 @@ async function loadEntityKeys({
         updateMapSelection(
           prev,
           entityId,
-          latestKey?.name ? new Set([latestKey.name]) : new Set()
+          latestKey?.id ? new Set([latestKey.id]) : new Set()
         )
       );
     }
@@ -1354,7 +1354,7 @@ export default function AssociationsTab() {
     () =>
       new Set(
         managedAvailableKeys
-          .map((key) => key.name ?? '')
+          .map((key) => key.id ?? '')
           .filter(
             (keyName) => Boolean(keyName) && unavailableKeyNames.has(keyName)
           )
@@ -1378,9 +1378,9 @@ export default function AssociationsTab() {
   );
   const hasAddableManagedKeys = managedAvailableKeys.some(
     (key) =>
-      key.name &&
-      !managedMappedKeyStatusMap.has(key.name) &&
-      !managedDisabledKeyNames.has(key.name)
+      key.id &&
+      !managedMappedKeyStatusMap.has(key.id) &&
+      !managedDisabledKeyNames.has(key.id)
   );
 
   return (

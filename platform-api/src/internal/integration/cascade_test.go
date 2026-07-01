@@ -81,8 +81,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.depArtifact, g.org, g.gateway, g.deploy)
 
 	// An API key on the deployment artifact + its application mapping.
-	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, display_name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?)`,
-		g.apiKey, g.depArtifact, "key", "ab12", []byte("{}"))
+	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?, ?)`,
+		g.apiKey, g.depArtifact, "key", "key", "ab12", []byte("{}"))
 	it.exec(t, `INSERT INTO application_api_key_mappings (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
 	it.exec(t, `INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
 	return g

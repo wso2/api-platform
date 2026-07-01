@@ -74,6 +74,14 @@ const (
 	CreateSubscriptionPlanRequestStatusINACTIVE CreateSubscriptionPlanRequestStatus = "INACTIVE"
 )
 
+// Defines values for CreateSubscriptionRequestKind.
+const (
+	CreateSubscriptionRequestKindLlmProvider CreateSubscriptionRequestKind = "LlmProvider"
+	CreateSubscriptionRequestKindLlmProxy    CreateSubscriptionRequestKind = "LlmProxy"
+	CreateSubscriptionRequestKindMcp         CreateSubscriptionRequestKind = "Mcp"
+	CreateSubscriptionRequestKindRestApi     CreateSubscriptionRequestKind = "RestApi"
+)
+
 // Defines values for CreateSubscriptionRequestStatus.
 const (
 	CreateSubscriptionRequestStatusACTIVE   CreateSubscriptionRequestStatus = "ACTIVE"
@@ -242,6 +250,14 @@ const (
 	SecretSummaryTypeGENERIC     SecretSummaryType = "GENERIC"
 )
 
+// Defines values for SubscriptionKind.
+const (
+	SubscriptionKindLlmProvider SubscriptionKind = "LlmProvider"
+	SubscriptionKindLlmProxy    SubscriptionKind = "LlmProxy"
+	SubscriptionKindMcp         SubscriptionKind = "Mcp"
+	SubscriptionKindRestApi     SubscriptionKind = "RestApi"
+)
+
 // Defines values for SubscriptionStatus.
 const (
 	SubscriptionStatusACTIVE   SubscriptionStatus = "ACTIVE"
@@ -394,17 +410,20 @@ type APIKeyItem struct {
 	// CreatedBy User who created the key
 	CreatedBy string `binding:"required" json:"createdBy" yaml:"createdBy"`
 
+	// DisplayName Human-readable display name of the API key
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// ExpiresAt Optional expiration timestamp
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+
+	// Id URL-safe handle (identifier) of the API key (generated from displayName when not supplied)
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Issuer Optional identifier of the developer portal that provisioned this key
 	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 
 	// MaskedApiKey Masked representation of the API key for display purposes
 	MaskedApiKey string `binding:"required" json:"maskedApiKey" yaml:"maskedApiKey"`
-
-	// Name URL-safe identifier of the API key
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Status Current status of the key
 	Status APIKeyItemStatus `binding:"required" json:"status" yaml:"status"`
@@ -870,11 +889,14 @@ type CreateSubscriptionPlanRequestStatus string
 
 // CreateSubscriptionRequest defines model for CreateSubscriptionRequest.
 type CreateSubscriptionRequest struct {
-	// ApiId API handle or UUID (REST API identifier)
+	// ApiId Handle (ID) of the artifact to subscribe to. Resolved against the table for the given kind.
 	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
 
 	// ApplicationId Handle (ID) of the application this subscription belongs to. Optional in token-based subscriptions.
 	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// Kind Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+	Kind CreateSubscriptionRequestKind `binding:"required" json:"kind" yaml:"kind"`
 
 	// Status Subscription status (default ACTIVE)
 	Status *CreateSubscriptionRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
@@ -885,6 +907,9 @@ type CreateSubscriptionRequest struct {
 	// SubscriptionPlanId Handle (slug) of the subscription plan. Links the subscription to rate limit and billing configuration.
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 }
+
+// CreateSubscriptionRequestKind Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+type CreateSubscriptionRequestKind string
 
 // CreateSubscriptionRequestStatus Subscription status (default ACTIVE)
 type CreateSubscriptionRequestStatus string
@@ -2141,12 +2166,15 @@ type SecurityConfig struct {
 
 // Subscription defines model for Subscription.
 type Subscription struct {
-	// ApiId REST API UUID
-	ApiId *openapi_types.UUID `json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	// ApiId Handle (ID) of the subscribed artifact
+	ApiId *string `json:"apiId,omitempty" yaml:"apiId,omitempty"`
 
 	// ApplicationId Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
 	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Kind Type of the subscribed artifact
+	Kind *SubscriptionKind `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// OrganizationId Handle (URL-friendly slug) of the organization this subscription belongs to
 	OrganizationId *string             `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
@@ -2168,6 +2196,9 @@ type Subscription struct {
 	// Uuid Subscription UUID
 	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
+
+// SubscriptionKind Type of the subscribed artifact
+type SubscriptionKind string
 
 // SubscriptionStatus defines model for Subscription.Status.
 type SubscriptionStatus string
@@ -2379,17 +2410,20 @@ type UserAPIKeyItem struct {
 	// CreatedBy User who created the key
 	CreatedBy string `binding:"required" json:"createdBy" yaml:"createdBy"`
 
+	// DisplayName Human-readable display name of the API key
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// ExpiresAt Optional expiration timestamp
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+
+	// Id URL-safe handle (identifier) of the API key (generated from displayName when not supplied)
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Issuer Optional identifier of the developer portal that provisioned this key
 	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 
 	// MaskedApiKey Masked representation of the API key for display purposes
 	MaskedApiKey string `binding:"required" json:"maskedApiKey" yaml:"maskedApiKey"`
-
-	// Name URL-safe identifier of the API key
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Status Current status of the key
 	Status UserAPIKeyItemStatus `binding:"required" json:"status" yaml:"status"`

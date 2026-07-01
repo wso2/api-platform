@@ -57,6 +57,7 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, su
 // CreateSubscriptionRequest is the body for POST /api/v0.9/subscriptions
 type CreateSubscriptionRequest struct {
 	APIID              string  `json:"apiId" binding:"required"`
+	Kind               string  `json:"kind" binding:"required"`
 	SubscriberID       string  `json:"subscriberId" binding:"required"`
 	ApplicationID      *string `json:"applicationId,omitempty"`
 	SubscriptionPlanID *string `json:"subscriptionPlanId,omitempty"`
@@ -86,13 +87,21 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId is required"))
 		return
 	}
+	if req.Kind == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "kind is required"))
+		return
+	}
+	if !constants.ValidArtifactKinds[req.Kind] {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid kind value"))
+		return
+	}
 	switch req.Status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
 		return
 	}
-	sub, err := h.subscriptionService.CreateSubscription(req.APIID, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, req.Status)
+	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, req.Status)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
@@ -194,9 +203,9 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	for id := range planIDSet {
 		planIDs = append(planIDs, id)
 	}
-	apiHandleMap, err := h.subscriptionService.GetAPIHandleMap(apiUUIDs, orgId)
+	artifactMetaMap, err := h.subscriptionService.GetArtifactMetadataMap(apiUUIDs, orgId)
 	if err != nil {
-		h.slogger.Error("Failed to bulk fetch API handles for list", "organizationId", orgId, "error", err)
+		h.slogger.Error("Failed to bulk fetch artifact metadata for list", "organizationId", orgId, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
 		return
 	}
@@ -208,7 +217,7 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	}
 	items := make([]map[string]any, 0, len(list))
 	for _, sub := range list {
-		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, apiHandleMap, planNameMap))
+		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"subscriptions": items,
@@ -349,7 +358,7 @@ func (h *SubscriptionHandler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) map[string]any {
 	// apiId in response should be the handle (e.g. "samp1"), not the internal UUID
-	apiIdForResponse := h.subscriptionService.ResolveAPIHandle(sub.ArtifactUUID, orgId)
+	apiIdForResponse, kind := h.subscriptionService.ResolveArtifactHandleAndKind(sub.ArtifactUUID, orgId)
 	if apiIdForResponse == "" {
 		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
@@ -361,6 +370,9 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,
+	}
+	if kind != "" {
+		resp["kind"] = kind
 	}
 	if sub.ApplicationID != nil {
 		resp["applicationId"] = *sub.ApplicationID
@@ -383,10 +395,14 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 
 // toSubscriptionResponseWithMaps builds a subscription response using pre-fetched lookup maps.
 // Used by ListSubscriptions to avoid N+1 queries.
-func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, apiHandleMap, planNameMap map[string]string) map[string]any {
-	apiIdForResponse := apiHandleMap[sub.ArtifactUUID]
-	if apiIdForResponse == "" {
-		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
+func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, artifactMetaMap map[string]*model.APIMetadata, planNameMap map[string]string) map[string]any {
+	apiIdForResponse := sub.ArtifactUUID // fallback to UUID
+	var kind string
+	if meta := artifactMetaMap[sub.ArtifactUUID]; meta != nil {
+		if meta.Handle != "" {
+			apiIdForResponse = meta.Handle
+		}
+		kind = meta.Kind
 	}
 	resp := map[string]any{
 		"uuid":           sub.UUID,
@@ -396,6 +412,9 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,
+	}
+	if kind != "" {
+		resp["kind"] = kind
 	}
 	if sub.ApplicationID != nil {
 		resp["applicationId"] = *sub.ApplicationID

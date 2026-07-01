@@ -93,7 +93,7 @@ export function getVisibleKeys(
     .filter(
       (mappedKey) =>
         !entityKeys.some(
-          (entityKey) => (entityKey.name ?? '') === mappedKey.keyId
+          (entityKey) => (entityKey.id ?? '') === mappedKey.keyId
         )
     )
     .map((mappedKey) => ({
