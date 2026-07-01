@@ -212,14 +212,7 @@ type LLMProvider struct {
 	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProviderConfig  `json:"configuration" db:"configuration"`
 	Origin           string             `json:"origin,omitempty" db:"origin"`
-	// AssociatedGateways carries resolved gateway associations to be persisted in
-	// the artifact_gateway_mappings table within the same create transaction.
 	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
-	// ReplaceAssociatedGateways, when true on update, replaces the provider's full set
-	// of gateway associations with AssociatedGateways (within the update transaction).
-	// When false the associations are left untouched. It distinguishes an update that
-	// manages associations (including clearing them with an empty set) from one that
-	// omits the field entirely.
 	ReplaceAssociatedGateways bool `json:"-" db:"-"`
 }
 
@@ -255,12 +248,7 @@ type LLMProxy struct {
 	UpdatedAt        time.Time      `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProxyConfig `json:"configuration" db:"configuration"`
 	Origin           string         `json:"origin,omitempty" db:"origin"`
-	// AssociatedGateways carries resolved gateway associations to be persisted in the
-	// artifact_gateway_mappings table within the same create transaction.
 	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
-	// ReplaceAssociatedGateways, when true on update, replaces the proxy's full set of
-	// gateway associations with AssociatedGateways (within the update transaction).
-	// See model.LLMProvider for the omitted-vs-empty semantics.
 	ReplaceAssociatedGateways bool `json:"-" db:"-"`
 }
 

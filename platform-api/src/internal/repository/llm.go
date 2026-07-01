@@ -664,8 +664,6 @@ func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUI
 	return count, nil
 }
 
-// ---- Artifact–Gateway associations (shared by LLM providers and proxies) ----
-
 // insertArtifactGatewayAssociations writes the given gateway associations for an artifact
 // within the supplied transaction. metadata is a BYTEA column; a nil slice is stored as NULL.
 func insertArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
@@ -743,7 +741,7 @@ func loadArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID stri
 //
 // It returns the metadata to persist on the deployment record. An empty string means "no metadata".
 func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
-	// metadata is a BYTEA column, so it is read and written as a byte slice.
+
 	var existingMetadata []byte
 	selectQuery := `
 		SELECT metadata
@@ -758,8 +756,6 @@ func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID
 	}
 
 	if !exists {
-		// First deployment to this gateway: create the association seeded with the
-		// initial deployment's metadata. A nil slice is stored as NULL.
 		now := time.Now()
 		var metaArg []byte
 		if strings.TrimSpace(deployMetadata) != "" {
@@ -777,8 +773,7 @@ func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID
 	}
 
 	// Existing association is never modified at deploy time. When the deploy request
-	// provides metadata (even an explicit empty value), it is used as-is; only an
-	// omitted field falls back to the association's stored metadata.
+	// provides metadata (even an explicit empty value), it is used as-is
 	if metadataProvided {
 		return deployMetadata, nil
 	}

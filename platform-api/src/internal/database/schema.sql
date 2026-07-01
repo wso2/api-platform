@@ -188,8 +188,6 @@ CREATE TABLE IF NOT EXISTS gateways (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
