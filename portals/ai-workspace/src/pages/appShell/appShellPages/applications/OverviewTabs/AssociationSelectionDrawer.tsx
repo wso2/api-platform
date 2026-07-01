@@ -424,7 +424,7 @@ export default function AssociationSelectionDrawer<T extends DrawerEntity>({
                         color: "primary.contrastText",
                       }}
                     >
-                      {getInitials(item.name)}
+                      {getInitials(item.displayName)}
                     </Avatar>
                     <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
                       <Stack
@@ -433,11 +433,11 @@ export default function AssociationSelectionDrawer<T extends DrawerEntity>({
                         alignItems="center"
                         flexWrap="wrap"
                       >
-                        <Tooltip title={item.name.length > 20 ? item.name : ""}>
+                        <Tooltip title={item.displayName.length > 20 ? item.displayName : ""}>
                           <Typography variant="body2" fontWeight={600} noWrap>
-                            {item.name.length > 30
-                              ? `${item.name.slice(0, 30)}...`
-                              : item.name}
+                            {item.displayName.length > 30
+                              ? `${item.displayName.slice(0, 30)}...`
+                              : item.displayName}
                           </Typography>
                         </Tooltip>
                         {itemMeta.chip}
