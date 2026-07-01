@@ -21,6 +21,7 @@ const tokenCache = {};
 let _manageSub = null;
 let _manageRevealed = false;
 let _manageCopyTimer = null;
+let _regenerateInFlight = false;
 
 /* ── Open / close manage modal ─────────────────────────────────── */
 function openSubManage(subId) {
@@ -140,20 +141,22 @@ function closeRegenerateDialog() {
 }
 
 async function confirmRegenerateToken() {
-    if (!_manageSub) return;
+    if (!_manageSub || _regenerateInFlight) return;
+    const subId = _manageSub.id;
     closeRegenerateDialog();
     const orgId = window.__subscriptionOrgId;
     if (!orgId) return;
+    _regenerateInFlight = true;
     try {
         const resp = await fetch(
-            devportalApi.org(orgId, `/subscriptions/${encodeURIComponent(_manageSub.id)}/regenerate-token`),
+            devportalApi.org(`/subscriptions/${encodeURIComponent(subId)}/regenerate-token`),
             { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
         if (resp.ok) {
             const data = await resp.json();
             const newToken = data.subscriptionToken;
-            delete tokenCache[_manageSub.id];
-            if (newToken) tokenCache[_manageSub.id] = newToken;
+            delete tokenCache[subId];
+            if (newToken) tokenCache[subId] = newToken;
             _manageRevealed = true;
             document.getElementById('subManageTokenVal').textContent = newToken || '•'.repeat(28);
             const ri = document.getElementById('subManageRevealIcon');
@@ -172,6 +175,8 @@ async function confirmRegenerateToken() {
         if (typeof showAlert === 'function') {
             await showAlert('Error: ' + e.message, 'error');
         }
+    } finally {
+        _regenerateInFlight = false;
     }
 }
 

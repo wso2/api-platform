@@ -145,21 +145,21 @@ async function updateStatus(orgId, subId, status, createdBy, transaction) {
 }
 
 async function updatePlan(orgId, subId, planId, updatedBy, transaction) {
-    const where = { UUID: subId, ORG_UUID: orgId, CREATED_BY: updatedBy };
+    const where = { uuid: subId, org_uuid: orgId, created_by: updatedBy };
     const [count] = await SubscriptionMapping.update(
-        { PLAN_UUID: planId, UPDATED_BY: updatedBy, UPDATED_AT: new Date() },
+        { plan_uuid: planId, updated_by: updatedBy, updated_at: new Date() },
         { where, transaction }
     );
     return count > 0;
 }
 
 async function regenerateToken(orgId, subId, updatedBy, transaction) {
-    const where = { UUID: subId, ORG_UUID: orgId, CREATED_BY: updatedBy };
+    const where = { uuid: subId, org_uuid: orgId, created_by: updatedBy };
     for (let attempt = 0; attempt < 3; attempt++) {
         const newToken = generateSubToken();
         try {
             const [count] = await SubscriptionMapping.update(
-                { TOKEN: encryptToken(newToken), UPDATED_BY: updatedBy, UPDATED_AT: new Date() },
+                { token: encryptToken(newToken), updated_by: updatedBy, updated_at: new Date() },
                 { where, transaction }
             );
             if (count === 0) return null;
@@ -168,7 +168,7 @@ async function regenerateToken(orgId, subId, updatedBy, transaction) {
             const isTokenCollision =
                 err.name === 'SequelizeUniqueConstraintError' &&
                 err.fields && Object.keys(err.fields).some(
-                    f => f.includes('TOKEN') || f.includes('sub_token')
+                    f => f.includes('token')
                 );
             if (isTokenCollision && attempt < 2) continue;
             throw err;
