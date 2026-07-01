@@ -66,7 +66,7 @@ func setupLLMTemplateEnv(t *testing.T) (http.Handler, *database.DB, func()) {
 	if _, err = db.Exec(string(schema)); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES ('` + tmplOrg + `', 'test-org', 'Test Org', 'default', datetime('now'), datetime('now'))`); err != nil {
 		t.Fatalf("insert org: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestLLMTemplateHTTP_DeleteByHandle(t *testing.T) {
 		t.Fatalf("lookup template uuid: %v", err)
 	}
 	if _, err := db.Exec(
-		`INSERT INTO llm_providers (uuid, handle, name, version, template_uuid, configuration, organization_uuid)
+		`INSERT INTO llm_providers (uuid, handle, display_name, version, template_uuid, configuration, organization_uuid)
 		 VALUES ('prov-inuse', 'in-use-prov', 'In Use Prov', 'v1.0', ?, '{}', ?)`,
 		tuuid, tmplOrg); err != nil {
 		t.Fatalf("insert provider: %v", err)
