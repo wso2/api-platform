@@ -170,69 +170,17 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /devportal/v1/views/{viewName}/layout:
+  /devportal/v1/views/{viewName}/asset:
     parameters:
       - $ref: "#/components/parameters/viewName"
-    post:
-      tags:
-        - Organization Content
-      summary: Upload organization layout content
-      description: >-
-        Uploads a ZIP file containing organization layout assets for the selected view. The service extracts the
-        archive, reads supported files, and stores each content item under the view.
-      operationId: createOrgContent
-      requestBody:
-        $ref: "#/components/requestBodies/FileUploadBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/OrganizationContentUploadResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:org_content_create
-            - dp:org_content_manage
-            - dp:org_manage
-    put:
-      tags:
-        - Organization Content
-      summary: Replace organization layout content
-      description: >-
-        Uploads a ZIP file and upserts the extracted organization layout assets for the selected view. Existing content
-        records are updated and missing content records are created.
-      operationId: updateOrgContent
-      requestBody:
-        $ref: "#/components/requestBodies/FileUploadBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/OrganizationContentUploadResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:org_content_update
-            - dp:org_content_manage
-            - dp:org_manage
     get:
       tags:
         - Organization Content
-      summary: Get a single organization layout asset
+      summary: Get a theme asset
       description: >-
-        Retrieves one organization layout asset when `fileType` and `fileName` are supplied as query parameters. The
-        response content type is derived from the stored file type and extension.
-      operationId: getOrgLayoutContent
+        Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and `fileName` query parameters.
+        The response content type is derived from the stored file type and extension.
+      operationId: getOrgAsset
       parameters:
         - $ref: "#/components/parameters/orgContentFileTypeQuery"
         - $ref: "#/components/parameters/orgContentFileNameQuery"
@@ -245,48 +193,48 @@ paths:
         "404":
           $ref: "#/components/responses/TextMessageResponse"
       security: []
-    delete:
+  /devportal/v1/views/{viewName}/apply-theme:
+    parameters:
+      - $ref: "#/components/parameters/viewName"
+    post:
       tags:
         - Organization Content
-      summary: Delete organization layout content
+      summary: Apply a theme
       description: >-
-        Deletes all organization layout content for the selected view, or deletes one content item when `fileName` is
-        supplied as a query parameter.
-      operationId: deleteOrgContent
-      parameters:
-        - $ref: "#/components/parameters/fileNameQuery"
+        Uploads a ZIP file and atomically replaces all existing theme assets for the view. All previously stored
+        files are deleted before the new ones are extracted and stored.
+      operationId: applyTheme
+      requestBody:
+        $ref: "#/components/requestBodies/FileUploadBody"
       responses:
-        "204":
-          description: Organization content deleted successfully.
+        "200":
+          $ref: "#/components/responses/OrganizationContentUploadResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_content_delete
             - dp:org_content_manage
             - dp:org_manage
-  /devportal/v1/views/{viewName}/layout/{fileType}:
+  /devportal/v1/views/{viewName}/reset-theme:
     parameters:
       - $ref: "#/components/parameters/viewName"
-      - $ref: "#/components/parameters/fileType"
-    get:
+    post:
       tags:
         - Organization Content
-      summary: List organization layout assets by file type
-      description: Returns all stored organization layout content records for the selected file type and view.
-      operationId: getOrgLayoutContentByFileType
-      security: []
+      summary: Reset theme to defaults
+      description: Deletes all stored theme assets for the view, reverting it to built-in defaults.
+      operationId: resetTheme
       responses:
-        "200":
-          $ref: "#/components/responses/OrganizationContentListResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/TextMessageResponse"
+        "204":
+          description: Theme reset successfully.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:org_content_manage
+            - dp:org_manage
   /devportal/v1/apis:
     post:
       tags:
@@ -1979,11 +1927,8 @@ components:
             dp:org_update: Update organizations.
             dp:org_delete: Delete organizations.
             dp:org_manage: Manage organizations (including creating, updating, and deleting).
-            dp:org_content_read: Read organization layout or content.
-            dp:org_content_create: Create organization layout or content.
-            dp:org_content_update: Update organization layout or content.
-            dp:org_content_delete: Delete organization layout or content.
-            dp:org_content_manage: Manage organization layout or content.
+            dp:org_content_read: Read organization theme assets.
+            dp:org_content_manage: Apply or reset organization theme.
             dp:api_read: Read API metadata.
             dp:api_create: Create API metadata.
             dp:api_update: Update API metadata.

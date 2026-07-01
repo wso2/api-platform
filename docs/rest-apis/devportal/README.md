@@ -27,11 +27,9 @@ Base URLs:
 
 ### [Organization Content](organization-content.md)
 
-- [Upload organization layout content](organization-content.md#upload-organization-layout-content)
-- [Replace organization layout content](organization-content.md#replace-organization-layout-content)
-- [Get a single organization layout asset](organization-content.md#get-a-single-organization-layout-asset)
-- [Delete organization layout content](organization-content.md#delete-organization-layout-content)
-- [List organization layout assets by file type](organization-content.md#list-organization-layout-assets-by-file-type)
+- [Get a theme asset](organization-content.md#get-a-theme-asset)
+- [Apply a theme](organization-content.md#apply-a-theme)
+- [Reset theme to defaults](organization-content.md#reset-theme-to-defaults)
 
 ### [APIs](apis.md)
 

@@ -137,8 +137,8 @@ async function updateOrgContent(orgId) {
     }
     const formData = new FormData();
     formData.append('file', zipFile.files[0]);
-    const response = await fetch(devportalApi.org('/views/default/layout'), {
-        method: 'PUT',
+    const response = await fetch(devportalApi.org('/views/default/apply-theme'), {
+        method: 'POST',
         body: formData,
         credentials: 'same-origin'
     });
@@ -159,8 +159,8 @@ async function uploadContent(orgId) {
     formData.append('file', zipFile.files[0]);
 
     const view = document.getElementById('uploadViewContent').value;
-    const response = await fetch(devportalApi.org(`/views/${view}/layout`), {
-        method: 'PUT',
+    const response = await fetch(devportalApi.org(`/views/${view}/apply-theme`), {
+        method: 'POST',
         body: formData,
         credentials: 'same-origin'
     });
@@ -219,7 +219,7 @@ async function editView(existingLabels, labelsContainerID, nameID, handleID, org
         removedLabels: sanitizeRemovedLabels
     }
     const response = await fetch(devportalApi.org(`/views/${handle}`), {
-        method: 'PUT',
+        method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
