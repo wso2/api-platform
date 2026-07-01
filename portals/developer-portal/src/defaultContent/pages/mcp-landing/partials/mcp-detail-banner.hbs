@@ -1,34 +1,34 @@
 <div class="aov-hero">
   <div class="aov-hero-top">
     <div class="aov-hero-thumb">
-      {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
-      <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.apiName}}" />
+      {{#if apiMetadata.apiImageMetadata.api-icon}}
+      <img class="aov-api-img" src="{{apiMetadata.apiImageMetadata.api-icon}}" alt="{{apiMetadata.name}}" />
       {{else}}
-      <div class="aov-api-avatar">{{firstTwoLetters (or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName)}}</div>
+      <div class="aov-api-avatar">{{firstTwoLetters (or apiMetadata.apiTitle apiMetadata.name)}}</div>
       {{/if}}
     </div>
     <div class="aov-hero-title-row">
-      <h1 class="aov-hero-name">{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName}}</h1>
+      <h1 class="aov-hero-name">{{or apiMetadata.apiTitle apiMetadata.name}}</h1>
       <div class="aov-hero-badges">
-        {{#if apiMetadata.apiInfo.apiVersion}}
-        <span class="dp-badge dp-badge--version">{{apiMetadata.apiInfo.apiVersion}}</span>
+        {{#if apiMetadata.version}}
+        <span class="dp-badge dp-badge--version">{{apiMetadata.version}}</span>
         {{/if}}
         <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>
-        {{#if (eq apiMetadata.apiInfo.apiStatus "DEPRECATED")}}
+        {{#if (eq apiMetadata.status "DEPRECATED")}}
         <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
         {{/if}}
       </div>
     </div>
   </div>
   <div class="aov-hero-body">
-    {{#if apiMetadata.apiInfo.apiDescription}}
-    <p class="aov-hero-desc">{{apiMetadata.apiInfo.apiDescription}}</p>
+    {{#if apiMetadata.description}}
+    <p class="aov-hero-desc">{{apiMetadata.description}}</p>
     {{/if}}
-    {{#if apiMetadata.apiInfo.tags}}
+    {{#if apiMetadata.tags}}
     <div class="dp-tags">
-      {{#apiMetadata.apiInfo.tags}}
+      {{#apiMetadata.tags}}
       <span class="dp-tag dp-tag--white">{{this}}</span>
-      {{/apiMetadata.apiInfo.tags}}
+      {{/apiMetadata.tags}}
     </div>
     {{/if}}
     <div class="aov-hero-actions">
@@ -39,11 +39,11 @@
       </a>
         {{/unless}}
       {{/if}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.apiHandle}}/docs/specification">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.handle}}/docs/specification">
         <i class="bi bi-book"></i> Documentation
       </a>
       {{#if showApiKeysNav}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.apiHandle}}/api-keys">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.handle}}/api-keys">
         <i class="bi bi-key"></i> API Keys
       </a>
       {{/if}}

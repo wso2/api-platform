@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApplicationKeys"></a>
 
-`POST /o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys`
+`POST /devportal/v1/applications/{applicationId}/generate-keys`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys \
+curl -X POST https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/generate-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -26,7 +26,7 @@ Maps an OAuth client_id — created directly in the selected key manager — to 
 ```json
 {
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123"
 }
 ```
@@ -43,7 +43,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[AppKeyMappingRequest](schemas.md#schemaappkeymappingrequest)|true|Maps an OAuth client_id — created directly in the key manager — to this application. The application is identified by the `applicationId` path parameter.|
-|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 
 > Example responses
@@ -54,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "keyMappingId": "km-12345",
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -70,8 +69,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -145,13 +144,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgenerateOAuthKeys"></a>
 
-`POST /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
+`POST /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
+curl -X POST https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -160,7 +159,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applicatio
 
 ```
 
-Generates an access token for an existing application OAuth key mapping. The portal calls the Authorization Server token endpoint directly using the client credentials supplied in `consumerSecret`.
+Generates an access token for an existing application OAuth key mapping. The portal calls the Authorization Server token endpoint directly using the client appKeyMappings supplied in `consumerSecret`.
 
 > Payload
 
@@ -186,7 +185,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthGenerateTokenRequest](schemas.md#schemaoauthgeneratetokenrequest)|false|OAuth token generation payload. The portal calls the Authorization Server token endpoint directly.|
-|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -196,10 +194,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "weather.read"
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
+  "validityTime": 3600,
+  "tokenScopes": [
+    "weather.read"
+  ]
 }
 ```
 
@@ -213,8 +212,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -277,13 +276,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeOAuthKeys"></a>
 
-`DELETE /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}`
+`DELETE /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -303,7 +302,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 

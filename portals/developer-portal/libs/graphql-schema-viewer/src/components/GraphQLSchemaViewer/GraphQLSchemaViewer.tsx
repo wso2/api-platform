@@ -17,11 +17,9 @@ import { styles, getTypeColor, getTypeIcon } from './styles';
 interface GraphQLSchemaViewerProps {
   schema: string; 
   apiMetadata?: {
-    apiInfo?: {
-      apiName?: string;
-      apiVersion?: string;
-      apiDescription?: string;
-    };
+    name?: string;
+    version?: string;
+    description?: string;
     endPoints?: {
       productionURL?: string;
       sandboxURL?: string;
@@ -292,10 +290,10 @@ export const GraphQLSchemaViewer: React.FC<GraphQLSchemaViewerProps> = ({ schema
         {/* Header */}
         <div style={styles.header}>
           <h2 style={styles.title}>
-            {apiMetadata?.apiInfo?.apiName || 'GraphQL Schema Documentation'}
-            {apiMetadata?.apiInfo?.apiVersion && (
+            {apiMetadata?.name || 'GraphQL Schema Documentation'}
+            {apiMetadata?.version && (
               <span style={styles.version}>
-                {apiMetadata.apiInfo.apiVersion}
+                {apiMetadata.version}
               </span>
             )}
           </h2>

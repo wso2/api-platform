@@ -43,21 +43,19 @@ function decryptToken(value) {
 function decryptSubRecord(sub) {
     if (!sub) return sub;
     const dv = sub.dataValues || sub;
-    if (dv.TOKEN) dv.TOKEN = decryptToken(dv.TOKEN);
+    if (dv.token) dv.token = decryptToken(dv.token);
     return sub;
 }
 
 const INCLUDE_API_AND_PLAN = [
     {
         model: APIMetadata,
-        as: 'DP_API_METADATA',
-        attributes: ['UUID', 'NAME', 'VERSION', 'HANDLE', 'REF_ID'],
+        attributes: ['uuid', 'name', 'version', 'handle', 'ref_id'],
         required: false,
     },
     {
         model: SubscriptionPlan,
-        as: 'DP_SUBSCRIPTION_PLAN',
-        attributes: ['UUID', 'NAME', 'REF_ID'],
+        attributes: ['uuid', 'name', 'ref_id'],
         required: false,
     },
 ];
@@ -71,17 +69,17 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
     if (opts.subToken) {
         const record = await SubscriptionMapping.create(
             {
-                CREATED_BY: createdBy,
-                UPDATED_BY: createdBy,
-                ORG_UUID: orgId,
-                API_UUID: apiId,
-                PLAN_UUID: planId || null,
-                TOKEN: encryptToken(opts.subToken),
-                STATUS: 'ACTIVE',
+                created_by: createdBy,
+                updated_by: createdBy,
+                org_uuid: orgId,
+                api_uuid: apiId,
+                plan_uuid: planId || null,
+                token: encryptToken(opts.subToken),
+                status: 'ACTIVE',
             },
             { transaction }
         );
-        record.dataValues.TOKEN = opts.subToken;
+        record.dataValues.token = opts.subToken;
         return record;
     }
 
@@ -90,24 +88,24 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
         try {
             const record = await SubscriptionMapping.create(
                 {
-                    CREATED_BY: createdBy,
-                    UPDATED_BY: createdBy,
-                    ORG_UUID: orgId,
-                    API_UUID: apiId,
-                    PLAN_UUID: planId || null,
-                    TOKEN: encryptToken(subToken),
-                    STATUS: 'ACTIVE',
+                    created_by: createdBy,
+                    updated_by: createdBy,
+                    org_uuid: orgId,
+                    api_uuid: apiId,
+                    plan_uuid: planId || null,
+                    token: encryptToken(subToken),
+                    status: 'ACTIVE',
                 },
                 { transaction }
             );
             // Expose the plaintext token to callers (never the encrypted form).
-            record.dataValues.TOKEN = subToken;
+            record.dataValues.token = subToken;
             return record;
         } catch (err) {
             const isTokenCollision =
                 err.name === 'SequelizeUniqueConstraintError' &&
                 err.fields && Object.keys(err.fields).some(
-                    f => f.includes('TOKEN') || f.includes('sub_token')
+                    f => f.includes('token') || f.includes('sub_token')
                 );
             if (isTokenCollision && attempt < 2) continue;
             throw err;
@@ -116,20 +114,20 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
 }
 
 async function list(orgId, { apiId, createdBy } = {}) {
-    const where = { ORG_UUID: orgId };
-    if (apiId) where.API_UUID = apiId;
-    if (createdBy) where.CREATED_BY = createdBy;
+    const where = { org_uuid: orgId };
+    if (apiId) where.api_uuid = apiId;
+    if (createdBy) where.created_by = createdBy;
     const rows = await SubscriptionMapping.findAll({
         where,
         include: INCLUDE_API_AND_PLAN,
-        order: [['UUID', 'ASC']],
+        order: [['uuid', 'ASC']],
     });
     return rows.map(decryptSubRecord);
 }
 
 async function get(orgId, subId, createdBy) {
-    const where = { UUID: subId, ORG_UUID: orgId };
-    if (createdBy) where.CREATED_BY = createdBy;
+    const where = { uuid: subId, org_uuid: orgId };
+    if (createdBy) where.created_by = createdBy;
     return decryptSubRecord(await SubscriptionMapping.findOne({
         where,
         include: INCLUDE_API_AND_PLAN,
@@ -137,36 +135,68 @@ async function get(orgId, subId, createdBy) {
 }
 
 async function updateStatus(orgId, subId, status, createdBy, transaction) {
-    const where = { UUID: subId, ORG_UUID: orgId };
-    if (createdBy) where.CREATED_BY = createdBy;
+    const where = { uuid: subId, org_uuid: orgId };
+    if (createdBy) where.created_by = createdBy;
     const [count] = await SubscriptionMapping.update(
-        { STATUS: status, UPDATED_BY: createdBy, UPDATED_AT: new Date() },
+        { status: status, updated_by: createdBy, updated_at: new Date() },
         { where, transaction }
     );
     return count > 0;
 }
 
+async function updatePlan(orgId, subId, planId, updatedBy, transaction) {
+    const where = { uuid: subId, org_uuid: orgId, created_by: updatedBy };
+    const [count] = await SubscriptionMapping.update(
+        { plan_uuid: planId, updated_by: updatedBy, updated_at: new Date() },
+        { where, transaction }
+    );
+    return count > 0;
+}
+
+async function regenerateToken(orgId, subId, updatedBy, transaction) {
+    const where = { uuid: subId, org_uuid: orgId, created_by: updatedBy };
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const newToken = generateSubToken();
+        try {
+            const [count] = await SubscriptionMapping.update(
+                { token: encryptToken(newToken), updated_by: updatedBy, updated_at: new Date() },
+                { where, transaction }
+            );
+            if (count === 0) return null;
+            return newToken;
+        } catch (err) {
+            const isTokenCollision =
+                err.name === 'SequelizeUniqueConstraintError' &&
+                err.fields && Object.keys(err.fields).some(
+                    f => f.includes('token')
+                );
+            if (isTokenCollision && attempt < 2) continue;
+            throw err;
+        }
+    }
+}
+
 async function deleteSubscription(orgId, subId, createdBy, transaction) {
-    const where = { UUID: subId, ORG_UUID: orgId };
-    if (createdBy) where.CREATED_BY = createdBy;
+    const where = { uuid: subId, org_uuid: orgId };
+    if (createdBy) where.created_by = createdBy;
     const count = await SubscriptionMapping.destroy({ where, transaction });
     return count > 0;
 }
 
 async function getById(orgId, subId) {
     return decryptSubRecord(await SubscriptionMapping.findOne({
-        where: { UUID: subId, ORG_UUID: orgId },
+        where: { uuid: subId, org_uuid: orgId },
         include: INCLUDE_API_AND_PLAN,
     }));
 }
 
-const listByApi = async (orgID, apiID) => {
+const listByApi = async (orgId, apiId) => {
     try {
         return await SubscriptionMapping.findAll(
             {
                 where: {
-                    ORG_UUID: orgID,
-                    API_UUID: apiID,
+                    org_uuid: orgId,
+                    api_uuid: apiId,
                 }
             });
     } catch (error) {
@@ -177,31 +207,31 @@ const listByApi = async (orgID, apiID) => {
     }
 }
 
-const listByOrg = async (orgID) => {
+const listByOrg = async (orgId) => {
     try {
         return await SubscriptionMapping.findAll({
-            where: { ORG_UUID: orgID },
+            where: { org_uuid: orgId },
         });
     } catch (error) {
         throw new Sequelize.DatabaseError(error);
     }
 };
 
-const listByUser = async (orgID, userID) => {
+const listByUser = async (orgId, userId) => {
     try {
         return await SubscriptionMapping.findAll({
-            where: { ORG_UUID: orgID, CREATED_BY: userID },
+            where: { org_uuid: orgId, created_by: userId },
         });
     } catch (error) {
-        logger.error('listByUser failed', { error, orgID, userID });
+        logger.error('listByUser failed', { error, orgId, userId });
         throw new Sequelize.DatabaseError(error);
     }
 };
 
-const findByKey = async (orgID, apiID, planID, t) => {
+const findByKey = async (orgId, apiId, planId, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_UUID: orgID, API_UUID: apiID, PLAN_UUID: planID },
+            where: { org_uuid: orgId, api_uuid: apiId, plan_uuid: planId },
             transaction: t,
         });
     } catch (error) {
@@ -216,6 +246,8 @@ module.exports = {
     get,
     getById,
     updateStatus,
+    updatePlan,
+    regenerateToken,
     delete: deleteSubscription,
     listByApi,
     listByOrg,

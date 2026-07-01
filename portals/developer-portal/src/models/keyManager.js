@@ -19,69 +19,69 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
-const KeyManager = sequelize.define('DP_KEY_MANAGER', {
-    UUID: {
+const KeyManager = sequelize.define('dp_key_manager', {
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_UUID: {
+    org_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    NAME: {
+    name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    TYPE: {
+    type: {
         type: DataTypes.STRING(64),
         allowNull: false
     },
-    ENABLED: {
+    enabled: {
         type: DataTypes.SMALLINT,
         allowNull: false,
         defaultValue: 1
     },
-    TOKEN_ENDPOINT: {
+    token_endpoint: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_KEY_MANAGER',
+    tableName: 'dp_key_managers',
     returning: true,
     indexes: [
         {
-            name: 'UQ_KEY_MANAGER_ORG_NAME',
+            name: 'uq_key_manager_org_name',
             unique: true,
-            fields: ['ORG_UUID', 'NAME']
+            fields: ['org_uuid', 'name']
         }
     ]
 });
 
 KeyManager.belongsTo(Organization, {
-    foreignKey: 'ORG_UUID'
+    foreignKey: 'org_uuid'
 });
 Organization.hasMany(KeyManager, {
-    foreignKey: 'ORG_UUID',
+    foreignKey: 'org_uuid',
     onDelete: 'CASCADE'
 });
 

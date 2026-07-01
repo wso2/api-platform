@@ -21,64 +21,63 @@ const View = require('./view');
 const Labels = require('./label');
 
 
-const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
-    UUID: {
+const ViewLabels = sequelize.define('dp_view_label_mapping', {
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    VIEW_UUID: {
+    view_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: View,
-            key: 'UUID',
+            key: 'uuid',
         },
     },
-    LABEL_UUID: {
+    label_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: Labels,
-            key: 'UUID',
+            key: 'uuid',
         }
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_VIEW_LABEL_MAPPING',
+    tableName: 'dp_view_label_mappings',
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEW_LABEL_MAPPING_LABEL_VIEW',
+            name: 'uq_view_label_mappings_label_view',
             unique: true,
-            fields: ['LABEL_UUID', 'VIEW_UUID']
+            fields: ['label_uuid', 'view_uuid']
         },
         {
-            name: 'IDX_VIEW_LABEL_MAPPING_VIEW_UUID',
-            fields: ['VIEW_UUID']
+            name: 'idx_view_label_mappings_view_uuid',
+            fields: ['view_uuid']
         }
     ]
 });
 
 View.belongsToMany(Labels, {
     through: ViewLabels,
-    foreignKey: "VIEW_UUID",
-    otherKey: "LABEL_UUID",
+    foreignKey: "view_uuid",
+    otherKey: "label_uuid",
 });
 Labels.belongsToMany(View, {
     through: ViewLabels,
-    foreignKey: "LABEL_UUID",
-    otherKey: "VIEW_UUID",
+    foreignKey: "label_uuid",
+    otherKey: "view_uuid",
 });
 
 module.exports = ViewLabels;
-

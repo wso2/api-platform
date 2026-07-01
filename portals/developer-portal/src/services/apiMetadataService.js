@@ -42,7 +42,7 @@ const { CustomError } = require("../utils/errors/customErrors");
 const LabelDTO = require("../dto/labelDto");
 
 const createAPIMetadata = async (req, res) => {
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const userId = util.resolveActor(req);
     logger.info('Creating API metadata...', {
         orgId
@@ -91,17 +91,16 @@ const createAPIMetadata = async (req, res) => {
         }
 
         // Validate input
-        const hasGraphQLSchema = apiMetadata.apiInfo?.apiType === constants.API_TYPE.GRAPHQL &&
+        const hasGraphQLSchema = apiMetadata.type === constants.API_TYPE.GRAPHQL &&
             req.files?.schemaDefinition?.[0];
-        if (!apiMetadata.apiInfo || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
+        if (!apiMetadata.name || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
         }
-        const { apiStatus, agentVisibility: infoAgentVisibility } = apiMetadata.apiInfo;
-        const agentVisibility = apiMetadata.agentVisibility || infoAgentVisibility;
+        const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
-            throw new Sequelize.ValidationError(`Invalid apiStatus '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+            throw new Sequelize.ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
         if (agentVisibility) {
             const normalizedAgentVisibility = agentVisibility.toUpperCase();
@@ -109,7 +108,6 @@ const createAPIMetadata = async (req, res) => {
                 throw new Sequelize.ValidationError(`Invalid agentVisibility '${agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
             }
             apiMetadata.agentVisibility = normalizedAgentVisibility;
-            apiMetadata.apiInfo.agentVisibility = normalizedAgentVisibility;
         }
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
@@ -119,7 +117,7 @@ const createAPIMetadata = async (req, res) => {
         }, async (t) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, userId, t);
-            const apiID = createdAPI.dataValues.UUID;
+            const apiId = createdAPI.dataValues.uuid;
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -129,50 +127,50 @@ const createAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.planName);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiID: apiID, planID: subscriptionPlan.UUID });
+                            subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.uuid });
                         }
                     };
                 }
-                await subscriptionPlanDao.createApiMapping(subscriptionPlans, apiID, userId, t);
+                await subscriptionPlanDao.createApiMapping(subscriptionPlans, apiId, userId, t);
             }
             //store api labels
-            if (apiMetadata.apiInfo.labels) {
-                const labels = apiMetadata.apiInfo.labels;
+            if (apiMetadata.labels) {
+                const labels = apiMetadata.labels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
-                await labelDao.createApiMapping(orgId, apiID, labels, userId, t);
+                await labelDao.createApiMapping(orgId, apiId, labels, userId, t);
             } else {
-                await labelDao.createApiMapping(orgId, apiID, ['default'], userId, t);
+                await labelDao.createApiMapping(orgId, apiId, ['default'], userId, t);
             }
             //store api tags
-            if (apiMetadata.apiInfo.tags) {
-                const tags = apiMetadata.apiInfo.tags;
+            if (apiMetadata.tags) {
+                const tags = apiMetadata.tags;
                 if (!Array.isArray(tags)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
-                await tagDao.createApiMapping(orgId, apiID, tags, userId, t);
+                await tagDao.createApiMapping(orgId, apiId, tags, userId, t);
             }
             // store api definition file (skipped for GraphQL — schema stored below via schemaDefinition)
             if (apiDefinitionFile) {
-                await apiFileDao.store(apiDefinitionFile, apiFileName, apiID, constants.DOC_TYPES.API_DEFINITION, userId, t);
+                await apiFileDao.store(apiDefinitionFile, apiFileName, apiId, constants.DOC_TYPES.API_DEFINITION, userId, t);
             }
             // store uploaded documentation files
             if (req.files?.docs) {
                 for (const doc of req.files.docs) {
-                    await apiFileDao.store(doc.buffer, doc.originalname, apiID, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, userId, t);
+                    await apiFileDao.store(doc.buffer, doc.originalname, apiId, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, userId, t);
                 }
             }
             // Save MCP tools as schema definition if the API type is MCP
-            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.apiType) {
+            if (constants.API_TYPE.MCP === apiMetadata.type) {
                 let schemaFile;
                 if (req.files?.schemaDefinition?.[0]) {
                     schemaFile = req.files.schemaDefinition[0];
@@ -185,40 +183,40 @@ const createAPIMetadata = async (req, res) => {
                 if (schemaFile) {
                     const schemaDefinition = prepareSchemaDefinitionForStorage(schemaFile.originalname, schemaFile.buffer);
                     logger.debug('Schema definition file received', {
-                        apiId: apiID,
+                        apiId: apiId,
                         schemaDefinitionFileSize: schemaDefinition.schemaDefinitionFile.length,
                         schemaFileName: schemaDefinition.schemaDefinitionFileName
                     });
-                    await apiFileDao.store(schemaDefinition.schemaDefinitionFile, schemaDefinition.schemaDefinitionFileName, apiID,
+                    await apiFileDao.store(schemaDefinition.schemaDefinitionFile, schemaDefinition.schemaDefinitionFileName, apiId,
                         constants.DOC_TYPES.SCHEMA_DEFINITION, userId, t);
                     logger.info('Schema definition file stored', {
-                        apiId: apiID,
+                        apiId: apiId,
                         schemaFileName: schemaDefinition.schemaDefinitionFileName
                     });
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.apiType && req.files?.schemaDefinition?.[0]) {
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && req.files?.schemaDefinition?.[0]) {
                 const file = req.files.schemaDefinition[0];
                 const schemaDefinitionFile = file.buffer;
                 logger.debug('GraphQL schema definition file received', {
-                    apiId: apiID,
+                    apiId: apiId,
                     schemaDefinitionFileSize: schemaDefinitionFile.length,
                     schemaFileName: file.originalname
                 });
                 const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
-                await apiFileDao.store(schemaDefinitionFile, schemaFileName, apiID,
+                await apiFileDao.store(schemaDefinitionFile, schemaFileName, apiId,
                     constants.DOC_TYPES.API_DEFINITION, userId, t);
                 logger.info('GraphQL schema definition file stored', {
-                    apiId: apiID,
+                    apiId: apiId,
                     schemaFileName
                 });
             }
 
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
-                await apiFileDao.storeMany(artifactApiContent, apiID, userId, t);
+                await apiFileDao.storeMany(artifactApiContent, apiId, userId, t);
             }
-            apiMetadata.apiID = apiID;
+            apiMetadata.id = apiId;
         });
 
 
@@ -227,7 +225,7 @@ const createAPIMetadata = async (req, res) => {
         logger.error('API metadata creation failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
@@ -255,10 +253,10 @@ function normalizeGraphQLEndpoint(endPoint) {
 }
 
 function normalizeGraphQLEndpoints(apiMetadata) {
-    if (!apiMetadata?.apiInfo || !apiMetadata?.endPoints) {
+    if (!apiMetadata?.name || !apiMetadata?.endPoints) {
         return;
     }
-    if (constants.API_TYPE.GRAPHQL !== apiMetadata.apiInfo.apiType) {
+    if (constants.API_TYPE.GRAPHQL !== apiMetadata.type) {
         return;
     }
     apiMetadata.endPoints.productionURL = normalizeGraphQLEndpoint(apiMetadata.endPoints.productionURL);
@@ -279,7 +277,8 @@ async function allowAPIStatusChange(apiStatus, orgId, apiId) {
 
 const getAPIMetadata = async (req, res) => {
 
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     try {
         const retrievedAPI = await getMetadataFromDB(orgId, apiId);
         if (retrievedAPI !== "") {
@@ -299,12 +298,12 @@ const getAPIMetadata = async (req, res) => {
     }
 };
 
-const getMetadataFromDB = async (orgID, apiID) => {
+const getMetadataFromDB = async (orgId, apiId) => {
 
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
-        const retrievedAPI = await apiDao.getByCondition({ ORG_UUID: orgID, UUID: apiID }, t);
+        const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, uuid: apiId }, t);
         if (retrievedAPI.length > 0) {
             return new APIDTO(retrievedAPI[0]);
         } else {
@@ -315,19 +314,19 @@ const getMetadataFromDB = async (orgID, apiID) => {
 
 const getAllAPIMetadata = async (req, res) => {
     try {
-        const orgID = req.params.orgId;
+        const orgId = req.orgId;
         const searchTerm = req.query.query;
         const apiName = req.query.apiName;
         const apiVersion = req.query.version;
         const tags = req.query.tags;
         const view = req.query.view;
-        const retrievedAPIs = await getMetadataListFromDB(orgID, searchTerm, tags, apiName, apiVersion, view);
+        const retrievedAPIs = await getMetadataListFromDB(orgId, searchTerm, tags, apiName, apiVersion, view);
         res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
     } catch (error) {
         logger.error('API metadata list retrieval failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             searchTerm: req.query.query,
             apiName: req.query.apiName,
             apiVersion: req.query.version,
@@ -338,21 +337,21 @@ const getAllAPIMetadata = async (req, res) => {
     }
 };
 
-const getMetadataListFromDB = async (orgID, searchTerm, tags, apiName, apiVersion, viewName) => {
+const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersion, viewName) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
         let retrievedAPIs;
         if (apiName || apiVersion || tags) {
             const condition = {};
-            if (apiName) condition.NAME = apiName;
-            if (apiVersion) condition.VERSION = apiVersion;
-            condition.ORG_UUID = orgID;
+            if (apiName) condition.name = apiName;
+            if (apiVersion) condition.version = apiVersion;
+            condition.org_uuid = orgId;
             retrievedAPIs = await apiDao.getByCondition(condition, t, tags);
         } else if (searchTerm) {
-            retrievedAPIs = await apiDao.search(orgID, searchTerm, viewName, t);
+            retrievedAPIs = await apiDao.search(orgId, searchTerm, viewName, t);
         } else if (viewName) {
-            retrievedAPIs = await apiDao.list(orgID, viewName, t);
+            retrievedAPIs = await apiDao.list(orgId, viewName, t);
         }
         // Create response object
         const apiCreationResponse = retrievedAPIs ? retrievedAPIs.map((api) => new APIDTO(api)) : [];
@@ -361,7 +360,8 @@ const getMetadataListFromDB = async (orgID, searchTerm, tags, apiName, apiVersio
 };
 
 const updateAPIMetadata = async (req, res) => {
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     const userId = util.resolveActor(req);
     logger.info('Updating API metadata', {
         orgId,
@@ -417,15 +417,14 @@ const updateAPIMetadata = async (req, res) => {
         }
 
         // Validate input — spec file is optional on update (already stored from create)
-        if (!apiMetadata.apiInfo || !apiMetadata.endPoints) {
+        if (!apiMetadata.name || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
         }
-        const { apiStatus: updateApiStatus, agentVisibility: updateInfoAgentVisibility } = apiMetadata.apiInfo;
-        const updateAgentVisibility = apiMetadata.agentVisibility || updateInfoAgentVisibility;
+        const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
-            throw new Sequelize.ValidationError(`Invalid apiStatus '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+            throw new Sequelize.ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
         if (updateAgentVisibility) {
             const normalizedUpdateAgentVisibility = updateAgentVisibility.toUpperCase();
@@ -433,25 +432,24 @@ const updateAPIMetadata = async (req, res) => {
                 throw new Sequelize.ValidationError(`Invalid agentVisibility '${updateAgentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
             }
             apiMetadata.agentVisibility = normalizedUpdateAgentVisibility;
-            apiMetadata.apiInfo.agentVisibility = normalizedUpdateAgentVisibility;
         }
 
         // Compute added/removed labels diff for YAML and artifact paths
         let existingAPI;
-        if (orgId && apiId && Array.isArray(apiMetadata.apiInfo.labels) && (apiArtifactFile?.buffer || req.files?.api?.[0])) {
+        if (orgId && apiId && Array.isArray(apiMetadata.labels) && (apiArtifactFile?.buffer || req.files?.api?.[0])) {
             existingAPI = await getMetadataFromDB(orgId, apiId);
         }
-        if (Array.isArray(apiMetadata.apiInfo.labels) && !apiMetadata.apiInfo.addedLabels && existingAPI !== undefined) {
-            const desiredLabels = [...new Set(apiMetadata.apiInfo.labels.map(label => String(label)))];
-            const currentLabels = new Set(existingAPI?.apiInfo?.labels || []);
-            apiMetadata.apiInfo.addedLabels = desiredLabels.filter(label => !currentLabels.has(label));
-            apiMetadata.apiInfo.removedLabels = [...currentLabels].filter(label => !desiredLabels.includes(label));
+        if (Array.isArray(apiMetadata.labels) && !apiMetadata.addedLabels && existingAPI !== undefined) {
+            const desiredLabels = [...new Set(apiMetadata.labels.map(label => String(label)))];
+            const currentLabels = new Set(existingAPI?.labels || []);
+            apiMetadata.addedLabels = desiredLabels.filter(label => !currentLabels.has(label));
+            apiMetadata.removedLabels = [...currentLabels].filter(label => !desiredLabels.includes(label));
         }
 
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
-        let allowStatusChange = await allowAPIStatusChange(apiMetadata.apiInfo.apiStatus, orgId, apiId);
+        let allowStatusChange = await allowAPIStatusChange(apiMetadata.status, orgId, apiId);
         if (!allowStatusChange) {
             throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
         }
@@ -467,18 +465,18 @@ const updateAPIMetadata = async (req, res) => {
             if (!updatedRows) {
                 throw new Sequelize.EmptyResultError("No record found to update");
             }
-            if (apiMetadata.apiInfo.addedLabels) {
-                const labels = apiMetadata.apiInfo.addedLabels;
+            if (apiMetadata.addedLabels) {
+                const labels = apiMetadata.addedLabels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
                 await labelDao.createApiMapping(orgId, apiId, labels, userId, t);
-                updatedAPI[0].dataValues.addedLabels = apiMetadata.apiInfo.addedLabels;
+                updatedAPI[0].dataValues.addedLabels = apiMetadata.addedLabels;
             }
-            if (apiMetadata.apiInfo.removedLabels) {
-                const labels = apiMetadata.apiInfo.removedLabels;
+            if (apiMetadata.removedLabels) {
+                const labels = apiMetadata.removedLabels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
@@ -488,10 +486,10 @@ const updateAPIMetadata = async (req, res) => {
                 if (labelDelete === 0) {
                     throw new Sequelize.EmptyResultError("API Labels not found to delete");
                 }
-                updatedAPI[0].dataValues.removedLabels = apiMetadata.apiInfo.removedLabels;
+                updatedAPI[0].dataValues.removedLabels = apiMetadata.removedLabels;
             }
             // Tags are fully replaced on every update, matching the previous TAGS column's overwrite semantics
-            await tagDao.replaceApiMapping(orgId, apiId, apiMetadata.apiInfo.tags || [], userId, t);
+            await tagDao.replaceApiMapping(orgId, apiId, apiMetadata.tags || [], userId, t);
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -501,17 +499,17 @@ const updateAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.planName);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiID: apiId, planID: subscriptionPlan.UUID });
+                            subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.uuid });
                         }
                     };
                 }
                 // Get subscription plan IDs and fail if any plan is not found
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
-                updatedAPI[0].dataValues["DP_SUBSCRIPTION_PLANs"] = await subscriptionPlanDao.listByApi(apiId, t);
+                updatedAPI[0].dataValues["dp_subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
             // update api definition file (only when a new file was uploaded)
             if (apiDefinitionFile) {
@@ -537,10 +535,10 @@ const updateAPIMetadata = async (req, res) => {
             const hasSchemaDefinitionFile = !!req.files?.schemaDefinition?.[0] || !!fullApiBundle?.schemaDefinitionFile;
             logger.debug('Processing MCP API schema definition', {
                 hasSchemaDefinition: hasSchemaDefinitionFile,
-                apiType: apiMetadata.apiInfo.apiType,
+                apiType: apiMetadata.type,
                 apiId
             });
-            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.apiType && hasSchemaDefinitionFile) {
+            if (constants.API_TYPE.MCP === apiMetadata.type && hasSchemaDefinitionFile) {
                 let schemaFile;
                 if (req.files?.schemaDefinition?.[0]) {
                     schemaFile = req.files.schemaDefinition[0];
@@ -566,7 +564,7 @@ const updateAPIMetadata = async (req, res) => {
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.apiType && req.files?.schemaDefinition?.[0]) {
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && req.files?.schemaDefinition?.[0]) {
                 const file = req.files.schemaDefinition[0];
                 const schemaDefinitionFile = file.buffer;
                 const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
@@ -600,7 +598,8 @@ const updateAPIMetadata = async (req, res) => {
 };
 
 const deleteAPIMetadata = async (req, res) => {
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -633,12 +632,13 @@ const deleteAPIMetadata = async (req, res) => {
 
 const createAPITemplate = async (req, res) => {
     logger.info('Creating API template...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: req.file?.originalname,
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         const zipFilePath = req.file.path;
         const extractPath = path.join("/tmp", orgId + "/" + apiId);
@@ -731,7 +731,7 @@ const createAPITemplate = async (req, res) => {
         logger.error('API content creation failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: req.file?.originalname,
         });
@@ -742,12 +742,13 @@ const createAPITemplate = async (req, res) => {
 const createAPIContent = async (req, res) => {
     const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
     logger.info('Creating API content...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: uploadedFile?.originalname,
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
         let docMetadata = "";
@@ -786,7 +787,7 @@ const createAPIContent = async (req, res) => {
         logger.error('API content creation failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: uploadedFile?.originalname,
         });
@@ -796,12 +797,13 @@ const createAPIContent = async (req, res) => {
 
 const updateAPITemplate = async (req, res) => {
     logger.info('Updating API template...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: req.file?.originalname
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
@@ -835,7 +837,7 @@ const updateAPITemplate = async (req, res) => {
                 contentPath,
                 imagesPath,
                 documentPath,
-                orgId: req.params.orgId,
+                orgId: req.orgId,
                 apiId: req.params.apiId
             });
             throw new Error(
@@ -889,7 +891,7 @@ const updateAPITemplate = async (req, res) => {
         logger.error('API content update failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: req.file?.originalname
         });
@@ -900,12 +902,13 @@ const updateAPITemplate = async (req, res) => {
 const updateAPIContent = async (req, res) => {
     const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
     logger.info('Updating API content...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: uploadedFile?.originalname
     });
     try {
-        const { orgId, apiId } = req.params;
+        const orgId = req.orgId;
+        const { apiId } = req.params;
         const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
@@ -942,7 +945,7 @@ const updateAPIContent = async (req, res) => {
         logger.error('API content update failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             apiId: req.params.apiId,
             fileName: uploadedFile?.originalname
         });
@@ -952,7 +955,8 @@ const updateAPIContent = async (req, res) => {
 
 const getAPIFile = async (req, res) => {
 
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     const apiFileName = req.query.fileName;
     const type = req.query.type;
     let apiFileResponse = "";
@@ -962,7 +966,7 @@ const getAPIFile = async (req, res) => {
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (apiFileResponse) {
-            apiFile = apiFileResponse.FILE_CONTENT;
+            apiFile = apiFileResponse.file_content;
             //convert to text to check if link
             const textContent = new TextDecoder().decode(apiFile);
             if (textContent.startsWith("http") || textContent.startsWith("https")) {
@@ -994,18 +998,18 @@ const getAPIFile = async (req, res) => {
     }
 };
 
-const getAPIDocTypes = async (orgID, apiID) => {
+const getAPIDocTypes = async (orgId, apiId) => {
 
     try {
-        const docTypeResponse = await apiFileDao.getDocTypes(orgID, apiID);
+        const docTypeResponse = await apiFileDao.getDocTypes(orgId, apiId);
         const apiCreationResponse = docTypeResponse.map((doc) => new APIDocDTO(doc.dataValues));
         return apiCreationResponse;
     } catch (error) {
         logger.error('API doc types retrieval failed', {
             error: error.message,
             stack: error.stack,
-            orgId: orgID,
-            apiId: apiID
+            orgId: orgId,
+            apiId: apiId
         });
         // Note: This function doesn't have access to res, so we can't call util.handleError
         throw error;
@@ -1013,7 +1017,8 @@ const getAPIDocTypes = async (orgID, apiID) => {
 }
 
 const listApiDocs = async (req, res) => {
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     try {
         const names = await apiFileDao.listDocNames(orgId, apiId);
         res.status(200).json(names.map(fileName => ({ fileName })));
@@ -1025,12 +1030,13 @@ const listApiDocs = async (req, res) => {
 
 const deleteAPIFile = async (req, res) => {
     logger.info('Deleting API file...', {
-        orgId: req.params.orgId,
+        orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: req.query.fileName,
         fileType: req.query.type
     });
-    const { orgId, apiId } = req.params;
+    const orgId = req.orgId;
+    const { apiId } = req.params;
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
     try {
@@ -1049,7 +1055,7 @@ const deleteAPIFile = async (req, res) => {
         logger.error('API content deletion failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId,
+            orgId: req.orgId,
             apiId: req.params?.apiId
         });
         util.handleError(res, error);
@@ -1089,7 +1095,7 @@ const putSubscriptionPlans = async (req, res) => {
 }
 
 const createSubscriptionPlan = async (req, res) => {
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     const subscriptionPlan = req.body;
     const userId = util.resolveActor(req);
     logger.info('Creating subscription plan...', {
@@ -1134,11 +1140,11 @@ const createSubscriptionPlans = async (req, res) => {
         if (config.generateDefaultSubPlans) {
             const msg = "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.";
             logger.info(msg, {
-                orgId: req.params?.orgId
+                orgId: req.orgId
             });
             res.status(200).json({ message: msg });
         } else {
-            const { orgId } = req.params;
+            const orgId = req.orgId;
             const subscriptionPlans = req.body;
             const userId = util.resolveActor(req);
 
@@ -1162,7 +1168,7 @@ const createSubscriptionPlans = async (req, res) => {
                             throw new CustomError(
                                 500,
                                 constants.ERROR_CODE[500],
-                                `Failed to create plan: ${plan.planName || "unknown"}`
+                                `Failed to create plan: ${plan.handle || "unknown"}`
                             );
                         }
                         createdPlans.push(new subscriptionPlanDTO(created));
@@ -1180,14 +1186,14 @@ const createSubscriptionPlans = async (req, res) => {
         logger.error('subscription plan create error failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
 };
 
 const updateSubscriptionPlan = async (req, res) => {
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     logger.info('Updating subscription plan...', {
         orgId
     });
@@ -1218,7 +1224,7 @@ const updateSubscriptionPlan = async (req, res) => {
         logger.error('subscription plan not found failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
@@ -1229,11 +1235,11 @@ const updateSubscriptionPlans = async (req, res) => {
         if (config.generateDefaultSubPlans) {
             const msg = "Bulk updating of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.";
             logger.info(msg, {
-                orgId: req.params?.orgId
+                orgId: req.orgId
             });
             res.status(200).json({ message: msg });
         } else {
-            const { orgId } = req.params;
+            const orgId = req.orgId;
             const subscriptionPlans = req.body;
             const userId = util.resolveActor(req);
 
@@ -1256,7 +1262,7 @@ const updateSubscriptionPlans = async (req, res) => {
                             throw new CustomError(
                                 500,
                                 constants.ERROR_CODE[500],
-                                `Failed to create plan: ${plan.planName || "unknown"}`
+                                `Failed to create plan: ${plan.handle || "unknown"}`
                             );
                         }
                         updatedPlans.push(new subscriptionPlanDTO(created.subscriptionPlanResponse));
@@ -1272,14 +1278,15 @@ const updateSubscriptionPlans = async (req, res) => {
         logger.error('subscription plan create error failed', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params?.orgId
+            orgId: req.orgId
         });
         util.handleError(res, error);
     }
 };
 
 const deleteSubscriptionPlan = async (req, res) => {
-    const { orgId, planId } = req.params;
+    const orgId = req.orgId;
+    const { planId } = req.params;
     logger.info('Deleting subscription plan...', {
         orgId,
         planId
@@ -1308,7 +1315,9 @@ const deleteSubscriptionPlan = async (req, res) => {
 
 const getSubscriptionPlan = async (req, res) => {
 
-    const { orgId, planId } = req.params;
+    const orgId = req.orgId;
+
+    const { planId } = req.params;
 
     try {
         const subscriptionPlanResponse = await subscriptionPlanDao.get(planId, orgId);
@@ -1332,7 +1341,7 @@ const getSubscriptionPlan = async (req, res) => {
 // org. Without it, returns all plans for the org.
 const listSubscriptionPlans = async (req, res) => {
 
-    const { orgId } = req.params;
+    const orgId = req.orgId;
     const { name } = req.query;
 
     try {
@@ -1354,74 +1363,69 @@ const listSubscriptionPlans = async (req, res) => {
     }
 };
 
-const createLabels = async (req, res) => {
+const createLabel = async (req, res) => {
 
-    const orgId = req.params.orgId;
-    const labels = req.body;
+    const orgId = req.orgId;
+    const label = req.body;
     const userId = util.resolveActor(req);
     try {
-        await labelDao.createMany(orgId, labels, userId);
-        res.status(201).send(labels);
+        const record = await labelDao.create(orgId, label, userId);
+        res.status(201).json(new LabelDTO(record));
     } catch (error) {
-        logger.error('label create error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label create failed', { error: error.message, stack: error.stack, orgId });
+        util.handleError(res, error);
+    }
+}
+
+const getLabel = async (req, res) => {
+
+    const orgId = req.orgId;
+    const { labelId } = req.params;
+    try {
+        const record = await labelDao.findById(orgId, labelId);
+        res.status(200).json(new LabelDTO(record));
+    } catch (error) {
+        logger.error('label get failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
 
 const updateLabel = async (req, res) => {
 
-    const orgId = req.params.orgId;
-    const labels = req.body;
+    const orgId = req.orgId;
+    const { labelId } = req.params;
+    const label = req.body;
     const userId = util.resolveActor(req);
     try {
-        for (const label of labels) {
-            await labelDao.update(orgId, label, userId);
-        };
-        res.status(201).send(labels);
+        const record = await labelDao.updateById(orgId, labelId, label, userId);
+        res.status(200).json(new LabelDTO(record));
     } catch (error) {
-        logger.error('label update error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label update failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
 
-const deleteLabels = async (req, res) => {
+const deleteLabel = async (req, res) => {
 
-    const orgId = req.params.orgId;
-    const labelNames = req.query.names;
-    const labelList = labelNames.split(",");
+    const orgId = req.orgId;
+    const { labelId } = req.params;
     try {
-        await labelDao.delete(orgId, labelList);
+        await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
     } catch (error) {
-        logger.error('label delete error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label delete failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
 
-const retrieveLabels = async (req, res) => {
+const listLabels = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     try {
         const labels = await getOrgLabels(orgId);
         res.status(200).json(util.toPaginatedList(labels, req));
     } catch (error) {
-        logger.error('label retrieve error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
+        logger.error('label list failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
     }
 }
@@ -1443,7 +1447,7 @@ const getOrgLabels = async (orgId) => {
 
 const addView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const labels = req.body.labels;
     const userId = util.resolveActor(req);
     await sequelize.transaction({
@@ -1451,8 +1455,8 @@ const addView = async (req, res) => {
     }, async (t) => {
         try {
             const viewResponse = await viewDao.create(orgId, req.body, userId, t);
-            const viewID = viewResponse.dataValues.UUID;
-            await viewDao.addLabels(orgId, viewID, labels, userId, t);
+            const viewId = viewResponse.dataValues.uuid;
+            await viewDao.addLabels(orgId, viewId, labels, userId, t);
             res.status(201).send({ message: "View added successfully" });
         } catch (error) {
             logger.error('view create error failed', {
@@ -1467,7 +1471,7 @@ const addView = async (req, res) => {
 
 const updateView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
     const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
     const viewName = req.params.viewName;
@@ -1477,19 +1481,19 @@ const updateView = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
 
-            let viewID = "";
+            let viewId = "";
             if (req.body.name) {
                 let viewResponse = await viewDao.update(orgId, viewName, req.body.name, userId, t);
-                viewID = viewResponse.dataValues.UUID;
+                viewId = viewResponse.dataValues.uuid;
             }
             if (removedLabels.length !== 0 || addedLabels.length !== 0) {
-                viewID = viewID ? viewID : await viewDao.getId(orgId, viewName, t);
+                viewId = viewId ? viewId : await viewDao.getId(orgId, viewName, t);
             }
             if (removedLabels.length !== 0) {
-                await viewDao.deleteLabels(orgId, viewID, removedLabels, t);
+                await viewDao.deleteLabels(orgId, viewId, removedLabels, t);
             }
             if (addedLabels.length !== 0) {
-                await viewDao.addLabels(orgId, viewID, addedLabels, userId, t);
+                await viewDao.addLabels(orgId, viewId, addedLabels, userId, t);
             }
             res.status(200).send(req.body);
         });
@@ -1505,7 +1509,7 @@ const updateView = async (req, res) => {
 
 const deleteView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const name = req.params.viewName;
     try {
         const viewDelete = await viewDao.delete(orgId, name);
@@ -1526,7 +1530,7 @@ const deleteView = async (req, res) => {
 
 const getView = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     const name = req.params.viewName;
     try {
         const view = await getViewInfo(orgId, name);
@@ -1557,7 +1561,7 @@ const getViewInfo = async (orgId, name) => {
 
 const getAllViews = async (req, res) => {
 
-    const orgId = req.params.orgId;
+    const orgId = req.orgId;
     try {
         const views = await getViewsFromDB(orgId);
         return res.status(200).json(util.toPaginatedList(views, req));
@@ -1783,26 +1787,24 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
     const businessInformation = spec.businessInformation || {};
 
     const subscriptionPlans = util.normalizeStringArray(spec.subscriptionPlans)
-        .map(planName => ({ planName }));
+        .map(planName => ({ handle: planName }));
 
     return {
-        apiInfo: {
-            apiName: spec.displayName,
-            apiVersion: spec.version,
-            apiDescription: spec.description,
-            referenceID: spec.referenceID,
-            apiHandle: metadata.name,
-            apiType,
-            apiStatus,
-            agentVisibility,
-            tags: util.normalizeStringArray(spec.tags),
-            labels: util.normalizeStringArray(spec.labels),
-            owners: {
-                businessOwner: businessInformation.businessOwner,
-                businessOwnerEmail: businessInformation.businessOwnerEmail,
-                technicalOwner: businessInformation.technicalOwner,
-                technicalOwnerEmail: businessInformation.technicalOwnerEmail,
-            },
+        name: spec.displayName,
+        version: spec.version,
+        description: spec.description,
+        referenceId: spec.referenceId,
+        handle: metadata.name,
+        type: apiType,
+        status: apiStatus,
+        agentVisibility,
+        tags: util.normalizeStringArray(spec.tags),
+        labels: util.normalizeStringArray(spec.labels),
+        owners: {
+            businessOwner: businessInformation.businessOwner,
+            businessOwnerEmail: businessInformation.businessOwnerEmail,
+            technicalOwner: businessInformation.technicalOwner,
+            technicalOwnerEmail: businessInformation.technicalOwnerEmail,
         },
         endPoints: {
             sandboxURL: endpoints.sandboxUrl,
@@ -1842,8 +1844,8 @@ function parseApiMetadataFromYamlRequest(req) {
 function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
-        planName: metadata.name,
-        displayName: spec.displayName,
+        handle: metadata.name,
+        name: spec.displayName,
         description: spec.description,
         refId: spec.refId,
         type: spec.type,
@@ -1978,9 +1980,10 @@ module.exports = {
     deleteSubscriptionPlan,
     getSubscriptionPlan,
     listSubscriptionPlans,
-    createLabels,
-    deleteLabels,
-    retrieveLabels,
+    createLabel,
+    getLabel,
+    listLabels,
+    deleteLabel,
     getOrgLabels,
     updateLabel,
     addView,

@@ -20,21 +20,21 @@ const { Sequelize } = require('sequelize');
 const viewDao = require('./viewDao');
 
 const create = async (orgData, t) => {
-    let devPortalID = "";
-    if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle.toLowerCase();
+    let devPortalId = "";
+    if (orgData.handle) {
+        devPortalId = orgData.handle.toLowerCase();
     }
     const createOrgData = {
-        NAME: orgData.orgName,
-        BUSINESS_OWNER: orgData.businessOwner,
-        BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
-        BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-        HANDLE: devPortalID,
-        IDP_REF_ID: orgData.organizationIdentifier,
-        CP_REF_ID: orgData.cpRefId,
-        CONFIGURATION: orgData.orgConfig,
-        CREATED_BY: orgData.createdBy,
-        UPDATED_BY: orgData.createdBy
+        name: orgData.name,
+        business_owner: orgData.businessOwner,
+        business_owner_contact: orgData.businessOwnerContact,
+        business_owner_email: orgData.businessOwnerEmail,
+        handle: devPortalId,
+        idp_ref_id: orgData.idpRefId,
+        cp_ref_id: orgData.cpRefId,
+        configuration: orgData.configuration,
+        created_by: orgData.createdBy,
+        updated_by: orgData.createdBy
     };
     try {
         const organization = await Organization.create(createOrgData, { transaction: t });
@@ -52,12 +52,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const get = async (param) => {
     try {
         const conditions = [
-            { NAME: param },
-            { HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
-            { IDP_REF_ID: param },
+            { name: param },
+            { handle: typeof param === 'string' ? param.toLowerCase() : param },
+            { idp_ref_id: param },
         ];
         if (typeof param === 'string' && UUID_RE.test(param)) {
-            conditions.push({ UUID: param });
+            conditions.push({ uuid: param });
         }
         const organization = await Organization.findOne({
             where: { [Sequelize.Op.or]: conditions }
@@ -79,16 +79,16 @@ const getId = async (orgName) => {
         const organization = await Organization.findOne({
             where: {
                 [Sequelize.Op.or]: [
-                    { NAME: orgName },
-                    { HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
-                    { IDP_REF_ID: orgName }
+                    { name: orgName },
+                    { handle: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
+                    { idp_ref_id: orgName }
                 ]
             }
         });
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
         }
-        return organization.UUID;
+        return organization.uuid;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -113,26 +113,26 @@ const list = async () => {
 };
 
 const update = async (orgData, t) => {
-    let devPortalID = "";
-    if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle.toLowerCase();
+    let devPortalId = "";
+    if (orgData.handle) {
+        devPortalId = orgData.handle.toLowerCase();
     }
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(
             {
-                NAME: orgData.orgName,
-                BUSINESS_OWNER: orgData.businessOwner,
-                BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
-                BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-                HANDLE: devPortalID,
-                IDP_REF_ID: orgData.organizationIdentifier,
-                ...(orgData.cpRefId !== undefined && { CP_REF_ID: orgData.cpRefId }),
-                CONFIGURATION: orgData.orgConfiguration,
-                UPDATED_BY: orgData.updatedBy,
-                UPDATED_AT: new Date()
+                name: orgData.name,
+                business_owner: orgData.businessOwner,
+                business_owner_contact: orgData.businessOwnerContact,
+                business_owner_email: orgData.businessOwnerEmail,
+                handle: devPortalId,
+                idp_ref_id: orgData.idpRefId,
+                ...(orgData.cpRefId !== undefined && { cp_ref_id: orgData.cpRefId }),
+                configuration: orgData.configuration,
+                updated_by: orgData.updatedBy,
+                updated_at: new Date()
             },
             {
-                where: { UUID: orgData.orgId },
+                where: { uuid: orgData.orgId },
                 returning: true,
                 transaction: t,
             }
@@ -152,7 +152,7 @@ const update = async (orgData, t) => {
 const deleteOrg = async (orgId) => {
     try {
         const deletedRowsCount = await Organization.destroy({
-            where: { UUID: orgId }
+            where: { uuid: orgId }
         });
         if (deletedRowsCount < 1) {
             throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));
@@ -167,17 +167,17 @@ const deleteOrg = async (orgId) => {
 }
 
 const createContent = async (orgData) => {
-    const viewID = await viewDao.getId(orgData.orgId, orgData.viewName);
+    const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
     try {
         const orgContent = await OrgContent.create({
-            FILE_TYPE: orgData.fileType,
-            FILE_NAME: orgData.fileName,
-            FILE_CONTENT: orgData.fileContent,
-            FILE_PATH: orgData.filePath,
-            ORG_UUID: orgData.orgId,
-            VIEW_UUID: viewID,
-            CREATED_BY: orgData.createdBy,
-            UPDATED_BY: orgData.createdBy
+            file_type: orgData.fileType,
+            file_name: orgData.fileName,
+            file_content: orgData.fileContent,
+            file_path: orgData.filePath,
+            org_uuid: orgData.orgId,
+            view_uuid: viewId,
+            created_by: orgData.createdBy,
+            updated_by: orgData.createdBy
         });
         return orgContent;
     } catch (error) {
@@ -189,23 +189,23 @@ const createContent = async (orgData) => {
 }
 
 const updateContent = async (orgData) => {
-    const viewID = await viewDao.getId(orgData.orgId, orgData.viewName);
+    const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
     try {
         const [updatedRowsCount, updatedOrgContent] = await OrgContent.update({
-            FILE_TYPE: orgData.fileType,
-            FILE_NAME: orgData.fileName,
-            FILE_CONTENT: orgData.fileContent,
-            FILE_PATH: orgData.filePath,
-            UPDATED_BY: orgData.updatedBy,
-            UPDATED_AT: new Date()
+            file_type: orgData.fileType,
+            file_name: orgData.fileName,
+            file_content: orgData.fileContent,
+            file_path: orgData.filePath,
+            updated_by: orgData.updatedBy,
+            updated_at: new Date()
         },
             {
                 where: {
-                    FILE_TYPE: orgData.fileType,
-                    FILE_NAME: orgData.fileName,
-                    FILE_PATH: orgData.filePath,
-                    ORG_UUID: orgData.orgId,
-                    VIEW_UUID: viewID
+                    file_type: orgData.fileType,
+                    file_name: orgData.fileName,
+                    file_path: orgData.filePath,
+                    org_uuid: orgData.orgId,
+                    view_uuid: viewId
                 },
                 returning: true
             });
@@ -223,25 +223,25 @@ const updateContent = async (orgData) => {
 
 const getContent = async (orgData) => {
     try {
-        const viewID = await viewDao.getId(orgData.orgId, orgData.viewName);
+        const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
         if (orgData.fileName || orgData.filePath) {
             return await OrgContent.findOne(
                 {
                     where: {
-                        ORG_UUID: orgData.orgId,
-                        VIEW_UUID: viewID,
-                        FILE_TYPE: orgData.fileType,
-                        ...(orgData.fileName && { FILE_NAME: orgData.fileName }),
-                        ...(orgData.filePath && { FILE_PATH: orgData.filePath })
+                        org_uuid: orgData.orgId,
+                        view_uuid: viewId,
+                        file_type: orgData.fileType,
+                        ...(orgData.fileName && { file_name: orgData.fileName }),
+                        ...(orgData.filePath && { file_path: orgData.filePath })
                     }
                 });
         } else {
             return await OrgContent.findAll(
                 {
                     where: {
-                        ORG_UUID: orgData.orgId,
-                        VIEW_UUID: viewID,
-                        FILE_TYPE: orgData.fileType,
+                        org_uuid: orgData.orgId,
+                        view_uuid: viewId,
+                        file_type: orgData.fileType,
                     }
                 });
         }
@@ -258,9 +258,9 @@ const deleteContent = async (orgId, viewName, fileName) => {
     try {
         const deletedRowsCount = await OrgContent.destroy({
             where: {
-                ORG_UUID: orgId,
-                VIEW_UUID: viewId,
-                FILE_NAME: fileName
+                org_uuid: orgId,
+                view_uuid: viewId,
+                file_name: fileName
             }
         });
 
@@ -281,8 +281,8 @@ const deleteAllContent = async (orgId, viewName) => {
     try {
         const deletedRowsCount = await OrgContent.destroy({
             where: {
-                ORG_UUID: orgId,
-                VIEW_UUID: viewId
+                org_uuid: orgId,
+                view_uuid: viewId
             }
         });
 

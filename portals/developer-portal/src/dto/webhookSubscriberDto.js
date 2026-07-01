@@ -22,15 +22,15 @@
  */
 class WebhookSubscriberDTO {
     constructor(sub) {
-        this.id = sub.UUID;
-        this.orgId = sub.ORG_UUID;
-        this.name = sub.NAME;
-        this.url = sub.TARGET_URL;
-        this.enabled = !!sub.ENABLED;
-        this.events = sub.EVENT_PATTERNS || [];
-        this.timeoutMs = sub.TIMEOUT_MS;
-        this.hasSecret = !!sub.SECRET_ENC;
-        this.hasPublicKey = !!sub.PUBLIC_KEY;
+        this.id = sub.uuid;
+        this.orgId = sub.org_uuid;
+        this.name = sub.name;
+        this.targetUrl = sub.target_url;
+        this.enabled = !!sub.enabled;
+        this.events = sub.event_patterns || [];
+        this.timeoutMs = sub.timeout_ms;
+        this.hasSecret = !!sub.secret_enc;
+        this.hasPublicKey = !!sub.public_key;
     }
 }
 

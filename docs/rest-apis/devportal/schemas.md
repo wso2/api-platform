@@ -145,6 +145,32 @@ xor
 |---|---|
 |status|error|
 
+<h2 id="tocS_SimpleErrorResponse">SimpleErrorResponse</h2>
+
+<a id="schemasimpleerrorresponse"></a>
+<a id="schema_SimpleErrorResponse"></a>
+<a id="tocSsimpleerrorresponse"></a>
+<a id="tocssimpleerrorresponse"></a>
+
+```json
+{
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+
+```
+
+Ad hoc error shape used by the Subscriptions and API Keys handlers, which build error bodies inline instead of going through the shared error formatter. `code` is the HTTP status code as a string, not a catalog code.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|code|string|true|none|none|
+|message|string|true|none|none|
+|description|string¦null|false|none|none|
+
 <h2 id="tocS_ValidationErrorList">ValidationErrorList</h2>
 
 <a id="schemavalidationerrorlist"></a>
@@ -223,14 +249,17 @@ xor
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "organizationIdentifier": "string",
-  "orgConfiguration": {}
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 
 ```
@@ -239,48 +268,24 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|false|none|none|
-|orgName|string|false|none|none|
+|id|string|false|none|none|
+|name|string|false|none|none|
 |businessOwner|string¦null|false|none|none|
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
-|orgHandle|string|false|none|none|
-|organizationIdentifier|string|false|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|handle|string|false|none|none|
+|idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
+|cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
+|configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
+|» devportalMode|string|false|none|Controls the mode of the developer portal.|
 
-<h2 id="tocS_OrganizationListItemResponse">OrganizationListItemResponse</h2>
+#### Enumerated Values
 
-<a id="schemaorganizationlistitemresponse"></a>
-<a id="schema_OrganizationListItemResponse"></a>
-<a id="tocSorganizationlistitemresponse"></a>
-<a id="tocsorganizationlistitemresponse"></a>
-
-```json
-{
-  "orgID": "string",
-  "orgName": "string",
-  "businessOwner": "string",
-  "businessOwnerContact": "string",
-  "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "organizationIdentifier": "string",
-  "orgConfiguration": {}
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|orgID|string|false|none|none|
-|orgName|string|false|none|none|
-|businessOwner|string¦null|false|none|none|
-|businessOwnerContact|string¦null|false|none|none|
-|businessOwnerEmail|string(email)¦null|false|none|none|
-|orgHandle|string|false|none|none|
-|organizationIdentifier|string|false|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
 
@@ -291,7 +296,7 @@ xor
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string"
 }
 
@@ -301,7 +306,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|true|none|none|
+|id|string|true|none|none|
 |fileName|string|true|none|Original ZIP file name uploaded in the `file` multipart field.|
 
 <h2 id="tocS_OrganizationContentListItemResponse">OrganizationContentListItemResponse</h2>
@@ -313,7 +318,7 @@ xor
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string",
   "fileContent": "string"
 }
@@ -324,7 +329,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|false|none|none|
+|id|string|false|none|none|
 |fileName|string|false|none|none|
 |fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
 
@@ -337,57 +342,55 @@ xor
 
 ```json
 {
-  "apiID": "string",
-  "apiReferenceID": "string",
-  "apiHandle": "string",
-  "dataSource": "string",
-  "apiInfo": {
-    "apiName": "string",
-    "apiTitle": "string",
-    "remotes": [
-      {}
-    ],
-    "apiVersion": "string",
-    "apiStatus": "PUBLISHED",
-    "apiDescription": "string",
-    "apiType": "string",
-    "agentVisibility": "VISIBLE",
-    "addedLabels": [
-      "string"
-    ],
-    "removedLabels": [
-      "string"
-    ],
-    "owners": {
-      "technicalOwner": "string",
-      "businessOwner": "string",
-      "businessOwnerEmail": "string",
-      "technicalOwnerEmail": "string"
-    },
-    "apiImageMetadata": {
-      "property1": "string",
-      "property2": "string"
-    },
-    "tags": [
-      "string"
-    ],
-    "labels": [
-      "string"
-    ]
+  "name": "string",
+  "apiTitle": "string",
+  "remotes": [
+    {}
+  ],
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "REST",
+  "referenceId": "string",
+  "handle": "string",
+  "agentVisibility": "VISIBLE",
+  "addedLabels": [
+    "string"
+  ],
+  "removedLabels": [
+    "string"
+  ],
+  "owners": {
+    "technicalOwner": "string",
+    "businessOwner": "string",
+    "businessOwnerEmail": "string",
+    "technicalOwnerEmail": "string"
   },
+  "apiImageMetadata": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "tags": [
+    "string"
+  ],
+  "labels": [
+    "string"
+  ],
+  "id": "string",
+  "refId": "string",
   "endPoints": {
     "sandboxURL": "string",
     "productionURL": "string"
   },
   "subscriptionPlans": [
     {
-      "planID": "string",
-      "planName": "string",
-      "displayName": "string",
+      "id": "string",
+      "handle": "string",
+      "name": "string",
       "description": "string",
-      "requestCount": 0,
+      "requestCount": "string",
       "refId": "string",
-      "orgID": "string"
+      "orgId": "string"
     }
   ]
 }
@@ -396,15 +399,21 @@ xor
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiID|string|false|none|none|
-|apiReferenceID|string|false|none|none|
-|apiHandle|string|false|none|none|
-|dataSource|string|false|none|none|
-|apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
-|endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
+|*anonymous*|[ApiInfoResponse](#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|false|none|none|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
+|» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
 <h2 id="tocS_ApiMetadataResponse">ApiMetadataResponse</h2>
 
@@ -415,58 +424,57 @@ xor
 
 ```json
 {
-  "apiID": "string",
-  "apiReferenceID": "string",
-  "apiHandle": "string",
-  "dataSource": "string",
-  "planID": "string",
-  "apiInfo": {
-    "apiName": "string",
-    "apiTitle": "string",
-    "remotes": [
-      {}
-    ],
-    "apiVersion": "string",
-    "apiStatus": "PUBLISHED",
-    "apiDescription": "string",
-    "apiType": "string",
-    "agentVisibility": "VISIBLE",
-    "addedLabels": [
-      "string"
-    ],
-    "removedLabels": [
-      "string"
-    ],
-    "owners": {
-      "technicalOwner": "string",
-      "businessOwner": "string",
-      "businessOwnerEmail": "string",
-      "technicalOwnerEmail": "string"
-    },
-    "apiImageMetadata": {
-      "property1": "string",
-      "property2": "string"
-    },
-    "tags": [
-      "string"
-    ],
-    "labels": [
-      "string"
-    ]
+  "name": "string",
+  "apiTitle": "string",
+  "remotes": [
+    {}
+  ],
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "REST",
+  "referenceId": "string",
+  "handle": "string",
+  "agentVisibility": "VISIBLE",
+  "addedLabels": [
+    "string"
+  ],
+  "removedLabels": [
+    "string"
+  ],
+  "owners": {
+    "technicalOwner": "string",
+    "businessOwner": "string",
+    "businessOwnerEmail": "string",
+    "technicalOwnerEmail": "string"
   },
+  "apiImageMetadata": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "tags": [
+    "string"
+  ],
+  "labels": [
+    "string"
+  ],
+  "id": "string",
+  "refId": "string",
+  "dataSource": "string",
+  "planId": "string",
   "endPoints": {
     "sandboxURL": "string",
     "productionURL": "string"
   },
   "subscriptionPlans": [
     {
-      "planID": "string",
-      "planName": "string",
-      "displayName": "string",
+      "id": "string",
+      "handle": "string",
+      "name": "string",
       "description": "string",
-      "requestCount": 0,
+      "requestCount": "string",
       "refId": "string",
-      "orgID": "string"
+      "orgId": "string"
     }
   ]
 }
@@ -475,16 +483,23 @@ xor
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiID|string|false|none|none|
-|apiReferenceID|string|false|none|none|
-|apiHandle|string|false|none|none|
-|dataSource|string|false|none|none|
-|planID|string|false|none|none|
-|apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
-|endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
+|*anonymous*|[ApiInfoResponse](#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|false|none|none|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
+|» planId|string|false|none|none|
+|» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
+|» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
 <h2 id="tocS_ApiInfoResponse">ApiInfoResponse</h2>
 
@@ -495,15 +510,17 @@ xor
 
 ```json
 {
-  "apiName": "string",
+  "name": "string",
   "apiTitle": "string",
   "remotes": [
     {}
   ],
-  "apiVersion": "string",
-  "apiStatus": "PUBLISHED",
-  "apiDescription": "string",
-  "apiType": "string",
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "REST",
+  "referenceId": "string",
+  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -531,17 +548,21 @@ xor
 
 ```
 
+Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiName|string|false|none|none|
+|name|string|false|none|none|
 |apiTitle|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
-|apiVersion|string|false|none|none|
-|apiStatus|string|false|none|API lifecycle status.|
-|apiDescription|string|false|none|none|
-|apiType|string|false|none|none|
+|version|string|false|none|none|
+|status|string|false|none|API lifecycle status.|
+|description|string|false|none|none|
+|type|string|false|none|none|
+|referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
+|handle|string¦null|false|none|Present when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
@@ -554,8 +575,14 @@ xor
 
 |Property|Value|
 |---|---|
-|apiStatus|PUBLISHED|
-|apiStatus|DEPRECATED|
+|status|PUBLISHED|
+|status|DEPRECATED|
+|type|REST|
+|type|SOAP|
+|type|MCP|
+|type|WS|
+|type|WEBSUB|
+|type|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
 
@@ -637,13 +664,13 @@ xor
 
 ```json
 {
-  "planID": "string",
-  "planName": "string",
-  "displayName": "string",
+  "id": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
-  "requestCount": 0,
+  "requestCount": "string",
   "refId": "string",
-  "orgID": "string"
+  "orgId": "string"
 }
 
 ```
@@ -652,30 +679,13 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planID|string|false|none|none|
-|planName|string|false|none|none|
-|displayName|string|false|none|none|
+|id|string|false|none|none|
+|handle|string|false|none|none|
+|name|string|false|none|none|
 |description|string|false|none|none|
-|requestCount|any|false|none|none|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|integer|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|string|false|none|none|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
+|requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
-|orgID|string|false|none|none|
+|orgId|string|false|none|none|
 
 <h2 id="tocS_LabelResponse">LabelResponse</h2>
 
@@ -686,6 +696,7 @@ continued
 
 ```json
 {
+  "id": "label-12345",
   "name": "premium",
   "displayName": "Premium APIs"
 }
@@ -696,6 +707,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|id|string|false|none|none|
 |name|string|false|none|none|
 |displayName|string|false|none|none|
 
@@ -711,12 +723,11 @@ continued
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB",
-  "appMap": [
+  "appKeyMappings": [
     {
-      "appRefID": "asgardeo-client-abc123",
-      "kmID": "km-uuid-12345",
-      "keyType": "PRODUCTION"
+      "asClientId": "asgardeo-client-abc123",
+      "kmId": "km-uuid-12345",
+      "type": "PRODUCTION"
     }
   ]
 }
@@ -730,8 +741,7 @@ continued
 |id|string|false|none|none|
 |name|string|false|none|none|
 |description|string|false|none|none|
-|type|string|false|none|none|
-|appMap|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
+|appKeyMappings|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 
 <h2 id="tocS_ApplicationKeyMappingSummary">ApplicationKeyMappingSummary</h2>
 
@@ -742,9 +752,9 @@ continued
 
 ```json
 {
-  "appRefID": "asgardeo-client-abc123",
-  "kmID": "km-uuid-12345",
-  "keyType": "PRODUCTION"
+  "asClientId": "asgardeo-client-abc123",
+  "kmId": "km-uuid-12345",
+  "type": "PRODUCTION"
 }
 
 ```
@@ -755,16 +765,16 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|appRefID|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
-|kmID|string|false|none|UUID of the key manager this client ID is linked to.|
-|keyType|string|false|none|Key type for this mapping.|
+|asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|kmId|string|false|none|UUID of the key manager this client ID is linked to.|
+|type|string|false|none|Key type for this mapping.|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 <h2 id="tocS_ViewResponse">ViewResponse</h2>
 
@@ -802,43 +812,14 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "orgName": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "organizationIdentifier": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|orgName|string|true|none|none|
-|businessOwner|string|false|none|none|
-|businessOwnerContact|string|false|none|none|
-|businessOwnerEmail|string(email)|false|none|none|
-|orgHandle|string|true|none|Public organization handle used in portal URLs.|
-|organizationIdentifier|string|true|none|none|
-
-<h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
-
-<a id="schemaorganizationupdaterequest"></a>
-<a id="schema_OrganizationUpdateRequest"></a>
-<a id="tocSorganizationupdaterequest"></a>
-<a id="tocsorganizationupdaterequest"></a>
-
-```json
-{
-  "orgName": "string",
-  "businessOwner": "string",
-  "businessOwnerContact": "string",
-  "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "organizationIdentifier": "string",
-  "orgConfiguration": {
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
     "devportalMode": "DEFAULT"
   }
 }
@@ -849,13 +830,59 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgName|string|true|none|none|
+|name|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|orgHandle|string|true|none|none|
-|organizationIdentifier|string|true|none|none|
-|orgConfiguration|object|false|none|none|
+|handle|string|true|none|Public organization handle used in portal URLs.|
+|idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
+|cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
+|configuration|object|false|none|none|
+|» devportalMode|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
+
+<h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
+
+<a id="schemaorganizationupdaterequest"></a>
+<a id="schema_OrganizationUpdateRequest"></a>
+<a id="tocSorganizationupdaterequest"></a>
+<a id="tocsorganizationupdaterequest"></a>
+
+```json
+{
+  "name": "string",
+  "businessOwner": "string",
+  "businessOwnerContact": "string",
+  "businessOwnerEmail": "user@example.com",
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|none|
+|businessOwner|string|false|none|none|
+|businessOwnerContact|string|false|none|none|
+|businessOwnerEmail|string(email)|false|none|none|
+|handle|string|true|none|none|
+|idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
+|cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
+|configuration|object|false|none|none|
 |» devportalMode|string|false|none|none|
 
 #### Enumerated Values
@@ -875,10 +902,10 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "planID": "string",
+  "id": "string",
   "refId": "string",
-  "planName": "string",
-  "displayName": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -891,10 +918,10 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planID|string|false|none|Optional external/APIM-assigned plan UUID.|
+|id|string|false|none|Optional external/APIM-assigned plan UUID.|
 |refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
-|planName|string|true|none|none|
-|displayName|string|true|none|none|
+|handle|string|true|none|none|
+|name|string|true|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
 |requestCount|any|false|none|Required for request-count plans. Use -1 for unlimited.|
@@ -968,8 +995,7 @@ xor
 ```json
 {
   "name": "Weather App",
-  "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "description": "Application used to call Weather APIs."
 }
 
 ```
@@ -980,7 +1006,6 @@ xor
 |---|---|---|---|---|
 |name|string|true|none|none|
 |description|string|true|none|none|
-|type|string|false|none|none|
 
 <h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
 
@@ -1002,7 +1027,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanId|string|false|none|Developer Portal subscription plan ID.|
+|subscriptionPlanId|string|true|none|Developer Portal subscription plan ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 
@@ -1031,6 +1056,26 @@ xor
 |status|ACTIVE|
 |status|INACTIVE|
 
+<h2 id="tocS_SubscriptionChangePlanRequest">SubscriptionChangePlanRequest</h2>
+
+<a id="schemasubscriptionchangeplanrequest"></a>
+<a id="schema_SubscriptionChangePlanRequest"></a>
+<a id="tocSsubscriptionchangeplanrequest"></a>
+<a id="tocssubscriptionchangeplanrequest"></a>
+
+```json
+{
+  "planId": "pol-9a3d1f7e"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|planId|string|true|none|Developer Portal subscription plan ID to switch to.|
+
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
 
 <a id="schemasubscriptionresponse"></a>
@@ -1042,7 +1087,7 @@ xor
 {
   "subscriptionId": "sub-12345",
   "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1...",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
@@ -1059,7 +1104,7 @@ Subscription payload.
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID.|
-|subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
+|subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |subscriptionPlanName|string|false|none|none|
 |status|string|false|none|none|
 |createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
@@ -1081,7 +1126,6 @@ Subscription payload.
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
   "name": "weather_prod_key",
   "subscriptionId": "sub-abc123",
   "appId": "app-12345",
@@ -1094,7 +1138,6 @@ Subscription payload.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|true|none|Developer Portal API ID.|
 |name|string|true|none|none|
 |subscriptionId|string|false|none|Optional subscription ID to associate the key with.|
 |appId|string|false|none|Optional application ID to associate the key with, for analytics attribution only — it has no effect on the key's validity or authorization. Must belong to the same organization and be owned by the caller.|
@@ -1168,32 +1211,31 @@ API key metadata returned by list operations. Secret material is omitted.
 {
   "keyId": "key-12345",
   "name": "weather_prod_key",
-  "apiId": "api-7f4c2a6b",
-  "appId": "app-12345",
-  "appName": "My Mobile App",
-  "status": "ACTIVE",
+  "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
-  "createdAt": "2019-08-24T14:15:22Z",
-  "revokedAt": "2019-08-24T14:15:22Z",
-  "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ"
+  "status": "ACTIVE"
 }
 
 ```
 
+API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+
 ### Properties
 
-allOf
-
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[ApiKeyMetadataResponse](#schemaapikeymetadataresponse)|false|none|API key metadata returned by list operations. Secret material is omitted.|
+|keyId|string|false|none|Developer Portal key identifier.|
+|name|string|false|none|none|
+|key|string|false|none|One-time plaintext API key secret.|
+|expiresAt|string(date-time)¦null|false|none|none|
+|status|string|false|none|none|
 
-and
+#### Enumerated Values
 
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|API key response returned by generate/regenerate. The plaintext secret is returned exactly once and never persisted — store it securely.|
-|» key|string|false|none|One-time plaintext API key secret.|
+|Property|Value|
+|---|---|
+|status|ACTIVE|
+|status|REVOKED|
 
 <h2 id="tocS_ApiKeyApplicationResponse">ApiKeyApplicationResponse</h2>
 
@@ -1246,7 +1288,7 @@ and
 |name|string|true|none|Unique name within the organization.|
 |type|string|true|none|none|
 |enabled|boolean|false|none|none|
-|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_credentials` token requests to this endpoint.|
+|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
 
 #### Enumerated Values
 
@@ -1382,7 +1424,7 @@ Minimal developer-facing key manager view.
 ```json
 {
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
   "events": [
@@ -1400,7 +1442,7 @@ Minimal developer-facing key manager view.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|Unique name within the organization.|
-|url|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
+|targetUrl|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
 |events|[string]|false|none|Glob-style event type allowlist (only a trailing `*` wildcard is supported, e.g. `apikey.*`). Omit or leave empty to receive all event types.|
@@ -1419,7 +1461,7 @@ Minimal developer-facing key manager view.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -1441,7 +1483,7 @@ Webhook subscriber configuration. The secret is never included.
 |id|string|false|none|Webhook subscriber UUID.|
 |orgId|string|false|none|none|
 |name|string|false|none|none|
-|url|string(uri)|false|none|none|
+|targetUrl|string(uri)|false|none|none|
 |enabled|boolean|false|none|none|
 |events|[string]|false|none|none|
 |timeoutMs|integer|false|none|none|
@@ -1503,7 +1545,7 @@ A single delivery attempt made to a webhook subscriber.
 ```json
 {
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123"
 }
 
@@ -1514,15 +1556,15 @@ A single delivery attempt made to a webhook subscriber.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyManager|string|true|none|none|
-|keyType|string|false|none|none|
+|type|string|false|none|none|
 |consumerKey|string|true|none|The OAuth client_id, created directly in the key manager. The portal does not store or persist the client secret — it is supplied per-request when generating a token and is only seen transiently during that request.|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 <h2 id="tocS_ViewCreateRequest">ViewCreateRequest</h2>
 
@@ -1603,7 +1645,7 @@ OAuth access token generation payload. `consumerSecret` is required — the port
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|consumerSecret|string|false|none|Client secret for the OAuth application. Not stored by the portal — the caller must supply it on each token generation request.|
+|consumerSecret|string|true|none|Client secret for the OAuth application. Not stored by the portal — the caller must supply it on each token generation request.|
 |scopes|[string]|false|none|none|
 |validityPeriod|integer|false|none|none|
 
@@ -1618,7 +1660,7 @@ OAuth access token generation payload. `consumerSecret` is required — the port
 {
   "keyMappingId": "km-12345",
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -1633,7 +1675,7 @@ OAuth key mapping payload.
 |---|---|---|---|---|
 |keyMappingId|string|false|none|none|
 |keyManager|string|false|none|none|
-|keyType|string|false|none|none|
+|type|string|false|none|none|
 |consumerKey|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 
@@ -1646,33 +1688,35 @@ OAuth key mapping payload.
 
 ```json
 {
-  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "weather.read"
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
+  "validityTime": 3600,
+  "tokenScopes": [
+    "weather.read"
+  ]
 }
 
 ```
+
+Access token response proxied from the key manager's token endpoint. Field names are the portal's own camelCase, not the underlying OAuth2 token response's snake_case.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|access_token|string|false|none|none|
-|token_type|string|false|none|none|
-|expires_in|integer|false|none|none|
-|scope|string|false|none|none|
+|accessToken|string|false|none|none|
+|validityTime|integer¦null|false|none|Token lifetime in seconds, as reported by the key manager (`expires_in`).|
+|tokenScopes|[string]|false|none|none|
 
-<h2 id="tocS_APIFlowCreateResponse">APIFlowCreateResponse</h2>
+<h2 id="tocS_APIWorkflowCreateResponse">APIWorkflowCreateResponse</h2>
 
-<a id="schemaapiflowcreateresponse"></a>
-<a id="schema_APIFlowCreateResponse"></a>
-<a id="tocSapiflowcreateresponse"></a>
-<a id="tocsapiflowcreateresponse"></a>
+<a id="schemaapiworkflowcreateresponse"></a>
+<a id="schema_APIWorkflowCreateResponse"></a>
+<a id="tocSapiworkflowcreateresponse"></a>
+<a id="tocsapiworkflowcreateresponse"></a>
 
 ```json
 {
-  "apiFlowId": "flow-12345",
+  "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
   "status": "PUBLISHED"
 }
@@ -1683,7 +1727,7 @@ OAuth key mapping payload.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiFlowId|string|false|none|none|
+|apiWorkflowId|string|false|none|none|
 |name|string|false|none|none|
 |status|string|false|none|none|
 
@@ -1694,16 +1738,16 @@ OAuth key mapping payload.
 |status|DRAFT|
 |status|PUBLISHED|
 
-<h2 id="tocS_APIFlowResponse">APIFlowResponse</h2>
+<h2 id="tocS_APIWorkflowResponse">APIWorkflowResponse</h2>
 
-<a id="schemaapiflowresponse"></a>
-<a id="schema_APIFlowResponse"></a>
-<a id="tocSapiflowresponse"></a>
-<a id="tocsapiflowresponse"></a>
+<a id="schemaapiworkflowresponse"></a>
+<a id="schema_APIWorkflowResponse"></a>
+<a id="tocSapiworkflowresponse"></a>
+<a id="tocsapiworkflowresponse"></a>
 
 ```json
 {
-  "apiFlowId": "flow-12345",
+  "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
   "handle": "weather-onboarding",
   "description": "string",
@@ -1711,7 +1755,7 @@ OAuth key mapping payload.
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": "string",
+  "apiWorkflowDefinition": "string",
   "markdownContent": "string",
   "createdAt": "May 7, 2026",
   "updatedAt": "string"
@@ -1723,7 +1767,7 @@ OAuth key mapping payload.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiFlowId|string|false|none|none|
+|apiWorkflowId|string|false|none|none|
 |name|string|false|none|none|
 |handle|string|false|none|none|
 |description|string|false|none|none|
@@ -1731,7 +1775,7 @@ OAuth key mapping payload.
 |status|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|string¦null|false|none|none|
+|apiWorkflowDefinition|string¦null|false|none|none|
 |markdownContent|string¦null|false|none|none|
 |createdAt|string|false|none|none|
 |updatedAt|string¦null|false|none|none|
@@ -1747,12 +1791,12 @@ OAuth key mapping payload.
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowPromptResponse">APIFlowPromptResponse</h2>
+<h2 id="tocS_APIWorkflowPromptResponse">APIWorkflowPromptResponse</h2>
 
-<a id="schemaapiflowpromptresponse"></a>
-<a id="schema_APIFlowPromptResponse"></a>
-<a id="tocSapiflowpromptresponse"></a>
-<a id="tocsapiflowpromptresponse"></a>
+<a id="schemaapiworkflowpromptresponse"></a>
+<a id="schema_APIWorkflowPromptResponse"></a>
+<a id="tocSapiworkflowpromptresponse"></a>
+<a id="tocsapiworkflowpromptresponse"></a>
 
 ```json
 {
@@ -1787,12 +1831,12 @@ OAuth key mapping payload.
 |---|---|---|---|---|
 |path|string|false|none|none|
 
-<h2 id="tocS_APIFlowCreateRequest">APIFlowCreateRequest</h2>
+<h2 id="tocS_APIWorkflowCreateRequest">APIWorkflowCreateRequest</h2>
 
-<a id="schemaapiflowcreaterequest"></a>
-<a id="schema_APIFlowCreateRequest"></a>
-<a id="tocSapiflowcreaterequest"></a>
-<a id="tocsapiflowcreaterequest"></a>
+<a id="schemaapiworkflowcreaterequest"></a>
+<a id="schema_APIWorkflowCreateRequest"></a>
+<a id="tocSapiworkflowcreaterequest"></a>
+<a id="tocsapiworkflowcreaterequest"></a>
 
 ```json
 {
@@ -1803,7 +1847,7 @@ OAuth key mapping payload.
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {},
+  "apiWorkflowDefinition": {},
   "markdownContent": "string"
 }
 
@@ -1820,7 +1864,7 @@ OAuth key mapping payload.
 |status|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
+|apiWorkflowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
 
 oneOf
 
@@ -1851,12 +1895,12 @@ continued
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowUpdateRequest">APIFlowUpdateRequest</h2>
+<h2 id="tocS_APIWorkflowUpdateRequest">APIWorkflowUpdateRequest</h2>
 
-<a id="schemaapiflowupdaterequest"></a>
-<a id="schema_APIFlowUpdateRequest"></a>
-<a id="tocSapiflowupdaterequest"></a>
-<a id="tocsapiflowupdaterequest"></a>
+<a id="schemaapiworkflowupdaterequest"></a>
+<a id="schema_APIWorkflowUpdateRequest"></a>
+<a id="tocSapiworkflowupdaterequest"></a>
+<a id="tocsapiworkflowupdaterequest"></a>
 
 ```json
 {
@@ -1867,7 +1911,7 @@ continued
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {},
+  "apiWorkflowDefinition": {},
   "markdownContent": "string"
 }
 
@@ -1884,7 +1928,7 @@ continued
 |status|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|any|false|none|none|
+|apiWorkflowDefinition|any|false|none|none|
 
 oneOf
 
@@ -1915,12 +1959,12 @@ continued
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowPromptRequest">APIFlowPromptRequest</h2>
+<h2 id="tocS_APIWorkflowPromptRequest">APIWorkflowPromptRequest</h2>
 
-<a id="schemaapiflowpromptrequest"></a>
-<a id="schema_APIFlowPromptRequest"></a>
-<a id="tocSapiflowpromptrequest"></a>
-<a id="tocsapiflowpromptrequest"></a>
+<a id="schemaapiworkflowpromptrequest"></a>
+<a id="schema_APIWorkflowPromptRequest"></a>
+<a id="tocSapiworkflowpromptrequest"></a>
+<a id="tocsapiworkflowpromptrequest"></a>
 
 ```json
 {

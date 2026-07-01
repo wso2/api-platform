@@ -61,9 +61,6 @@ function enforceSecurity(scope) {
                 req[constants.USER_ID] = decodedAccessToken?.[constants.USER_ID];
                 return validateAuthentication(scope)(req, res, next);
             } else if (config.advanced.apiKey.enabled) {
-                if (req.headers.organization) {
-                    req.params.orgId = req.headers.organization;
-                }
                 enforceAPIKey(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
@@ -123,15 +120,10 @@ const ensureAuthenticated = async (req, res, next) => {
     }
     if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
         config.authenticatedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-        let orgID;
-        if (req.params.orgName) {
-            orgID = req.params.orgName;
-        } else {
-            orgID = req.params.orgId;
-        }
+        const orgId = req.params.orgName;
         let orgDetails;
-        if (orgID !== undefined) {
-            orgDetails = await orgDao.get(orgID);
+        if (orgId !== undefined) {
+            orgDetails = await orgDao.get(orgId);
         }
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
@@ -145,8 +137,8 @@ const ensureAuthenticated = async (req, res, next) => {
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                         req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                         if (orgDetails) {
-                            req.user[constants.ORG_UUID] = orgDetails.UUID;
-                            req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_REF_ID;
+                            req.user[constants.ORG_UUID] = orgDetails.uuid;
+                            req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
                     if (!config.advanced.disabledRoleValidation) {
@@ -174,13 +166,13 @@ const ensureAuthenticated = async (req, res, next) => {
                     req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                     req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                     if (orgDetails) {
-                        req.user[constants.ORG_UUID] = orgDetails.UUID;
-                        req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_REF_ID;
+                        req.user[constants.ORG_UUID] = orgDetails.uuid;
+                        req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                     }
                 }
                 const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
                 if (!isMatch) {
-                    const orgIdentifier = orgDetails?.IDP_REF_ID;
+                    const orgIdentifier = orgDetails?.idp_ref_id;
                     const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
                     if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
                         const err = new Error('Forbidden');

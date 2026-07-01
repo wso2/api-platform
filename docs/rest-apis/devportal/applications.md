@@ -4,13 +4,13 @@
 
 <a id="opIdlistApplications"></a>
 
-`GET /o/{orgId}/devportal/v1/applications`
+`GET /devportal/v1/applications`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications \
+curl -X GET https://devportal.api-platform.io/devportal/v1/applications \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -32,7 +32,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -45,12 +44,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "app-12345",
       "name": "Weather App",
       "description": "Application used to call Weather APIs.",
-      "type": "WEB",
-      "appMap": [
+      "appKeyMappings": [
         {
-          "appRefID": "asgardeo-client-abc123",
-          "kmID": "km-uuid-12345",
-          "keyType": "PRODUCTION"
+          "asClientId": "asgardeo-client-abc123",
+          "kmId": "km-uuid-12345",
+          "type": "PRODUCTION"
         }
       ]
     }
@@ -90,11 +88,10 @@ Status Code **200**
 |»» id|string|false|none|none|
 |»» name|string|false|none|none|
 |»» description|string|false|none|none|
-|»» type|string|false|none|none|
-|»» appMap|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
-|»»» appRefID|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
-|»»» kmID|string|false|none|UUID of the key manager this client ID is linked to.|
-|»»» keyType|string|false|none|Key type for this mapping.|
+|»» appKeyMappings|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
+|»»» asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|»»» kmId|string|false|none|UUID of the key manager this client ID is linked to.|
+|»»» type|string|false|none|Key type for this mapping.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -104,20 +101,20 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 ## Create an application
 
 <a id="opIdsaveApplication"></a>
 
-`POST /o/{orgId}/devportal/v1/applications`
+`POST /devportal/v1/applications`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications \
+curl -X POST https://devportal.api-platform.io/devportal/v1/applications \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -133,15 +130,13 @@ Creates a Developer Portal application in the specified organization. The reques
 ```json
 {
   "name": "Weather App",
-  "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
 name: Weather App
 description: Application used to call Weather APIs.
-type: WEB
 
 ```
 
@@ -157,7 +152,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` or `metadata.name` as the application name and `spec.description` as the description.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -168,8 +162,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB",
-  "appMap": []
+  "appKeyMappings": []
 }
 ```
 
@@ -183,8 +176,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -249,17 +242,90 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |201|Location|string|uri|URL of the created application.|
 
-## Update an application
+## Get an application
 
-<a id="opIdupdateApplication"></a>
+<a id="opIdgetApplication"></a>
 
-`PUT /o/{orgId}/devportal/v1/applications/{applicationId}`
+`GET /devportal/v1/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Returns the details of a single application owned by the authenticated user.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="get-an-application-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|applicationId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "app-12345",
+  "name": "Weather App",
+  "description": "Application used to call Weather APIs.",
+  "appKeyMappings": []
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="get-an-application-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Application DTO.|[ApplicationResponse](schemas.md#schemaapplicationresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Update an application
+
+<a id="opIdupdateApplication"></a>
+
+`PUT /devportal/v1/applications/{applicationId}`
+
+> Code samples
+
+```shell
+
+curl -X PUT https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -275,15 +341,13 @@ Updates an application owned by the authenticated user in the specified organiza
 ```json
 {
   "name": "Weather App",
-  "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
 name: Weather App
 description: Application used to call Weather APIs.
-type: WEB
 
 ```
 
@@ -299,7 +363,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` or `metadata.name` as the application name and `spec.description` as the description.|
-|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 
 > Example responses
@@ -311,8 +374,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB",
-  "appMap": []
+  "appKeyMappings": []
 }
 ```
 
@@ -326,8 +388,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -401,13 +463,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApplication"></a>
 
-`DELETE /o/{orgId}/devportal/v1/applications/{applicationId}`
+`DELETE /devportal/v1/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'
@@ -427,7 +489,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 
 > Example responses

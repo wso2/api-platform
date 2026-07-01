@@ -146,15 +146,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 errorElement.style.display = 'none';
             }
 
-            const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${applicationId}`), {
+            const response = await fetch(devportalApi.org(`/applications/${applicationId}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    ...data,
-                    type: 'WEB'
-                }),
+                body: JSON.stringify(data),
             });
 
             if (!response.ok) {

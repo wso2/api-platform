@@ -25,13 +25,13 @@ const logger = require('../config/logger');
 const create = async (orgId, kmData, createdBy) => {
     try {
         const record = await KeyManager.create({
-            ORG_UUID: orgId,
-            NAME: kmData.name,
-            TYPE: kmData.type,
-            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled ? 1 : 0 }),
-            TOKEN_ENDPOINT: kmData.tokenEndpoint,
-            CREATED_BY: createdBy,
-            UPDATED_BY: createdBy,
+            org_uuid: orgId,
+            name: kmData.name,
+            type: kmData.type,
+            ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
+            token_endpoint: kmData.tokenEndpoint,
+            created_by: createdBy,
+            updated_by: createdBy,
         });
         return record;
     } catch (error) {
@@ -49,16 +49,16 @@ const create = async (orgId, kmData, createdBy) => {
 const update = async (kmId, kmData, updatedBy) => {
     try {
         const updatePayload = {
-            ...(kmData.name && { NAME: kmData.name }),
-            ...(kmData.type && { TYPE: kmData.type }),
-            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled ? 1 : 0 }),
-            ...(kmData.tokenEndpoint && { TOKEN_ENDPOINT: kmData.tokenEndpoint }),
-            UPDATED_BY: updatedBy,
-            UPDATED_AT: new Date(),
+            ...(kmData.name && { name: kmData.name }),
+            ...(kmData.type && { type: kmData.type }),
+            ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
+            ...(kmData.tokenEndpoint && { token_endpoint: kmData.tokenEndpoint }),
+            updated_by: updatedBy,
+            updated_at: new Date(),
         };
 
         const [updatedRowsCount] = await KeyManager.update(updatePayload, {
-            where: { UUID: kmId }
+            where: { uuid: kmId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -82,7 +82,7 @@ const update = async (kmId, kmData, updatedBy) => {
 const list = async (orgId) => {
     try {
         return await KeyManager.findAll({
-            where: { ORG_UUID: orgId }
+            where: { org_uuid: orgId }
         });
     } catch (error) {
         logger.error('Error fetching key managers', { error });
@@ -96,7 +96,7 @@ const list = async (orgId) => {
 const listEnabled = async (orgId) => {
     try {
         return await KeyManager.findAll({
-            where: { ORG_UUID: orgId, ENABLED: 1 }
+            where: { org_uuid: orgId, enabled: 1 }
         });
     } catch (error) {
         logger.error('Error fetching enabled key managers', { error });
@@ -129,7 +129,7 @@ const get = async (kmId) => {
 const getByName = async (orgId, name) => {
     try {
         const km = await KeyManager.findOne({
-            where: { ORG_UUID: orgId, NAME: name }
+            where: { org_uuid: orgId, name: name }
         });
         if (!km) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -150,7 +150,7 @@ const getByName = async (orgId, name) => {
 const deleteKm = async (kmId) => {
     try {
         const deleted = await KeyManager.destroy({
-            where: { UUID: kmId }
+            where: { uuid: kmId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');

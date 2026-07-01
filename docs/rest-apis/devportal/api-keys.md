@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApiKey"></a>
 
-`POST /o/{orgId}/devportal/v1/api-keys/generate`
+`POST /devportal/v1/apis/{apiId}/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/generate \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -25,7 +25,6 @@ Generates an API key stored in the Developer Portal (devportal is source of trut
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
   "name": "weather_prod_key",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
@@ -42,8 +41,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `apiId` is the Developer Portal API ID. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
-|orgId|path|string|true|none|
+|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the `{apiId}` path parameter.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -59,35 +58,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
+> 400 Response
 
 ```json
 {
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
+  "code": "400",
+  "message": "Bad Request",
+  "description": "apiId is required"
 }
 ```
 
@@ -95,9 +72,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "code": "403",
+  "message": "Read-only mode"
 }
 ```
 
@@ -105,9 +81,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -126,19 +102,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Generated API key. The plaintext `key` is returned exactly once.|[ApiKeyResponse](schemas.md#schemaapikeyresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="generate-an-api-key-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
 
 ### Response Headers
 
@@ -150,20 +117,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApiKeys"></a>
 
-`GET /o/{orgId}/devportal/v1/api-keys`
+`GET /devportal/v1/apis/{apiId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys?apiId=api-7f4c2a6b \
+curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists API keys for an API. The `apiId` query parameter is required.
+Lists API keys for the given API.
 
 ### Authentication
 
@@ -176,11 +143,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|query|string|true|Developer Portal API ID.|
 |appId|query|string|false|Optional application ID used to filter API keys associated with that application.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -219,8 +185,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -241,16 +207,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
-}
-```
-
 > 500 Response
 
 ```json
@@ -267,7 +223,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API key metadata records.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-api-keys-responseschema">Response Schema</h3>
@@ -309,20 +264,30 @@ Status Code **200**
 
 <a id="opIdregenerateApiKey"></a>
 
-`POST /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate`
+`POST /devportal/v1/apis/{apiId}/api-keys/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/regenerate \
   -u {username}:{password} \
+  -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
 
 ```
 
-Regenerates the secret for an existing API key identified by `apiKeyId`. An `apikey.regenerated` webhook event is published to the organization's configured webhook subscribers so they can invalidate the old secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
+Regenerates the secret for an existing API key identified by `keyId` in the request body. An `apikey.regenerated` webhook event is published to the organization's configured webhook subscribers so they can invalidate the old secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
+
+> Payload
+
+```json
+{
+  "keyId": "key-12345"
+}
+```
 
 ### Authentication
 
@@ -335,8 +300,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key to regenerate by its `keyId`.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -352,45 +318,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
-
-```json
-{
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
-}
-```
-
 > 403 Response
 
 ```json
 {
-  "status": "error",
-  "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "code": "403",
+  "message": "Read-only mode"
 }
 ```
 
@@ -398,9 +331,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -408,9 +341,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
+  "code": "409",
+  "message": "Cannot regenerate a revoked key"
 }
 ```
 
@@ -429,39 +361,39 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Generated or regenerated API key. The plaintext `key` is returned exactly once.|[ApiKeyResponse](schemas.md#schemaapikeyresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be regenerated.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="regenerate-an-api-key-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
 
 ## Revoke an API key
 
 <a id="opIdrevokeApiKey"></a>
 
-`POST /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke`
+`POST /devportal/v1/apis/{apiId}/api-keys/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/revoke \
   -u {username}:{password} \
+  -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
 
 ```
 
-Revokes an existing API key. An `apikey.revoked` webhook event is published to the organization's configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
+Revokes an existing API key identified by `keyId` in the request body. An `apikey.revoked` webhook event is published to the organization's configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
+
+> Payload
+
+```json
+{
+  "keyId": "key-12345"
+}
+```
 
 ### Authentication
 
@@ -474,50 +406,18 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key to revoke by its `keyId`.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|apiId|path|string|true|none|
 
 > Example responses
-
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
-
-```json
-{
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
-}
-```
 
 > 403 Response
 
 ```json
 {
-  "status": "error",
-  "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "code": "403",
+  "message": "Read-only mode"
 }
 ```
 
@@ -525,9 +425,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -535,9 +435,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
+  "code": "409",
+  "message": "Key already revoked or not found"
 }
 ```
 
@@ -556,32 +455,22 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|API key revoked successfully.|None|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="revoke-an-api-key-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
 
 ## Associate an API key with an application
 
 <a id="opIdassociateApiKeyApplication"></a>
 
-`PUT /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application`
+`POST /devportal/v1/apis/{apiId}/api-keys/associate`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/associate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -596,6 +485,7 @@ Associates (or re-associates) an existing API key with an application, for analy
 
 ```json
 {
+  "keyId": "key-12345",
   "appId": "app-12345"
 }
 ```
@@ -611,10 +501,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|Associates an API key with an application, identified by `appId`.|
-|» appId|body|string|true|none|
-|orgId|path|string|true|none|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key and the application to associate it with.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» appId|body|string|true|Developer Portal application ID to associate the key with.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -630,35 +520,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
+> 400 Response
 
 ```json
 {
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
+  "code": "400",
+  "message": "Bad Request",
+  "description": "apiId is required"
 }
 ```
 
@@ -666,9 +534,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "code": "403",
+  "message": "Read-only mode"
 }
 ```
 
@@ -676,9 +543,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -686,9 +553,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
+  "code": "409",
+  "message": "Cannot associate a revoked key"
 }
 ```
 
@@ -707,39 +573,40 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Association updated.|[ApiKeyApplicationResponse](schemas.md#schemaapikeyapplicationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be associated with an application.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="associate-an-api-key-with-an-application-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
 
 ## Remove an API key's application association
 
 <a id="opIdremoveApiKeyApplication"></a>
 
-`DELETE /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application`
+`POST /devportal/v1/apis/{apiId}/api-keys/dissociate`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application \
+curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/dissociate \
   -u {username}:{password} \
+  -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
 
 ```
 
-Removes the application association from an API key, if any. An `apikey.application_updated` webhook event is published once for this key, with `application` set to `null`.
+Removes the application association from an API key identified by `keyId` in the request body, if any. An `apikey.application_updated` webhook event is published once for this key, with `application` set to `null`.
+
+> Payload
+
+```json
+{
+  "keyId": "key-12345"
+}
+```
 
 ### Authentication
 
@@ -752,8 +619,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|apiKeyId|path|string|true|none|
+|body|body|object|true|Identifies the API key to remove the application association from.|
+|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|apiId|path|string|true|none|
 
 > Example responses
 
@@ -761,9 +629,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "code": "403",
+  "message": "Read-only mode"
 }
 ```
 
@@ -771,9 +638,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -792,21 +659,21 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Association removed (or none existed).|None|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List API keys associated with an application
 
 <a id="opIdlistApplicationApiKeys"></a>
 
-`GET /o/{orgId}/devportal/v1/applications/{applicationId}/api-keys`
+`GET /devportal/v1/applications/{applicationId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/api-keys \
+curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -828,7 +695,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 
 > Example responses
@@ -862,9 +728,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -883,7 +749,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API key metadata records.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-api-keys-associated-with-an-application-responseschema">Response Schema</h3>

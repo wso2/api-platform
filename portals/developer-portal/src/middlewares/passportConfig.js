@@ -45,7 +45,7 @@ function configurePassport(SERVER_ID) {
             authorizationURL: config.identityProvider.authorizationURL,
             tokenURL: config.identityProvider.tokenURL,
             userInfoURL: config.identityProvider.userInfoURL,
-            clientID: config.identityProvider.clientId,
+            clientId: config.identityProvider.clientId,
             clientSecret: config.identityProvider.clientSecret || undefined,
             callbackURL: config.identityProvider.callbackURL,
             pkce: true,
@@ -67,7 +67,7 @@ function configurePassport(SERVER_ID) {
             const decodedAccessToken = jwt.decode(accessToken);
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
-            const organizationID = getNestedClaim(decodedJWT, config.identityProvider.orgIDClaim) ?? '';
+            const organizationId = getNestedClaim(decodedJWT, config.identityProvider.orgIDClaim) ?? '';
             const rawRoles = getNestedClaim(decodedJWT, config.identityProvider.roleClaim) ?? '';
             const roles = Array.isArray(rawRoles)
                 ? rawRoles
@@ -101,7 +101,7 @@ function configurePassport(SERVER_ID) {
                 view,
                 idToken: params.id_token,
                 email: decodedJWT['email'] || req.session.username,
-                [constants.ROLES.ORGANIZATION_CLAIM]: organizationID,
+                [constants.ROLES.ORGANIZATION_CLAIM]: organizationId,
                 returnTo: req.session.returnTo,
                 accessToken,
                 refreshToken,

@@ -29,6 +29,8 @@ const VALID_EVENT_TYPES = new Set([
     'subscription.created',
     'subscription.updated',
     'subscription.deleted',
+    'subscription.plan_changed',
+    'subscription.token_regenerated',
     'apikey.generated',
     'apikey.regenerated',
     'apikey.revoked',
@@ -108,10 +110,10 @@ async function publish(eventType, payload, opts) {
 
         const deliverableSubscribers = subscribers.filter(s => perSubscriberEncrypted[s.id]);
         if (deliverableSubscribers.length > 0) {
-            await eventDao.createDeliveries(event.UUID, deliverableSubscribers, perSubscriberEncrypted, transaction);
-            event.STATUS = 'DISPATCHED';
+            await eventDao.createDeliveries(event.uuid, deliverableSubscribers, perSubscriberEncrypted, transaction);
+            event.status = 'DISPATCHED';
         } else {
-            event.STATUS = 'ALL_DELIVERED';
+            event.status = 'ALL_DELIVERED';
         }
         await event.save({ transaction });
 
@@ -121,11 +123,11 @@ async function publish(eventType, payload, opts) {
         bus.emit('event_published');
     }
     logger.info('Publishing event', {
-        eventId: event.UUID, eventType, orgId, aggregateType, aggregateId,
+        eventId: event.uuid, eventType, orgId, aggregateType, aggregateId,
         hasSecretFields: !!secretFields
     });
 
-    return event.UUID;
+    return event.uuid;
 }
 
 /** Subscribe to wake signals from publish(). */

@@ -1,5 +1,5 @@
 -- SQL Server Schema for Gateway-Controller API Configurations
--- Version: 2
+-- Version: 4
 --
 -- Portable counterpart of gateway-controller-db.postgres.sql. Type mapping:
 --   TEXT (keyed)      -> NVARCHAR(64)/NVARCHAR(255)  (NVARCHAR(MAX) cannot be indexed;
@@ -19,6 +19,7 @@ CREATE TABLE dbo.artifacts (
     gateway_id NVARCHAR(64) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     version NVARCHAR(64) NOT NULL,
+    data_version NVARCHAR(20) NOT NULL DEFAULT '1.0',
     kind NVARCHAR(64) NOT NULL,
     handle NVARCHAR(255) NOT NULL,
     desired_state NVARCHAR(20) NOT NULL CHECK(desired_state IN ('deployed', 'undeployed')),

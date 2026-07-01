@@ -21,6 +21,7 @@ const tokenCache = {};
 let _manageSub = null;
 let _manageRevealed = false;
 let _manageCopyTimer = null;
+let _regenerateInFlight = false;
 
 /* ── Open / close manage modal ─────────────────────────────────── */
 function openSubManage(subId) {
@@ -74,11 +75,11 @@ function resetSubManageCopyBtn() {
 /* ── Token fetch / reveal / copy ───────────────────────────────── */
 async function fetchSubToken(subId) {
     if (tokenCache[subId]) return tokenCache[subId];
-    const orgID = window.__subscriptionOrgID;
-    if (!orgID) return null;
+    const orgId = window.__subscriptionOrgId;
+    if (!orgId) return null;
     try {
         const resp = await fetch(
-            devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subId)}`),
+            devportalApi.org(`/subscriptions/${encodeURIComponent(subId)}`),
             { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
         if (!resp.ok) return null;
@@ -127,13 +128,65 @@ async function copySubToken() {
     _manageCopyTimer = setTimeout(resetSubManageCopyBtn, 1600);
 }
 
+/* ── Regenerate token ───────────────────────────────────────────── */
+function askRegenerateToken() {
+    if (!_manageSub) return;
+    const dialog = document.getElementById('subRegenerateDialog');
+    if (dialog) dialog.style.display = 'flex';
+}
+
+function closeRegenerateDialog() {
+    const dialog = document.getElementById('subRegenerateDialog');
+    if (dialog) dialog.style.display = 'none';
+}
+
+async function confirmRegenerateToken() {
+    if (!_manageSub || _regenerateInFlight) return;
+    const subId = _manageSub.id;
+    closeRegenerateDialog();
+    const orgId = window.__subscriptionOrgId;
+    if (!orgId) return;
+    _regenerateInFlight = true;
+    try {
+        const resp = await fetch(
+            devportalApi.org(`/subscriptions/${encodeURIComponent(subId)}/regenerate-token`),
+            { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
+        );
+        if (resp.ok) {
+            const data = await resp.json();
+            const newToken = data.subscriptionToken;
+            delete tokenCache[subId];
+            if (newToken) tokenCache[subId] = newToken;
+            _manageRevealed = true;
+            document.getElementById('subManageTokenVal').textContent = newToken || '•'.repeat(28);
+            const ri = document.getElementById('subManageRevealIcon');
+            if (ri) ri.className = 'bi bi-eye-slash';
+            resetSubManageCopyBtn();
+            if (typeof showAlert === 'function') {
+                await showAlert('Token regenerated. Copy your new token before closing this window.', 'success');
+            }
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            if (typeof showAlert === 'function') {
+                await showAlert('Failed to regenerate token: ' + (data.description || 'Unknown error'), 'error');
+            }
+        }
+    } catch (e) {
+        if (typeof showAlert === 'function') {
+            await showAlert('Error: ' + e.message, 'error');
+        }
+    } finally {
+        _regenerateInFlight = false;
+    }
+}
+
 /* ── Suspend / Resume ───────────────────────────────────────────── */
 async function toggleSubSuspend() {
     if (!_manageSub) return;
     const newStatus = _manageSub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
         const resp = await fetch(
-            devportalApi.org(window.__subscriptionOrgID, `/subscriptions/${encodeURIComponent(_manageSub.id)}`),
+            devportalApi.org(`/subscriptions/${encodeURIComponent(_manageSub.id)}`),
             {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
@@ -186,7 +239,7 @@ async function confirmSubUnsub() {
 async function executeDeleteSubscription(subscriptionId) {
     try {
         const response = await fetch(
-            devportalApi.org(window.__subscriptionOrgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
+            devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
 
@@ -223,6 +276,7 @@ async function executeDeleteSubscription(subscriptionId) {
         document.getElementById('subManageClose')?.addEventListener('click', closeSubManage);
         document.getElementById('subManageRevealBtn')?.addEventListener('click', revealSubToken);
         document.getElementById('subManageCopyBtn')?.addEventListener('click', copySubToken);
+        document.getElementById('subManageRegenerateBtn')?.addEventListener('click', askRegenerateToken);
         document.getElementById('subManageSuspendBtn')?.addEventListener('click', toggleSubSuspend);
         document.getElementById('subManageUnsubBtn')?.addEventListener('click', askSubUnsub);
         manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeSubManage(); });
@@ -233,5 +287,12 @@ async function executeDeleteSubscription(subscriptionId) {
         document.getElementById('subUnsubCancelBtn')?.addEventListener('click', closeSubUnsub);
         document.getElementById('subUnsubConfirmBtn')?.addEventListener('click', confirmSubUnsub);
         unsubDialog.addEventListener('click', function (e) { if (e.target === unsubDialog) closeSubUnsub(); });
+    }
+
+    const regenerateDialog = document.getElementById('subRegenerateDialog');
+    if (regenerateDialog) {
+        document.getElementById('subRegenerateCancelBtn')?.addEventListener('click', closeRegenerateDialog);
+        document.getElementById('subRegenerateConfirmBtn')?.addEventListener('click', confirmRegenerateToken);
+        regenerateDialog.addEventListener('click', function (e) { if (e.target === regenerateDialog) closeRegenerateDialog(); });
     }
 })();

@@ -26,7 +26,7 @@ labels:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/views \
+curl -X POST http://localhost:3000/devportal/v1/views \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @view.yaml
@@ -41,13 +41,13 @@ curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/views \
 ## List Views
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/views -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/views -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a View
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/views/{name} -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/views/{name} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a View
@@ -63,7 +63,7 @@ removedLabels: []
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/views/{name} \
+curl -X PUT http://localhost:3000/devportal/v1/views/{name} \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @view-update.yaml
@@ -72,7 +72,7 @@ curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/views/{name} \
 ## Delete a View
 
 ```bash
-curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/views/{name} -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:3000/devportal/v1/views/{name} -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -82,7 +82,7 @@ curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/views/{name} -H "Aut
 A layout is a set of Handlebars (`.hbs`) template files that define the page structure for a view. Upload a custom layout to give a view its own branding independent of the theme color settings.
 
 ```bash
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/views/{name}/layout" \
+curl -X POST "http://localhost:3000/devportal/v1/views/{name}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-layout.zip"
 ```
@@ -92,7 +92,7 @@ The ZIP file should contain `.hbs` template files following the portal's page st
 To update an existing layout:
 
 ```bash
-curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{name}/layout" \
+curl -X PUT "http://localhost:3000/devportal/v1/views/{name}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-layout-v2.zip"
 ```
@@ -100,7 +100,7 @@ curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{name}/layout" \
 To remove a custom layout and revert to the default:
 
 ```bash
-curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/views/{name}/layout/template" \
+curl -X DELETE "http://localhost:3000/devportal/v1/views/{name}/layout/template" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -123,7 +123,7 @@ Labels are submitted as a JSON array (no YAML format for labels):
 ```
 
 ```bash
-curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/labels \
+curl -X POST http://localhost:3000/devportal/v1/labels \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @labels.json
@@ -137,7 +137,7 @@ curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/labels \
 ### List Labels
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/labels -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/labels -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Update Labels
@@ -150,7 +150,7 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/labels -H "Authorization: Bear
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/labels \
+curl -X PUT http://localhost:3000/devportal/v1/labels \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @labels-update.json
@@ -159,7 +159,7 @@ curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/labels \
 ### Delete a Label
 
 ```bash
-curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/labels?labelName=internal" \
+curl -X DELETE "http://localhost:3000/devportal/v1/labels?labelName=internal" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

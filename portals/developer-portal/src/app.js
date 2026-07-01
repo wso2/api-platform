@@ -35,7 +35,7 @@ const Handlebars = require('handlebars');
 const constants = require("./utils/constants");
 const designRoute = require('./routes/pages/designModeRoute');
 const settingsRoute = require('./routes/pages/settingsRoute');
-const apiFlowsRoute = require('./routes/pages/apiWorkflowsRoute');
+const apiWorkflowsRoute = require('./routes/pages/apiWorkflowsRoute');
 const { v4: uuidv4 } = require('uuid');
 const util = require('./utils/util');
 const sessionStore = require('./db/sessionStoreConfig');
@@ -139,9 +139,8 @@ app.use((req, res, next) => {
 //backend routes
 // Spec-driven devportal router (express-openapi-validator): request validation +
 // fine-grained OAuth2 scope enforcement, dispatching by operationId to
-// src/openapi/handlers. Mounted at root since spec paths are root-relative
-// (/o/{orgId}/devportal/v1/..., /applications, /login, ...). Registered before the
-// page route tree so unmatched requests fall through to it.
+// src/routes/api/handlers (/devportal/v1/..., /organizations, /login, ...).
+// Registered before the page route tree so unmatched requests fall through to it.
 const devportalApiRouter = require('./routes/api/devportalApiRouter');
 app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 
@@ -173,7 +172,7 @@ if (config.designMode?.enabled) {
     app.use(constants.ROUTE.DEFAULT, applicationContent);
     app.use(constants.ROUTE.DEFAULT, orgContent);
     app.use(constants.ROUTE.DEFAULT, settingsRoute);
-    app.use(constants.ROUTE.DEFAULT, apiFlowsRoute);
+    app.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     app.use(constants.ROUTE.DEFAULT, subscriptionsContent);
     app.use(constants.ROUTE.DEFAULT, customContent);
 }

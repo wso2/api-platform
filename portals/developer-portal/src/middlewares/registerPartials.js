@@ -61,7 +61,7 @@ const registerPartials = async (req, res, next) => {
 
     try {
       const orgDetails = await orgDao.get(req.params.orgName);
-      devportalMode = orgDetails.CONFIGURATION?.devportalMode || devportalMode;
+      devportalMode = orgDetails.configuration?.devportalMode || devportalMode;
       
       const isViewConfigure = req.params.orgName && req.params.orgName !== "portal"
         && req.params.viewName && /views\/.+\/settings/i.test(matchURL);
@@ -73,13 +73,13 @@ const registerPartials = async (req, res, next) => {
         await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
 
         if (isNonConfigure) {
-          const orgID = await orgDao.getId(req.params.orgName);
-          await registerPartialsFromAPI(req, orgID);
+          const orgId = await orgDao.getId(req.params.orgName);
+          await registerPartialsFromAPI(req, orgId);
           //register doc page partials
           if (req.originalUrl.includes(constants.ROUTE.API_DOCS_PATH) && req.params.docType && req.params.docName) {
-            await registerDocsPageContent(req, orgID, {});
+            await registerDocsPageContent(req, orgId, {});
           } else if (req.originalUrl.includes(constants.ROUTE.API_LANDING_PAGE_PATH)) {
-            await registerAPILandingContent(req, orgID, {});
+            await registerAPILandingContent(req, orgId, {});
           }
         }
       }
@@ -156,19 +156,19 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   }
 }
 
-const registerPartialsFromAPI = async (req, orgID) => {
+const registerPartialsFromAPI = async (req, orgId) => {
 
   const viewName = req.params.viewName;
 
   let partials = await orgDao.getContent({
-    orgId: orgID,
+    orgId: orgId,
     fileType: 'partial',
     viewName: viewName
   });
   let partialObject = {};
   partials.forEach(file => {
-    let fileName = file.FILE_NAME.split(".")[0];
-    let content = file.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+    let fileName = file.file_name.split(".")[0];
+    let content = file.file_content.toString(constants.CHARSET_UTF8);
     partialObject[fileName] = content;
   });
   Object.keys(partialObject).forEach((partialName) => {
@@ -178,34 +178,34 @@ const registerPartialsFromAPI = async (req, orgID) => {
   });
 };
 
-async function registerAPILandingContent(req, orgID, partialObject) {
+async function registerAPILandingContent(req, orgId, partialObject) {
 
   const apiHandle = req.params.apiHandle;
-  const apiID = await apiDao.getId(orgID, apiHandle);
-  if (apiID === undefined || apiID === null) {
+  const apiId = await apiDao.getId(orgId, apiHandle);
+  if (apiId === undefined || apiId === null) {
     throw new Error("API not found");
   }
   //fetch markdown content for API if exists
-  const markdownResponse = await apiFileDao.get(constants.FILE_NAME.API_MD_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgID, apiID);
-  const markdownContent = markdownResponse !== null ? markdownResponse.FILE_CONTENT.toString("utf8") : "";
+  const markdownResponse = await apiFileDao.get(constants.FILE_NAME.API_MD_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgId, apiId);
+  const markdownContent = markdownResponse !== null ? markdownResponse.file_content.toString("utf8") : "";
   const markdownHtml = markdownContent ? markdown.parse(markdownContent) : "";
 
-  let metaData = await apiMetadataService.getMetadataFromDB(orgID, apiID);
+  let metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId);
   if (metaData !== "") {
     const data = metaData ? JSON.stringify(metaData) : {};
     metaData = JSON.parse(data);
     //replace image urls
-    let images = metaData.apiInfo.apiImageMetadata;
+    let images = metaData.apiImageMetadata;
     for (const key in images) {
-      let apiImageUrl = `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${apiID}${constants.API_TEMPLATE_FILE_NAME}`
+      let apiImageUrl = `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}`
       const modifiedApiImageURL = apiImageUrl + images[key]
       images[key] = modifiedApiImageURL;
     }
   }
   //if hbs content available for API, render the hbs page
-  let additionalAPIContentResponse = await apiFileDao.get(constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgID, apiID);
+  let additionalAPIContentResponse = await apiFileDao.get(constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgId, apiId);
   if (additionalAPIContentResponse !== null) {
-    let additionalAPIContent = additionalAPIContentResponse.FILE_CONTENT.toString("utf8");
+    let additionalAPIContent = additionalAPIContentResponse.file_content.toString("utf8");
     partialObject[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME] = additionalAPIContent ? additionalAPIContent : "";
     hbs.handlebars.partials[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME] = hbs.handlebars.compile(
       partialObject[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME])({
@@ -216,19 +216,19 @@ async function registerAPILandingContent(req, orgID, partialObject) {
 
 }
 
-async function registerDocsPageContent(req, orgID, partialObject) {
+async function registerDocsPageContent(req, orgId, partialObject) {
 
   const { orgName, apiHandle, viewName, docType, docName } = req.params;
-  const apiID = await apiDao.getId(orgID, apiHandle);
+  const apiId = await apiDao.getId(orgId, apiHandle);
   let markdownHtml = "";
-  const docContentResponse = await apiFileDao.getDocByName(constants.DOC_TYPES.DOC_ID + docType, docName + ".md", orgID, apiID);
+  const docContentResponse = await apiFileDao.getDocByName(constants.DOC_TYPES.DOC_ID + docType, docName + ".md", orgId, apiId);
   if (docContentResponse !== null) {
-    const markdownContent = docContentResponse.FILE_CONTENT.toString("utf8");
+    const markdownContent = docContentResponse.file_content.toString("utf8");
     markdownHtml = markdownContent ? markdown.parse(markdownContent) : "";
     partialObject[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME];
   }
-  const apiMetadata = await apiDao.get(orgID, apiID);
-  let apiType = apiMetadata[0].dataValues.TYPE;
+  const apiMetadata = await apiDao.get(orgId, apiId);
+  let apiType = apiMetadata[0].dataValues.type;
   let baseUrl;
 
   if (apiType === constants.API_TYPE.MCP) {
@@ -248,17 +248,17 @@ async function registerPartialsFromFile(baseURL, dir, req) {
   if (!dir || !fs.existsSync(dir)) return;
   const filenames = fs.readdirSync(dir);
 
-  let orgID;
+  let orgId;
   if (req.params.orgName) {
-    orgID = await orgDao.getId(req.params.orgName);
+    orgId = await orgDao.getId(req.params.orgName);
   }
 
   for (const filename of filenames) {
     if (filename.endsWith(".hbs")) {
       let name = filename.split(".hbs")[0];
       const template = fs.readFileSync(path.join(dir, filename), constants.CHARSET_UTF8);
-      if (constants.CUSTOMIZABLE_FILES.includes(name) && orgID) {
-        const content = await orgDao.getContent({ orgId: orgID, fileType: 'partial', viewName: req.params.viewName, fileName: name + '.hbs' });
+      if (constants.CUSTOMIZABLE_FILES.includes(name) && orgId) {
+        const content = await orgDao.getContent({ orgId: orgId, fileType: 'partial', viewName: req.params.viewName, fileName: name + '.hbs' });
         if (!(content)) {
           hbs.handlebars.registerPartial(name, template);
         }

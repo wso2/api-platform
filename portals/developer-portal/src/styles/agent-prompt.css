@@ -198,7 +198,7 @@
     }
 }
 
-.api-flow-prompt-toolbar {
+.api-workflow-prompt-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -207,7 +207,7 @@
     background: var(--secondary-bg-color, #f8f9fa);
 }
 
-.api-flow-prompt-pre-wrapper {
+.api-workflow-prompt-pre-wrapper {
     position: relative;
 }
 
@@ -220,7 +220,7 @@
     z-index: 1;
 }
 
-.api-flow-prompt-pre {
+.api-workflow-prompt-pre {
     margin: 0;
     padding: 1.25rem;
     font-size: 0.8125rem;

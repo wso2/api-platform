@@ -32,33 +32,32 @@ const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
     'utf8'
 );
 
-const create = async (orgID, apiMetadata, createdBy, t) => {
+const create = async (orgId, apiMetadata, createdBy, t) => {
 
-    const apiInfo = apiMetadata.apiInfo;
     let owners = {};
-    if (apiInfo.owners) {
-        owners = apiInfo.owners;
+    if (apiMetadata.owners) {
+        owners = apiMetadata.owners;
     }
     try {
         const apiMetadataResponse = await APIMetadata.create({
-            REF_ID: apiInfo.referenceID,
-            STATUS: apiInfo.apiStatus,
-            NAME: apiInfo.apiName,
-            HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
-            DESCRIPTION: apiInfo.apiDescription,
-            VERSION: apiInfo.apiVersion,
-            TYPE: apiInfo.apiType,
-            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
-            TECHNICAL_OWNER: owners.technicalOwner,
-            TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
-            BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
-            BUSINESS_OWNER: owners.businessOwner,
-            SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
-            PRODUCTION_URL: apiMetadata.endPoints.productionURL,
-            METADATA_SEARCH: apiMetadata,
-            ORG_UUID: orgID,
-            CREATED_BY: createdBy,
-            UPDATED_BY: createdBy
+            ref_id: apiMetadata.referenceId,
+            status: apiMetadata.status,
+            name: apiMetadata.name,
+            handle: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
+            description: apiMetadata.description,
+            version: apiMetadata.version,
+            type: apiMetadata.type,
+            agent_visibility: (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
+            technical_owner: owners.technicalOwner,
+            technical_owner_email: owners.technicalOwnerEmail,
+            business_owner_email: owners.businessOwnerEmail,
+            business_owner: owners.businessOwner,
+            sandbox_url: apiMetadata.endPoints.sandboxURL,
+            production_url: apiMetadata.endPoints.productionURL,
+            metadata_search: apiMetadata,
+            org_uuid: orgId,
+            created_by: createdBy,
+            updated_by: createdBy
         },
             { transaction: t }
         );
@@ -71,36 +70,35 @@ const create = async (orgID, apiMetadata, createdBy, t) => {
     }
 };
 
-const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
+const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
 
-    const apiInfo = apiMetadata.apiInfo;
     let owners = {};
-    if (apiInfo.owners) {
-        owners = apiInfo.owners;
+    if (apiMetadata.owners) {
+        owners = apiMetadata.owners;
     }
     try {
         const [updateCount] = await APIMetadata.update({
-            REF_ID: apiInfo.referenceID,
-            STATUS: apiInfo.apiStatus,
-            NAME: apiInfo.apiName,
-            HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
-            DESCRIPTION: apiInfo.apiDescription,
-            VERSION: apiInfo.apiVersion,
-            TYPE: apiInfo.apiType,
-            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
-            TECHNICAL_OWNER: owners.technicalOwner,
-            TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
-            BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
-            BUSINESS_OWNER: owners.businessOwner,
-            SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
-            PRODUCTION_URL: apiMetadata.endPoints.productionURL,
-            METADATA_SEARCH: apiMetadata,
-            UPDATED_BY: updatedBy,
-            UPDATED_AT: new Date()
+            ref_id: apiMetadata.referenceId,
+            status: apiMetadata.status,
+            name: apiMetadata.name,
+            handle: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
+            description: apiMetadata.description,
+            version: apiMetadata.version,
+            type: apiMetadata.type,
+            agent_visibility: (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
+            technical_owner: owners.technicalOwner,
+            technical_owner_email: owners.technicalOwnerEmail,
+            business_owner_email: owners.businessOwnerEmail,
+            business_owner: owners.businessOwner,
+            sandbox_url: apiMetadata.endPoints.sandboxURL,
+            production_url: apiMetadata.endPoints.productionURL,
+            metadata_search: apiMetadata,
+            updated_by: updatedBy,
+            updated_at: new Date()
         }, {
             where: {
-                UUID: apiID,
-                ORG_UUID: orgID,
+                uuid: apiId,
+                org_uuid: orgId,
             },
             returning: false,
             transaction: t
@@ -109,7 +107,7 @@ const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
             return [0, null];
         }
         const updatedInstance = await APIMetadata.findOne({
-            where: { UUID: apiID, ORG_UUID: orgID },
+            where: { uuid: apiId, org_uuid: orgId },
             transaction: t,
         });
         return [updateCount, [updatedInstance]];
@@ -121,13 +119,13 @@ const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
     }
 }
 
-const deleteApi = async (orgID, apiID, t) => {
+const deleteApi = async (orgId, apiId, t) => {
 
     try {
         const apiMetadataResponse = await APIMetadata.destroy({
             where: {
-                UUID: apiID,
-                ORG_UUID: orgID
+                uuid: apiId,
+                org_uuid: orgId
             },
             transaction: t
         });
@@ -140,15 +138,15 @@ const deleteApi = async (orgID, apiID, t) => {
     }
 }
 
-const get = async (orgID, apiID, t) => {
+const get = async (orgId, apiId, t) => {
 
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
                 model: APIContent,
                 where: {
-                    API_UUID: apiID,
-                    TYPE: constants.DOC_TYPES.IMAGES
+                    api_uuid: apiId,
+                    type: constants.DOC_TYPES.IMAGES
                 },
                 required: false
             }, {
@@ -158,20 +156,20 @@ const get = async (orgID, apiID, t) => {
             },
             {
                 model: Labels,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 through: { attributes: [] }
             },
             {
                 model: Tags,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 through: { attributes: [] },
                 required: false
             }
             ],
             where: {
-                ORG_UUID: orgID,
-                UUID: apiID,
-                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                org_uuid: orgId,
+                uuid: apiId,
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             transaction: t
         });
@@ -188,7 +186,7 @@ const getByCondition = async (condition, t, tags) => {
     try {
         const tagsInclude = {
             model: Tags,
-            attributes: ["NAME"],
+            attributes: ["name"],
             through: { attributes: [] },
             required: false
         };
@@ -196,13 +194,13 @@ const getByCondition = async (condition, t, tags) => {
             const tagsArray = tags.split(",").map(tag => tag.trim()).filter(Boolean);
             if (tagsArray.length > 0) {
                 tagsInclude.required = true;
-                tagsInclude.where = { NAME: { [Op.in]: tagsArray } };
+                tagsInclude.where = { name: { [Op.in]: tagsArray } };
             }
         }
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
                 model: APIContent,
-                where: { TYPE: constants.DOC_TYPES.IMAGES },
+                where: { type: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
@@ -223,20 +221,20 @@ const getByCondition = async (condition, t, tags) => {
     }
 }
 
-const list = async (orgID, viewName, t) => {
+const list = async (orgId, viewName, t) => {
 
     const viewDao = require('./viewDao');
-    const viewID = await viewDao.getId(orgID, viewName, t);
+    const viewId = await viewDao.getId(orgId, viewName, t);
     let apiList = [];
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
             where: {
-                ORG_UUID: orgID,
-                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                org_uuid: orgId,
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
                 model: APIContent,
-                where: { TYPE: constants.DOC_TYPES.IMAGES },
+                where: { type: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
@@ -245,18 +243,18 @@ const list = async (orgID, viewName, t) => {
             },
             {
                 model: Labels,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    UUID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewID}')`)
+                    uuid: {
+                        [Op.in]: Sequelize.literal(`(SELECT "label_uuid" FROM "dp_view_label_mappings" WHERE "view_uuid" = '${viewId}')`)
                     }
                 }
             },
             {
                 model: Tags,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 required: false,
                 through: { attributes: [] }
             }
@@ -273,18 +271,18 @@ const list = async (orgID, viewName, t) => {
     return apiList;
 };
 
-const listFromAllViews = async (orgID, t) => {
+const listFromAllViews = async (orgId, t) => {
 
     let apiList = [];
     try {
         const publicAPIS = await APIMetadata.findAll({
             where: {
-                ORG_UUID: orgID,
-                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                org_uuid: orgId,
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
                 model: APIContent,
-                where: { TYPE: constants.DOC_TYPES.IMAGES },
+                where: { type: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
@@ -293,13 +291,13 @@ const listFromAllViews = async (orgID, t) => {
             },
             {
                 model: Labels,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 required: true,
                 through: { attributes: [] }
             },
             {
                 model: Tags,
-                attributes: ["NAME"],
+                attributes: ["name"],
                 required: false,
                 through: { attributes: [] }
             }
@@ -316,55 +314,55 @@ const listFromAllViews = async (orgID, t) => {
     return apiList;
 };
 
-const searchFallback = async (orgID, searchTerm, viewName, t) => {
+const searchFallback = async (orgId, searchTerm, viewName, t) => {
     const viewDao = require('./viewDao');
     const pattern = `%${searchTerm}%`;
-    const viewID = await viewDao.getId(orgID, viewName, t);
+    const viewId = await viewDao.getId(orgId, viewName, t);
 
     const matchingTags = await Tags.findAll({
-        attributes: ['UUID'],
-        where: { ORG_UUID: orgID, NAME: { [Op.like]: pattern } },
+        attributes: ['uuid'],
+        where: { org_uuid: orgId, name: { [Op.like]: pattern } },
         transaction: t,
     });
-    const matchingTagIDs = matchingTags.map(tag => tag.UUID);
+    const matchingTagIDs = matchingTags.map(tag => tag.uuid);
     const matchingTagAPIs = matchingTagIDs.length
         ? await APITags.findAll({
-            attributes: ['API_UUID'],
-            where: { TAG_UUID: { [Op.in]: matchingTagIDs } },
+            attributes: ['api_uuid'],
+            where: { tag_uuid: { [Op.in]: matchingTagIDs } },
             transaction: t,
         })
         : [];
-    const taggedAPIIDs = [...new Set(matchingTagAPIs.map(row => row.API_UUID))];
+    const taggedAPIIDs = [...new Set(matchingTagAPIs.map(row => row.api_uuid))];
 
     return APIMetadata.findAll({
         where: {
-            ORG_UUID: orgID,
-            STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
+            org_uuid: orgId,
+            status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
             [Op.or]: [
                 Sequelize.where(
-                    Sequelize.cast(Sequelize.col('DP_API_METADATA.METADATA_SEARCH'), 'TEXT'),
+                    Sequelize.cast(Sequelize.col('dp_api_metadata.metadata_search'), 'TEXT'),
                     { [Op.like]: pattern }
                 ),
-                { UUID: { [Op.in]: taggedAPIIDs } },
+                { uuid: { [Op.in]: taggedAPIIDs } },
             ],
         },
         include: [
-            { model: APIContent, where: { TYPE: constants.DOC_TYPES.IMAGES }, required: false },
+            { model: APIContent, where: { type: constants.DOC_TYPES.IMAGES }, required: false },
             { model: SubscriptionPlan, through: { attributes: [] }, required: false },
             {
                 model: Labels,
-                attributes: ['NAME'],
+                attributes: ['name'],
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    UUID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewID}')`)
+                    uuid: {
+                        [Op.in]: Sequelize.literal(`(SELECT "label_uuid" FROM "dp_view_label_mappings" WHERE "view_uuid" = '${viewId}')`)
                     }
                 }
             },
             {
                 model: Tags,
-                attributes: ['NAME'],
+                attributes: ['name'],
                 required: false,
                 through: { attributes: [] }
             },
@@ -373,15 +371,15 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
     });
 };
 
-const search = async (orgID, searchTerm, viewName, t) => {
+const search = async (orgId, searchTerm, viewName, t) => {
     if (APIMetadata.sequelize.getDialect() !== 'postgres') {
-        return searchFallback(orgID, searchTerm, viewName, t);
+        return searchFallback(orgId, searchTerm, viewName, t);
     }
     try {
         const viewDao = require('./viewDao');
-        const viewID = await viewDao.getId(orgID, viewName, t);
+        const viewId = await viewDao.getId(orgId, viewName, t);
         const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
-            replacements: { searchTerm, orgID, viewID },
+            replacements: { searchTerm, orgId, viewId },
             type: Sequelize.QueryTypes.SELECT,
         });
         return results;
@@ -393,17 +391,17 @@ const search = async (orgID, searchTerm, viewName, t) => {
     }
 };
 
-const getId = async (orgID, apiHandle) => {
+const getId = async (orgId, apiHandle) => {
 
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['UUID'],
+            attributes: ['uuid'],
             where: {
-                HANDLE: apiHandle,
-                ORG_UUID: orgID
+                handle: apiHandle,
+                org_uuid: orgId
             }
         })
-        return api?.UUID;
+        return api?.uuid;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -412,16 +410,16 @@ const getId = async (orgID, apiHandle) => {
     }
 }
 
-const getHandle = async (orgID, apiRefID) => {
+const getHandle = async (orgId, apiRefId) => {
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['HANDLE'],
+            attributes: ['handle'],
             where: {
-                REF_ID: apiRefID,
-                ORG_UUID: orgID
+                ref_id: apiRefId,
+                org_uuid: orgId
             }
         })
-        return api.HANDLE;
+        return api.handle;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -430,17 +428,17 @@ const getHandle = async (orgID, apiRefID) => {
     }
 }
 
-const getIdByRef = async (orgID, referenceId, t) => {
+const getIdByRef = async (orgId, referenceId, t) => {
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['UUID'],
+            attributes: ['uuid'],
             where: {
-                REF_ID: referenceId,
-                ORG_UUID: orgID
+                ref_id: referenceId,
+                org_uuid: orgId
             },
             transaction: t
         });
-        return api?.UUID;
+        return api?.uuid;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -449,27 +447,27 @@ const getIdByRef = async (orgID, referenceId, t) => {
     }
 };
 
-const getSpecs = async (orgID, apiIDs) => {
+const getSpecs = async (orgId, apiIds) => {
     try {
         const apiSpecsResponse = await APIContent.findAll({
             attributes: [
-                'API_UUID',
-                'FILE_NAME',
-                'FILE_CONTENT'
+                'api_uuid',
+                'file_name',
+                'file_content'
             ],
             where: {
-                API_UUID: {
-                    [Op.in]: apiIDs
+                api_uuid: {
+                    [Op.in]: apiIds
                 },
-                TYPE: constants.DOC_TYPES.API_DEFINITION
+                type: constants.DOC_TYPES.API_DEFINITION
             },
             include: [
                 {
                     model: APIMetadata,
                     required: true,
-                    attributes: ['NAME', 'VERSION', 'HANDLE'],
+                    attributes: ['name', 'version', 'handle'],
                     where: {
-                        ORG_UUID: orgID
+                        org_uuid: orgId
                     }
                 }
             ]
@@ -478,9 +476,9 @@ const getSpecs = async (orgID, apiIDs) => {
         return apiSpecsResponse.map(spec => {
 
             return {
-                apiID: spec.API_UUID,
-                fileName: spec.FILE_NAME,
-                apiSpec: spec.FILE_CONTENT ? spec.FILE_CONTENT.toString('utf8') : null
+                apiId: spec.api_uuid,
+                fileName: spec.file_name,
+                apiSpec: spec.file_content ? spec.file_content.toString('utf8') : null
             };
         }).filter(spec => spec !== null);
     } catch (error) {
@@ -498,8 +496,8 @@ const getSpecs = async (orgID, apiIDs) => {
 
 const existsByNameVersion = async (orgId, apiName, apiVersion) => {
     const row = await APIMetadata.findOne({
-        attributes: ['UUID'],
-        where: { ORG_UUID: orgId, NAME: apiName, VERSION: apiVersion },
+        attributes: ['uuid'],
+        where: { org_uuid: orgId, name: apiName, version: apiVersion },
     });
     return !!row;
 };

@@ -16,13 +16,8 @@ metadata:
 
 spec:
   displayName: Acme Corp
-  organizationIdentifier: ACME   # value of the org claim for this org's users
-  roleClaimName: roles
-  groupsClaimName: groups
-  organizationClaimName: organization
-  adminRole: admin
-  subscriberRole: subscriber
-  superAdminRole: superAdmin
+  idpRefId: ACME                 # value of the org claim for this org's users
+  cpRefId: cp-ref-acme            # optional Control Plane reference ID
   businessOwner: Platform Team
   businessOwnerContact: "+1-202-555-0147"
   businessOwnerEmail: platform-team@acme.com
@@ -32,8 +27,8 @@ spec:
       displayName: Default
 
   views:
-    - name: default
-      displayName: Default View
+    - handle: default
+      name: Default View
       labels:
         - default
 ```
@@ -48,18 +43,13 @@ curl -X POST http://localhost:3000/organizations \
 |---|---|---|
 | `metadata.name` | Yes | URL-safe org handle used in all portal URLs (becomes `orgHandle`) |
 | `spec.displayName` | Yes | Human-friendly organization name shown in the portal UI |
-| `spec.organizationIdentifier` | Yes | Expected value of the org claim for users in this organization |
-| `spec.roleClaimName` | Yes | Name of the JWT claim that carries user roles |
-| `spec.groupsClaimName` | Yes | Name of the JWT claim that carries user groups |
-| `spec.organizationClaimName` | Yes | Name of the JWT claim that identifies the user's organization |
-| `spec.adminRole` | Yes | Claim value that grants portal admin rights |
-| `spec.subscriberRole` | Yes | Claim value that grants developer/subscriber access |
-| `spec.superAdminRole` | Yes | Claim value that grants super-admin access across organizations |
+| `spec.idpRefId` | Yes | The org claim value asserted by your Identity Provider at SSO login. The portal matches an authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match, or login fails for that org's users. |
+| `spec.cpRefId` | No | Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication. |
 | `spec.businessOwner` | No | Contact name for the organization owner |
 | `spec.businessOwnerContact` | No | Business owner's phone or contact string |
 | `spec.businessOwnerEmail` | No | Business owner's email address |
-| `spec.labels` | No | Labels to create for this org. Defaults to a single `default` label if omitted |
-| `spec.views` | No | Views to create for this org. Defaults to a single `default` view if omitted |
+| `spec.labels` | No | Labels to create for this org (array of `{name, displayName}`). Defaults to a single `default` label if omitted |
+| `spec.views` | No | Views to create for this org (array of `{handle, name, labels}`). Defaults to a single `default` view if omitted |
 
 After creation, the organization is accessible at `/<orgHandle>/views/<viewName>` once a view is created for it.
 

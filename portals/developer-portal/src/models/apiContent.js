@@ -18,64 +18,64 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 
-const APIContent = sequelize.define('DP_API_CONTENT', {
-    UUID: {
+const APIContent = sequelize.define('dp_api_content', {
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    API_UUID: {
+    api_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
     },
-    FILE_CONTENT: {
+    file_content: {
         type: DataTypes.BLOB,
         allowNull: false,
     },
-    TYPE: {
+    type: {
         type: DataTypes.STRING(64),
         allowNull: false,
     },
-    FILE_NAME: {
+    file_name: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    LOOKUP_KEY: {
+    lookup_key: {
         type: DataTypes.STRING,
         allowNull: true,
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_API_CONTENT',
+    tableName: 'dp_api_contents',
     returning: true,
     indexes: [
         {
-            name: 'UQ_API_CONTENT_API_TYPE_FILE_NAME',
+            name: 'uq_api_content_api_type_file_name',
             unique: true,
-            fields: ['API_UUID', 'TYPE', 'FILE_NAME']
+            fields: ['api_uuid', 'type', 'file_name']
         },
         {
-            name: 'UQ_API_CONTENT_API_TYPE_LOOKUP_KEY',
+            name: 'uq_api_content_api_type_lookup_key',
             unique: true,
-            fields: ['API_UUID', 'TYPE', 'LOOKUP_KEY']
+            fields: ['api_uuid', 'type', 'lookup_key']
         }
     ]
 });

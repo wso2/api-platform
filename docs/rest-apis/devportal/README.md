@@ -2,9 +2,9 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
 
 Fine-grained Developer Portal API for managing organizations,
-API metadata and content, applications, subscriptions, application credentials, and API flows.
+API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
-Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
+Organization-scoped resources are served under `/devportal/v1`. Operations declare
 the least-privilege OAuth2 scopes required for each resource action.
 
 Base URLs:
@@ -59,15 +59,17 @@ Base URLs:
 
 ### [Labels](labels.md)
 
-- [Create labels](labels.md#create-labels)
-- [Upsert labels](labels.md#upsert-labels)
+- [Create a label](labels.md#create-a-label)
 - [List labels](labels.md#list-labels)
-- [Delete labels](labels.md#delete-labels)
+- [Get a label](labels.md#get-a-label)
+- [Update a label](labels.md#update-a-label)
+- [Delete a label](labels.md#delete-a-label)
 
 ### [Applications](applications.md)
 
 - [List applications for the authenticated user](applications.md#list-applications-for-the-authenticated-user)
 - [Create an application](applications.md#create-an-application)
+- [Get an application](applications.md#get-an-application)
 - [Update an application](applications.md#update-an-application)
 - [Delete an application](applications.md#delete-an-application)
 
@@ -78,6 +80,8 @@ Base URLs:
 - [Get a subscription](subscriptions.md#get-a-subscription)
 - [Update a subscription](subscriptions.md#update-a-subscription)
 - [Delete a subscription](subscriptions.md#delete-a-subscription)
+- [Change subscription plan](subscriptions.md#change-subscription-plan)
+- [Regenerate subscription token](subscriptions.md#regenerate-subscription-token)
 
 ### [API Keys](api-keys.md)
 
@@ -103,14 +107,14 @@ Base URLs:
 - [Generate an OAuth access token](application-keys.md#generate-an-oauth-access-token)
 - [Remove an OAuth client_id mapping](application-keys.md#remove-an-oauth-clientid-mapping)
 
-### [API Flows](api-flows.md)
+### [API Workflows](api-workflows.md)
 
-- [Create an API flow](api-flows.md#create-an-api-flow)
-- [List API flows](api-flows.md#list-api-flows)
-- [Get an API flow](api-flows.md#get-an-api-flow)
-- [Update an API flow](api-flows.md#update-an-api-flow)
-- [Delete an API flow](api-flows.md#delete-an-api-flow)
-- [Generate an API flow agent prompt](api-flows.md#generate-an-api-flow-agent-prompt)
+- [Create an API workflow](api-workflows.md#create-an-api-workflow)
+- [List API workflows](api-workflows.md#list-api-workflows)
+- [Get an API workflow](api-workflows.md#get-an-api-workflow)
+- [Update an API workflow](api-workflows.md#update-an-api-workflow)
+- [Delete an API workflow](api-workflows.md#delete-an-api-workflow)
+- [Generate an API workflow agent prompt](api-workflows.md#generate-an-api-workflow-agent-prompt)
 
 ### [Utilities](utilities.md)
 

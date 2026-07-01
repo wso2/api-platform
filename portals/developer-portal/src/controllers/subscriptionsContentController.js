@@ -31,31 +31,31 @@ const loadSubscriptions = async (req, res, next) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.UUID;
+        const orgId = orgDetails.uuid;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         let allSubscriptions = [];
         try {
             const createdBy = req.user && req.user.sub;
-            const localSubs = await subDao.list(orgID, { createdBy });
+            const localSubs = await subDao.list(orgId, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
-                id: sub.UUID,
+                id: sub.uuid,
                 type: 'TOKEN_BASED',
-                apiName: sub.DP_API_METADATA?.NAME || '',
-                apiVersion: sub.DP_API_METADATA?.VERSION || '',
-                apiHandle: sub.DP_API_METADATA?.HANDLE || '#',
-                planName: sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
-                status: sub.STATUS,
-                subscriptionToken: sub.TOKEN,
-                createdAt: sub.CREATED_AT || null,
+                apiName: sub.dp_api_metadata?.name || '',
+                apiVersion: sub.dp_api_metadata?.version || '',
+                apiHandle: sub.dp_api_metadata?.handle || '#',
+                planName: sub.dp_subscription_plan?.name || '',
+                status: sub.status,
+                subscriptionToken: sub.token,
+                createdAt: sub.created_at || null,
             }));
         } catch (err) {
             logger.warn('Failed to load subscriptions', {
-                error: err.message, orgID
+                error: err.message, orgId
             });
         }
 
@@ -71,12 +71,12 @@ const loadSubscriptions = async (req, res, next) => {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
             devportalMode: devportalMode,
-            orgID: orgID,
+            orgId: orgId,
             subscriptions: allSubscriptions,
             isReadOnlyMode: config.readOnlyMode,
         };
 
-        html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/subscriptions', viewName);
+        html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/subscriptions', viewName);
         res.send(html);
     } catch (error) {
         logger.error('Error loading subscriptions page', {

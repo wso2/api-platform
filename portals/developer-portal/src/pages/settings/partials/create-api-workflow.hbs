@@ -1,14 +1,14 @@
 <div class="af-wizard">
 
     {{!-- Hidden fields --}}
-    <input type="hidden" id="editingApiFlowId" value="" />
-    <input type="hidden" id="editingApiFlowAgentVisibility" value="VISIBLE" />
+    <input type="hidden" id="editingApiWorkflowId" value="" />
+    <input type="hidden" id="editingApiWorkflowAgentVisibility" value="VISIBLE" />
 
     {{!-- Hidden radio inputs for agentVisibility (keep IDs/names intact for JS) --}}
     <div style="display:none;">
-        <input type="radio" class="btn-check" name="apiFlowAgentVisibility" id="agentVisibilityVisible" value="VISIBLE"
+        <input type="radio" class="btn-check" name="apiWorkflowAgentVisibility" id="agentVisibilityVisible" value="VISIBLE"
             autocomplete="off" checked />
-        <input type="radio" class="btn-check" name="apiFlowAgentVisibility" id="agentVisibilityHidden" value="HIDDEN"
+        <input type="radio" class="btn-check" name="apiWorkflowAgentVisibility" id="agentVisibilityHidden" value="HIDDEN"
             autocomplete="off" />
     </div>
 
@@ -50,7 +50,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label for="apiFlowName" class="form-label fw-semibold d-flex align-items-center gap-2">
+                    <label for="apiWorkflowName" class="form-label fw-semibold d-flex align-items-center gap-2">
                         <span>Name <span class="text-danger">*</span></span>
                         <span class="af-field-status d-none" id="afNameStatus"
                             data-bs-toggle="tooltip" data-bs-placement="right" data-bs-trigger="hover focus"
@@ -58,13 +58,13 @@
                             <i class="bi af-fsi" id="afNameStatusIcon"></i>
                         </span>
                     </label>
-                    <input type="text" class="form-control" id="apiFlowName" placeholder="e.g. User Onboarding Flow"
+                    <input type="text" class="form-control" id="apiWorkflowName" placeholder="e.g. User Onboarding Flow"
                         maxlength="120" />
                     <div class="invalid-feedback">Name is required.</div>
                 </div>
 
                 <div class="mb-4">
-                    <label for="apiFlowDescription" class="form-label fw-semibold d-flex align-items-center gap-2">
+                    <label for="apiWorkflowDescription" class="form-label fw-semibold d-flex align-items-center gap-2">
                         <span>Description <span class="text-danger">*</span></span>
                         <span class="af-field-status d-none" id="afDescStatus"
                             data-bs-toggle="tooltip" data-bs-placement="right" data-bs-trigger="hover focus"
@@ -72,7 +72,7 @@
                             <i class="bi af-fsi" id="afDescStatusIcon"></i>
                         </span>
                     </label>
-                    <textarea class="form-control" id="apiFlowDescription" rows="4"
+                    <textarea class="form-control" id="apiWorkflowDescription" rows="4"
                         placeholder="e.g. Orchestrates a multi-step patient booking workflow across appointment scheduling and healthcare provider systems…"></textarea>
                     <div class="invalid-feedback">Description is required.</div>
                 </div>
@@ -233,7 +233,7 @@
                     {{!-- Hidden checkboxes — source of truth for selection --}}
                     <div style="display:none;" id="apiCheckboxStore">
                         {{#each orgAPIs}}
-                        <input type="checkbox" class="api-flow-api-checkbox" value="{{this.apiId}}"
+                        <input type="checkbox" class="api-workflow-api-checkbox" value="{{this.apiId}}"
                             data-api-name="{{this.apiName}}" data-api-handle="{{this.apiHandle}}"
                             data-api-description="{{this.apiDescription}}" data-api-type="{{this.apiType}}"
                             data-production-url="{{this.productionUrl}}"
@@ -335,7 +335,7 @@
                 </div>
 
                 {{!-- Agent prompt textarea --}}
-                <textarea class="form-control api-flow-prompt-editor" id="agentPromptField" rows="14"
+                <textarea class="form-control api-workflow-prompt-editor" id="agentPromptField" rows="14"
                     placeholder="Click 'Regenerate' to create your agent prompt, or write one manually…"></textarea>
                 <div class="invalid-feedback">Agent prompt is required.</div>
 
@@ -365,7 +365,7 @@
             {{!-- RIGHT PANEL — Step 2: Arazzo Spec Editor --}}
             <div class="af-right-panel d-none" id="afRight2">
                 <div class="af-rp-header">
-                    <span>API Flow Definition</span>
+                    <span>API Workflow Definition</span>
                 </div>
 
                 {{!-- Action buttons row --}}
@@ -430,7 +430,7 @@
                     </div>
 
                     {{!-- Arazzo editor pane --}}
-                    <div id="apiFlowDefinitionWrapper" class="d-none">
+                    <div id="apiWorkflowDefinitionWrapper" class="d-none">
                         <div class="af-editor-bar">
                             <span class="af-editor-filename">workflow.arazzo.yaml</span>
                             <span class="af-editor-linecount" id="arazoLineCount">0 lines</span>
@@ -443,9 +443,9 @@
                                         with Claude</strong> to create the Arazzo spec.</p>
                             </div>
                         </div>
-                        <textarea id="apiFlowDefinition" style="display:none;"
+                        <textarea id="apiWorkflowDefinition" style="display:none;"
                             placeholder="arazzo: '1.0.0'&#10;info:&#10;  title: My Flow&#10;  version: 1.0.0&#10;workflows:&#10;  - workflowId: my-flow&#10;    steps: []"></textarea>
-                        <div id="apiFlowDefinitionInvalid" class="invalid-feedback" style="display:none;">Arazzo
+                        <div id="apiWorkflowDefinitionInvalid" class="invalid-feedback" style="display:none;">Arazzo
                             Specification is required.</div>
                     </div>
 
@@ -514,11 +514,11 @@
     {{!-- ── Wizard Footer ── --}}
     <div class="cfg-wizard-actions">
         <div class="cfg-wizard-actions-right">
-            <button type="button" class="cfg-btn-ghost" id="cancelApiFlowBtn2">Cancel</button>
+            <button type="button" class="cfg-btn-ghost" id="cancelApiWorkflowBtn2">Cancel</button>
             <button type="button" class="cfg-btn-ghost d-none" id="afBackBtn">Back</button>
             <button type="button" class="cfg-btn-primary" id="afContinueBtn">Next</button>
-            <div class="btn-group d-none" id="saveApiFlowGroup">
-                <button type="button" class="cfg-btn-primary af-save-main" id="saveApiFlowBtn"
+            <div class="btn-group d-none" id="saveApiWorkflowGroup">
+                <button type="button" class="cfg-btn-primary af-save-main" id="saveApiWorkflowBtn"
                     data-status="PUBLISHED">
                     <i class="bi bi-send me-1"></i> Publish Flow
                 </button>

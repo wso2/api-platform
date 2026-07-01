@@ -48,22 +48,22 @@ let intervalHandle = null;
  * Returns { ok, status, error }.
  */
 async function post(delivery, event) {
-    const sub = await getSubscriber(delivery.SUBSCRIBER_ID);
+    const sub = await getSubscriber(delivery.subscriber_id);
     if (!sub) {
-        return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found` };
+        return { ok: false, error: `Subscriber '${delivery.subscriber_id}' not found` };
     }
 
-    const deliveryId = delivery.UUID;
+    const deliveryId = delivery.uuid;
     const timeoutMs = (sub && sub.timeoutMs) || 5000;
 
-    const encryptedFields = delivery.ENCRYPTED_FIELDS || {};
+    const encryptedFields = delivery.encrypted_fields || {};
     const outgoing = {
-        event_id: event.UUID,
-        event_type: event.TYPE,
-        occurred_at: event.OCCURRED_AT,
-        org: { ref_id: event.CP_REF_ID || event.ORG_UUID },
+        event_id: event.uuid,
+        event_type: event.type,
+        occurred_at: event.occurred_at,
+        org: { ref_id: event.cp_ref_id || event.org_uuid },
         encrypted_fields: Object.keys(encryptedFields),
-        data: { ...(event.PAYLOAD || {}), ...encryptedFields }
+        data: { ...(event.payload || {}), ...encryptedFields }
     };
 
     const body = JSON.stringify(outgoing);
@@ -71,8 +71,8 @@ async function post(delivery, event) {
     const headers = {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
-        'X-Devportal-Event': event.TYPE,
-        'X-Devportal-Event-Id': event.UUID,
+        'X-Devportal-Event': event.type,
+        'X-Devportal-Event-Id': event.uuid,
         'X-Devportal-Delivery-Id': deliveryId,
     };
     if (sub.secret) {
@@ -81,7 +81,7 @@ async function post(delivery, event) {
     }
 
     return new Promise((resolve) => {
-        const parsedUrl = new URL(delivery.TARGET_URL);
+        const parsedUrl = new URL(delivery.target_url);
         const transport = parsedUrl.protocol === 'https:' ? https : http;
         const options = {
             hostname: parsedUrl.hostname,
@@ -110,44 +110,44 @@ async function runBatch() {
     const deliveries = await eventDao.claimDueDeliveries(batchSize);
     if (deliveries.length === 0) return;
 
-    const eventIds = [...new Set(deliveries.map(d => d.EVENT_UUID))];
-    const events = await DPEvent.findAll({ where: { UUID: eventIds } });
-    const eventMap = Object.fromEntries(events.map(e => [e.UUID, e]));
+    const eventIds = [...new Set(deliveries.map(d => d.event_uuid))];
+    const events = await DPEvent.findAll({ where: { uuid: eventIds } });
+    const eventMap = Object.fromEntries(events.map(e => [e.uuid, e]));
 
-    const orgIds = [...new Set(events.map(e => e.ORG_UUID))];
-    const orgs = await Organization.findAll({ where: { UUID: orgIds }, attributes: ['UUID', 'CP_REF_ID'] });
-    const orgCpRefIdMap = Object.fromEntries(orgs.map(o => [o.UUID, o.CP_REF_ID]));
+    const orgIds = [...new Set(events.map(e => e.org_uuid))];
+    const orgs = await Organization.findAll({ where: { uuid: orgIds }, attributes: ['uuid', 'cp_ref_id'] });
+    const orgCpRefIdMap = Object.fromEntries(orgs.map(o => [o.uuid, o.cp_ref_id]));
 
     for (const delivery of deliveries) {
-        const event = eventMap[delivery.EVENT_UUID];
+        const event = eventMap[delivery.event_uuid];
         if (!event) {
-            logger.warn('Event not found for delivery', { deliveryId: delivery.UUID });
+            logger.warn('Event not found for delivery', { deliveryId: delivery.uuid });
             continue;
         }
-        event.CP_REF_ID = orgCpRefIdMap[event.ORG_UUID] ?? null;
+        event.cp_ref_id = orgCpRefIdMap[event.org_uuid] ?? null;
 
         let result;
         try {
             result = await post(delivery, event);
         } catch (postErr) {
-            await eventDao.markFailed(delivery.UUID, { httpStatus: 0, error: postErr.message });
+            await eventDao.markFailed(delivery.uuid, { httpStatus: 0, error: postErr.message });
             logger.error('Post threw unexpectedly', {
-                deliveryId: delivery.UUID, error: postErr.message
+                deliveryId: delivery.uuid, error: postErr.message
             });
             continue;
         }
 
         if (result.ok) {
-            await eventDao.markDelivered(delivery.UUID, result.status);
+            await eventDao.markDelivered(delivery.uuid, result.status);
             logger.info('Delivered', {
-                deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
-                eventType: event.TYPE, status: result.status
+                deliveryId: delivery.uuid, subscriberId: delivery.subscriber_id,
+                eventType: event.type, status: result.status
             });
         } else {
-            await eventDao.markFailed(delivery.UUID, { httpStatus: result.status, error: result.error });
+            await eventDao.markFailed(delivery.uuid, { httpStatus: result.status, error: result.error });
             logger.warn('[deliveryWorker] failed', {
-                deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
-                eventType: event.TYPE, status: result.status, error: result.error
+                deliveryId: delivery.uuid, subscriberId: delivery.subscriber_id,
+                eventType: event.type, status: result.status, error: result.error
             });
         }
     }

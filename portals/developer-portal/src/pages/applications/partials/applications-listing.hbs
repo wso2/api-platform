@@ -176,11 +176,11 @@
     var btn = this;
     btn.disabled = true;
     btn.textContent = 'Creating…';
-    fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
+    fetch(devportalApi.org('/applications'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ name: name, description: desc, type: 'WEB' }),
+      body: JSON.stringify({ name: name, description: desc }),
     })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -217,7 +217,7 @@
     var btn = this;
     btn.disabled = true;
     btn.textContent = 'Deleting…';
-    fetch(devportalApi.org(devportalApi.orgId, '/applications/' + pendingDeleteId), {
+    fetch(devportalApi.org('/applications/' + pendingDeleteId), {
       method: 'DELETE',
       credentials: 'include',
     })

@@ -28,7 +28,9 @@ The portal fires events in the background via a delivery worker. Each delivery i
 | `apikey.revoked` | An API key was revoked | — |
 | `apikey.application_updated` | A key's application association changed | — |
 | `subscription.created` | A developer subscribed to an API | Subscription token (`token`) |
-| `subscription.updated` | A subscription's status changed, or its token was regenerated | Subscription token (`token`, only on token regeneration) |
+| `subscription.updated` | A subscription's status changed (ACTIVE ↔ INACTIVE) | — |
+| `subscription.plan_changed` | A subscription's plan was changed in-place | — |
+| `subscription.token_regenerated` | A subscription token was regenerated | New subscription token (`token`) |
 | `subscription.deleted` | A developer unsubscribed | — |
 | `application.created` | A developer created an application | — |
 | `application.updated` | An application was renamed or its details changed | — |
@@ -53,7 +55,7 @@ webhooks:
 ### Create a subscriber
 
 ```bash
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers" \
+curl -X POST "http://localhost:3000/devportal/v1/webhook-subscribers" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -74,7 +76,7 @@ The response never includes the secret. To set a public key for envelope-encrypt
 | `name` | Yes | Unique within the organization |
 | `url` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
 | `secret` | No | Minimum 32-character string used to sign each event with HMAC-SHA256. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) |
-| `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.updated` events |
+| `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit or leave empty to receive all events |
 | `enabled` | No | Defaults to `true`. Disable a subscriber without deleting it |
 | `timeoutMs` | No | HTTP request timeout in milliseconds (default: 5000) |
@@ -83,18 +85,18 @@ The response never includes the secret. To set a public key for envelope-encrypt
 
 ```bash
 # List
-curl "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/devportal/v1/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
 
 # Get one
-curl "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/devportal/v1/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
 
 # Update (only supplied fields are changed; omitted fields keep their stored values)
-curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" \
+curl -X PUT "http://localhost:3000/devportal/v1/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 
 # Delete
-curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" \
+curl -X DELETE "http://localhost:3000/devportal/v1/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -295,11 +297,67 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 
 ### `subscription.updated`
 
-Fired when a subscription's status changes, or when the subscription token is regenerated. When the token is regenerated, `token` carries the new value encrypted using the subscriber's RSA public key — use the same decryption steps as `subscription.created`.
+Fired when a subscription's status changes (ACTIVE ↔ INACTIVE). No encrypted fields are included.
 
 ```json
 {
   "event_type": "subscription.updated",
+  "encrypted_fields": [],
+  "data": {
+    "subscription_id": "sub-uuid",
+    "subscriber_id": "user@example.com",
+    "subscription_plan": {
+      "ref_id": "plan-uuid",
+      "name": "Gold"
+    },
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    },
+    "status": "INACTIVE"
+  }
+}
+```
+
+### `subscription.plan_changed`
+
+Fired when a developer switches their subscription to a different plan. The subscription UUID and token are unchanged — only the plan association is updated. Your subscriber should update the rate-limit or quota tier for this `subscription_id` without revoking access.
+
+```json
+{
+  "event_type": "subscription.plan_changed",
+  "encrypted_fields": [],
+  "data": {
+    "subscription_id": "sub-uuid",
+    "subscriber_id": "user@example.com",
+    "subscription_plan": {
+      "ref_id": "new-plan-uuid",
+      "name": "Platinum"
+    },
+    "previous_plan": {
+      "ref_id": "old-plan-uuid",
+      "name": "Gold"
+    },
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    }
+  }
+}
+```
+
+- `subscription_plan` reflects the **new** plan; `previous_plan` is the plan that was in effect before the change
+- The subscription token is not rotated — existing integrations continue to work without any credential update
+
+### `subscription.token_regenerated`
+
+Fired when a developer regenerates a subscription token. The old token is immediately invalidated; `token` carries the new value encrypted using the subscriber's RSA public key. Your subscriber must replace the stored credential for this `subscription_id` at the gateway before the next request arrives.
+
+```json
+{
+  "event_type": "subscription.token_regenerated",
   "encrypted_fields": ["token"],
   "data": {
     "subscription_id": "sub-uuid",
@@ -323,7 +381,9 @@ Fired when a subscription's status changes, or when the subscription token is re
 }
 ```
 
-- `token` and its entry in `encrypted_fields` are absent when the update did not involve token regeneration (e.g. a status change only)
+- `token` decrypts to the new subscription token — use the same decryption steps as `subscription.created`
+- `token` and its entry in `encrypted_fields` are present only when a public key is configured for the subscriber; if no public key is configured, the new token is not delivered via webhook
+- This is the only event that carries a new token secret after creation — if decryption fails, the developer must regenerate again
 
 ### `subscription.deleted`
 
@@ -506,11 +566,11 @@ Each delivery is attempted exactly once. If your subscriber endpoint is unavaila
 ### List recent events
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/webhook-events -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get event details
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
 ```
