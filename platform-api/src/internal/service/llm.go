@@ -737,6 +737,13 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		openapiSpec = tpl.OpenAPISpec
 	}
 
+	// Resolve any associated gateways up-front so they can be persisted within the
+	// same transaction as the provider create.
+	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
@@ -760,6 +767,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
 		Origin: constants.OriginCP,
+		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
@@ -950,6 +958,19 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		m.Configuration = existing.Configuration
 	}
 
+	// Gateway associations are managed only when the field is present in the request. An
+	// omitted field leaves associations untouched; an explicit (possibly empty) list
+	// replaces the full set, removing any mapping no longer listed. Deployment state is not
+	// consulted and deployment records are never modified here.
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+	if manage {
+		m.AssociatedGateways = requested
+		m.ReplaceAssociatedGateways = true
+	}
+
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProviderNotFound
@@ -1091,6 +1112,13 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, err
 	}
 
+	// Resolve any associated gateways up-front so they can be persisted within the
+	// same transaction as the proxy create.
+	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
@@ -1113,6 +1141,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
 		Origin: constants.OriginCP,
+		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
@@ -1348,6 +1377,20 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		m.Version = existing.Version
 		m.ProviderUUID = existing.ProviderUUID
 		m.Configuration = existing.Configuration
+	}
+
+
+	// Gateway associations are managed only when the field is present in the request. An
+	// omitted field leaves associations untouched; an explicit (possibly empty) list
+	// replaces the full set, removing any mapping no longer listed. Deployment state is not
+	// consulted and deployment records are never modified here.
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+	if manage {
+		m.AssociatedGateways = requested
+		m.ReplaceAssociatedGateways = true
 	}
 
 	if err := s.repo.Update(m); err != nil {
@@ -2336,7 +2379,31 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
+	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
+		out.AssociatedGateways = associated
+	}
 	return out
+}
+
+// mapAssociatedGatewaysModelToAPI maps persisted gateway associations back to the
+// API shape, deserializing each metadata payload into the configurations object.
+// Returns nil when there are no associations so the field is omitted from responses.
+func mapAssociatedGatewaysModelToAPI(in []model.AssociatedGatewayMapping) *[]api.AssociatedGateway {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.AssociatedGateway, 0, len(in))
+	for _, a := range in {
+		ag := api.AssociatedGateway{Id: a.GatewayHandle}
+		if a.Metadata != "" {
+			configurations := map[string]interface{}{}
+			if err := json.Unmarshal([]byte(a.Metadata), &configurations); err == nil {
+				ag.Configurations = &configurations
+			}
+		}
+		out = append(out, ag)
+	}
+	return &out
 }
 
 func validateModelProviders(template string, providers *[]api.LLMModelProvider) error {
@@ -2677,6 +2744,9 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 	out.GlobalPolicies = globalPoliciesProxy
 	out.OperationPolicies = operationPoliciesProxy
 	out.Policies = nil
+	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
+		out.AssociatedGateways = associated
+	}
 	return out
 }
 
@@ -2720,4 +2790,82 @@ func marshalUpstreamForValidation(upstream interface{}) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+func isAssociatedGatewaysAvailable(associatedGateways *[]api.AssociatedGateway) bool {
+	if associatedGateways == nil || len(*associatedGateways) == 0 {
+		return false
+	}
+	return true
+}
+
+// resolveManagedAssociatedGateways is the shared update-time entry point for managing an
+// artifact's gateway associations, used by LLM providers, LLM proxies and MCP proxies.
+//
+// It encodes the omitted-vs-empty semantics: when the request's associatedGateways field
+// is omitted (nil), manage is false and associations are left untouched; when it is
+// present (even empty), it resolves the requested set and manage is true. Callers assign
+// the returned set to their own model and set its ReplaceAssociatedGateways flag only when
+// manage is true; the repo then replaces the full set (associations no longer in the list
+// are removed). Deployment state is not consulted — dropping a gateway an artifact is
+// deployed on removes only the mapping and never touches the deployment records.
+func resolveManagedAssociatedGateways(
+	gatewayRepo repository.GatewayRepository,
+	orgUUID string,
+	requestedGateways *[]api.AssociatedGateway,
+) (resolved []model.AssociatedGatewayMapping, manage bool, err error) {
+	if requestedGateways == nil {
+		return nil, false, nil
+	}
+	resolved, err = resolveAssociatedGateways(gatewayRepo, orgUUID, requestedGateways)
+	if err != nil {
+		return nil, false, err
+	}
+	return resolved, true, nil
+}
+
+// resolveAssociatedGateways validates each requested gateway association, resolving
+// the gateway handle to its UUID and serializing any per-gateway configuration
+// overrides into the metadata column. Returns nil when no associations are requested.
+func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID string, associatedGateways *[]api.AssociatedGateway) ([]model.AssociatedGatewayMapping, error) {
+	if !isAssociatedGatewaysAvailable(associatedGateways) {
+		return nil, nil
+	}
+	if gatewayRepo == nil {
+		return nil, fmt.Errorf("could not initialize gateway repository")
+	}
+
+	resolved := make([]model.AssociatedGatewayMapping, 0, len(*associatedGateways))
+	seen := make(map[string]struct{}, len(*associatedGateways))
+	for _, ag := range *associatedGateways {
+		gw, err := gatewayRepo.GetByHandleAndOrgID(ag.Id, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate associated gateway %q: %w", ag.Id, err)
+		}
+		if gw == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+
+		// Associations are a set (enforced by the artifact_gateway_mappings primary key).
+		// Reject duplicate gateways up-front rather than letting the repo insert fail.
+		if _, dup := seen[gw.ID]; dup {
+			return nil, fmt.Errorf("%w: duplicate associated gateway %q", constants.ErrInvalidInput, ag.Id)
+		}
+		seen[gw.ID] = struct{}{}
+
+		metadata := ""
+		if ag.Configurations != nil && len(*ag.Configurations) > 0 {
+			metadataJSON, err := json.Marshal(*ag.Configurations)
+			if err != nil {
+				return nil, fmt.Errorf("failed to serialize configurations for gateway %q: %w", ag.Id, err)
+			}
+			metadata = string(metadataJSON)
+		}
+
+		resolved = append(resolved, model.AssociatedGatewayMapping{
+			GatewayUUID: gw.ID,
+			Metadata:    metadata,
+		})
+	}
+	return resolved, nil
 }
