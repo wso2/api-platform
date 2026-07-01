@@ -824,7 +824,7 @@ func TestUpdateApplication_RejectsHandleChange(t *testing.T) {
 	}
 	svc := &ApplicationService{appRepo: appRepo}
 
-	resp, err := svc.UpdateApplication("my-app", &api.UpdateApplicationRequest{
+	resp, err := svc.UpdateApplication("my-app", &api.Application{
 		Id: "renamed-app",
 	}, orgID, "user-1")
 	if !errors.Is(err, constants.ErrHandleImmutable) {

@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	api "platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
@@ -62,10 +63,6 @@ type CreateSubscriptionRequest struct {
 	Status             string  `json:"status,omitempty"`
 }
 
-// UpdateSubscriptionRequest is the body for PUT /api/v0.9/subscriptions/:subscriptionId
-type UpdateSubscriptionRequest struct {
-	Status string `json:"status,omitempty"`
-}
 
 // CreateSubscription handles POST /api/v0.9/subscriptions
 func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
@@ -264,12 +261,16 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
 	}
-	var req UpdateSubscriptionRequest
+	var req api.Subscription
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
-	switch req.Status {
+	var status string
+	if req.Status != nil {
+		status = string(*req.Status)
+	}
+	switch status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid subscription status"))
@@ -279,7 +280,7 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, req.Status)
+	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, status)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))

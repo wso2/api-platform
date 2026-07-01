@@ -587,7 +587,7 @@ func mapWebBrokerAPIModelToListItem(m *model.WebBrokerAPI) *api.WebBrokerAPIList
 
 	return &api.WebBrokerAPIListItem{
 		Id:              utils.StringPtrIfNotEmpty(m.Handle),
-		DisplayName:     utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:     m.Name,
 		Version:         utils.StringPtrIfNotEmpty(m.Version),
 		ProjectId:       utils.StringPtrIfNotEmpty(m.ProjectUUID),
 		Context:         m.Configuration.Context,

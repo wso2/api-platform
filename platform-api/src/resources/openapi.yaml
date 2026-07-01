@@ -265,7 +265,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateProjectRequest'
+              $ref: '#/components/schemas/Project'
       responses:
         '200':
           description: Project updated successfully
@@ -436,7 +436,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateRESTAPIRequest'
+              $ref: '#/components/schemas/RESTAPI'
       responses:
         '200':
           description: API updated successfully
@@ -3353,7 +3353,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateGatewayRequest'
+              $ref: '#/components/schemas/GatewayResponse'
       responses:
         '200':
           description: Gateway updated successfully
@@ -3906,7 +3906,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateApplicationRequest'
+              $ref: '#/components/schemas/Application'
       responses:
         '200':
           description: Application updated successfully
@@ -4343,7 +4343,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateSubscriptionPlanRequest'
+              $ref: '#/components/schemas/SubscriptionPlan'
       responses:
         '200':
           description: Updated subscription plan
@@ -4568,7 +4568,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateSubscriptionRequest'
+              $ref: '#/components/schemas/Subscription'
       responses:
         '200':
           description: Updated subscription
@@ -5218,28 +5218,6 @@ components:
           description: Description of the project
           example: "This is the default project for development"
 
-    UpdateProjectRequest:
-      type: object
-      required:
-        - id
-      properties:
-        id:
-          type: string
-          description: Handle of the project — must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
-          minLength: 1
-          maxLength: 63
-          example: "default-project"
-        displayName:
-          type: string
-          description: Human-readable name for the project
-          minLength: 1
-          maxLength: 128
-          example: "Updated Project Name"
-        description:
-          type: string
-          description: Description of the project
-          example: "Updated project description"
-
     Project:
       type: object
       required:
@@ -5331,30 +5309,6 @@ components:
           type: string
           description: Creator identifier
           example: "admin"
-
-    UpdateApplicationRequest:
-      type: object
-      required:
-        - id
-      properties:
-        id:
-          type: string
-          description: Application handle/identifier. Immutable; must match the path parameter — returns 400 if they differ.
-          minLength: 1
-          maxLength: 63
-          example: "my-app-handle"
-        displayName:
-          type: string
-          description: Human-readable name for the application
-          minLength: 1
-          maxLength: 128
-          example: "Updated GenAI App"
-        description:
-          type: string
-          description: Description of the application
-          example: "Updated application description"
-        type:
-          $ref: '#/components/schemas/ApplicationType'
 
     Application:
       type: object
@@ -6174,37 +6128,6 @@ components:
           description: Timestamp when gateway was last updated
           example: "2025-10-14T10:30:00Z"
 
-    UpdateGatewayRequest:
-      type: object
-      required:
-        - id
-      properties:
-        id:
-          type: string
-          description: Handle of the gateway — must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
-          minLength: 1
-          maxLength: 63
-          example: "prod-gateway-01"
-        displayName:
-          type: string
-          minLength: 1
-          maxLength: 128
-          description: Human-readable gateway name
-          example: "Updated Production Gateway"
-        description:
-          type: string
-          description: Description of the gateway
-          example: "Updated gateway description"
-        isCritical:
-          type: boolean
-          description: Whether the gateway is critical for production
-          example: true
-        properties:
-          type: object
-          additionalProperties: true
-          description: Custom key-value properties for the gateway
-          example: {"region": "us-west", "tier": "premium"}
-
     Pagination:
       type: object
       required:
@@ -6380,13 +6303,6 @@ components:
             - version
             - projectId
 
-    UpdateRESTAPIRequest:
-      allOf:
-        - $ref: '#/components/schemas/RESTAPI'
-      description: |
-        Full replacement request for a REST API. All required fields from the API schema must be
-        provided. If `id` is included, it must match the path parameter — returns 400 if they differ.
-
     TimeUnit:
       type: string
       description: Time unit for API key expiration duration
@@ -6477,6 +6393,7 @@ components:
     UpdateAPIKeyRequest:
       type: object
       required:
+        - displayName
         - apiKey
       properties:
         name:
@@ -6584,39 +6501,6 @@ components:
       then:
         required: [throttleLimitCount, throttleLimitUnit]
 
-    UpdateSubscriptionPlanRequest:
-      type: object
-      properties:
-        displayName:
-          type: string
-          description: Human-readable name for the subscription plan
-          minLength: 1
-          maxLength: 128
-        billingPlan:
-          type: string
-        stopOnQuotaReach:
-          type: boolean
-        throttleLimitCount:
-          type: integer
-          minimum: 1
-          description: Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
-        throttleLimitUnit:
-          type: string
-          description: Throttle window unit (must be paired with throttleLimitCount)
-          enum: [MINUTE, HOUR, DAY, MONTH]
-        expiryTime:
-          type: string
-          format: date-time
-        status:
-          type: string
-          enum: [ACTIVE, INACTIVE]
-      if:
-        anyOf:
-          - required: [throttleLimitCount]
-          - required: [throttleLimitUnit]
-      then:
-        required: [throttleLimitCount, throttleLimitUnit]
-
     SubscriptionPlan:
       type: object
       required:
@@ -6697,14 +6581,6 @@ components:
           description: Subscription status (default ACTIVE)
           enum: [ACTIVE, INACTIVE, REVOKED]
           default: ACTIVE
-
-    UpdateSubscriptionRequest:
-      type: object
-      properties:
-        status:
-          type: string
-          description: New subscription status
-          enum: [ACTIVE, INACTIVE, REVOKED]
 
     Subscription:
       type: object
@@ -9175,6 +9051,7 @@ components:
     SecretUpdateRequest:
       type: object
       required:
+        - displayName
         - value
       properties:
         id:

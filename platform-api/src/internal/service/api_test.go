@@ -59,7 +59,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 	tests := []struct {
 		name                      string
 		existingAPI               *model.API
-		req                       *api.UpdateRESTAPIRequest
+		req                       *api.RESTAPI
 		mockHandleExists          bool
 		mockHandleError           error
 		mockNameVersionExists     bool
@@ -75,7 +75,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:     &api.UpdateRESTAPIRequest{},
+			req:     &api.RESTAPI{},
 			wantErr: false,
 		},
 		{
@@ -84,7 +84,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:                       &api.UpdateRESTAPIRequest{DisplayName: "Updated Name"},
+			req:                       &api.RESTAPI{DisplayName: "Updated Name"},
 			mockNameVersionExists:     false,
 			wantErr:                   false,
 			expectedExcludeHandle:     "my-api",
@@ -96,7 +96,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:                   &api.UpdateRESTAPIRequest{DisplayName: "Conflicting Name"},
+			req:                   &api.RESTAPI{DisplayName: "Conflicting Name"},
 			mockNameVersionExists: true,
 			wantErr:               true,
 			expectedErr:           constants.ErrAPINameVersionAlreadyExists,
@@ -107,7 +107,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:         &api.UpdateRESTAPIRequest{LifeCycleStatus: statusPtr("INVALID_STATE")},
+			req:         &api.RESTAPI{LifeCycleStatus: statusPtr("INVALID_STATE")},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidLifecycleState,
 		},
@@ -117,7 +117,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:         &api.UpdateRESTAPIRequest{Kind: ptr("INVALID_TYPE")},
+			req:         &api.RESTAPI{Kind: ptr("INVALID_TYPE")},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidAPIType,
 		},
@@ -127,7 +127,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:         &api.UpdateRESTAPIRequest{Transport: slicePtr([]string{"invalid"})},
+			req:         &api.RESTAPI{Transport: slicePtr([]string{"invalid"})},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidTransport,
 		},
@@ -137,7 +137,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:     &api.UpdateRESTAPIRequest{LifeCycleStatus: statusPtr("PUBLISHED")},
+			req:     &api.RESTAPI{LifeCycleStatus: statusPtr("PUBLISHED")},
 			wantErr: false,
 		},
 		{
@@ -146,7 +146,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:     &api.UpdateRESTAPIRequest{Kind: ptr("RestApi")},
+			req:     &api.RESTAPI{Kind: ptr("RestApi")},
 			wantErr: false,
 		},
 		{
@@ -155,7 +155,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				Handle:  "my-api",
 				Version: "v1",
 			},
-			req:     &api.UpdateRESTAPIRequest{Transport: slicePtr([]string{"https"})},
+			req:     &api.RESTAPI{Transport: slicePtr([]string{"https"})},
 			wantErr: false,
 		},
 	}
@@ -463,7 +463,7 @@ func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 		},
 	}
 
-	updated, err := service.applyAPIUpdates(existing, &api.UpdateRESTAPIRequest{Policies: &newPolicies}, "org-1")
+	updated, err := service.applyAPIUpdates(existing, &api.RESTAPI{Policies: &newPolicies}, "org-1")
 	if err != nil {
 		t.Fatalf("applyAPIUpdates() error = %v", err)
 	}

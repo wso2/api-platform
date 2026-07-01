@@ -163,7 +163,7 @@ func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Re
 	}
 	userID := h.resolveRequesterUserID(r)
 
-	var req api.UpdateApplicationRequest
+	var req api.Application
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.NewValidationErrorResponse(w, err)
 		return

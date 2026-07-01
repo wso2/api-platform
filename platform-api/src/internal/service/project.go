@@ -184,7 +184,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 	return projects, nil
 }
 
-func (s *ProjectService) UpdateProject(handle string, req *api.UpdateProjectRequest, orgId, actor string) (*api.Project, error) {
+func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, actor string) (*api.Project, error) {
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return nil, err
@@ -194,25 +194,27 @@ func (s *ProjectService) UpdateProject(handle string, req *api.UpdateProjectRequ
 	}
 
 	// Validate that the handle in the body matches the path param (immutability check)
-	if req.Id != handle {
+	if req.Id == nil || *req.Id != handle {
 		return nil, constants.ErrHandleImmutable
 	}
 
-	if req.DisplayName != nil && *req.DisplayName != "" && *req.DisplayName != project.Name {
+	if req.DisplayName != project.Name {
 		existingProjects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
 		if err != nil {
 			return nil, err
 		}
 		for _, existingProject := range existingProjects {
-			if existingProject.Name == *req.DisplayName && existingProject.Handle != handle {
+			if existingProject.Name == req.DisplayName && existingProject.Handle != handle {
 				return nil, constants.ErrProjectExists
 			}
 		}
-		project.Name = *req.DisplayName
+		project.Name = req.DisplayName
 	}
 
 	if req.Description != nil {
 		project.Description = *req.Description
+	} else {
+		project.Description = ""
 	}
 	project.UpdatedAt = time.Now()
 	project.UpdatedBy = actor

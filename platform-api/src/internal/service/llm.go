@@ -753,7 +753,7 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		template := utils.StringPtrIfNotEmpty(tplHandle)
 		resp.List = append(resp.List, api.LLMProviderListItem{
 			Id:          &id,
-			DisplayName: &name,
+			DisplayName: name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Version:     &version,
@@ -1091,7 +1091,7 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
-			DisplayName: &name,
+			DisplayName: name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Context:     contextValue,
@@ -1153,7 +1153,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
-			DisplayName: &name,
+			DisplayName: name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Context:     contextValue,
@@ -1958,7 +1958,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 	return api.LLMProviderTemplateListItem{
 		Id:          &id,
 		GroupId:     utils.StringPtrIfNotEmpty(t.GroupID),
-		DisplayName: &name,
+		DisplayName: name,
 		Description: utils.StringPtrIfNotEmpty(t.Description),
 		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
 		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
@@ -2277,10 +2277,10 @@ func mapModelProvidersAPI(in *[]api.LLMModelProvider) []model.LLMModelProvider {
 		if p.Models != nil {
 			models = make([]model.LLMModel, 0, len(*p.Models))
 			for _, m := range *p.Models {
-				models = append(models, model.LLMModel{ID: m.Id, Name: utils.ValueOrEmpty(m.DisplayName), Description: utils.ValueOrEmpty(m.Description)})
+				models = append(models, model.LLMModel{ID: m.Id, Name: m.DisplayName, Description: utils.ValueOrEmpty(m.Description)})
 			}
 		}
-		out = append(out, model.LLMModelProvider{ID: p.Id, Name: utils.ValueOrEmpty(p.DisplayName), Models: models})
+		out = append(out, model.LLMModelProvider{ID: p.Id, Name: p.DisplayName, Models: models})
 	}
 	return out
 }
@@ -2293,10 +2293,10 @@ func mapModelProvidersModelToAPI(in []model.LLMModelProvider) *[]api.LLMModelPro
 	for _, p := range in {
 		models := make([]api.LLMModel, 0, len(p.Models))
 		for _, m := range p.Models {
-			models = append(models, api.LLMModel{Id: m.ID, DisplayName: utils.StringPtrIfNotEmpty(m.Name), Description: utils.StringPtrIfNotEmpty(m.Description)})
+			models = append(models, api.LLMModel{Id: m.ID, DisplayName: m.Name, Description: utils.StringPtrIfNotEmpty(m.Description)})
 		}
 		modelsPtr := &models
-		out = append(out, api.LLMModelProvider{Id: p.ID, DisplayName: utils.StringPtrIfNotEmpty(p.Name), Models: modelsPtr})
+		out = append(out, api.LLMModelProvider{Id: p.ID, DisplayName: p.Name, Models: modelsPtr})
 	}
 	return &out
 }

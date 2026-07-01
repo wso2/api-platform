@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"time"
 
+	api "platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
@@ -80,18 +81,6 @@ type CreateSubscriptionPlanRequest struct {
 	Status             string  `json:"status,omitempty"`
 }
 
-// UpdateSubscriptionPlanRequest is the body for PUT /api/v0.9/subscription-plans/:planId
-// All fields use pointers for patch semantics: nil = omitted, non-nil = set (including clear-to-empty).
-type UpdateSubscriptionPlanRequest struct {
-	Id                 string  `json:"id"`
-	DisplayName        *string `json:"displayName,omitempty"`
-	BillingPlan        *string `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
-	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
-	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
-	ExpiryTime         *string `json:"expiryTime,omitempty"`
-	Status             *string `json:"status,omitempty"`
-}
 
 // CreateSubscriptionPlan handles POST /api/v0.9/subscription-plans
 func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
@@ -251,14 +240,14 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	var req UpdateSubscriptionPlanRequest
+	var req api.SubscriptionPlan
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
-	if req.Id != "" && req.Id != planId {
+	if req.Id != nil && *req.Id != "" && *req.Id != planId {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"The plan id is immutable and cannot be changed"))
 		return
@@ -269,18 +258,14 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
+	displayName := req.DisplayName
 	update := &model.SubscriptionPlanUpdate{
+		Name:               &displayName,
+		BillingPlan:        req.BillingPlan,
 		StopOnQuotaReach:   req.StopOnQuotaReach,
 		ThrottleLimitCount: req.ThrottleLimitCount,
-	}
-	if req.DisplayName != nil {
-		update.Name = req.DisplayName
-	}
-	if req.BillingPlan != nil {
-		update.BillingPlan = req.BillingPlan
-	}
-	if req.ThrottleLimitUnit != nil {
-		update.ThrottleLimitUnit = req.ThrottleLimitUnit
+		ThrottleLimitUnit:  req.ThrottleLimitUnit,
+		ExpiryTime:         req.ExpiryTime,
 	}
 	if req.Status != nil {
 		switch model.SubscriptionPlanStatus(*req.Status) {
@@ -291,14 +276,6 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value; must be ACTIVE or INACTIVE"))
 			return
 		}
-	}
-	if req.ExpiryTime != nil {
-		t, err := time.Parse(time.RFC3339, *req.ExpiryTime)
-		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid expiryTime format; use RFC3339"))
-			return
-		}
-		update.ExpiryTime = &t
 	}
 
 	actor, ok := middleware.GetUserIDFromRequest(r)

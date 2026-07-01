@@ -530,7 +530,7 @@ func mapWebSubAPIModelToListItem(m *model.WebSubAPI) *api.WebSubAPIListItem {
 
 	return &api.WebSubAPIListItem{
 		Id:              utils.StringPtrIfNotEmpty(m.Handle),
-		DisplayName:     utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:     m.Name,
 		Version:         utils.StringPtrIfNotEmpty(m.Version),
 		ProjectId:       utils.StringPtrIfNotEmpty(m.ProjectUUID),
 		Context:         m.Configuration.Context,

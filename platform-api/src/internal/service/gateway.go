@@ -645,8 +645,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 }
 
 // UpdateGateway updates gateway details
-func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, description, displayName *string,
-	isCritical *bool, properties *map[string]interface{}) (*api.GatewayResponse, error) {
+func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *api.GatewayResponse) (*api.GatewayResponse, error) {
 	// Get existing gateway by handle
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
@@ -656,17 +655,17 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, descr
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	if description != nil {
-		gateway.Description = *description
+	gateway.Name = req.DisplayName
+	if req.Description != nil {
+		gateway.Description = *req.Description
+	} else {
+		gateway.Description = ""
 	}
-	if displayName != nil {
-		gateway.Name = *displayName
+	if req.IsCritical != nil {
+		gateway.IsCritical = *req.IsCritical
 	}
-	if isCritical != nil {
-		gateway.IsCritical = *isCritical
-	}
-	if properties != nil {
-		gateway.Properties = *properties
+	if req.Properties != nil {
+		gateway.Properties = *req.Properties
 	}
 	gateway.UpdatedBy = updatedBy
 	gateway.UpdatedAt = time.Now()
@@ -1078,7 +1077,7 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 		Uuid:              &gatewayID,
 		Id:                &gateway.Handle,
 		OrganizationId:    &orgID,
-		DisplayName:       &gateway.Name,
+		DisplayName:       gateway.Name,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
 		Vhost:             &gateway.Vhost,

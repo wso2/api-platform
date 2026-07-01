@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"testing"
 
+	api "platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -157,7 +158,10 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		}
 
 		newDescription := "New description"
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &newDescription, nil, nil, nil)
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+			DisplayName: baseGateway.Name,
+			Description: &newDescription,
+		})
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}
@@ -196,7 +200,10 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			"tier":   "premium",
 		}
 
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", nil, nil, nil, &newProperties)
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+			DisplayName: freshGateway.Name,
+			Properties:  &newProperties,
+		})
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}

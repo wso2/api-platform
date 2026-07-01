@@ -243,7 +243,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID string) (
 }
 
 // UpdateAPI updates an existing API
-func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, orgUUID, updatedBy string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, updatedBy string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
 		return nil, errors.New("API id is required")
 	}
@@ -349,7 +349,7 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 }
 
 // UpdateAPIByHandle updates an existing API identified by handle
-func (s *APIService) UpdateAPIByHandle(handle string, req *api.UpdateRESTAPIRequest, orgId, updatedBy string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPIByHandle(handle string, req *api.RESTAPI, orgId, updatedBy string) (*api.RESTAPI, error) {
 	// The id (handle) is immutable: a body id must match the API being updated.
 	if req != nil && req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, constants.ErrHandleImmutable
@@ -583,7 +583,7 @@ func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID st
 }
 
 // applyAPIUpdates applies update request fields to an existing API model and handles backend services
-func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.UpdateRESTAPIRequest, orgId string) (*api.RESTAPI, error) {
+func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTAPI, orgId string) (*api.RESTAPI, error) {
 	// Validate update request
 	if err := s.validateUpdateAPIRequest(existingAPIModel, req, orgId); err != nil {
 		return nil, err
@@ -630,7 +630,7 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 }
 
 // validateUpdateAPIRequest checks the validity of the update API request
-func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *api.UpdateRESTAPIRequest, orgUUID string) error {
+func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *api.RESTAPI, orgUUID string) error {
 	if req.DisplayName != "" {
 		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName,
 			existingAPIModel.Version, orgUUID, existingAPIModel.Handle)
@@ -873,7 +873,7 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 		AssociatedAt:      gwd.AssociatedAt,
 		CreatedAt:         utils.TimePtrIfNotZero(gwd.CreatedAt),
 		Description:       utils.StringPtrIfNotEmpty(gwd.Description),
-		DisplayName:       utils.StringPtrIfNotEmpty(gwd.Name),
+		DisplayName:       gwd.Name,
 		FunctionalityType: restAPIGatewayFunctionalityTypePtr(gwd.FunctionalityType),
 		Uuid:              gatewayID,
 		Id:                utils.StringPtrIfNotEmpty(gwd.Handle),

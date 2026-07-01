@@ -156,12 +156,10 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Validate that at least one of name or displayName is provided
-	nameProvided := req.Name != nil && *req.Name != ""
-	displayNameProvided := req.DisplayName != nil && *req.DisplayName != ""
-	if !nameProvided && !displayNameProvided {
+	// Validate that displayName is provided (name is optional; auto-generated from displayName if absent)
+	if req.DisplayName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"At least one of 'name' or 'displayName' must be provided"))
+			"'displayName' is required"))
 		return
 	}
 

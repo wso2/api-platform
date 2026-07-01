@@ -252,7 +252,7 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	return response, nil
 }
 
-func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.UpdateApplicationRequest, orgID, userID string) (*api.Application, error) {
+func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Application, orgID, userID string) (*api.Application, error) {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -266,29 +266,29 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		return nil, constants.ErrHandleImmutable
 	}
 
-	if req.DisplayName != nil {
-		name := strings.TrimSpace(*req.DisplayName)
-		if name == "" {
-			return nil, constants.ErrInvalidApplicationName
+	name := strings.TrimSpace(req.DisplayName)
+	if name == "" {
+		return nil, constants.ErrInvalidApplicationName
+	}
+	if name != app.Name {
+		existing, err := s.appRepo.GetApplicationByNameInProject(name, app.ProjectUUID, orgID)
+		if err != nil {
+			return nil, err
 		}
-		if name != app.Name {
-			existing, err := s.appRepo.GetApplicationByNameInProject(name, app.ProjectUUID, orgID)
-			if err != nil {
-				return nil, err
-			}
-			if existing != nil && existing.UUID != app.UUID {
-				return nil, constants.ErrApplicationExists
-			}
-			app.Name = name
+		if existing != nil && existing.UUID != app.UUID {
+			return nil, constants.ErrApplicationExists
 		}
+		app.Name = name
 	}
 
 	if req.Description != nil {
 		app.Description = strings.TrimSpace(*req.Description)
+	} else {
+		app.Description = ""
 	}
 
-	if req.Type != nil {
-		appType, err := normalizeApplicationType(string(*req.Type))
+	if req.Type != "" {
+		appType, err := normalizeApplicationType(string(req.Type))
 		if err != nil {
 			return nil, err
 		}

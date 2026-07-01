@@ -173,7 +173,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req api.UpdateProjectRequest
+	var req api.Project
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.NewValidationErrorResponse(w, err)
 		return

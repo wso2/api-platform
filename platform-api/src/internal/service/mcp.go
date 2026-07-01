@@ -508,7 +508,7 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 
 	return &api.MCPProxyListItem{
 		Id:             utils.StringPtrIfNotEmpty(m.Handle),
-		DisplayName:    utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:    m.Name,
 		Description:    utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:        utils.StringPtrIfNotEmpty(m.Version),
