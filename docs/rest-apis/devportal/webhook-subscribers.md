@@ -4,13 +4,13 @@
 
 <a id="opIdcreateWebhookSubscriber"></a>
 
-`POST /o/{orgId}/devportal/v1/webhook-subscribers`
+`POST /devportal/v1/webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers \
+curl -X POST https://devportal.api-platform.io/devportal/v1/webhook-subscribers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -26,7 +26,7 @@ Registers a webhook subscriber for the organization. Event deliveries (apikey.*,
 ```json
 {
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
   "events": [
@@ -50,7 +50,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|true|Webhook subscriber configuration payload.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -61,7 +60,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -83,8 +82,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -153,13 +152,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetWebhookSubscribers"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-subscribers`
+`GET /devportal/v1/webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-subscribers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -181,7 +180,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -194,7 +192,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "sub-uuid-12345",
       "orgId": "org-12345",
       "name": "Production Gateway",
-      "url": "https://gateway.example.com/devportal-webhook",
+      "targetUrl": "https://gateway.example.com/devportal-webhook",
       "enabled": true,
       "events": [
         "apikey.*",
@@ -240,7 +238,7 @@ Status Code **200**
 |»» id|string|false|none|Webhook subscriber UUID.|
 |»» orgId|string|false|none|none|
 |»» name|string|false|none|none|
-|»» url|string(uri)|false|none|none|
+|»» targetUrl|string(uri)|false|none|none|
 |»» enabled|boolean|false|none|none|
 |»» events|[string]|false|none|none|
 |»» timeoutMs|integer|false|none|none|
@@ -255,13 +253,13 @@ Status Code **200**
 
 <a id="opIdgetWebhookSubscriber"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
+`GET /devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -281,7 +279,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
@@ -293,7 +290,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -337,13 +334,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateWebhookSubscriber"></a>
 
-`PUT /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
+`PUT /devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -359,7 +356,7 @@ Updates an existing webhook subscriber configuration. Only supplied fields are u
 ```json
 {
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
   "events": [
@@ -383,7 +380,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|false|Webhook subscriber update payload. All fields are optional; only supplied fields are updated.|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
@@ -395,7 +391,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -417,8 +413,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -492,13 +488,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteWebhookSubscriber"></a>
 
-`DELETE /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
+`DELETE /devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -518,7 +514,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
@@ -555,13 +550,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetWebhookSubscriberDeliveries"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries`
+`GET /devportal/v1/webhook-subscribers/{subscriberId}/deliveries`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-subscribers/{subscriberId}/deliveries \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -581,7 +576,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses

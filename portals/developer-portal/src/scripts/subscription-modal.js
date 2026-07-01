@@ -52,7 +52,7 @@ async function prepareSubscriptionModal(modalId) {
     if (!modal) return;
 
     const apiId = modalId.replace('planModal-', '');
-    const orgID = modal.dataset.orgId || window.__subscriptionOrgID;
+    const orgId = modal.dataset.orgId || window.__subscriptionOrgId;
     let apiRefId = modal.dataset.apiRefid || '';
     if (!apiRefId) apiRefId = apiId;
     const subscriptionContainer = document.getElementById('subscriptionContent-' + apiId);
@@ -69,7 +69,7 @@ async function prepareSubscriptionModal(modalId) {
     if (!subscriptionContainer) return;
     subscriptionContainer.innerHTML = '';
 
-    if (!orgID) {
+    if (!orgId) {
         subscriptionContainer.innerHTML = '<div class="alert alert-warning">Organization not available.</div>';
         subscriptionContainer.style.display = 'block';
         if (plansBody) plansBody.style.display = 'none';
@@ -77,7 +77,7 @@ async function prepareSubscriptionModal(modalId) {
     }
 
     try {
-        const resp = await fetch(devportalApi.org(orgID, `/subscriptions?apiId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        const resp = await fetch(devportalApi.org(`/subscriptions?apiId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
         if (!resp.ok) throw new Error('Failed to fetch subscriptions');
         const data = await resp.json();
 
@@ -86,7 +86,7 @@ async function prepareSubscriptionModal(modalId) {
         const plans = data.subscriptionPlans || data.plans || [];
 
         // expose token meta and org id for other helpers
-        window.__subscriptionOrgID = window.__subscriptionOrgID || orgID;
+        window.__subscriptionOrgId = window.__subscriptionOrgId || orgId;
 
         // Render existing subscriptions table
         if (existing && existing.length > 0) {
@@ -157,7 +157,7 @@ async function prepareSubscriptionModal(modalId) {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.className = 'btn btn-sm btn-outline-warning';
                 toggleBtn.innerHTML = sub.status === 'ACTIVE' ? '<i class="bi bi-pause-circle"></i>' : '<i class="bi bi-play-circle"></i>';
-                toggleBtn.dataset.orgId = orgID;
+                toggleBtn.dataset.orgId = orgId;
                 toggleBtn.dataset.subscriptionId = sub.subscriptionId;
                 toggleBtn.dataset.newStatus = newStatus;
                 if (window.isReadOnly) toggleBtn.disabled = true;
@@ -167,7 +167,7 @@ async function prepareSubscriptionModal(modalId) {
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn btn-sm btn-outline-danger';
                 deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
-                deleteBtn.dataset.orgId = orgID;
+                deleteBtn.dataset.orgId = orgId;
                 deleteBtn.dataset.subscriptionId = sub.subscriptionId;
                 if (window.isReadOnly) deleteBtn.disabled = true;
                 deleteBtn.addEventListener('click', function() {
@@ -197,7 +197,7 @@ async function prepareSubscriptionModal(modalId) {
                 col.innerHTML = `
                     <div class="card dev-card subscription-card">
                         <div class="card-body align-items-center text-center p-0">
-                            <span class="subscription-plans-card-title">${escapeHtml(plan.displayName || plan.subscriptionPlanName || '')}</span>
+                            <span class="subscription-plans-card-title">${escapeHtml(plan.name || plan.subscriptionPlanName || '')}</span>
                             <h1 class="subscription-plans-request-count">${escapeHtml(String(plan.requestCount || plan.rate || ''))}</h1>
                             <p class="subscription-plans-card-subtitle pt-0">requests per minute</p>
                         </div>
@@ -210,11 +210,11 @@ async function prepareSubscriptionModal(modalId) {
                 const btn = document.createElement('button');
                 btn.className = 'common-btn-primary subscribe-btn w-100';
                 btn.textContent = 'Subscribe';
-                btn.dataset.orgId = orgID;
+                btn.dataset.orgId = orgId;
                 btn.dataset.apiId = apiId;
-                btn.dataset.planId = plan.planID || plan.planId || '';
-                btn.dataset.planName = plan.planName || plan.subscriptionPlanName || '';
-                btn.dataset.displayName = plan.displayName || plan.subscriptionPlanName || '';
+                btn.dataset.planId = plan.id || '';
+                btn.dataset.planName = plan.handle || plan.subscriptionPlanName || '';
+                btn.dataset.displayName = plan.name || plan.subscriptionPlanName || '';
                 if (window.isReadOnly) {
                     btn.disabled = true;
                     btn.setAttribute('aria-disabled', 'true');

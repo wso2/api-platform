@@ -40,12 +40,12 @@
             </td>
             <td class="text-center">
                 <button type="button" class="common-btn-outlined"
-                    onclick="editView('{{json labels}}', 'labelsContainer{{handle}}', 'viewDisplayName{{handle}}', 'viewHandle{{handle}}', '{{@root.orgID}}')">
+                    onclick="editView('{{json labels}}', 'labelsContainer{{handle}}', 'viewDisplayName{{handle}}', 'viewHandle{{handle}}', '{{@root.orgId}}')">
                     <i class="bi bi-save"></i>
                 </button>
                 {{#unless (eq handle "default")}}
                 <button type="button" class="common-btn-outlined" style="margin-right: 10px;"
-                    onclick="openWarningModal('DeleteView', '{{@root.orgID}}', '{{handle}}', '', '', '', '')">
+                    onclick="openWarningModal('DeleteView', '{{@root.orgId}}', '{{handle}}', '', '', '', '')">
                     <i class="bi bi-trash"></i>
                 </button>
                 {{/unless}}

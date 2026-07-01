@@ -4,13 +4,13 @@
 
 <a id="opIdlistWebhookEvents"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-events`
+`GET /devportal/v1/webhook-events`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-events \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-events \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -33,7 +33,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |status|query|string|false|Filter events by status.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 #### Enumerated Values
 
@@ -154,13 +153,13 @@ Status Code **200**
 
 <a id="opIdgetWebhookEvent"></a>
 
-`GET /o/{orgId}/devportal/v1/webhook-events/{eventId}`
+`GET /devportal/v1/webhook-events/{eventId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-events/{eventId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-events/{eventId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -180,7 +179,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |eventId|path|string|true|Webhook event identifier.|
 
 > Example responses

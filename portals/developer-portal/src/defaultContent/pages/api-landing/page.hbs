@@ -26,14 +26,14 @@
   <script src='/technical-scripts/subscription.js' defer></script>
   <script src='/technical-scripts/subscription-modal.js' defer></script>
   <script src='/technical-scripts/api-agent-prompt.js' defer></script>
-  <script type="application/json" id="apiAgentData">{"baseUrl":"{{baseUrl}}","apiHandle":"{{apiMetadata.apiHandle}}"}</script>
+  <script type="application/json" id="apiAgentData">{"baseUrl":"{{baseUrl}}","handle":"{{apiMetadata.handle}}"}</script>
 {{/pageScripts}}
 
 <div style="padding: 1rem 1.5rem 0;">
   <nav class="dp-breadcrumb">
     <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
     <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
-    <span class="dp-breadcrumb-current">{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName}}</span>
+    <span class="dp-breadcrumb-current">{{or apiMetadata.apiTitle apiMetadata.name}}</span>
   </nav>
 </div>
 <div class="container-fluid">
@@ -61,7 +61,7 @@
 
 {{!-- ── AGENT PROMPT MODAL ── --}}
 {{#if showApiWorkflowsNav}}
-{{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
+{{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
 <div class="modal fade" id="apiAgentPromptModal" tabindex="-1" aria-labelledby="apiAgentPromptModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
     <div class="modal-content hero-modal">

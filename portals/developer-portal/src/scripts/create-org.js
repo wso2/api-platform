@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Set up the delete organization handler
     setDeleteConfirmationHandler('deleteOrg', function(data) {
-        deleteOrg(data.orgID);
+        deleteOrg(data.orgId);
     });
 
     // Show form
@@ -55,9 +55,9 @@ document.addEventListener('DOMContentLoaded', function () {
     deleteForms.forEach(form => {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            let orgID = form.querySelector('#orgId').value;
-            orgID = sanitizeInput(orgID);
-            const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
+            let orgId = form.querySelector('#orgId').value;
+            orgId = sanitizeInput(orgId);
+            const response = await fetch(devportalApi.root(`/organizations/${orgId}`), {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -92,6 +92,10 @@ async function createOrg() {
     const formData = new FormData(document.getElementById("createOrg"));
     const data = {};
     formData.forEach((value, key) => {
+        // Omit blank optional fields instead of sending "" — some (e.g. businessOwnerEmail)
+        // are format-validated server-side, and an empty string fails that format check
+        // even though the field itself is optional.
+        if (value === '') return;
         data[key] = sanitizeInput(value);
     });
     const response = await fetch(devportalApi.root('/organizations'), {
@@ -108,14 +112,16 @@ async function createOrg() {
     }
 }
 
-async function editOrg(orgID, formID) {
+async function editOrg(orgId, formID) {
 
     const formData = new FormData(document.getElementById(formID));
     const data = {};
     formData.forEach((value, key) => {
+        // Omit blank optional fields instead of sending "" — see note in createOrg().
+        if (value === '') return;
         data[key] = sanitizeInput(value);
     });
-    const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
+    const response = await fetch(devportalApi.root(`/organizations/${orgId}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -129,7 +135,7 @@ async function editOrg(orgID, formID) {
     }
 }
 
-function openOrgDeleteModal(orgID) {
+function openOrgDeleteModal(orgId) {
     const modal = document.getElementById('deleteConfirmation');
     if (!modal) {
         console.error('openOrgDeleteModal: Modal not found');
@@ -141,15 +147,15 @@ function openOrgDeleteModal(orgID) {
     if (titleEl) titleEl.textContent = 'Do you really want to delete this organization?';
     if (messageEl) messageEl.textContent = 'This will remove the organization stored in devportal';
 
-    setDeleteConfirmationAction('deleteOrg', { orgID: orgID });
+    setDeleteConfirmationAction('deleteOrg', { orgId: orgId });
 
     const bootstrapModal = new bootstrap.Modal(modal);
     bootstrapModal.show();
 }
 
 
-async function deleteOrg(orgID) {
-    const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
+async function deleteOrg(orgId) {
+    const response = await fetch(devportalApi.root(`/organizations/${orgId}`), {
         method: 'DELETE'
     });
     if (response.ok) {

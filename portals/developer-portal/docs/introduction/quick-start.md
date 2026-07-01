@@ -179,7 +179,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 
 # Find the org UUID
 ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
-  https://localhost:3000/organizations | jq -r '.[0].orgID')
+  https://localhost:3000/organizations | jq -r '.[0].orgId')
 
 # Publish the API
 curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \

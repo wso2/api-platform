@@ -1,18 +1,15 @@
-// Devportal API URL builder — single place that knows the org-scoped prefix
-// `/o/{orgId}/{base}/{version}`. The base segment and version are injected by
+// Devportal API URL builder. The base segment and version are injected by
 // the server (window.__DEVPORTAL_API__, set in the layout); the fallback keeps
 // pages working if the global is ever missing. Defined synchronously (outside
 // DOMContentLoaded) so it is available before any page script's handlers run.
 (function () {
     var cfg = window.__DEVPORTAL_API__ || { base: 'devportal', version: 'v1' };
     window.devportalApi = {
-        // Current page's org UUID, injected by the layout (window.__DEVPORTAL_API__.orgId).
-        orgId: cfg.orgId || '',
-        // Org-scoped resource: org('abc', '/subscriptions') => '/o/abc/devportal/v1/subscriptions'
-        org: function (orgId, path) {
-            return '/o/' + encodeURIComponent(orgId) + '/' + cfg.base + '/' + cfg.version + (path || '');
+        // Devportal API resource: org('/subscriptions') => '/devportal/v1/subscriptions'
+        org: function (path) {
+            return '/' + cfg.base + '/' + cfg.version + (path || '');
         },
-        // Root resource: root('/applications') => '/applications'
+        // Root resource: root('/organizations') => '/organizations'
         root: function (path) {
             return path || '/';
         },
@@ -317,8 +314,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 let appFromParams = false;
                 
                 // Get application ID from URL parameters if available
-                if (params.has('appID')) {
-                    appId = params.get('appID');
+                if (params.has('appId')) {
+                    appId = params.get('appId');
                     appFromParams = true;
                 }
                 
@@ -482,7 +479,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
+                    const response = await fetch(devportalApi.org('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -490,7 +487,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         body: JSON.stringify({
                             name,
                             description,
-                            type: 'WEB',
                         }),
                     });
 
@@ -777,7 +773,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
+                    const response = await fetch(devportalApi.org('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -785,7 +781,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         body: JSON.stringify({
                             name,
                             description,
-                            type: 'WEB',
                         }),
                     });
 
@@ -934,8 +929,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Copy MCP Server Config JSON to clipboard
-    window.copyServerConfig = async function(apiID) {
-        const preBlock = document.getElementById(`server-config-${apiID}`);
+    window.copyServerConfig = async function(apiId) {
+        const preBlock = document.getElementById(`server-config-${apiId}`);
         const buttonElement = preBlock.nextElementSibling;
         const iconElement = buttonElement.querySelector('i');
 

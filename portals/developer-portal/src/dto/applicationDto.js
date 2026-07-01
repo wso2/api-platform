@@ -18,11 +18,11 @@
  */
 class ApplicationDTO {
     constructor(app) {
-        this.id = app.UUID;
-        this.name = app.NAME;
-        this.description = app.DESCRIPTION;
-        if (app.DP_APP_KEY_MAPPINGs) {
-            this.appMap = app.DP_APP_KEY_MAPPINGs.map(map => new AppMappingDTO(map));
+        this.id = app.uuid;
+        this.name = app.name;
+        this.description = app.description;
+        if (app.dp_app_key_mappings) {
+            this.appKeyMappings = app.dp_app_key_mappings.map(map => new AppMappingDTO(map));
         }
     }
 
@@ -37,9 +37,9 @@ class ApplicationDTO {
 
 class AppMappingDTO {
     constructor(map) {
-        this.appRefID = map.AS_CLIENT_ID;
-        this.kmID = map.KM_UUID;
-        this.keyType = map.TYPE;
+        this.asClientId = map.as_client_id;
+        this.kmId = map.km_uuid;
+        this.type = map.type;
     }
 
     setResponseData(data) {

@@ -36,28 +36,28 @@ const computeRequestCount = (plan) => {
   return null;
 };
 
-const buildSubscriptionPlanRow = (orgID, plan) => {
+const buildSubscriptionPlanRow = (orgId, plan) => {
   const requestCount = computeRequestCount(plan);
 
   return {
-    ORG_UUID: orgID,
+    org_uuid: orgId,
 
     // Store the APIM plan UUID if provided
-    UUID: plan.planId ?? plan.planID ?? undefined,
+    uuid: plan.id ?? undefined,
 
-    HANDLE: plan.planName,
-    NAME: plan.displayName,
-    DESCRIPTION: plan.description,
-    REQUEST_COUNT: requestCount,
-    REF_ID: plan.refId ?? null,
+    handle: plan.handle,
+    name: plan.name,
+    description: plan.description,
+    request_count: requestCount,
+    ref_id: plan.refId ?? null,
   };
 };
 
-const create = async (orgID, plan, createdBy, t) => {
+const create = async (orgId, plan, createdBy, t) => {
   try {
-    const row = buildSubscriptionPlanRow(orgID, plan);
-    row.CREATED_BY = createdBy;
-    row.UPDATED_BY = createdBy;
+    const row = buildSubscriptionPlanRow(orgId, plan);
+    row.created_by = createdBy;
+    row.updated_by = createdBy;
 
     return await SubscriptionPlan.create(row, { transaction: t });
   } catch (error) {
@@ -68,12 +68,12 @@ const create = async (orgID, plan, createdBy, t) => {
   }
 };
 
-const createMany = async (orgID, plans, createdBy, t) => {
+const createMany = async (orgId, plans, createdBy, t) => {
   try {
     const rows = plans.map((plan) => ({
-      ...buildSubscriptionPlanRow(orgID, plan),
-      CREATED_BY: createdBy,
-      UPDATED_BY: createdBy,
+      ...buildSubscriptionPlanRow(orgId, plan),
+      created_by: createdBy,
+      updated_by: createdBy,
     }));
 
     return await SubscriptionPlan.bulkCreate(rows, { transaction: t });
@@ -85,38 +85,38 @@ const createMany = async (orgID, plans, createdBy, t) => {
   }
 };
 
-const put = async (orgID, plan, updatedBy, t) => {
-  const current = await getByName(orgID, plan.planName, t);
+const put = async (orgId, plan, updatedBy, t) => {
+  const current = await getByName(orgId, plan.handle, t);
   if (current) {
-    const updated = await update(orgID, current.UUID, plan, updatedBy, t);
+    const updated = await update(orgId, current.uuid, plan, updatedBy, t);
     return { subscriptionPlanResponse: updated, statusCode: 200 };
   }
-  const created = await create(orgID, plan, updatedBy, t);
+  const created = await create(orgId, plan, updatedBy, t);
   return { subscriptionPlanResponse: created, statusCode: 201 };
 };
 
-const update = async (orgID, planID, plan, updatedBy, t) => {
+const update = async (orgId, planId, plan, updatedBy, t) => {
   try {
-    const row = buildSubscriptionPlanRow(orgID, plan);
+    const row = buildSubscriptionPlanRow(orgId, plan);
 
     // Don't update primary keys
-    delete row.ORG_UUID;
-    delete row.UUID;
+    delete row.org_uuid;
+    delete row.uuid;
     if (!Object.prototype.hasOwnProperty.call(plan, 'refId')) {
-      delete row.REF_ID;
+      delete row.ref_id;
     }
-    row.UPDATED_BY = updatedBy;
-    row.UPDATED_AT = new Date();
+    row.updated_by = updatedBy;
+    row.updated_at = new Date();
 
     await SubscriptionPlan.update(row, {
-      where: { UUID: planID, ORG_UUID: orgID },
+      where: { uuid: planId, org_uuid: orgId },
       transaction: t
     });
 
     // `returning: true` only yields row instances on Postgres; re-fetch
     // explicitly so the result is reliable on SQLite too.
     return await SubscriptionPlan.findOne({
-      where: { UUID: planID, ORG_UUID: orgID },
+      where: { uuid: planId, org_uuid: orgId },
       transaction: t
     });
   } catch (error) {
@@ -127,13 +127,13 @@ const update = async (orgID, planID, plan, updatedBy, t) => {
   }
 };
 
-const deletePlan = async (orgID, planName, t) => {
+const deletePlan = async (orgId, planName, t) => {
 
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.destroy({
             where: {
-                HANDLE: planName,
-                ORG_UUID: orgID
+                handle: planName,
+                org_uuid: orgId
             },
             transaction: t
         });
@@ -146,13 +146,13 @@ const deletePlan = async (orgID, planName, t) => {
     }
 }
 
-const deleteById = async (orgID, planID, t) => {
+const deleteById = async (orgId, planId, t) => {
 
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.destroy({
             where: {
-                UUID: planID,
-                ORG_UUID: orgID
+                uuid: planId,
+                org_uuid: orgId
             },
             transaction: t
         });
@@ -165,13 +165,13 @@ const deleteById = async (orgID, planID, t) => {
     }
 }
 
-const getByName = async (orgID, planName, t) => {
+const getByName = async (orgId, planName, t) => {
 
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.findOne({
             where: {
-                HANDLE: planName,
-                ORG_UUID: orgID
+                handle: planName,
+                org_uuid: orgId
             },
             transaction: t
         });
@@ -184,12 +184,12 @@ const getByName = async (orgID, planName, t) => {
     }
 };
 
-const get = async (planID, orgID, t) => {
+const get = async (planId, orgId, t) => {
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.findOne({
             where: {
-                ORG_UUID: orgID,
-                UUID: planID
+                org_uuid: orgId,
+                uuid: planId
             },
             transaction: t
         });
@@ -202,14 +202,14 @@ const get = async (planID, orgID, t) => {
     }
 }
 
-const listByApi = async (apiID, t) => {
+const listByApi = async (apiId, t) => {
 
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.findAll({
             include: [
                 {
                     model: APIMetadata,
-                    where: { UUID: apiID },
+                    where: { uuid: apiId },
                     through: { attributes: [] }
                 }
             ],
@@ -224,12 +224,12 @@ const listByApi = async (apiID, t) => {
     }
 }
 
-const list = async (orgID, t) => {
+const list = async (orgId, t) => {
     try {
 
         const subscriptionPlansResponse = await SubscriptionPlan.findAll({
             where: {
-                ORG_UUID: orgID
+                org_uuid: orgId
             },
             transaction: t
         });
@@ -242,12 +242,12 @@ const list = async (orgID, t) => {
     }
 }
 
-const createApiMapping = async (apiSubscriptionPlans, apiID, createdBy, t) => {
+const createApiMapping = async (apiSubscriptionPlans, apiId, createdBy, t) => {
   try {
     const rows = apiSubscriptionPlans.map((plan) => ({
-      PLAN_UUID: plan.planId ?? plan.planID,
-      API_UUID: apiID,
-      CREATED_BY: createdBy,
+      plan_uuid: plan.planId,
+      api_uuid: apiId,
+      created_by: createdBy,
     }));
 
     return await APISubscriptionPlan.bulkCreate(rows, { transaction: t });
@@ -257,20 +257,20 @@ const createApiMapping = async (apiSubscriptionPlans, apiID, createdBy, t) => {
   }
 };
 
-const updateApiMapping = async (subscriptionPlans, apiID, updatedBy, t) => {
+const updateApiMapping = async (subscriptionPlans, apiId, updatedBy, t) => {
 
     let plansToCreate = [];
     try {
         for (const plan of subscriptionPlans) {
             plansToCreate.push({
-                PLAN_UUID: plan.planId ?? plan.planID,
-                API_UUID: apiID,
-                CREATED_BY: updatedBy,
+                plan_uuid: plan.planId,
+                api_uuid: apiId,
+                created_by: updatedBy,
             })
         }
         await APISubscriptionPlan.destroy({
             where: {
-                API_UUID: apiID
+                api_uuid: apiId
             },
             transaction: t
         });

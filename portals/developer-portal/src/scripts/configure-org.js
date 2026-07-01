@@ -128,7 +128,7 @@ function sanitizeInput(input) {
     return div.innerHTML;
 }
 
-async function updateOrgContent(orgID) {
+async function updateOrgContent(orgId) {
 
     const zipFile = document.getElementById('editZipFile');
     if (!zipFile.files[0]) {
@@ -137,10 +137,10 @@ async function updateOrgContent(orgID) {
     }
     const formData = new FormData();
     formData.append('file', zipFile.files[0]);
-    const response = await fetch(`/devportal/organizations/${orgID}/layout`, {
+    const response = await fetch(devportalApi.org('/views/default/layout'), {
         method: 'PUT',
         body: formData,
-        credentials: 'same-origin' // Include cookies if needed
+        credentials: 'same-origin'
     });
     if (response.ok) {
         const result = await response.json();
@@ -152,14 +152,14 @@ async function updateOrgContent(orgID) {
     }
 }
 
-async function uploadContent(orgID) {
+async function uploadContent(orgId) {
 
     const zipFile = document.getElementById('file');
     const formData = new FormData();
     formData.append('file', zipFile.files[0]);
 
     const view = document.getElementById('uploadViewContent').value;
-    const response = await fetch(devportalApi.org(orgID, `/views/${view}/layout`), {
+    const response = await fetch(devportalApi.org(`/views/${view}/layout`), {
         method: 'PUT',
         body: formData,
         credentials: 'same-origin'
@@ -198,7 +198,7 @@ function addViewLabel(labelSelectID, labelsContainerID) {
     labelsContainer.appendChild(span);
 }
 
-async function editView(existingLabels, labelsContainerID, nameID, handleID, orgID) {
+async function editView(existingLabels, labelsContainerID, nameID, handleID, orgId) {
 
     const labelsContainer = document.getElementById(labelsContainerID);
     const name = document.getElementById(nameID).value;
@@ -218,7 +218,7 @@ async function editView(existingLabels, labelsContainerID, nameID, handleID, org
         addedLabels: sanitizAddedLabels,
         removedLabels: sanitizeRemovedLabels
     }
-    const response = await fetch(devportalApi.org(orgID, `/views/${handle}`), {
+    const response = await fetch(devportalApi.org(`/views/${handle}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -232,9 +232,9 @@ async function editView(existingLabels, labelsContainerID, nameID, handleID, org
     }
 }
 
-async function deleteView(orgID, viewHandle) {
+async function deleteView(orgId, viewHandle) {
 
-    const response = await fetch(devportalApi.org(orgID, `/views/${viewHandle}`), {
+    const response = await fetch(devportalApi.org(`/views/${viewHandle}`), {
         method: 'DELETE',
     });
     if (response.ok) {
@@ -244,7 +244,7 @@ async function deleteView(orgID, viewHandle) {
     }
 }
 
-async function addLabels(orgID, orgLabels) {
+async function addLabels(orgId, orgLabels) {
 
     const labelsContainer = document.getElementById("inputContainer");
     const selected = [...labelsContainer.getElementsByClassName('span-tag')].map(span => span.textContent.replace('×', "").trim());
@@ -257,7 +257,7 @@ async function addLabels(orgID, orgLabels) {
         const sanitizeDelete = removedLabels.map(label => sanitizeInput(label));
         // Encode each name individually so spaces/reserved characters within a label
         const labelName = sanitizeDelete.map(label => encodeURIComponent(label)).join(",");
-        const response = await fetch(devportalApi.org(orgID, `/labels?names=${labelName}`), {
+        const response = await fetch(devportalApi.org(`/labels?names=${labelName}`), {
             method: "DELETE",
             headers: {
                 'Content-Type': 'application/json',
@@ -278,7 +278,7 @@ async function addLabels(orgID, orgLabels) {
         });
     });
  
-    const response = await fetch(devportalApi.org(orgID, '/labels'), {
+    const response = await fetch(devportalApi.org('/labels'), {
         method: "PUT",
         headers: {
             'Content-Type': 'application/json',

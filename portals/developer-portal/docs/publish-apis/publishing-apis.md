@@ -105,7 +105,7 @@ Send the manifest and definition together as a multipart upload:
 
 ```bash
 # REST API with OpenAPI definition
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
+curl -X POST "http://localhost:3000/devportal/v1/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
@@ -113,7 +113,7 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 
 ```bash
 # GraphQL API
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
+curl -X POST "http://localhost:3000/devportal/v1/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@schema.graphql;type=application/graphql"
@@ -121,7 +121,7 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 
 ```bash
 # MCP server
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
+curl -X POST "http://localhost:3000/devportal/v1/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@mcp.yaml" \
   -F "apiDefinition=@mcp-spec.yaml;type=application/yaml"
@@ -153,7 +153,7 @@ If you need to update the definition file independently of the manifest:
 ```bash
 # OpenAPI YAML
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content" \
+  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
@@ -161,7 +161,7 @@ curl -X POST \
 ```bash
 # AsyncAPI YAML
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content" \
+  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiDefinition=@asyncapi.yaml;type=application/yaml"
 ```
@@ -298,7 +298,7 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
+curl -X PUT http://localhost:3000/devportal/v1/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api-update.yaml"
 ```
@@ -306,7 +306,7 @@ curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
 ## Delete an API
 
 ```bash
-curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
+curl -X DELETE http://localhost:3000/devportal/v1/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -315,13 +315,13 @@ curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
 ## List APIs
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/apis -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/apis -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get an API
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/apis/{apiId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Related

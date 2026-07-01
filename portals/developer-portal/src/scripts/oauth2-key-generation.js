@@ -1,4 +1,4 @@
-async function addClientId(kmId, keyType, appId, orgID, keyManager) {
+async function addClientId(kmId, keyType, appId, orgId, keyManager) {
     const input = document.getElementById('addClientIdInput-' + kmId + '-' + keyType);
     const btn = document.getElementById('addClientIdBtn-' + kmId + '-' + keyType);
     const errorContainer = document.getElementById('addClientIdError-' + kmId + '-' + keyType);
@@ -25,10 +25,10 @@ async function addClientId(kmId, keyType, appId, orgID, keyManager) {
     }
 
     try {
-        const response = await fetch(devportalApi.org(orgID, `/applications/${appId}/generate-keys`), {
+        const response = await fetch(devportalApi.org(`/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keyManager, keyType, consumerKey }),
+            body: JSON.stringify({ keyManager, type: keyType, consumerKey }),
         });
         const data = await response.json();
         if (response.ok) {
@@ -108,7 +108,7 @@ async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
         return;
     }
     try {
-        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${applicationId}/oauth-keys/${keyMappingId}`), {
+        const response = await fetch(devportalApi.org(`/applications/${applicationId}/oauth-keys/${keyMappingId}`), {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -264,13 +264,13 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
         keyMappingId = tokenbtn?.getAttribute("data-keymappingid") || tokenbtn?.getAttribute("data-keyMappingId");
         if (!appId) appId = tokenbtn?.getAttribute("data-app-id");
         if (!clientSecret) {
-            const clientSecretID = tokenbtn?.getAttribute("data-consumerSecretID");
-            if (clientSecretID) clientSecret = document.getElementById(clientSecretID)?.value;
+            const clientSecretId = tokenbtn?.getAttribute("data-consumerSecretId");
+            if (clientSecretId) clientSecret = document.getElementById(clientSecretId)?.value;
         }
     }
 
     try {
-        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`), {
+        const response = await fetch(devportalApi.org(`/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

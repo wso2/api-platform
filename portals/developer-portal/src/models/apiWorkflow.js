@@ -20,91 +20,91 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
-const APIFlow = sequelize.define('DP_API_WORKFLOW', {
-    UUID: {
+const APIWorkflow = sequelize.define('dp_api_workflow', {
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_UUID: {
+    org_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    VIEW_UUID: {
+    view_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    NAME: {
+    name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    DESCRIPTION: {
+    description: {
         type: DataTypes.STRING(1023),
         allowNull: false
     },
-    HANDLE: {
+    handle: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    AGENT_PROMPT: {
+    agent_prompt: {
         type: DataTypes.BLOB,
         allowNull: false,
         get() {
-            return bufferToUtf8(this.getDataValue('AGENT_PROMPT'));
+            return bufferToUtf8(this.getDataValue('agent_prompt'));
         }
     },
-    STATUS: {
+    status: {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PUBLISHED'
     },
-    FILE_CONTENT: {
+    file_content: {
         type: DataTypes.BLOB,
         allowNull: true
     },
-    CONTENT_TYPE: {
+    content_type: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    AGENT_VISIBILITY: {
+    agent_visibility: {
         type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'VISIBLE'
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     }
 }, {
     timestamps: false,
-    tableName: 'DP_API_WORKFLOW',
+    tableName: 'dp_api_workflows',
     returning: true,
     indexes: [
-        { name: 'UQ_API_WORKFLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_UUID', 'VIEW_UUID', 'HANDLE'] },
-        { name: 'IDX_API_WORKFLOW_VIEW_UUID', fields: ['VIEW_UUID'] },
-        { name: 'IDX_API_WORKFLOW_STATUS', fields: ['STATUS'] }
+        { name: 'uq_api_workflow_org_view_handle', unique: true, fields: ['org_uuid', 'view_uuid', 'handle'] },
+        { name: 'idx_api_workflow_view_uuid', fields: ['view_uuid'] },
+        { name: 'idx_api_workflow_status', fields: ['status'] }
     ]
 });
 
-APIFlow.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
-Organization.hasMany(APIFlow, { foreignKey: 'ORG_UUID', onDelete: 'CASCADE' });
+APIWorkflow.belongsTo(Organization, { foreignKey: 'org_uuid' });
+Organization.hasMany(APIWorkflow, { foreignKey: 'org_uuid', onDelete: 'CASCADE' });
 
 const View = require('./view');
-APIFlow.belongsTo(View, { foreignKey: 'VIEW_UUID' });
-View.hasMany(APIFlow, { foreignKey: 'VIEW_UUID', onDelete: 'CASCADE' });
+APIWorkflow.belongsTo(View, { foreignKey: 'view_uuid' });
+View.hasMany(APIWorkflow, { foreignKey: 'view_uuid', onDelete: 'CASCADE' });
 
-module.exports = { APIFlow };
+module.exports = { APIWorkflow };

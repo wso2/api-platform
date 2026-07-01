@@ -18,20 +18,20 @@
  */
 
 /*
- * Tag: API Flows
+ * Tag: API Workflows
  *
  * Mutating ops are CSRF-protected with compose(requireCsrfForMutatingApi, serviceFn). Non-mutating ops are just serviceFn.
  */
 
-const apiFlowService = require('../../../services/apiFlowService');
+const apiWorkflowService = require('../../../services/apiWorkflowService');
 const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 const { compose } = require('./compose');
 
 module.exports = {
-    createApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.createAPIFlow),
-    getAllApiFlows: apiFlowService.getAllAPIFlows,
-    getApiFlow: apiFlowService.getAPIFlow,
-    updateApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.updateAPIFlow),
-    deleteApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.deleteAPIFlow),
-    generatePrompt: compose(requireCsrfForMutatingApi, apiFlowService.generatePrompt),
+    createApiWorkflow: compose(requireCsrfForMutatingApi, apiWorkflowService.createAPIWorkflow),
+    getAllApiWorkflows: apiWorkflowService.getAllAPIWorkflows,
+    getApiWorkflow: apiWorkflowService.getAPIWorkflow,
+    updateApiWorkflow: compose(requireCsrfForMutatingApi, apiWorkflowService.updateAPIWorkflow),
+    deleteApiWorkflow: compose(requireCsrfForMutatingApi, apiWorkflowService.deleteAPIWorkflow),
+    generatePrompt: compose(requireCsrfForMutatingApi, apiWorkflowService.generatePrompt),
 };

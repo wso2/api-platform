@@ -19,164 +19,164 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const View = require('./view');
 
-const Organization = sequelize.define('DP_ORGANIZATION', {
-    UUID: {
+const Organization = sequelize.define('dp_organization', {
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    NAME: {
+    name: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
     },
-    BUSINESS_OWNER: {
+    business_owner: {
         type: DataTypes.STRING,
         allowNull: true,
     },
-    BUSINESS_OWNER_CONTACT: {
+    business_owner_contact: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    BUSINESS_OWNER_EMAIL: {
+    business_owner_email: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    HANDLE: {
+    handle: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
     },
-    IDP_REF_ID: {
+    idp_ref_id: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CP_REF_ID: {
+    cp_ref_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    CONFIGURATION: {
+    configuration: {
         type: DataTypes.JSONB,
         allowNull: false
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_ORGANIZATION',
+    tableName: 'dp_organizations',
     returning: true
 });
 
-const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
-    UUID: {
+const OrgContent = sequelize.define('dp_organization_asset', {
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    FILE_NAME: {
+    file_name: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    FILE_CONTENT: {
+    file_content: {
         type: DataTypes.BLOB,
         allowNull: false,
     },
-    FILE_TYPE: {
+    file_type: {
         type: DataTypes.STRING(20),
         allowNull: false,
     },
-    FILE_PATH: {
+    file_path: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    ORG_UUID: {
+    org_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
         foreignKey: true,
     },
-    VIEW_UUID: {
+    view_uuid: {
         type: DataTypes.STRING(40),
         allowNull: false,
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_ORGANIZATION_ASSET',
+    tableName: 'dp_organization_assets',
     indexes: [
         {
-            name: 'UQ_ORGANIZATION_ASSET_TYPE_NAME_PATH_ORG_VIEW',
+            name: 'uq_organization_asset_type_name_path_org_view',
             unique: true,
-            fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_UUID', 'VIEW_UUID']
+            fields: ['file_type', 'file_name', 'file_path', 'org_uuid', 'view_uuid']
         },
         {
-            name: 'IDX_ORGANIZATION_ASSET_ORG_UUID',
-            fields: ['ORG_UUID']
+            name: 'idx_organization_asset_org_uuid',
+            fields: ['org_uuid']
         },
         {
-            name: 'IDX_ORGANIZATION_ASSET_VIEW_UUID',
-            fields: ['VIEW_UUID']
+            name: 'idx_organization_asset_view_uuid',
+            fields: ['view_uuid']
         }
     ]
 });
 
 OrgContent.belongsTo(Organization, {
-    foreignKey: 'ORG_UUID',
+    foreignKey: 'org_uuid',
 });
 
 Organization.hasMany(OrgContent, {
-    foreignKey: 'ORG_UUID',
+    foreignKey: 'org_uuid',
     onDelete: 'CASCADE',
 });
 
 View.belongsTo(Organization, {
-    foreignKey: 'ORG_UUID',
+    foreignKey: 'org_uuid',
 });
 
 Organization.hasMany(View, {
-    foreignKey: 'ORG_UUID',
+    foreignKey: 'org_uuid',
     onDelete: 'CASCADE',
 });
 
 View.hasOne(OrgContent, {
-    foreignKey: 'VIEW_UUID',
+    foreignKey: 'view_uuid',
     onDelete: 'CASCADE',
 });
 
 OrgContent.belongsTo(View, {
-    foreignKey: 'VIEW_UUID',
+    foreignKey: 'view_uuid',
     onDelete: 'CASCADE'
 });
 

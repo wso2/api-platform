@@ -32,7 +32,7 @@ AUTH_HEADER="Authorization: Bearer $TOKEN"
 # Resolve ORG_ID — use env var if set, otherwise discover by handle
 if [ -z "${ORG_ID:-}" ]; then
     ORG_ID=$(curl -sk -H "$AUTH_HEADER" "$BASE_URL/organizations" | \
-        jq -r --arg h "$ORG_HANDLE" '.[] | select(.orgHandle == $h) | .orgID // empty')
+        jq -r --arg h "$ORG_HANDLE" '.[] | select(.orgHandle == $h) | .orgId // empty')
     if [ -z "$ORG_ID" ]; then
         echo "Error: organization with handle '$ORG_HANDLE' not found. Ensure the server has started with DP_DEFAULTORGNAME set."
         exit 1

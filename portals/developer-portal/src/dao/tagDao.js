@@ -23,7 +23,7 @@ const { Sequelize } = require('sequelize');
  * Tags are freeform — unlike labels, an unknown tag name is created on the fly
  * rather than rejected, so existing free-text tagging behavior is preserved.
  */
-const getOrCreateIds = async (orgID, tagNames, createdBy, t) => {
+const getOrCreateIds = async (orgId, tagNames, createdBy, t) => {
 
     const IDList = [];
     try {
@@ -32,18 +32,18 @@ const getOrCreateIds = async (orgID, tagNames, createdBy, t) => {
             if (!trimmed) continue;
             const [tag] = await Tags.findOrCreate({
                 where: {
-                    NAME: trimmed,
-                    ORG_UUID: orgID
+                    name: trimmed,
+                    org_uuid: orgId
                 },
                 defaults: {
-                    NAME: trimmed,
-                    ORG_UUID: orgID,
-                    CREATED_BY: createdBy,
-                    UPDATED_BY: createdBy
+                    name: trimmed,
+                    org_uuid: orgId,
+                    created_by: createdBy,
+                    updated_by: createdBy
                 },
                 transaction: t
             });
-            IDList.push(tag.UUID);
+            IDList.push(tag.uuid);
         }
         return IDList;
     } catch (error) {
@@ -54,14 +54,14 @@ const getOrCreateIds = async (orgID, tagNames, createdBy, t) => {
     }
 }
 
-const createApiMapping = async (orgID, apiID, tagNames, createdBy, t) => {
+const createApiMapping = async (orgId, apiId, tagNames, createdBy, t) => {
 
-    const IDList = await getOrCreateIds(orgID, tagNames || [], createdBy, t);
+    const IDList = await getOrCreateIds(orgId, tagNames || [], createdBy, t);
     try {
-        const tagList = IDList.map(tagID => ({
-            TAG_UUID: tagID,
-            API_UUID: apiID,
-            CREATED_BY: createdBy,
+        const tagList = IDList.map(tagId => ({
+            tag_uuid: tagId,
+            api_uuid: apiId,
+            created_by: createdBy,
         }));
         return await APITags.bulkCreate(tagList, { transaction: t, ignoreDuplicates: true });
     } catch (error) {
@@ -76,16 +76,16 @@ const createApiMapping = async (orgID, apiID, tagNames, createdBy, t) => {
  * Full replace — mirrors the previous TAGS column's overwrite-on-update semantics
  * (no incremental add/remove diffing like labels).
  */
-const replaceApiMapping = async (orgID, apiID, tagNames, createdBy, t) => {
+const replaceApiMapping = async (orgId, apiId, tagNames, createdBy, t) => {
 
     try {
         await APITags.destroy({
             where: {
-                API_UUID: apiID,
+                api_uuid: apiId,
             },
             transaction: t
         });
-        return await createApiMapping(orgID, apiID, tagNames || [], createdBy, t);
+        return await createApiMapping(orgId, apiId, tagNames || [], createdBy, t);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;

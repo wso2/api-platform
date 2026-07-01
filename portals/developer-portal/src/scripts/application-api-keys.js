@@ -128,9 +128,10 @@
             submitBtn.dataset.loading = 'true';
             submitBtn.disabled = true;
             try {
-                const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keySelect.value) + '/application'), {
-                    method: 'PUT', credentials: 'same-origin',
-                    headers: jsonMutationHeaders(), body: JSON.stringify({ appId: appId }),
+                const selectedApiId = apiSelect ? apiSelect.value : '';
+                const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(selectedApiId) + '/api-keys/associate'), {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keySelect.value, appId: appId }),
                 });
                 if (!response.ok) {
                     const data = await response.json().catch(function () { return {}; });
@@ -153,12 +154,13 @@
         btn.addEventListener('click', async function () {
             if (btn.disabled) return;
             const keyId = btn.getAttribute('data-key-id') || '';
-            if (!keyId) return;
+            const keyApiId = btn.getAttribute('data-api-id') || '';
+            if (!keyId || !keyApiId) return;
             btn.disabled = true;
             try {
-                const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/application'), {
-                    method: 'DELETE', credentials: 'same-origin',
-                    headers: jsonMutationHeaders(),
+                const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(keyApiId) + '/api-keys/dissociate'), {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
                 });
                 if (!response.ok) {
                     const data = await response.json().catch(function () { return {}; });

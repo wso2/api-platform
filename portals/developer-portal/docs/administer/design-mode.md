@@ -143,7 +143,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 Initial upload:
 
 ```bash
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout" \
+curl -X POST "http://localhost:3000/devportal/v1/views/{viewName}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
@@ -151,7 +151,7 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layo
 Update an existing layout:
 
 ```bash
-curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout" \
+curl -X PUT "http://localhost:3000/devportal/v1/views/{viewName}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
@@ -159,7 +159,7 @@ curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layou
 Revert to the default layout:
 
 ```bash
-curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout/template" \
+curl -X DELETE "http://localhost:3000/devportal/v1/views/{viewName}/layout/template" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

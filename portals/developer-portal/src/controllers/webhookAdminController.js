@@ -20,27 +20,27 @@ const logger = require('../config/logger');
 
 function formatDelivery(d) {
     return {
-        deliveryId: d.UUID,
-        subscriberId: d.SUBSCRIBER_ID,
-        targetUrl: d.TARGET_URL || null,
-        status: d.STATUS,
-        lastHttpStatus: d.LAST_HTTP_STATUS || null,
-        lastError: d.LAST_ERROR || null,
-        lastAttemptAt: d.LAST_ATTEMPT_AT || null,
-        deliveredAt: d.DELIVERED_AT || null,
+        deliveryId: d.uuid,
+        subscriberId: d.subscriber_id,
+        targetUrl: d.target_url || null,
+        status: d.status,
+        lastHttpStatus: d.last_http_status || null,
+        lastError: d.last_error || null,
+        lastAttemptAt: d.last_attempt_at || null,
+        deliveredAt: d.delivered_at || null,
     };
 }
 
 function formatEvent(row) {
-    const deliveries = (row.DP_EVENT_DELIVERIES || []).map(formatDelivery);
+    const deliveries = (row.dp_event_deliveries || []).map(formatDelivery);
     return {
-        eventId: row.UUID,
-        eventType: row.TYPE,
-        orgId: row.ORG_UUID,
-        aggregateType: row.AGGREGATE_TYPE,
-        aggregateId: row.AGGREGATE_UUID,
-        status: row.STATUS,
-        occurredAt: row.OCCURRED_AT,
+        eventId: row.uuid,
+        eventType: row.type,
+        orgId: row.org_uuid,
+        aggregateType: row.aggregate_type,
+        aggregateId: row.aggregate_uuid,
+        status: row.status,
+        occurredAt: row.occurred_at,
         deliveries,
     };
 }
@@ -51,7 +51,7 @@ function formatEvent(row) {
  */
 async function listEvents(req, res) {
     try {
-        const { orgId } = req.params;
+        const orgId = req.orgId;
         const { status, limit = '20', offset = '0' } = req.query;
         const parsedLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
         const parsedOffset = Math.max(0, parseInt(offset, 10) || 0);
@@ -77,7 +77,7 @@ async function listEvents(req, res) {
 async function getEvent(req, res) {
     try {
         const event = await eventDao.get(req.params.eventId);
-        if (!event || event.ORG_UUID !== req.params.orgId) {
+        if (!event || event.org_uuid !== req.orgId) {
             return res.status(404).json({ message: 'Event not found' });
         }
         res.json(formatEvent(event));

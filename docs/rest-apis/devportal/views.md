@@ -4,13 +4,13 @@
 
 <a id="opIdaddView"></a>
 
-`POST /o/{orgId}/devportal/v1/views`
+`POST /devportal/v1/views`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -46,7 +46,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ViewCreateRequest](schemas.md#schemaviewcreaterequest)|true|View creation payload with the label names that should be visible in the view.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -68,8 +67,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -132,13 +131,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllViews"></a>
 
-`GET /o/{orgId}/devportal/v1/views`
+`GET /devportal/v1/views`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -160,7 +159,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -229,13 +227,13 @@ Status Code **200**
 
 <a id="opIdupdateView"></a>
 
-`PUT /o/{orgId}/devportal/v1/views/{viewName}`
+`PUT /devportal/v1/views/{viewName}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -272,7 +270,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the name or label changes that should be applied.|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
 > Example responses
@@ -301,8 +298,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -376,13 +373,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetView"></a>
 
-`GET /o/{orgId}/devportal/v1/views/{viewName}`
+`GET /devportal/v1/views/{viewName}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -402,7 +399,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
 > Example responses
@@ -430,8 +426,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -490,13 +486,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteView"></a>
 
-`DELETE /o/{orgId}/devportal/v1/views/{viewName}`
+`DELETE /devportal/v1/views/{viewName}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewName} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -516,7 +512,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
 > Example responses
@@ -531,8 +526,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

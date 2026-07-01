@@ -5,7 +5,7 @@
             <div class="container-header">Subscribed API Proxies</div>
             <div class='action-buttons mt-0'>
                 <a class="common-btn-primary" type="button"
-                    href="{{baseUrl}}/apis?appID={{applicationMetadata.id}}&appName={{applicationMetadata.name}}">
+                    href="{{baseUrl}}/apis?appId={{applicationMetadata.id}}&appName={{applicationMetadata.name}}">
                     <i class="fas fa-external-link-alt me-2"></i> Explore more
                 </a>
             </div>
@@ -26,25 +26,25 @@
                     </thead>
                     <tbody>
                         {{#each subAPIs}}
-                        {{> api-key apiID=apiID keyType="PRODUCTION"}}
-                        {{> api-key apiID=apiID keyType="SANDBOX"}}
+                        {{> api-key apiId=apiId keyType="PRODUCTION"}}
+                        {{> api-key apiId=apiId keyType="SANDBOX"}}
                         {{#in apiType values="REST, WS, WEBSUB, GRAPHQL"}}
-                        <tr class="data-row" id="data-row-{{subID}}" data-index="{{@index}}">
+                        <tr class="data-row" id="data-row-{{subId}}" data-index="{{@index}}">
                             <td class="app-td" style="width: 20%;">
                                 <span onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'"
                                     class="text-truncate d-block" style="cursor: pointer;">{{name}}</span>
                             </td>
                             <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" class="app-td" style="width: 20%; cursor: pointer;">{{version}}</td>
                             {{!-- <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" class="app-td" style="cursor: pointer;">{{apiType}}</td> --}}
-                            <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" id="plan_{{subID}}" class="app-td" style="width: 20%; cursor: pointer;">{{planName}}</td>
+                            <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" id="plan_{{subId}}" class="app-td" style="width: 20%; cursor: pointer;">{{planName}}</td>
                             <td class="app-td action-column" style="width: 30%;">
                                 <div class="action-buttons-container">
                                     {{> warning }}
-                                    <button type="button" class="btn application-btn-icon {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}" onclick="loadModal('planModal-{{apiID}}')">
+                                    <button type="button" class="btn application-btn-icon {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}" onclick="loadModal('planModal-{{apiId}}')">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button type="button" class="btn application-btn-icon delete-button {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
-                                        onclick="openWarningModal('Unsubscribe', '{{../orgID}}', '{{../applicationMetadata.id}}', '{{refID}}', '{{subID}}')">
+                                        onclick="openWarningModal('Unsubscribe', '{{../orgId}}', '{{../applicationMetadata.id}}', '{{refId}}', '{{subId}}')">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
@@ -57,7 +57,7 @@
             </div>
             {{#each subAPIs}}
             {{#in apiType values="REST, WS, WEBSUB, GRAPHQL"}}
-            {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appID=../applicationMetadata.id subID=subID}}
+            {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appId=../applicationMetadata.id subId=subId}}
             {{/in}}
             {{/each}}
             {{/if}}
@@ -77,7 +77,7 @@
             <div class="container-header">Subscribed MCP Servers</div>
             <div class='action-buttons mt-0'>
                 <a class="common-btn-primary" type="button"
-                    href="{{baseUrl}}/mcps?appID={{applicationMetadata.id}}&appName={{applicationMetadata.name}}">
+                    href="{{baseUrl}}/mcps?appId={{applicationMetadata.id}}&appName={{applicationMetadata.name}}">
                     <i class="fas fa-external-link-alt me-2"></i> Explore more
                 </a>
             </div>
@@ -98,21 +98,21 @@
                     <tbody id="subscribed-api-body">
                         {{#each subAPIs}}
                         {{#if (eq apiType "MCP")}}
-                        <tr class="data-row" data-index="{{@index}}" id="data-row-{{subID}}">
+                        <tr class="data-row" data-index="{{@index}}" id="data-row-{{subId}}">
                             <td class="app-td" style="width: 25%;">
                                 <span onclick="window.location.href='{{@root.baseUrl}}/mcp/{{apiHandle}}'"
                                     class="text-truncate d-block" style="cursor: pointer;">{{name}}</span>
                             </td>
                             <td class="app-td" style="width: 25%;">{{version}}</td>
-                            <td id="plan_{{subID}}" class="app-td" style="width: 25%;">{{planName}}</td>
+                            <td id="plan_{{subId}}" class="app-td" style="width: 25%;">{{planName}}</td>
                             <td class="app-td action-column" style="width: 30%;">
                                 <div class="action-buttons-container">
                                     {{> warning }}
-                                    <button type="button" class="btn application-btn-icon {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}" onclick="loadModal('planModal-{{apiID}}')">
+                                    <button type="button" class="btn application-btn-icon {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}" onclick="loadModal('planModal-{{apiId}}')">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button type="button" class="btn application-btn-icon delete-button {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
-                                        onclick="openWarningModal('Unsubscribe', '{{../orgID}}', '{{../applicationMetadata.id}}', '{{refID}}', '{{subID}}')">
+                                        onclick="openWarningModal('Unsubscribe', '{{../orgId}}', '{{../applicationMetadata.id}}', '{{refId}}', '{{subId}}')">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
@@ -124,7 +124,7 @@
                 </table>
                 {{#each subAPIs}}
                 {{#if (eq apiType "MCP")}}
-                {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appID=../applicationMetadata.id subID=subID}}
+                {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appId=../applicationMetadata.id subId=subId}}
                 {{/if}}
                 {{/each}}
                 {{/if}}
@@ -166,7 +166,7 @@
                             status: sub.status
                         };
                     });
-                    window.__subscriptionOrgID = "{{@root.orgID}}";
+                    window.__subscriptionOrgId = "{{@root.orgId}}";
                 })();
             </script>
             <div class="app-table-container" id="app-table-container-subscriptions">

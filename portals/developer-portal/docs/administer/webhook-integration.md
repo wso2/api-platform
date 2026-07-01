@@ -53,7 +53,7 @@ webhooks:
 ### Create a subscriber
 
 ```bash
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers" \
+curl -X POST "http://localhost:3000/devportal/v1/webhook-subscribers" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -83,18 +83,18 @@ The response never includes the secret. To set a public key for envelope-encrypt
 
 ```bash
 # List
-curl "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/devportal/v1/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
 
 # Get one
-curl "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/devportal/v1/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
 
 # Update (only supplied fields are changed; omitted fields keep their stored values)
-curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" \
+curl -X PUT "http://localhost:3000/devportal/v1/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 
 # Delete
-curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" \
+curl -X DELETE "http://localhost:3000/devportal/v1/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -506,11 +506,11 @@ Each delivery is attempted exactly once. If your subscriber endpoint is unavaila
 ### List recent events
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/webhook-events -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get event details
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
 ```

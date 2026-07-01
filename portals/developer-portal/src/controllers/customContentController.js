@@ -82,8 +82,8 @@ const loadCustomContent = async (req, res, next) => {
                 throw new Error(`Content page not found at ${resolvedPagePath}`);
             }
             const orgDetails = await orgDao.get(orgName);
-            const orgId = orgDetails.UUID;
-            devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+            const orgId = orgDetails.uuid;
+            devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
             let markDownFiles = await orgDao.getContent({
                 orgId: orgId,
                 fileType: 'markDown',
@@ -91,8 +91,8 @@ const loadCustomContent = async (req, res, next) => {
             });
             if (markDownFiles.length > 0) {
                 markDownFiles.forEach((item) => {
-                    const tempKey = item.FILE_NAME.split('.md')[0];
-                    content[tempKey] = markdown.parse(item.FILE_CONTENT.toString(constants.CHARSET_UTF8));
+                    const tempKey = item.file_name.split('.md')[0];
+                    content[tempKey] = markdown.parse(item.file_content.toString(constants.CHARSET_UTF8));
                 });
             }
             content[constants.BASE_URL_NAME] = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;

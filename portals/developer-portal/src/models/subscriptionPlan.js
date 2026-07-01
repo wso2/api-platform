@@ -19,64 +19,69 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
-const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
-    UUID: {
+const SubscriptionPlan = sequelize.define('dp_subscription_plan', {
+    uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         allowNull: false,
         primaryKey: true
     },
-    HANDLE: {
+    handle: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: 'unique_org_plan_handle'
     },
-    NAME: {
+    name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    DESCRIPTION: {
+    description: {
         type: DataTypes.STRING(1023),
         allowNull: true
     },
-    REQUEST_COUNT: {
+    request_count: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    REF_ID: {
+    ref_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    CREATED_BY: {
+    org_uuid: {
+        type: DataTypes.STRING(40),
+        allowNull: true,
+        references: { model: 'dp_organizations', key: 'uuid' }
+    },
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CREATED_AT: {
+    created_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
-    UPDATED_BY: {
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    UPDATED_AT: {
+    updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_SUBSCRIPTION_PLAN',
+    tableName: 'dp_subscription_plans',
     returning: true,
     indexes: [
-        { name: 'UQ_SUBSCRIPTION_PLAN_ORG_HANDLE', unique: true, fields: ['ORG_UUID', 'HANDLE'] }
+        { name: 'uq_subscription_plan_org_handle', unique: true, fields: ['org_uuid', 'handle'] }
     ]
 });
 
 SubscriptionPlan.belongsTo(Organization, {
     foreignKey: {
-        name: 'ORG_UUID',
+        name: 'org_uuid',
         unique: 'unique_org_plan_handle'
     }
 });

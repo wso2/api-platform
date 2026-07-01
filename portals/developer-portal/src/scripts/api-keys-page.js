@@ -202,7 +202,7 @@
     const namePattern = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 
     async function postGenerate(body) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/generate'), {
+        const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(apiId) + '/api-keys/generate'), {
             method: 'POST', credentials: 'same-origin',
             headers: jsonMutationHeaders(), body: JSON.stringify(body),
         });
@@ -212,9 +212,9 @@
     }
 
     async function postRegenerate(keyId, body) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/regenerate'), {
+        const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(apiId) + '/api-keys/regenerate'), {
             method: 'POST', credentials: 'same-origin',
-            headers: jsonMutationHeaders(), body: JSON.stringify(body),
+            headers: jsonMutationHeaders(), body: JSON.stringify(Object.assign({ keyId: keyId }, body)),
         });
         const data = await response.json().catch(function () { return {}; });
         if (!response.ok) throw new Error(data.description || data.message || response.statusText || 'Request failed');
@@ -222,11 +222,9 @@
     }
 
     async function postRevoke(keyId) {
-        const url = '/o/' + encodeURIComponent(orgId) + '/devportal/v1/api-keys/' + encodeURIComponent(keyId) + '/revoke';
-        const response = await fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: jsonMutationHeaders()
+        const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(apiId) + '/api-keys/revoke'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
         });
         if (!response.ok) {
             const data = await response.json().catch(function () { return {}; });
@@ -234,10 +232,10 @@
         }
     }
 
-    async function putApplication(keyId, appId) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/application'), {
-            method: 'PUT', credentials: 'same-origin',
-            headers: jsonMutationHeaders(), body: JSON.stringify({ appId: appId }),
+    async function postAssociate(keyId, appId) {
+        const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(apiId) + '/api-keys/associate'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId, appId: appId }),
         });
         if (!response.ok) {
             const data = await response.json().catch(function () { return {}; });
@@ -245,10 +243,10 @@
         }
     }
 
-    async function deleteApplicationAssociation(keyId) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/application'), {
-            method: 'DELETE', credentials: 'same-origin',
-            headers: jsonMutationHeaders(),
+    async function postDissociate(keyId) {
+        const response = await fetch(devportalApi.org('/apis/' + encodeURIComponent(apiId) + '/api-keys/dissociate'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
         });
         if (!response.ok) {
             const data = await response.json().catch(function () { return {}; });
@@ -269,9 +267,9 @@
             submitAppBtn.disabled = true;
             try {
                 if (appId) {
-                    await putApplication(keyId, appId);
+                    await postAssociate(keyId, appId);
                 } else {
-                    await deleteApplicationAssociation(keyId);
+                    await postDissociate(keyId);
                 }
                 closeAppModal();
                 window.location.reload();
@@ -297,7 +295,7 @@
                 if (typeof showAlert === 'function') await showAlert('Enter a valid name: start with a letter or number, then up to 128 URL-safe characters.', 'error');
                 return;
             }
-            const body = { apiId: apiId, name: name };
+            const body = { name: name };
             const iso = expInput ? expiresToIso(expInput.value) : null;
             if (iso) body.expiresAt = iso;
             submitGenBtn.dataset.loading = 'true';
@@ -353,7 +351,7 @@
                 if (typeof showAlert === 'function') await showAlert('Enter a valid name for the new key.', 'error');
                 return;
             }
-            const body = { apiId: apiId, name: name };
+            const body = { name: name };
             const iso = expField ? expiresToIso(expField.value) : null;
             if (iso) body.expiresAt = iso;
             submitRegenBtn.dataset.loading = 'true';

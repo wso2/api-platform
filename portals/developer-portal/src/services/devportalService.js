@@ -35,36 +35,37 @@ const getOrganization = async (req, res) => {
 const getOrganizationDetails = async (orgId) => {
     const organization = await orgDao.get(orgId);
     return {
-        orgId: organization.UUID,
-        orgName: organization.NAME,
-        businessOwner: organization.BUSINESS_OWNER,
-        businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
-        businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
-        orgHandle: organization.HANDLE,
-        organizationIdentifier: organization.IDP_REF_ID,
-        orgConfiguration: organization.CONFIGURATION,
+        id: organization.uuid,
+        name: organization.name,
+        businessOwner: organization.business_owner,
+        businessOwnerContact: organization.business_owner_contact,
+        businessOwnerEmail: organization.business_owner_email,
+        handle: organization.handle,
+        idpRefId: organization.idp_ref_id,
+        cpRefId: organization.cp_ref_id,
+        configuration: organization.configuration,
     };
 }
 
 const getOrgContent = async (req, res) => {
     try {
         if (req.query.fileType && req.query.fileName) {
-            const asset = await adminService.getOrgContent(req.params.orgId, req.params.viewName, req.query.fileType, req.query.fileName, req.query.filePath);
+            const asset = await adminService.getOrgContent(req.orgId, req.params.viewName, req.query.fileType, req.query.fileName, req.query.filePath);
             if (asset) {
-                const contentType = asset ? retrieveContentType(asset.FILE_NAME, asset.FILE_TYPE) : "";
+                const contentType = asset ? retrieveContentType(asset.file_name, asset.file_type) : "";
                 res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
-                return res.status(200).send(Buffer.isBuffer(asset.FILE_CONTENT) ? asset.FILE_CONTENT : constants.CHARSET_UTF8);
+                return res.status(200).send(Buffer.isBuffer(asset.file_content) ? asset.file_content : constants.CHARSET_UTF8);
             } else {
                 return res.status(404).send('Not Found');
             }
         } else if (req.params.fileType) {
-            const assets = await adminService.getOrgContent(req.params.orgId, req.params.viewName, req.params.fileType);
+            const assets = await adminService.getOrgContent(req.orgId, req.params.viewName, req.params.fileType);
             const results = [];
             for (const asset of assets) {
                 const resp = {
-                    orgId: asset.ORG_UUID,
-                    fileName: asset.FILE_NAME,
-                    fileContent: asset.FILE_CONTENT ? asset.FILE_CONTENT.toString(constants.CHARSET_UTF8) : null
+                    id: asset.org_uuid,
+                    fileName: asset.file_name,
+                    fileContent: asset.file_content ? asset.file_content.toString(constants.CHARSET_UTF8) : null
                 };
                 results.push(resp);
             }
@@ -76,7 +77,7 @@ const getOrgContent = async (req, res) => {
         logger.error('Error while fetching organization content', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
+            orgId: req.orgId,
             viewName: req.params.viewName
         });
         res.status(404).send(error.message);

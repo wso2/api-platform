@@ -32,7 +32,7 @@ const apiKeyService = require('../services/apiKeyService');
 
 const orgIDValue = async (orgName) => {
     const organization = await orgDao.get(orgName);
-    return organization.UUID;
+    return organization.uuid;
 }
 
 const templateResponseValue = async (pageName) => {
@@ -58,34 +58,34 @@ const buildProfile = (req) => {
  * Keeps loadApplication / loadApplicationKeys lean and avoids drift between the two.
  */
 const loadApplicationData = async (req, orgName, applicationId, viewName) => {
-    const orgID = await orgIDValue(orgName);
+    const orgId = await orgIDValue(orgName);
 
-    const userID = req[constants.USER_ID]
-    const applicationList = await adminService.getApplicationKeyMap(orgID, applicationId, userID);
+    const userId = req[constants.USER_ID]
+    const applicationList = await adminService.getApplicationKeyMap(orgId, applicationId, userId);
 
     let applicationReference = "";
     let applicationKeyList;
-    if (Array.isArray(applicationList.appMap) && applicationList.appMap.length > 0) {
-        applicationReference = applicationList.appMap[0].appRefID;
+    if (Array.isArray(applicationList.appKeyMappings) && applicationList.appKeyMappings.length > 0) {
+        applicationReference = applicationList.appKeyMappings[0].asClientId;
         try {
             const { ApplicationKeyMapping } = require('../models/application');
             const localMappings = await ApplicationKeyMapping.findAll({
-                where: { APP_UUID: applicationId }
+                where: { app_uuid: applicationId }
             });
             const keyList = [];
             for (const mapping of localMappings) {
-                if (mapping.AS_CLIENT_ID && mapping.KM_UUID) {
+                if (mapping.as_client_id && mapping.km_uuid) {
                     try {
-                        const km = await kmDao.get(mapping.KM_UUID);
+                        const km = await kmDao.get(mapping.km_uuid);
                         keyList.push({
-                            keyManager: km.NAME,
-                            consumerKey: mapping.AS_CLIENT_ID,
-                            keyMappingId: mapping.UUID,
-                            keyType: mapping.TYPE || constants.KEY_TYPE.PRODUCTION,
+                            keyManager: km.name,
+                            consumerKey: mapping.as_client_id,
+                            keyMappingId: mapping.uuid,
+                            keyType: mapping.type || constants.KEY_TYPE.PRODUCTION,
                         });
                     } catch (mappingErr) {
                         logger.warn('Skipping key mapping due to error', {
-                            mappingId: mapping.UUID, error: mappingErr.message
+                            mappingId: mapping.uuid, error: mappingErr.message
                         });
                     }
                 }
@@ -102,14 +102,14 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     let kMmetaData = [];
     try {
-        const dbKeyManagers = await kmDao.listEnabled(orgID);
+        const dbKeyManagers = await kmDao.listEnabled(orgId);
         for (const km of dbKeyManagers) {
             kMmetaData.push({
-                id: km.UUID,
-                name: km.NAME,
-                type: km.TYPE,
+                id: km.uuid,
+                name: km.name,
+                type: km.type,
                 enabled: true,
-                tokenEndpoint: km.TOKEN_ENDPOINT,
+                tokenEndpoint: km.token_endpoint,
             });
         }
     } catch (kmError) {
@@ -125,7 +125,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
             consumerKey: key.consumerKey,
             keyMappingId: key.keyMappingId,
             keyType: key.keyType,
-            appRefID: applicationReference
+            appRefId: applicationReference
         };
         if (key.keyType === constants.KEY_TYPE.PRODUCTION) {
             productionKeys.push(keyData);
@@ -164,7 +164,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     const profile = buildProfile(req);
 
     return {
-        orgID,
+        orgId,
         applicationList,
         keyManagersMetadata: kMmetaData,
         productionKeys,
@@ -192,12 +192,12 @@ const loadApplications = async (req, res, next) => {
 
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let html, metaData, templateContent;
     try {
         const orgName = req.params.orgName;
-        const orgID = await orgIDValue(orgName);
-        const applications = await appDao.list(orgID, req.user.sub)
+        const orgId = await orgIDValue(orgName);
+        const applications = await appDao.list(orgId, req.user.sub)
         const metaData = applications.map(application => new ApplicationDTO(application));
         let profile = null;
         if (req.user) {
@@ -211,7 +211,7 @@ const loadApplications = async (req, res, next) => {
         }
 
         templateContent = {
-            orgID,
+            orgId,
             applicationsMetadata: metaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,
@@ -219,7 +219,7 @@ const loadApplications = async (req, res, next) => {
             isReadOnlyMode: config.readOnlyMode,
         }
         const templateResponse = await templateResponseValue('applications');
-        const layoutResponse = await loadLayoutFromAPI(orgID, viewName);
+        const layoutResponse = await loadLayoutFromAPI(orgId, viewName);
         if (layoutResponse === "") {
             html = renderTemplate('../pages/applications/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
@@ -244,16 +244,16 @@ const loadApplication = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationId, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
-        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgID, applicationId);
+        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, applicationId);
 
         templateContent = {
-            orgID: data.orgID,
+            orgId: data.orgId,
             applicationMetadata: metaData,
             keyManagersMetadata: kMmetaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
@@ -278,7 +278,7 @@ const loadApplication = async (req, res, next) => {
             availableKeysByApi
         }
         const templateResponse = await templateResponseValue('application');
-        const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
+        const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
         if (layoutResponse === "") {
             html = renderTemplate('../pages/application/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
@@ -307,7 +307,7 @@ const loadApplicationKeys = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationId, viewName);
@@ -315,7 +315,7 @@ const loadApplicationKeys = async (req, res, next) => {
         kMmetaData = data.keyManagersMetadata;
 
         templateContent = {
-            orgID: data.orgID,
+            orgId: data.orgId,
             applicationMetadata: metaData,
             keyManagersMetadata: kMmetaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
@@ -337,7 +337,7 @@ const loadApplicationKeys = async (req, res, next) => {
             isReadOnlyMode: config.readOnlyMode
         }
         const templateResponse = await templateResponseValue('manage-keys');
-        const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
+        const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
         if (layoutResponse === "") {
             html = renderTemplate('../pages/manage-keys/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
@@ -367,37 +367,37 @@ const loadApplicationKeys = async (req, res, next) => {
  */
 function formatApiDisplayName(apiMetadata, fallbackId) {
     if (!apiMetadata) return fallbackId;
-    const namePart = [apiMetadata.NAME, apiMetadata.VERSION].filter(Boolean).join(' ');
-    return apiMetadata.HANDLE ? `${namePart} (${apiMetadata.HANDLE})` : namePart;
+    const namePart = [apiMetadata.name, apiMetadata.version].filter(Boolean).join(' ');
+    return apiMetadata.handle ? `${namePart} (${apiMetadata.handle})` : namePart;
 }
 
-async function loadApplicationApiKeysData(orgID, applicationId) {
+async function loadApplicationApiKeysData(orgId, applicationId) {
     let associatedApiKeys = [];
     let availableKeysByApi = [];
     try {
-        const associated = await apiKeyService.list(orgID, { appId: applicationId });
+        const associated = await apiKeyService.list(orgId, { appId: applicationId });
         associatedApiKeys = associated.map((k) => ({
-            keyId: k.UUID,
-            name: k.NAME,
-            status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-            apiId: k.API_UUID,
-            apiName: formatApiDisplayName(k.DP_API_METADATA, k.API_UUID)
+            keyId: k.uuid,
+            name: k.name,
+            status: String(k.status || 'ACTIVE').toLowerCase(),
+            apiId: k.api_uuid,
+            apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
         }));
 
         // Capped — this just populates a UI picker, not a full export of the org's keys.
-        const allKeys = await apiKeyService.list(orgID, { status: 'ACTIVE', limit: 200 });
+        const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
-            if (k.DP_API_KEY_APP_MAPPING?.APP_UUID === applicationId) return;
-            const apiId = k.API_UUID;
-            const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
+            if (k.dp_api_key_app_mapping?.app_uuid === applicationId) return;
+            const apiId = k.api_uuid;
+            const apiName = formatApiDisplayName(k.dp_api_metadata, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
-            byApi.get(apiId).keys.push({ keyId: k.UUID, name: k.NAME });
+            byApi.get(apiId).keys.push({ keyId: k.uuid, name: k.name });
         });
         availableKeysByApi = Array.from(byApi.values());
     } catch (error) {
         logger.warn('Failed to load API keys for application API keys section', {
-            orgID, applicationId, error: error.message
+            orgId, applicationId, error: error.message
         });
     }
     return { associatedApiKeys, availableKeysByApi };
