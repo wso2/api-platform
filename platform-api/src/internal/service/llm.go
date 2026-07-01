@@ -1037,21 +1037,26 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	return mapProxyModelToAPI(created), nil
 }
 
-func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offset int) (*api.LLMProxyListResponse, error) {
-	if projectUUID != nil && *projectUUID != "" && s.projectRepo != nil {
-		project, err := s.projectRepo.GetProjectByUUID(*projectUUID)
+func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, offset int) (*api.LLMProxyListResponse, error) {
+	var resolvedProjectUUID *string
+	if projectHandle != nil && *projectHandle != "" {
+		if s.projectRepo == nil {
+			return nil, constants.ErrProjectNotFound
+		}
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(*projectHandle, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil || project.OrganizationID != orgUUID {
 			return nil, constants.ErrProjectNotFound
 		}
+		resolvedProjectUUID = &project.ID
 	}
 
 	var items []*model.LLMProxy
 	var err error
-	if projectUUID != nil && *projectUUID != "" {
-		items, err = s.repo.ListByProject(orgUUID, *projectUUID, limit, offset)
+	if resolvedProjectUUID != nil {
+		items, err = s.repo.ListByProject(orgUUID, *resolvedProjectUUID, limit, offset)
 	} else {
 		items, err = s.repo.List(orgUUID, limit, offset)
 	}
@@ -1059,8 +1064,8 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 		return nil, fmt.Errorf("failed to list proxies: %w", err)
 	}
 	var totalCount int
-	if projectUUID != nil && *projectUUID != "" {
-		totalCount, err = s.repo.CountByProject(orgUUID, *projectUUID)
+	if resolvedProjectUUID != nil {
+		totalCount, err = s.repo.CountByProject(orgUUID, *resolvedProjectUUID)
 	} else {
 		totalCount, err = s.repo.Count(orgUUID)
 	}

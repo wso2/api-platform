@@ -57,7 +57,7 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 	}
 
 	if strings.TrimSpace(req.DisplayName) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
 		return
 	}
 	if utils.OpenAPIUUIDToString(req.ProjectId) == "00000000-0000-0000-0000-000000000000" {
@@ -507,7 +507,7 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 	case errors.Is(err, constants.ErrAPIKeyForbidden):
 		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only the key creator can perform this action"))
 	case errors.Is(err, constants.ErrInvalidApplicationName):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
 	case errors.Is(err, constants.ErrInvalidApplicationType):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
 	case errors.Is(err, constants.ErrUnsupportedApplicationType):

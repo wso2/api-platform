@@ -71,8 +71,8 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		Value:       r.FormValue("value"),
 		Type:        r.FormValue("type"),
 	}
-	if req.Handle == "" || req.Value == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "id and value are required"))
+	if req.Handle == "" || req.DisplayName == "" || req.Value == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "id, displayName and value are required"))
 		return
 	}
 
