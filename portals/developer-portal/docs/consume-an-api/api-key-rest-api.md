@@ -81,7 +81,7 @@ Optional query parameters:
       "status": "active",
       "apiId": "{apiId}",
       "appId": "{appId}",
-      "appName": "My App",
+      "appDisplayName": "My App",
       "expiresAt": "2027-01-01T00:00:00Z",
       "createdAt": "2026-06-30T10:00:00Z"
     }

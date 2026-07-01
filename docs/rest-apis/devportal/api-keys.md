@@ -160,7 +160,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "name": "weather_prod_key",
       "apiId": "api-7f4c2a6b",
       "appId": "app-12345",
-      "appName": "My Mobile App",
+      "appDisplayName": "My Mobile App",
       "status": "ACTIVE",
       "expiresAt": "2026-12-31T23:59:59Z",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -236,7 +236,7 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
-|»» appName|string¦null|false|none|Name of the associated application, if any.|
+|»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|
 |»» expiresAt|string(date-time)¦null|false|none|none|
 |»» createdAt|string(date-time)|false|none|none|
@@ -285,7 +285,8 @@ Regenerates the secret for an existing API key identified by `keyId` in the requ
 
 ```json
 {
-  "keyId": "key-12345"
+  "keyId": "key-12345",
+  "expiresAt": "2027-01-01T00:00:00Z"
 }
 ```
 
@@ -300,8 +301,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|Identifies the API key to regenerate by its `keyId`.|
+|body|body|object|true|Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided, updates the key's expiry; the key's `name` cannot be changed by this operation.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» expiresAt|body|string|false|New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. Omit to leave the current expiry unchanged.|
 |apiId|path|string|true|none|
 
 > Example responses
@@ -515,7 +517,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "keyId": "key-12345",
   "application": {
     "id": "app-12345",
-    "name": "My Mobile App"
+    "displayName": "My Mobile App"
   }
 }
 ```
@@ -709,7 +711,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "name": "weather_prod_key",
       "apiId": "api-7f4c2a6b",
       "appId": "app-12345",
-      "appName": "My Mobile App",
+      "appDisplayName": "My Mobile App",
       "status": "ACTIVE",
       "expiresAt": "2026-12-31T23:59:59Z",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -763,7 +765,7 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
-|»» appName|string¦null|false|none|Name of the associated application, if any.|
+|»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|
 |»» expiresAt|string(date-time)¦null|false|none|none|
 |»» createdAt|string(date-time)|false|none|none|

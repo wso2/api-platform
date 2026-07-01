@@ -24,6 +24,7 @@ const constants = require('../utils/constants');
 
 const API_METADATA_INCLUDE = {
     model: APIMetadata,
+    as: 'dp_api_metadata',
     attributes: ['uuid', 'name', 'version', 'handle', 'ref_id']
 };
 
@@ -31,7 +32,7 @@ function appMappingInclude(required = false, appId = null) {
     const opts = {
         model: APIKeyAppMapping,
         required,
-        include: [{ model: Application, attributes: ['uuid', 'name'] }],
+        include: [{ model: Application, attributes: ['uuid', 'display_name', 'handle'] }],
     };
     if (appId) opts.where = { app_uuid: appId };
     return opts;
@@ -92,4 +93,12 @@ async function setApplication(orgId, keyId, appId, updatedBy, transaction, { act
     return true;
 }
 
-module.exports = { create, get, list, revoke, setApplication };
+async function updateExpiry(orgId, keyId, expiresAt, updatedBy, transaction) {
+    const [count] = await APIKey.update(
+        { expires_at: expiresAt, updated_by: updatedBy },
+        { where: { uuid: keyId, org_uuid: orgId, status: constants.API_KEY_STATUS.ACTIVE }, transaction }
+    );
+    return count > 0;
+}
+
+module.exports = { create, get, list, revoke, setApplication, updateExpiry };

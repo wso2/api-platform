@@ -167,7 +167,8 @@ Fired when a developer generates a new API key for an API.
     },
     "application": {
       "id": "app-uuid",
-      "name": "My Mobile App"
+      "display_name": "My Mobile App",
+      "handle": "my-mobile-app"
     },
     "key": {
       "wrappedKey": "<base64>",
@@ -257,14 +258,15 @@ Fired whenever a single key's application association changes: the key is associ
     },
     "application": {
       "id": "app-uuid",
-      "name": "My App"
+      "display_name": "My App",
+      "handle": "my-app"
     }
   }
 }
 ```
 
 - `application` is `null` when the key's association was removed, or when the key's app was deleted
-- Renaming an app fires this event once per key currently associated with it, each with the app's new `name`
+- Renaming an app does **not** fire this event — the key-to-application association is unchanged, only the app's own `name`/`handle` change; see [`application.updated`](#applicationupdated)
 - Deleting an app fires this event once per key currently associated with it, each with `application: null` — there is no separate "deleted" variant
 
 ### `subscription.created`
@@ -427,11 +429,15 @@ Fired when a developer creates an application.
   "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
-    "name": "My Mobile App",
-    "description": "Application used to call Weather APIs."
+    "display_name": "My Mobile App",
+    "handle": "my-mobile-app",
+    "description": "Application used to call Weather APIs.",
+    "type": "web"
   }
 }
 ```
+
+`type` is always `"web"` — applications no longer have a configurable type.
 
 ### `application.updated`
 
@@ -443,13 +449,17 @@ Fired when a developer renames an application or changes its details. `data` car
   "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
-    "name": "My Mobile App (renamed)",
-    "description": "Application used to call Weather APIs."
+    "display_name": "My Mobile App (renamed)",
+    "handle": "my-mobile-app",
+    "description": "Application used to call Weather APIs.",
+    "type": "web"
   }
 }
 ```
 
-If the application has API keys associated with it (see [`apikey.application_updated`](#apikeyapplication_updated)), one such event is fired per associated key with the new name, alongside this event.
+`type` is always `"web"` — applications no longer have a configurable type.
+
+Unlike `application.deleted`, this does **not** fan out to a per-key `apikey.application_updated` event — the key-to-application association is unchanged by a rename, so a subscriber that keys its own records off `application_id` can pick up the new name from this single event.
 
 ### `application.deleted`
 
@@ -461,7 +471,8 @@ Fired when a developer deletes an application, after the application has been re
   "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
-    "name": "My Mobile App"
+    "display_name": "My Mobile App",
+    "handle": "my-mobile-app"
   }
 }
 ```

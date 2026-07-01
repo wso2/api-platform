@@ -129,7 +129,7 @@ curl -sk "${BASE}/applications" -H "Authorization: Bearer $TOKEN" | jq .
 curl -sk -X POST "${BASE}/applications" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name": "My CLI App", "description": "Created via API", "type": "WEB"}' | jq .
+  -d '{"displayName": "My CLI App", "description": "Created via API"}' | jq .
 ```
 
 ---

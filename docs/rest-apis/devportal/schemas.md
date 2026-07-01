@@ -721,7 +721,8 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 ```json
 {
   "id": "app-12345",
-  "name": "Weather App",
+  "displayName": "Weather App",
+  "handle": "weather-app",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": [
     {
@@ -739,7 +740,8 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|none|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
+|handle|string|false|none|none|
 |description|string|false|none|none|
 |appKeyMappings|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 
@@ -994,7 +996,8 @@ xor
 
 ```json
 {
-  "name": "Weather App",
+  "displayName": "Weather App",
+  "handle": "weather-app",
   "description": "Application used to call Weather APIs."
 }
 
@@ -1004,7 +1007,8 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
+|handle|string|false|none|Immutable, org-scoped slug for the application. Optional — defaults to the application's `displayName` when omitted.|
 |description|string|true|none|none|
 
 <h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
@@ -1065,6 +1069,7 @@ xor
 
 ```json
 {
+  "apiId": "api-5f2b8c1a",
   "planId": "pol-9a3d1f7e"
 }
 
@@ -1074,6 +1079,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — used as a fallback when the API cannot be derived from the subscription record.|
 |planId|string|true|none|Developer Portal subscription plan ID to switch to.|
 
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
@@ -1168,7 +1174,7 @@ xor
   "name": "weather_prod_key",
   "apiId": "api-7f4c2a6b",
   "appId": "app-12345",
-  "appName": "My Mobile App",
+  "appDisplayName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1187,7 +1193,7 @@ API key metadata returned by list operations. Secret material is omitted.
 |name|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
-|appName|string¦null|false|none|Name of the associated application, if any.|
+|appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |status|string|false|none|none|
 |expiresAt|string(date-time)¦null|false|none|none|
 |createdAt|string(date-time)|false|none|none|
@@ -1218,7 +1224,7 @@ API key metadata returned by list operations. Secret material is omitted.
 
 ```
 
-API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
 
 ### Properties
 
@@ -1249,7 +1255,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
   "keyId": "key-12345",
   "application": {
     "id": "app-12345",
-    "name": "My Mobile App"
+    "displayName": "My Mobile App"
   }
 }
 
@@ -1262,7 +1268,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 |keyId|string|false|none|none|
 |application|object|false|none|none|
 |» id|string|false|none|none|
-|» name|string|false|none|none|
+|» displayName|string|false|none|none|
 
 <h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
 

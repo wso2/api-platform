@@ -179,11 +179,11 @@ telemetry:
 
 defaultOrgName: "default"
 
-# ─── Subscription Policies ─────────────────────────────────────────────────────
+# ─── Subscription Plans ─────────────────────────────────────────────────────────
 # When true, Bronze/Silver/Gold/Unlimited/AsyncUnlimited plans are auto-created
 # for every new organization.
 
-generateDefaultSubPolicies: true
+generateDefaultSubPlans: true
 
 # ─── Features ──────────────────────────────────────────────────────────────────
 

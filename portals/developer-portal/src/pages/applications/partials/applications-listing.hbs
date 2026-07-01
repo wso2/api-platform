@@ -35,13 +35,13 @@
   {{#if applicationsMetadata.length}}
   <div class="apps-grid" id="applicationsContainer">
     {{#applicationsMetadata}}
-    <div class="app-card" id="app-card-{{id}}" data-id="{{id}}" data-name="{{name}}"
+    <div class="app-card" id="app-card-{{id}}" data-id="{{id}}" data-display-name="{{displayName}}"
       style="cursor:pointer;" onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'">
 
       <div class="app-card-top">
-        <span class="app-avatar" data-name="{{name}}"></span>
+        <span class="app-avatar" data-display-name="{{displayName}}"></span>
         <div class="app-card-meta">
-          <h3 class="app-card-name">{{name}}</h3>
+          <h3 class="app-card-name">{{displayName}}</h3>
         </div>
       </div>
 
@@ -51,7 +51,7 @@
         {{#unless @root.isReadOnlyMode}}
         <button type="button" class="app-delete-btn" id="trash-btn-{{id}}"
           title="Delete application"
-          onclick="event.stopPropagation(); appShowDeleteModal('{{id}}', '{{name}}')">
+          onclick="event.stopPropagation(); appShowDeleteModal('{{id}}', '{{displayName}}')">
           <i class="bi bi-trash"></i>
         </button>
         {{/unless}}
@@ -134,11 +134,11 @@
     return (x || 'AP').slice(0, 2).toUpperCase();
   }
 
-  document.querySelectorAll('.app-avatar[data-name]').forEach(function (el, i) {
+  document.querySelectorAll('.app-avatar[data-display-name]').forEach(function (el, i) {
     var c = palette[i % palette.length];
     el.style.background = c.bg;
     el.style.color = c.fg;
-    el.textContent = initials(el.getAttribute('data-name'));
+    el.textContent = initials(el.getAttribute('data-display-name'));
   });
 
   /* ── Create modal ────────────────────────────────── */
