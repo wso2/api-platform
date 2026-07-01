@@ -223,30 +223,32 @@ func generateAPIKeyName(displayName string) (string, error) {
 	return name, nil
 }
 
-// resolveUniqueKeyName returns the caller-supplied name if present, otherwise derives one
+// resolveUniqueKeyName uses the caller-supplied name if present, otherwise derives one
 // from the display name (or the API handle as a fallback) using the same slug algorithm
-// as the gateway controller. It retries with a short random suffix on collision.
+// as the gateway controller. Either way, it retries with a short random suffix on collision.
 func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.CreateAPIKeyRequest, apiHandle string) (string, error) {
+	var baseName string
 	if req.Id != nil && strings.TrimSpace(*req.Id) != "" {
-		return strings.TrimSpace(*req.Id), nil
-	}
-
-	// Determine display name to slug from
-	var displayName string
-	if strings.TrimSpace(req.DisplayName) != "" {
-		displayName = strings.TrimSpace(req.DisplayName)
+		baseName = strings.TrimSpace(*req.Id)
 	} else {
-		// Auto-generate: "<api-handle>-key-<short-id>"
-		shortID, err := utils.GenerateUUID()
-		if err != nil {
-			return "", fmt.Errorf("failed to generate short ID: %w", err)
+		// Determine display name to slug from
+		var displayName string
+		if strings.TrimSpace(req.DisplayName) != "" {
+			displayName = strings.TrimSpace(req.DisplayName)
+		} else {
+			// Auto-generate: "<api-handle>-key-<short-id>"
+			shortID, err := utils.GenerateUUID()
+			if err != nil {
+				return "", fmt.Errorf("failed to generate short ID: %w", err)
+			}
+			displayName = fmt.Sprintf("%s-key-%s", apiHandle, shortID[:8])
 		}
-		displayName = fmt.Sprintf("%s-key-%s", apiHandle, shortID[:8])
-	}
 
-	baseName, err := generateAPIKeyName(displayName)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate API key name: %w", err)
+		var err error
+		baseName, err = generateAPIKeyName(displayName)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate API key name: %w", err)
+		}
 	}
 
 	// Check for collision and retry with a short suffix (up to 5 attempts)
