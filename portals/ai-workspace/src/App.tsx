@@ -155,7 +155,7 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    checkOrganizationExists(org.id)
+    checkOrganizationExists(org.handle)
       .then(async (exists) => {
         if (!exists) {
           setOrgState('provisioning');

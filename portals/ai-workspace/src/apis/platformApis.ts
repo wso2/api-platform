@@ -155,16 +155,17 @@ export async function getOrganization(): Promise<PlatformOrganization> {
 }
 
 /**
- * Fetch an organization by its UUID.
+ * Fetch an organization by its handle.
  * Returns null when the org is not yet registered (404).
  *
  * Endpoint: GET /organizations/{organizationId}
+ *           where {organizationId} is the org handle.
  * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function getOrganizationById(
-  id: string,
+  handle: string,
 ): Promise<PlatformOrganization | null> {
-  const response = await fetch(platformUrl(`/organizations/${id}`), {
+  const response = await fetch(platformUrl(`/organizations/${handle}`), {
     method: 'GET',
     credentials: 'include',
     headers: jsonHeaders(),
@@ -205,15 +206,16 @@ export async function getOrganizationByHandle(
 }
 
 /**
- * Check if an organization exists by UUID (HEAD request).
+ * Check if an organization exists by handle (HEAD request).
  *
  * Endpoint: HEAD /organizations/{organizationId}
+ *           where {organizationId} is the org handle.
  * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function checkOrganizationExists(
-  organizationId: string,
+  handle: string,
 ): Promise<boolean> {
-  const response = await fetch(platformUrl(`/organizations/${organizationId}`), {
+  const response = await fetch(platformUrl(`/organizations/${handle}`), {
     method: 'HEAD',
     credentials: 'include',
     headers: jsonHeaders(),
