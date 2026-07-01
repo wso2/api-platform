@@ -6517,10 +6517,6 @@ components:
           minLength: 1
           maxLength: 128
           example: "Gold"
-        billingPlan:
-          type: string
-          description: Billing plan type (e.g. Free, Commercial)
-          example: "Free"
         limits:
           type: array
           description: >-
@@ -6554,8 +6550,6 @@ components:
           description: Human-readable name for the subscription plan
           minLength: 1
           maxLength: 128
-        billingPlan:
-          type: string
         limits:
           type: array
           description: >-

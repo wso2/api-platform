@@ -881,9 +881,6 @@ type CreateRESTAPIRequestLifeCycleStatus string
 
 // CreateSubscriptionPlanRequest defines model for CreateSubscriptionPlanRequest.
 type CreateSubscriptionPlanRequest struct {
-	// BillingPlan Billing plan type (e.g. Free, Commercial)
-	BillingPlan *string `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
-
 	// DisplayName Human-readable name for the subscription plan
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
@@ -2252,8 +2249,7 @@ type SubscriptionListResponse struct {
 
 // SubscriptionPlan defines model for SubscriptionPlan.
 type SubscriptionPlan struct {
-	BillingPlan *string    `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// DisplayName Human-readable name for the subscription plan
 	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`

@@ -28,6 +28,11 @@ import (
 	"platform-api/src/internal/repository"
 )
 
+// defaultBillingPlan is the billing plan value sent to gateways. The platform-api no
+// longer stores a per-plan billing plan, but the gateway event contract still carries
+// the field, so a fixed "free" value is emitted to keep that contract unchanged.
+const defaultBillingPlan = "free"
+
 // SubscriptionPlanService handles subscription plan business logic
 type SubscriptionPlanService struct {
 	planRepo      repository.SubscriptionPlanRepository
@@ -109,7 +114,7 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 		PlanId:             plan.UUID,
 		Handle:             plan.Handle,
 		PlanName:           plan.Name,
-		BillingPlan:        plan.BillingPlan,
+		BillingPlan:        defaultBillingPlan,
 		StopOnQuotaReach:   plan.StopOnQuotaReach,
 		ThrottleLimitCount: plan.ThrottleLimitCount,
 		ThrottleLimitUnit:  plan.ThrottleLimitUnit,
@@ -168,9 +173,6 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 		}
 		existing.Name = *update.Name
 	}
-	if update.BillingPlan != nil {
-		existing.BillingPlan = *update.BillingPlan
-	}
 	if update.StopOnQuotaReach != nil {
 		existing.StopOnQuotaReach = *update.StopOnQuotaReach
 	}
@@ -210,7 +212,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 		PlanId:             existing.UUID,
 		Handle:             existing.Handle,
 		PlanName:           existing.Name,
-		BillingPlan:        existing.BillingPlan,
+		BillingPlan:        defaultBillingPlan,
 		StopOnQuotaReach:   existing.StopOnQuotaReach,
 		ThrottleLimitCount: existing.ThrottleLimitCount,
 		ThrottleLimitUnit:  existing.ThrottleLimitUnit,

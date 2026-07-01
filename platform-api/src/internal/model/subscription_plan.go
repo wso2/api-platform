@@ -32,7 +32,6 @@ const (
 type SubscriptionPlanUpdate struct {
 	Handle             *string
 	Name               *string
-	BillingPlan        *string
 	StopOnQuotaReach   *bool
 	ThrottleLimitCount *int
 	ThrottleLimitUnit  *string
@@ -54,7 +53,6 @@ type SubscriptionPlan struct {
 	UUID               string                 `json:"id" db:"uuid"`
 	Handle             string                 `json:"handle" db:"handle"`
 	Name               string                 `json:"name" db:"name"`
-	BillingPlan        string                 `json:"billingPlan,omitempty" db:"billing_plan"`
 	StopOnQuotaReach   bool                   `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`
