@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -55,6 +56,7 @@ type LLMProviderService struct {
 	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 type LLMProxyService struct {
@@ -66,6 +68,7 @@ type LLMProxyService struct {
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository) *LLMProviderTemplateService {
@@ -82,6 +85,7 @@ func NewLLMProviderService(
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
+	cfg *config.Server,
 ) *LLMProviderService {
 	return &LLMProviderService{
 		repo:                 repo,
@@ -93,6 +97,7 @@ func NewLLMProviderService(
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -111,6 +116,7 @@ func NewLLMProxyService(
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
+	cfg *config.Server,
 ) *LLMProxyService {
 	return &LLMProxyService{
 		repo:                 repo,
@@ -121,6 +127,7 @@ func NewLLMProxyService(
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -262,9 +269,6 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if existing.ManagedBy == "wso2" {
 		return nil, constants.ErrLLMProviderTemplateReadOnly
 	}
-	if err := ensureOriginMutable(existing.Origin); err != nil {
-		return nil, err
-	}
 	// In-place update never changes the version; a new version is created via
 	// POST /llm-provider-templates/{id}/versions. Reject a request that tries to change it
 	// rather than silently ignoring the supplied value.
@@ -303,6 +307,18 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	}
 	m.ResourceMappings = resourceMappings
 
+	// A DP-originated (gateway_api) template is read-only in the control plane only for
+	// changes that alter what the gateway consumes at runtime: the token-extraction
+	// identifiers and per-resource mappings. Everything else — name, description,
+	// managedBy, the inline OpenAPI spec, and the metadata block (endpointUrl, auth,
+	// logoUrl, openapiSpecUrl), none of which the gateway reads at request time — stays
+	// editable.
+	if existing.Origin == constants.OriginDP {
+		if err := ensureTemplateRuntimeArtifactUnchanged(existing, m); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProviderTemplateNotFound
@@ -331,6 +347,43 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider_template", orgUUID, updatedBy)
 
 	return mapTemplateModelToAPI(updated), nil
+}
+
+// templateRuntimeArtifact is the subset of an LLM provider template that the gateway
+// actually consumes at request time: the token-extraction identifiers and the
+// per-resource extraction overrides (resourceMappings). The gateway's runtime
+// transformer (gateway-controller pkg/utils/llm_transformer.go) reads only these; it
+// never uses the template's metadata block (endpointUrl, auth, logoUrl, openapiSpecUrl),
+// which is authoring/reference/display data. So the metadata block — along with the
+// control-plane-only fields (name, description, managedBy, enabled, inline OpenAPI spec)
+// — stays editable on a DP-originated template; only a change to the extraction fields
+// or resource mappings is rejected.
+type templateRuntimeArtifact struct {
+	PromptTokens     *model.ExtractionIdentifier                `yaml:"promptTokens,omitempty"`
+	CompletionTokens *model.ExtractionIdentifier                `yaml:"completionTokens,omitempty"`
+	TotalTokens      *model.ExtractionIdentifier                `yaml:"totalTokens,omitempty"`
+	RemainingTokens  *model.ExtractionIdentifier                `yaml:"remainingTokens,omitempty"`
+	RequestModel     *model.ExtractionIdentifier                `yaml:"requestModel,omitempty"`
+	ResponseModel    *model.ExtractionIdentifier                `yaml:"responseModel,omitempty"`
+	ResourceMappings *model.LLMProviderTemplateResourceMappings `yaml:"resourceMappings,omitempty"`
+}
+
+func templateRuntimeArtifactOf(t *model.LLMProviderTemplate) templateRuntimeArtifact {
+	return templateRuntimeArtifact{
+		PromptTokens:     t.PromptTokens,
+		CompletionTokens: t.CompletionTokens,
+		TotalTokens:      t.TotalTokens,
+		RemainingTokens:  t.RemainingTokens,
+		RequestModel:     t.RequestModel,
+		ResponseModel:    t.ResponseModel,
+		ResourceMappings: t.ResourceMappings,
+	}
+}
+
+// ensureTemplateRuntimeArtifactUnchanged rejects an edit to a DP-originated LLM provider
+// template when it would change the gateway-consumed spec.
+func ensureTemplateRuntimeArtifactUnchanged(existing, updated *model.LLMProviderTemplate) error {
+	return compareRuntimeArtifacts(existing.Origin, templateRuntimeArtifactOf(existing), templateRuntimeArtifactOf(updated))
 }
 
 var templateVersionPattern = regexp.MustCompile(`^[vV]\d+\.\d+$`)
@@ -672,7 +725,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err != nil {
 		return nil, fmt.Errorf("failed to count providers: %w", err)
 	}
-	if err := validateLLMResourceLimit(providerCount, constants.MaxLLMProvidersPerOrganization, constants.ErrLLMProviderLimitReached); err != nil {
+	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, constants.ErrLLMProviderLimitReached); err != nil {
 		return nil, err
 	}
 	if !tpl.Enabled {
@@ -821,10 +874,6 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if existing == nil {
 		return nil, constants.ErrLLMProviderNotFound
 	}
-	// DP-originated artifacts are read-only in the control plane.
-	if err := ensureOriginMutable(existing.Origin); err != nil {
-		return nil, err
-	}
 	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
@@ -886,6 +935,20 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	// Preserve stored upstream auth credential only when auth object is provided with an empty value.
 	// If auth object is omitted, treat it as explicit removal and clear stored auth.
 	m.Configuration.Upstream = preserveUpstreamAuthValue(existing.Configuration.Upstream, m.Configuration.Upstream)
+
+	// The gateway owns the runtime configuration of a DP-originated (gateway_api)
+	// provider, so preserve it verbatim from the stored copy and let ONLY the
+	// control-plane metadata from the request through (description, model catalog,
+	// OpenAPI spec). This keeps the gateway runtime artifact unchanged without depending
+	// on the update payload round-tripping every (possibly redacted) runtime field — the
+	// upstream credential and API-key security value are masked in GET responses, so a
+	// naive diff of the re-submitted payload would otherwise flag a false change.
+	if existing.Origin == constants.OriginDP {
+		m.Name = existing.Name
+		m.Version = existing.Version
+		m.TemplateUUID = existing.TemplateUUID
+		m.Configuration = existing.Configuration
+	}
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1020,7 +1083,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to count proxies: %w", err)
 	}
-	if err := validateLLMResourceLimit(proxyCount, constants.MaxLLMProxiesPerOrganization, constants.ErrLLMProxyLimitReached); err != nil {
+	if err := validateLLMResourceLimit(proxyCount, s.cfg.ArtifactLimits.MaxLLMProxiesPerOrg, constants.ErrLLMProxyLimitReached); err != nil {
 		return nil, err
 	}
 
@@ -1235,10 +1298,6 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	if existing == nil {
 		return nil, constants.ErrLLMProxyNotFound
 	}
-	// DP-originated artifacts are read-only in the control plane.
-	if err := ensureOriginMutable(existing.Origin); err != nil {
-		return nil, err
-	}
 
 	// Validate provider exists
 	prov, err := s.providerRepo.GetByID(req.Provider.Id, orgUUID)
@@ -1274,6 +1333,19 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 
 	// Preserve stored upstream auth credential when not supplied in update payload
 	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
+
+	// The gateway owns the runtime configuration of a DP-originated (gateway_api) proxy,
+	// so preserve it verbatim from the stored copy and let ONLY the control-plane
+	// metadata from the request through (description, OpenAPI definition — neither is
+	// part of the gateway runtime artifact). This keeps the runtime artifact unchanged
+	// without depending on the payload round-tripping the (masked) provider credential.
+	if existing.Origin == constants.OriginDP {
+		m.Name = existing.Name
+		m.Version = existing.Version
+		m.ProviderUUID = existing.ProviderUUID
+		m.Configuration = existing.Configuration
+	}
+
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProxyNotFound
@@ -1410,8 +1482,10 @@ func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *mode
 	return updated
 }
 
+// validateLLMResourceLimit returns limitErr when the org has reached maxAllowed.
+// A maxAllowed <= 0 means unlimited (see config.LimitReached), so it never errors.
 func validateLLMResourceLimit(currentCount int, maxAllowed int, limitErr error) error {
-	if currentCount >= maxAllowed {
+	if config.LimitReached(currentCount, maxAllowed) {
 		return limitErr
 	}
 	return nil

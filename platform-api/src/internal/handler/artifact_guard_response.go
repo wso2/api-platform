@@ -32,11 +32,15 @@ import (
 // data-plane-originated (origin=DP) artifact. It returns true when it handled the
 // error (and wrote a response), so callers can simply `return`.
 //
-//   - ErrArtifactReadOnly  -> 403 Forbidden (update/deploy of a DP artifact)
-//   - ErrArtifactDeployed  -> 409 Conflict  (delete of a still-deployed DP artifact)
+//   - ErrArtifactReadOnly        -> 403 Forbidden (update/deploy of a DP artifact)
+//   - ErrArtifactRuntimeImmutable -> 403 Forbidden (edit that would change a DP artifact's runtime config)
+//   - ErrArtifactDeployed        -> 409 Conflict  (delete of a still-deployed DP artifact)
 func respondArtifactGuardError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, constants.ErrArtifactReadOnly):
+		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", err.Error()))
+		return true
+	case errors.Is(err, constants.ErrArtifactRuntimeImmutable):
 		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", err.Error()))
 		return true
 	case errors.Is(err, constants.ErrArtifactDeployed):
