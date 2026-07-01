@@ -805,7 +805,7 @@ async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
                 name: subscriptionPlan.name,
                 handle: subscriptionPlan.handle,
                 description: subscriptionPlan.description,
-                requestCount: subscriptionPlan.requestCount,
+                limits: subscriptionPlan.limits || [],
             });
         }
     }

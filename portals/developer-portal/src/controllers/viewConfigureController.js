@@ -92,11 +92,16 @@ const loadViewSettingsPage = async (req, res) => {
             const plansRaw = await subscriptionPlanDao.list(orgId);
             orgPlans = plansRaw.map(p => ({
                 planId: p.uuid,
-                planName: p.name,
-                displayName: p.display_name,
+                planName: p.handle,
+                displayName: p.name,
                 description: p.description || '',
-                requestCount: p.request_count,
                 refId: p.ref_id || '',
+                limits: (p.limits || []).map(l => ({
+                    limitType:  l.limit_type,
+                    timeUnit:   l.time_unit ?? null,
+                    timeAmount: l.time_amount,
+                    limitCount: Number(l.limit_count),
+                })),
             }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });

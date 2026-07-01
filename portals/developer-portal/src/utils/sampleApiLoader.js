@@ -64,11 +64,14 @@ function parseApiYaml(apiHandle, samplesDir) {
     const plansMap = loadSubscriptionPlans();
     const plans = (spec.subscriptionPlans || []).map(p => {
         const plan = plansMap[p];
+        const rc = plan?.requestCount;
         return {
             handle: p,
             name: plan?.name ?? p,
             description: plan?.description ?? '',
-            requestCount: plan?.requestCount ?? 1000,
+            limits: Array.isArray(plan?.limits) ? plan.limits
+                : rc != null ? [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: rc }]
+                : [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: 1000 }],
         };
     });
     // Collect images from web/ and expose them as /mock/{handle}/web/{filename} URLs

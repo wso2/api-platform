@@ -445,8 +445,7 @@
               <tr>
                 <th>Plan</th>
                 <th>Name</th>
-                <th>Type</th>
-                <th>Limit</th>
+                <th>Limits</th>
                 <th style="width:90px;"></th>
               </tr>
             </thead>
@@ -457,7 +456,7 @@
                 data-name="{{planName}}"
                 data-display="{{displayName}}"
                 data-desc="{{description}}"
-                data-count="{{requestCount}}"
+                data-limits="{{{jsonAttr limits}}}"
                 data-refid="{{refId}}">
                 <td>
                   <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
@@ -465,18 +464,19 @@
                 </td>
                 <td><span class="cfg-name-chip">{{planName}}</span></td>
                 <td>
-                  {{#if refId}}
-                  <span class="cfg-plan-type-badge cfg-plan-type--event">Event count</span>
+                  {{#if limits.length}}
+                    {{#limits}}
+                    <span class="cfg-limit-badge">{{limitTypeLabel limitType}} · {{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{#unless (eq timeAmount 1)}}{{timeAmount}} {{/unless}}{{timeUnitLabel timeUnit}}{{/if}}</span>
+                    {{/limits}}
                   {{else}}
-                  <span class="cfg-plan-type-badge cfg-plan-type--request">Request count</span>
+                    <span style="color:#9aa3af;font-size:.8rem;">—</span>
                   {{/if}}
                 </td>
-                <td><span class="cfg-count-chip">{{requestCount}}</span></td>
                 <td>
                   <div class="cfg-row-actions">
                     <button class="cfg-icon-btn cfg-plan-edit-btn" type="button"
                       data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
-                      data-desc="{{description}}" data-count="{{requestCount}}" data-refid="{{refId}}" title="Edit">
+                      data-desc="{{description}}" data-limits="{{{jsonAttr limits}}}" data-refid="{{refId}}" title="Edit">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="cfg-icon-btn cfg-icon-btn--danger cfg-plan-delete-btn" type="button"
@@ -488,7 +488,7 @@
               </tr>
               {{/orgPlans}}
               {{#unless orgPlans.length}}
-              <tr><td colspan="5" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
+              <tr><td colspan="4" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>
@@ -689,18 +689,13 @@
       <label for="pol-desc">Description</label>
       <textarea id="pol-desc" class="cfg-form-input" rows="2" placeholder="Describe this tier…"></textarea>
     </div>
-    <div class="cfg-form-grid" style="margin-bottom:16px;">
-      <div class="cfg-form-group">
-        <label for="pol-type">Type</label>
-        <select id="pol-type" class="cfg-form-input">
-          <option value="requestcount">Request count</option>
-          <option value="eventcount">Event count</option>
-        </select>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <label style="margin:0;">Limits</label>
+        <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="pol-add-limit-btn"><i class="bi bi-plus"></i> Add limit</button>
       </div>
-      <div class="cfg-form-group">
-        <label for="pol-count" id="pol-count-label">Request count</label>
-        <input type="text" id="pol-count" class="cfg-form-input cfg-form-input--mono" placeholder="e.g. 10000" />
-      </div>
+      <div id="pol-limits-list"></div>
+      <p class="cfg-field-hint">Leave empty for an unlimited plan. Use −1 as the count to mark a limit as unlimited.</p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:24px;">
       <label for="pol-refid">External reference ID <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
@@ -1782,47 +1777,99 @@
 <!-- ══ Subscription Plans JS ══ -->
 <script>
 (function () {
-  var ORG_ID = '{{orgId}}';
   var editPlanId = null;
+
+  var LIMIT_TYPES = ['REQUEST_COUNT','EVENT_COUNT','BANDWIDTH','TOTAL_TOKEN_COUNT'];
+  var TIME_UNITS  = ['MINUTE','HOUR','DAY','MONTH'];
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
 
-  /* type label sync */
-  document.getElementById('pol-type').addEventListener('change', function() {
-    document.getElementById('pol-count-label').textContent = this.value === 'eventcount' ? 'Event count' : 'Request count';
+  /* ── limit row builder ── */
+  function makeLimitRow(limit) {
+    var row = document.createElement('div');
+    row.className = 'cfg-limit-row';
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
+
+    var typeOpts = LIMIT_TYPES.map(function(t){
+      return '<option value="'+t+'"'+(limit&&limit.limitType===t?' selected':'')+'>'+t+'</option>';
+    }).join('');
+    var unitOpts = '<option value="">— no window —</option>'+TIME_UNITS.map(function(u){
+      return '<option value="'+u+'"'+(limit&&limit.timeUnit===u?' selected':'')+'>'+u+'</option>';
+    }).join('');
+
+    row.innerHTML =
+      '<select class="cfg-form-input cfg-limit-type" style="flex:2;">'+typeOpts+'</select>'+
+      '<input type="number" class="cfg-form-input cfg-form-input--mono cfg-limit-count" style="flex:1.5;" '+
+        'placeholder="count" value="'+(limit?limit.limitCount:'')+'" />'+
+      '<span style="color:#637282;font-size:.8rem;white-space:nowrap;">/ per</span>'+
+      '<input type="number" class="cfg-form-input cfg-form-input--mono cfg-limit-amount" style="flex:.7;" '+
+        'placeholder="1" value="'+(limit&&limit.timeAmount!=null?limit.timeAmount:1)+'" min="1" />'+
+      '<select class="cfg-form-input cfg-limit-unit" style="flex:1.2;">'+unitOpts+'</select>'+
+      '<button type="button" class="cfg-icon-btn cfg-icon-btn--danger cfg-limit-remove-btn" title="Remove">'+
+        '<i class="bi bi-x-lg"></i></button>';
+
+    row.querySelector('.cfg-limit-remove-btn').addEventListener('click', function(){ row.remove(); });
+    return row;
+  }
+
+  document.getElementById('pol-add-limit-btn').addEventListener('click', function(){
+    document.getElementById('pol-limits-list').appendChild(makeLimitRow(null));
   });
 
-  /* open modal */
+  function readLimits() {
+    var rows = document.querySelectorAll('#pol-limits-list .cfg-limit-row');
+    var limits = [];
+    rows.forEach(function(row){
+      var rawCount = row.querySelector('.cfg-limit-count').value.trim();
+      var count = rawCount === '-1' ? -1 : parseInt(rawCount, 10);
+      if (isNaN(count)) return;
+      var unit = row.querySelector('.cfg-limit-unit').value || null;
+      var amount = parseInt(row.querySelector('.cfg-limit-amount').value, 10) || 1;
+      limits.push({
+        limitType:  row.querySelector('.cfg-limit-type').value,
+        limitCount: count,
+        timeUnit:   unit,
+        timeAmount: amount,
+      });
+    });
+    return limits;
+  }
+
+  /* ── open / close modal ── */
   function openPlanModal(mode, data) {
     editPlanId = mode === 'edit' ? data.planId : null;
     document.getElementById('cfg-plan-modal-title').textContent = mode === 'edit' ? 'Edit subscription plan' : 'Add subscription plan';
     document.getElementById('cfg-plan-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add plan';
     document.getElementById('pol-display').value = mode === 'edit' ? (data.displayName||'') : '';
-    document.getElementById('pol-name').value    = mode === 'edit' ? (data.planName||'')  : '';
+    document.getElementById('pol-name').value    = mode === 'edit' ? (data.planName||'')    : '';
     document.getElementById('pol-desc').value    = mode === 'edit' ? (data.description||'') : '';
-    document.getElementById('pol-count').value   = mode === 'edit' ? (data.requestCount||'') : '';
-    document.getElementById('pol-refid').value   = mode === 'edit' ? (data.refId||'')        : '';
-    var isEvent = mode === 'edit' && data.refId;
-    document.getElementById('pol-type').value = isEvent ? 'eventcount' : 'requestcount';
-    document.getElementById('pol-count-label').textContent = isEvent ? 'Event count' : 'Request count';
+    document.getElementById('pol-refid').value   = mode === 'edit' ? (data.refId||'')       : '';
+
+    var list = document.getElementById('pol-limits-list');
+    list.innerHTML = '';
+    var existing = [];
+    if (mode === 'edit' && data.limits) {
+      try { existing = typeof data.limits === 'string' ? JSON.parse(data.limits) : data.limits; } catch(e){}
+    }
+    existing.forEach(function(l){ list.appendChild(makeLimitRow(l)); });
+
     document.getElementById('cfg-plan-modal').style.display = 'flex';
     document.getElementById('pol-display').focus();
   }
   function closePlanModal() { document.getElementById('cfg-plan-modal').style.display='none'; editPlanId=null; }
 
-  /* save */
+  /* ── save ── */
   document.getElementById('cfg-plan-modal-save').addEventListener('click', async function() {
     var displayName = v('pol-display');
-    var planName  = v('pol-name');
+    var planName    = v('pol-name');
     if (!displayName || !planName) { await showAlert('Display name and name are required.', 'error'); return; }
 
     var body = {
-      name:         displayName,
-      handle:       planName,
-      description:  v('pol-desc') || undefined,
-      type:         document.getElementById('pol-type').value,
-      requestCount: parseInt(v('pol-count'),10) || undefined,
-      refId:        v('pol-refid') || undefined,
+      name:        displayName,
+      handle:      planName,
+      description: v('pol-desc') || undefined,
+      limits:      readLimits(),
+      refId:       v('pol-refid') || undefined,
     };
     if (editPlanId) body.id = editPlanId;
 
@@ -1846,20 +1893,19 @@
   document.getElementById('cfg-plan-modal-close').addEventListener('click', closePlanModal);
   document.getElementById('cfg-plan-modal-cancel').addEventListener('click', closePlanModal);
   document.getElementById('cfg-plan-modal').addEventListener('click', function(e){ if(e.target===this) closePlanModal(); });
-
   document.getElementById('cfg-add-plan-btn').addEventListener('click', function() { openPlanModal('add'); });
 
-  /* edit / delete delegation */
+  /* ── edit / delete delegation ── */
   var pendingDelPlanId = null;
   document.addEventListener('click', function(e) {
     if (e.target.closest('.cfg-plan-edit-btn')) {
       var btn = e.target.closest('.cfg-plan-edit-btn');
       openPlanModal('edit', {
-        planId:    btn.dataset.id,
-        planName:  btn.dataset.name,
+        planId:      btn.dataset.id,
+        planName:    btn.dataset.name,
         displayName: btn.dataset.display,
         description: btn.dataset.desc,
-        requestCount:btn.dataset.count,
+        limits:      btn.dataset.limits,
         refId:       btn.dataset.refid,
       });
       return;

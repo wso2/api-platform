@@ -14,7 +14,7 @@
 
 | Plan | Request Quota | Description |
 |------|--------------|-------------|
-{{#each subscriptionPlans}}| {{name}} | {{requestCount}} | {{description}} |
+{{#each subscriptionPlans}}| {{name}} | {{#if limits.length}}{{#with (lookup limits 0)}}{{#if (eq limitCount -1)}}Unlimited{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{timeAmount}} {{timeUnit}}{{/if}}{{/with}}{{else if requestCount}}{{requestCount}}{{else}}—{{/if}} | {{description}} |
 {{/each}}
 {{/if}}
 {{#unless isMCPFromRegistry}}
