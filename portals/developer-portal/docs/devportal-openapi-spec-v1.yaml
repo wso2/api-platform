@@ -49,7 +49,6 @@ tags:
   - name: Views
   - name: Application Keys
   - name: API Workflows
-  - name: Utilities
   - name: Key Managers
   - name: Webhook Events
   - name: Webhook Subscribers
@@ -1627,30 +1626,6 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_create
             - dp:api_workflow_manage
-  /temp-arazzo-file:
-    post:
-      tags:
-        - Utilities
-      operationId: createTempArazzoFile
-      summary: Create a temporary Arazzo file
-      description: Writes supplied Arazzo YAML content to a temporary file and returns its path.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TempArazzoFileRequest"
-      responses:
-        "200":
-          $ref: "#/components/responses/TempArazzoFileResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:utility_create
-            - dp:utility_manage
   /devportal/v1/key-managers:
     post:
       tags:
@@ -2062,8 +2037,6 @@ components:
             dp:api_workflow_delete: Delete API workflows.
             dp:api_workflow_manage: Manage API workflows.
             dp:event_read: Read webhook events and delivery details.
-            dp:utility_create: Create temporary utility files.
-            dp:utility_manage: Manage utility operations.
             dp:km_read: Read key manager configurations.
             dp:km_create: Create key manager configurations.
             dp:km_update: Update key manager configurations.
@@ -3474,14 +3447,6 @@ components:
             $ref: "#/components/schemas/APIWorkflowPromptResponse"
           example:
             agentPrompt: You are an API workflow assistant. Help the user complete Weather onboarding.
-    TempArazzoFileResponse:
-      description: Path of the temporary Arazzo file.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/TempArazzoFileResponse"
-          example:
-            path: /tmp/arazzo-abc123/workflow.arazzo.yaml
     ViewResponse:
       description: View DTO response.
       content:
@@ -4766,13 +4731,6 @@ components:
         agentPrompt:
           type: string
       additionalProperties: false
-    TempArazzoFileResponse:
-      type: object
-      properties:
-        path:
-          type: string
-          example: /tmp/arazzo-abc123/workflow.arazzo.yaml
-      additionalProperties: false
     APIWorkflowCreateRequest:
       type: object
       required:
@@ -4885,24 +4843,6 @@ components:
         handle:
           type: string
           example: weather-onboarding
-    TempArazzoFileRequest:
-      type: object
-      required:
-        - content
-      properties:
-        content:
-          type: string
-          description: Arazzo YAML content to write to a temporary file.
-          example: |
-            arazzo: 1.0.1
-            info:
-              title: Weather onboarding
-              version: 1.0.0
-            workflows: []
-        filename:
-          type: string
-          example: workflow.arazzo.yaml
-          default: workflow.arazzo.yaml
     WebhookEventDelivery:
       type: object
       description: A single webhook delivery attempt.

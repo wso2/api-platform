@@ -1817,26 +1817,6 @@ Access token response proxied from the key manager's token endpoint. Field names
 |---|---|---|---|---|
 |agentPrompt|string|false|none|none|
 
-<h2 id="tocS_TempArazzoFileResponse">TempArazzoFileResponse</h2>
-
-<a id="schematemparazzofileresponse"></a>
-<a id="schema_TempArazzoFileResponse"></a>
-<a id="tocStemparazzofileresponse"></a>
-<a id="tocstemparazzofileresponse"></a>
-
-```json
-{
-  "path": "/tmp/arazzo-abc123/workflow.arazzo.yaml"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|path|string|false|none|none|
-
 <h2 id="tocS_APIWorkflowCreateRequest">APIWorkflowCreateRequest</h2>
 
 <a id="schemaapiworkflowcreaterequest"></a>
@@ -1996,28 +1976,6 @@ continued
 |orgHandle|string|false|none|none|
 |viewName|string|false|none|none|
 |handle|string|false|none|none|
-
-<h2 id="tocS_TempArazzoFileRequest">TempArazzoFileRequest</h2>
-
-<a id="schematemparazzofilerequest"></a>
-<a id="schema_TempArazzoFileRequest"></a>
-<a id="tocStemparazzofilerequest"></a>
-<a id="tocstemparazzofilerequest"></a>
-
-```json
-{
-  "content": "arazzo: 1.0.1\ninfo:\n  title: Weather onboarding\n  version: 1.0.0\nworkflows: []\n",
-  "filename": "workflow.arazzo.yaml"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|content|string|true|none|Arazzo YAML content to write to a temporary file.|
-|filename|string|false|none|none|
 
 <h2 id="tocS_WebhookEventDelivery">WebhookEventDelivery</h2>
 

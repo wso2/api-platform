@@ -115,10 +115,6 @@ Base URLs:
 - [Delete an API workflow](api-workflows.md#delete-an-api-workflow)
 - [Generate an API workflow agent prompt](api-workflows.md#generate-an-api-workflow-agent-prompt)
 
-### [Utilities](utilities.md)
-
-- [Create a temporary Arazzo file](utilities.md#create-a-temporary-arazzo-file)
-
 ### [Key Managers](key-managers.md)
 
 - [Create a key manager](key-managers.md#create-a-key-manager)
