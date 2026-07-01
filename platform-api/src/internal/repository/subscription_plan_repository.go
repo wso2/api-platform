@@ -40,7 +40,7 @@ import (
 // LEFT JOIN below is constrained to REQUEST_COUNT for that reason. This must be
 // improved to surface all limit rows.
 const planSelectColumns = `
-		p.uuid, p.handle, p.name, p.billing_plan, p.expiry_time,
+		p.uuid, p.handle, p.display_name, p.billing_plan, p.expiry_time,
 		p.organization_uuid, p.status, p.created_at, p.updated_at,
 		spl.limit_count, spl.time_unit, spl.stop_on_quota_reach
 	FROM subscription_plans p
@@ -76,7 +76,7 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(r.db.Rebind(`
-		INSERT INTO subscription_plans (uuid, handle, name, billing_plan, expiry_time,
+		INSERT INTO subscription_plans (uuid, handle, display_name, billing_plan, expiry_time,
 			organization_uuid, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`),
@@ -98,7 +98,7 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 //
 // limit_count is NOT NULL, so a row is written ONLY when ThrottleLimitCount is set.
 // When it is nil the plan has no quota: the row is left deleted and reads default
-// StopOnQuotaReach to 1 (see scanPlan).
+// StopOnQuotaReach to true (see scanPlan).
 //
 // NOTE: SINGLE-LIMIT ASSUMPTION. subscription_plan_limits supports multiple limits per
 // plan, but only one REQUEST_COUNT limit is persisted here. This must be improved to
@@ -114,13 +114,18 @@ func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.Subs
 	if plan.ThrottleLimitCount == nil {
 		return nil
 	}
+	// stop_on_quota_reach is a SMALLINT (0/1) column; map the boolean domain field onto it.
+	stopOnQuotaReach := 0
+	if plan.StopOnQuotaReach {
+		stopOnQuotaReach = 1
+	}
 	if _, err := tx.Exec(r.db.Rebind(`
 		INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid,
 			limit_type, time_unit, time_amount, limit_count, stop_on_quota_reach)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`),
 		uuid.New().String(), plan.UUID, constants.LimitTypeRequestCount,
-		plan.ThrottleLimitUnit, 1, *plan.ThrottleLimitCount, plan.StopOnQuotaReach,
+		plan.ThrottleLimitUnit, 1, *plan.ThrottleLimitCount, stopOnQuotaReach,
 	); err != nil {
 		return fmt.Errorf("failed to insert subscription plan limit: %w", err)
 	}
@@ -129,7 +134,7 @@ func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.Subs
 
 // scanPlan reads a subscription plan joined with its single throttling limit row
 // (see planSelectColumns). When no limit row exists the throttle fields are left
-// empty and StopOnQuotaReach defaults to 1.
+// empty and StopOnQuotaReach defaults to true.
 func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 	plan := &model.SubscriptionPlan{}
 	var (
@@ -150,9 +155,10 @@ func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 	}
 	plan.ThrottleLimitUnit = timeUnit.String
 	if stopOnQuota.Valid {
-		plan.StopOnQuotaReach = int(stopOnQuota.Int64)
+		plan.StopOnQuotaReach = stopOnQuota.Int64 != 0
 	} else {
-		plan.StopOnQuotaReach = 1
+		// No limit row: default to blocking on quota reach (SMALLINT default 1).
+		plan.StopOnQuotaReach = true
 	}
 	return plan, nil
 }
@@ -185,7 +191,7 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 	}
 	args = append(args, orgUUID)
 	query := fmt.Sprintf(`
-		SELECT uuid, name
+		SELECT uuid, display_name
 		FROM subscription_plans
 		WHERE uuid IN (%s) AND organization_uuid = ?
 	`, strings.Join(placeholders, ","))
@@ -244,7 +250,7 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 
 	result, err := tx.Exec(r.db.Rebind(`
 		UPDATE subscription_plans
-		SET handle = ?, name = ?, billing_plan = ?, expiry_time = ?, status = ?, updated_at = ?
+		SET handle = ?, display_name = ?, billing_plan = ?, expiry_time = ?, status = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`),
 		plan.Handle, plan.Name, plan.BillingPlan, plan.ExpiryTime,

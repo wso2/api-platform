@@ -2,7 +2,7 @@
 
 ## Entry Points
 
-- `platform-api/src/internal/handler/organization.go` – exposes `/api/v1/organizations` routes.
+- `platform-api/src/internal/handler/organization.go` – exposes `/api/v0.9/organizations` routes.
 - `platform-api/src/internal/service/organization.go` – validates handles, coordinates repository calls, and provisions default projects.
 - `platform-api/src/internal/repository/organization.go` – performs SQL CRUD operations.
 - `platform-api/src/internal/database/schema.sql` – defines `organizations` table and related indexes.
@@ -17,5 +17,5 @@
 
 ## Verification
 
-- Register: `curl -k -X POST https://localhost:9243/api/v1/organizations -d '{"id":"123e4567-e89b-12d3-a456-426614174000","handle":"alpha","name":"Alpha","region":"us"}' -H 'Content-Type: application/json'`.
-- Fetch: `curl -k https://localhost:9243/api/v1/organizations/<orgId>`; expect JSON payload with organization metadata (handle, name, region, timestamps).
+- Register: `curl -k -X POST https://localhost:9243/api/v0.9/organizations -d '{"id":"123e4567-e89b-12d3-a456-426614174000","handle":"alpha","name":"Alpha","region":"us"}' -H 'Content-Type: application/json'`.
+- Fetch: `curl -k https://localhost:9243/api/v0.9/organizations/<orgId>`; expect JSON payload with organization metadata (handle, name, region, timestamps).

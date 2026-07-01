@@ -19,7 +19,7 @@
 CREATE TABLE IF NOT EXISTS organizations (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS organizations (
 CREATE TABLE IF NOT EXISTS projects (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS applications (
     handle VARCHAR(40) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     type VARCHAR(50) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
 CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
     expiry_time DATETIME,
     organization_uuid VARCHAR(40) NOT NULL,
@@ -129,6 +129,17 @@ CREATE TABLE IF NOT EXISTS subscription_plan_limits (
     stop_on_quota_reach SMALLINT NOT NULL DEFAULT 1,
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
     UNIQUE(subscription_plan_uuid, limit_type, time_amount, time_unit)
+);
+
+-- Records which subscription plans an API (artifact) offers/supports: one artifact can
+CREATE TABLE IF NOT EXISTS artifact_subscription_plans (
+    artifact_uuid VARCHAR(40) NOT NULL,
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (artifact_uuid, subscription_plan_uuid),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -171,7 +182,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
     vhost VARCHAR(255) NOT NULL,
@@ -250,7 +261,7 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
     uuid VARCHAR(40) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
@@ -291,7 +302,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
     group_id VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
@@ -314,7 +325,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
 CREATE TABLE IF NOT EXISTS llm_providers (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
     template_uuid VARCHAR(40) NOT NULL,
@@ -338,7 +349,7 @@ CREATE TABLE IF NOT EXISTS llm_providers (
 CREATE TABLE IF NOT EXISTS llm_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -363,7 +374,7 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
 CREATE TABLE IF NOT EXISTS mcp_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40),
     description VARCHAR(1023),
@@ -381,78 +392,11 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
--- WEBSUB APIs table
-CREATE TABLE IF NOT EXISTS websub_apis (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
-    project_uuid VARCHAR(40) NOT NULL,
-    description VARCHAR(1023),
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    configuration BLOB NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
-);
-CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
-
--- WebSub API HMAC secrets table (for inbound webhook event verification)
-CREATE TABLE IF NOT EXISTS websub_api_hmac_secrets (
-    uuid VARCHAR(40) PRIMARY KEY,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255),
-    encrypted_secret BLOB NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, handle)
-);
-CREATE INDEX IF NOT EXISTS idx_websub_api_hmac_secrets_artifact ON websub_api_hmac_secrets(artifact_uuid);
-CREATE INDEX IF NOT EXISTS idx_websub_api_hmac_secrets_status ON websub_api_hmac_secrets(status);
-
--- WEBBROKER APIs table
-CREATE TABLE IF NOT EXISTS webbroker_apis (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
-    project_uuid VARCHAR(40) NOT NULL,
-    description VARCHAR(1023),
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    configuration BLOB NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
-);
-CREATE INDEX IF NOT EXISTS idx_webbroker_apis_project ON webbroker_apis(project_uuid);
-
 -- API Keys table (stores API keys for artifacts with hashes as JSON string)
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(63) NOT NULL,
+    display_name VARCHAR(63) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes BLOB NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -465,7 +409,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, name)
+    UNIQUE(artifact_uuid, display_name)
 );
 
 -- Application API Key mappings table
@@ -531,11 +475,11 @@ CREATE INDEX IF NOT EXISTS idx_application_artifact_mappings_artifact_id ON appl
 CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys(expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_rest_apis_lifecycle_status ON rest_apis(lifecycle_status);
-CREATE INDEX IF NOT EXISTS idx_websub_apis_lifecycle_status ON websub_apis(lifecycle_status);
-CREATE INDEX IF NOT EXISTS idx_webbroker_apis_lifecycle_status ON webbroker_apis(lifecycle_status);
 CREATE INDEX IF NOT EXISTS idx_subscription_plans_org    ON subscription_plans(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(status);
 CREATE INDEX IF NOT EXISTS idx_subscription_plan_limits_plan ON subscription_plan_limits(subscription_plan_uuid);
+
+CREATE INDEX IF NOT EXISTS idx_artifact_subscription_plans_plan ON artifact_subscription_plans(subscription_plan_uuid);
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (
@@ -580,7 +524,7 @@ CREATE TABLE IF NOT EXISTS secrets (
     uuid              VARCHAR(40)   PRIMARY KEY,
     organization_uuid VARCHAR(40)   NOT NULL,
     handle            VARCHAR(40)   NOT NULL,
-    name              VARCHAR(255)  NOT NULL,
+    display_name      VARCHAR(255)  NOT NULL,
     description       VARCHAR(1023),
     ciphertext        BLOB          NOT NULL,
     hash              VARCHAR(255)  NOT NULL,

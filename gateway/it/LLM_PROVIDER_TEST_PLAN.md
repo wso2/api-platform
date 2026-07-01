@@ -119,7 +119,7 @@ This test plan provides comprehensive testing coverage for the LLM Provider Mana
 Based on the LLMProviderConfiguration schema, the following components are tested:
 
 ### Core Components
-- ✅ **apiVersion**: `gateway.api-platform.wso2.com/v1alpha1`
+- ✅ **apiVersion**: `gateway.api-platform.wso2.com/v1`
 - ✅ **kind**: `LlmProvider`
 - ✅ **metadata**: name (RFC-1123 compliant)
 - ✅ **spec**: All sub-components below

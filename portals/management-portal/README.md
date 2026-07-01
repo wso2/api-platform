@@ -152,7 +152,7 @@ https://localhost:9243/
 ## ✅ Create a Default Organization in Platform API
 
 ```bash
-curl --location 'https://localhost:9243/api/v1/organizations' --header 'Content-Type: application/json' --header 'Authorization: Bearer <shared-token>' --data '{
+curl --location 'https://localhost:9243/api/v0.9/organizations' --header 'Content-Type: application/json' --header 'Authorization: Bearer <shared-token>' --data '{
     "id": "15b2ac94-6217-4f51-90d4-b2b3814b20b4",
     "handle": "acme",
     "name": "ACME Corporation",

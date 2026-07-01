@@ -115,6 +115,19 @@ export PYTHON_POLICY_WORKERS="${PYTHON_POLICY_WORKERS:-4}"
 export PYTHON_POLICY_MAX_CONCURRENT="${PYTHON_POLICY_MAX_CONCURRENT:-100}"
 export PYTHON_POLICY_TIMEOUT="${PYTHON_POLICY_TIMEOUT:-30}"
 
+# Graceful shutdown configuration
+# On SIGTERM the Router (Envoy) is drained before any process is terminated, so in-flight
+# requests complete and keep-alive connections are closed cleanly (Connection: close)
+# instead of being reset. This avoids connection-reset errors for clients during rolling
+# restarts / pod evictions.
+#   ROUTER_ADMIN_HOST/PORT    : Router (Envoy) admin endpoint used to trigger the drain
+#   ROUTER_DRAIN_TIME_SECONDS : how long to wait for in-flight requests to finish before
+#       terminating. Keep this LESS than the pod's terminationGracePeriodSeconds (k8s
+#       default 30s) or the container is SIGKILLed mid-drain. Set to 0 to disable draining.
+export ROUTER_ADMIN_HOST="${ROUTER_ADMIN_HOST:-127.0.0.1}"
+export ROUTER_ADMIN_PORT="${ROUTER_ADMIN_PORT:-9901}"
+export ROUTER_DRAIN_TIME_SECONDS="${ROUTER_DRAIN_TIME_SECONDS:-15}"
+
 # Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
 export XDS_SERVER_HOST="${GATEWAY_CONTROLLER_HOST}"
 export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
@@ -153,22 +166,56 @@ PY_PID=""
 PE_PID=""
 ENVOY_PID=""
 
-# Shutdown handler - gracefully terminate all processes
+# Gracefully drain the Router (Envoy) listeners via its admin API so in-flight requests
+# complete and keep-alive connections close cleanly (Connection: close) rather than being
+# reset. The runtime image has no curl/wget, so use a bash /dev/tcp socket to POST to the
+# admin endpoint. Best-effort: never blocks shutdown if the admin is unreachable.
+drain_router() {
+    local host="${ROUTER_ADMIN_HOST}" port="${ROUTER_ADMIN_PORT}"
+    if ! { exec 3<>"/dev/tcp/${host}/${port}"; } 2>/dev/null; then
+        log "  WARN: Router admin ${host}:${port} unreachable; skipping graceful drain"
+        return 1
+    fi
+    printf 'POST /drain_listeners?graceful HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n' "$host" >&3 2>/dev/null || true
+    # Read/discard the response, bounded by a short read timeout so we never hang.
+    while IFS= read -r -t 3 -u 3 _line 2>/dev/null; do :; done
+    exec 3<&- 3>&- 2>/dev/null || true
+    return 0
+}
+
+# SIGTERM a tracked process and wait for it to fully exit before returning.
+stop_proc() {
+    local pid_var="$1" label="$2" pid
+    pid="${!pid_var}"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        log "Stopping ${label} (PID $pid)..."
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        log "${label} exited"
+    fi
+}
+
+# Shutdown handler - gracefully drain the Router, then terminate all processes
 shutdown() {
-    log "Received shutdown signal, terminating processes..."
+    log "Received shutdown signal..."
 
-    # Send SIGTERM to all processes
-    for pid_var in PY_PID PE_PID ENVOY_PID; do
-        pid="${!pid_var}"
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            log "Stopping $pid_var (PID $pid)..."
-            kill -TERM "$pid" 2>/dev/null || true
+    # Drain the Router first so in-flight requests finish and keep-alive connections are
+    # closed cleanly — prevents client-visible connection resets during rolling restarts.
+    if [ -n "$ENVOY_PID" ] && kill -0 "$ENVOY_PID" 2>/dev/null \
+       && [ "${ROUTER_DRAIN_TIME_SECONDS}" -gt 0 ] 2>/dev/null; then
+        log "Draining Router (Envoy); waiting up to ${ROUTER_DRAIN_TIME_SECONDS}s for in-flight requests..."
+        if drain_router; then
+            sleep "${ROUTER_DRAIN_TIME_SECONDS}"
         fi
-    done
+    fi
 
-    # Wait for processes to exit
+    # Terminate in dependency order: the Router (Envoy) exits first; once it is gone the
+    # Policy Engine exits; once that is gone the Python Executor exits. Each step waits for
+    # the process to fully exit so a dependency is never killed while something still needs it.
     set +e
-    wait
+    stop_proc ENVOY_PID "Router (Envoy)"
+    stop_proc PE_PID    "Policy Engine"
+    stop_proc PY_PID    "Python Executor"
     set -e
 
     # Cleanup sockets

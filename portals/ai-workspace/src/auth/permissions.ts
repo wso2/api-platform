@@ -29,7 +29,6 @@ export const SCOPES = {
   // Organization
   ORGANIZATION_READ:              'ap:organization:read',
   ORGANIZATION_MANAGE:            'ap:organization:manage',
-  ORGANIZATION_SUBSCRIPTION_READ: 'ap:organization:subscription:read',
 
   // Projects
   PROJECT_READ:   'ap:project:read',
@@ -77,7 +76,6 @@ export const SCOPES = {
   REST_API_UPDATE:            'ap:rest_api:update',
   REST_API_DELETE:            'ap:rest_api:delete',
   REST_API_MANAGE:            'ap:rest_api:manage',
-  REST_API_IMPORT:            'ap:rest_api:import',
   REST_API_GATEWAY_READ:      'ap:rest_api:gateway:read',
   REST_API_GATEWAY_CREATE:    'ap:rest_api:gateway:create',
   REST_API_GATEWAY_MANAGE:    'ap:rest_api:gateway:manage',
@@ -185,9 +183,6 @@ export const SCOPES = {
   SECRET_UPDATE: 'ap:secret:update',
   SECRET_DELETE: 'ap:secret:delete',
   SECRET_MANAGE: 'ap:secret:manage',
-
-  // Git
-  GIT_READ: 'ap:git:read',
 } as const;
 
 /**

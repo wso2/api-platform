@@ -16,11 +16,9 @@
  * under the License.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, useNavigate } from 'react-router-dom';
-import { useAuth, AuthProvider } from 'react-oidc-context';
-import type { User } from 'oidc-client-ts';
+import { BrowserRouter } from 'react-router-dom';
 import { IntlProvider } from 'react-intl';
 import {
   AcrylicOrangeTheme, AcrylicPurpleTheme, ClassicTheme,
@@ -30,113 +28,61 @@ import {
 
 import App from './App.tsx';
 import './styles.css';
-import {
-  OIDC_AUTHORITY,
-  OIDC_CLIENT_ID,
-  OIDC_SCOPE,
-  OIDC_REDIRECT_URI,
-  OIDC_POST_LOGOUT_REDIRECT_URI,
-} from './config.env';
 import { AUTH_MODE } from './config.env';
-import { OIDCAppAuthProvider } from './contexts/OIDCAppAuthProvider';
-import { BasicAuthProvider, isBasicAuthSession, clearBasicAuthSession } from './contexts/BasicAuthProvider';
+import { BFFAuthProvider } from './contexts/BFFAuthProvider';
+import { useAppAuth } from './contexts/AppAuthContext';
 import BasicAuthLoginPage from './pages/login/BasicAuthLoginPage';
-import { setStoredToken } from './clients/choreoApiClient';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Loading screen ──────────────────────────────────────────────────────────
 
-function sanitizeReturnUrl(url: string): string {
-  if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) return '/';
-  return url.replace(/[\r\n]/g, '') || '/';
-}
-
-// ── OIDCWrapper — owns AuthProvider; lives inside BrowserRouter for useNavigate ─
-
-function OIDCWrapper({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-
-  const onSigninCallback = useCallback((user: User | void) => {
-    if (user && 'access_token' in user && user.access_token) {
-      setStoredToken(user.access_token);
-    }
-    const saved = sanitizeReturnUrl(sessionStorage.getItem('ai_workspace_return_url') || '/');
-    sessionStorage.removeItem('ai_workspace_return_url');
-    navigate(saved, { replace: true });
-  }, [navigate]);
-
-  const onSignoutCallback = useCallback(() => {
-    navigate('/login', { replace: true });
-  }, [navigate]);
-
+function LoadingScreen({ message }: { message?: string }) {
   return (
-    <AuthProvider
-      authority={OIDC_AUTHORITY}
-      client_id={OIDC_CLIENT_ID}
-      redirect_uri={OIDC_REDIRECT_URI}
-      post_logout_redirect_uri={OIDC_POST_LOGOUT_REDIRECT_URI}
-      scope={OIDC_SCOPE}
-      extraTokenParams={{ scope: OIDC_SCOPE }}
-      loadUserInfo={false}
-      onSigninCallback={onSigninCallback}
-      onSignoutCallback={onSignoutCallback}
-    >
-      <OIDCAppAuthProvider>
-        {children}
-      </OIDCAppAuthProvider>
-    </AuthProvider>
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
+      <Stack spacing={2} alignItems="center" sx={{ maxWidth: 480, textAlign: 'center' }}>
+        {message && <Typography color="text.secondary">{message}</Typography>}
+        <Box sx={{ width: 200 }}>
+          <LinearProgress color="primary" variant="indeterminate" />
+        </Box>
+      </Stack>
+    </Box>
   );
 }
 
-// ── AppRoot ────────────────────────────────────────────────────────────────────
+// ── OIDC redirect — the BFF owns the handshake; we just navigate to it ─────────
 
-function AppRoot() {
-  const [basicAuthActive, setBasicAuthActive] = useState<boolean>(isBasicAuthSession);
+function OIDCRedirect() {
+  const { login } = useAppAuth();
+  useEffect(() => { void login(); }, [login]);
+  return <LoadingScreen message="Redirecting to sign in…" />;
+}
 
-  const handleBasicAuthLogout = useCallback(() => {
-    setBasicAuthActive(false);
-    clearBasicAuthSession();
-  }, []);
+// ── AppGate — decides login UX vs. the authenticated app ──────────────────────
 
-  // ── Basic auth path ────────────────────────────────────────────────────────
-  if (AUTH_MODE === 'basic') {
-    if (basicAuthActive) {
-      return (
-        <BasicAuthProvider onLogout={handleBasicAuthLogout}>
-          <IntlProvider locale="en" defaultLocale="en">
-            <App />
-          </IntlProvider>
-        </BasicAuthProvider>
-      );
+function AppGate() {
+  const { isAuthenticated, isLoading } = useAppAuth();
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (!isAuthenticated) {
+    if (AUTH_MODE === 'basic') {
+      // On success the BFF has set the session cookie; reload to re-hydrate while
+      // preserving the path the user originally requested (matching OIDC return
+      // behaviour). Only avoid pinning to the login route itself.
+      return <BasicAuthLoginPage onSuccess={() => {
+        const { pathname, search } = window.location;
+        const target = pathname === '/login' || pathname === '/signin' ? '/' : pathname + search;
+        window.location.replace(target);
+      }} />;
     }
-    return (
-      <BasicAuthLoginPage onSuccess={() => setBasicAuthActive(true)} />
-    );
+    return <OIDCRedirect />;
   }
 
-  // ── OIDC not configured ────────────────────────────────────────────────────
-  if (!OIDC_AUTHORITY || !OIDC_CLIENT_ID) {
-    return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
-        <Stack spacing={2} alignItems="center" sx={{ maxWidth: 480, textAlign: 'center' }}>
-          <Typography variant="h5" fontWeight="bold">OIDC not configured</Typography>
-          <Typography color="text.secondary">
-            Set <code>VITE_OIDC_AUTHORITY</code> and <code>VITE_OIDC_CLIENT_ID</code> to enable login.
-          </Typography>
-          <Box sx={{ width: 200 }}>
-            <LinearProgress color="primary" variant="indeterminate" />
-          </Box>
-        </Stack>
-      </Box>
-    );
-  }
-
-  // ── OIDC path ──────────────────────────────────────────────────────────────
   return (
-    <OIDCWrapper>
-      <IntlProvider locale="en" defaultLocale="en">
-        <App />
-      </IntlProvider>
-    </OIDCWrapper>
+    <IntlProvider locale="en" defaultLocale="en">
+      <App />
+    </IntlProvider>
   );
 }
 
@@ -157,7 +103,9 @@ root.render(
       initialTheme="acrylicOrange"
     >
       <BrowserRouter>
-        <AppRoot />
+        <BFFAuthProvider>
+          <AppGate />
+        </BFFAuthProvider>
       </BrowserRouter>
     </OxygenUIThemeProvider>
   </React.StrictMode>

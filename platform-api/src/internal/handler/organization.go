@@ -182,47 +182,9 @@ func (h *OrganizationHandler) GetOrganization(w http.ResponseWriter, r *http.Req
 	httputil.WriteJSON(w, http.StatusOK, org)
 }
 
-// GetOrganizationSubscription handles GET /api/v0.9/organizations/:organizationId/subscription
-func (h *OrganizationHandler) GetOrganizationSubscription(w http.ResponseWriter, r *http.Request) {
-	organizationIdFromContext, exists := middleware.GetOrganizationFromRequest(r)
-	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	orgID := r.PathValue("organizationId")
-	if orgID != organizationIdFromContext {
-		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
-			"Organization ID in token does not match the requested organization ID"))
-		return
-	}
-
-	subscription, err := h.orgService.GetOrganizationSubscription(orgID)
-	if err != nil {
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Organization not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrMultipleOrganizations) {
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Data integrity error: multiple organizations found"))
-			return
-		}
-		h.slogger.Error("Failed to get organization subscription", "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get organization subscription"))
-		return
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, subscription)
-}
-
 func (h *OrganizationHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/organizations", h.RegisterOrganization)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", h.GetOrganization)
 	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{organizationId}", h.HeadOrganizationByUuid)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{organizationId}", h.GetOrganizationByUUID)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{organizationId}/subscription", h.GetOrganizationSubscription)
 }

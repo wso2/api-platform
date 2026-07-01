@@ -40,7 +40,6 @@ type OrganizationService struct {
 	llmProviderRepo   repository.LLMProviderRepository
 	llmProxyRepo      repository.LLMProxyRepository
 	mcpProxyRepo      repository.MCPProxyRepository
-	websubAPIRepo     repository.WebSubAPIRepository
 	llmTemplateSeeder *LLMTemplateSeeder
 	auditRepo         repository.AuditRepository
 	config            *config.Server
@@ -55,7 +54,6 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	llmProviderRepo repository.LLMProviderRepository,
 	llmProxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
-	websubAPIRepo repository.WebSubAPIRepository,
 	llmTemplateSeeder *LLMTemplateSeeder,
 	auditRepo repository.AuditRepository,
 	cfg *config.Server,
@@ -70,102 +68,11 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 		llmProviderRepo:   llmProviderRepo,
 		llmProxyRepo:      llmProxyRepo,
 		mcpProxyRepo:      mcpProxyRepo,
-		websubAPIRepo:     websubAPIRepo,
 		llmTemplateSeeder: llmTemplateSeeder,
 		auditRepo:         auditRepo,
 		config:            cfg,
 		slogger:           slogger,
 	}
-}
-
-func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.OrganizationSubscription, error) {
-	if _, err := s.GetOrganizationByUUID(orgID); err != nil {
-		return nil, err
-	}
-
-	llmProvidersCount, err := s.llmProviderRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	llmProxiesCount, err := s.llmProxyRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	applicationsCount, err := s.applicationRepo.CountApplicationsByOrganizationID(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	mcpProxiesCount, err := s.mcpProxyRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	websubAPICount, err := s.websubAPIRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	apis, err := s.apiRepo.GetAPIsByOrganizationUUID(orgID, "")
-	if err != nil {
-		return nil, err
-	}
-
-	llmProvidersLimit := constants.MaxLLMProvidersPerOrganization
-	llmProvidersRemaining := max(llmProvidersLimit-llmProvidersCount, 0)
-
-	llmProxiesLimit := constants.MaxLLMProxiesPerOrganization
-	llmProxiesRemaining := max(llmProxiesLimit-llmProxiesCount, 0)
-
-	mcpProxiesLimit := constants.MaxMCPProxiesPerOrganization
-	mcpProxiesRemaining := max(mcpProxiesLimit-mcpProxiesCount, 0)
-
-	websubAPIsLimit := constants.MaxWebSubAPIsPerOrganization
-	websubAPIsRemaining := max(websubAPIsLimit-websubAPICount, 0)
-
-	res := &api.OrganizationSubscription{
-		Plan: "free",
-		Quotas: api.OrganizationSubscriptionQuotas{
-			LlmProviders: api.OrganizationQuota{
-				Used:      llmProvidersCount,
-				Limit:     intPtr(llmProvidersLimit),
-				Remaining: intPtr(llmProvidersRemaining),
-			},
-			LlmProxies: api.OrganizationQuota{
-				Used:      llmProxiesCount,
-				Limit:     intPtr(llmProxiesLimit),
-				Remaining: intPtr(llmProxiesRemaining),
-			},
-			Applications: api.OrganizationQuota{
-				Used: applicationsCount,
-			},
-			McpProxies: api.OrganizationQuota{
-				Used:      mcpProxiesCount,
-				Limit:     intPtr(mcpProxiesLimit),
-				Remaining: intPtr(mcpProxiesRemaining),
-			},
-			Gateways: api.OrganizationQuota{
-				Used: len(gateways),
-			},
-			Apis: api.OrganizationQuota{
-				Used: len(apis),
-			},
-			WebsubApis: &api.OrganizationQuota{
-				Used:      websubAPICount,
-				Limit:     intPtr(websubAPIsLimit),
-				Remaining: intPtr(websubAPIsRemaining),
-			},
-		},
-	}
-
-	return res, nil
 }
 
 func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, performedBy string) (*api.Organization, error) {

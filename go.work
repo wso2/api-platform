@@ -17,6 +17,7 @@ use (
 	./gateway/system-policies/analytics
 	./kubernetes/gateway-operator
 	./platform-api/src
+	./portals/ai-workspace/bff
 	./samples/sample-service
 	./sdk/ai
 	./sdk/core

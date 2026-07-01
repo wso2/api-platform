@@ -210,24 +210,22 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
-// ValidArtifactKinds holds accepted values for artifacts.type
+// ValidArtifactKinds holds accepted values for artifacts.type for the core (non-plugin)
+// artifact kinds. Plugin-owned kinds (e.g. WebSubApi, WebBrokerApi) are registered
+// into the ArtifactTableRegistry during plugin Init.
 var ValidArtifactKinds = map[string]bool{
-	RestApi:      true,
-	WebSubApi:    true,
-	WebBrokerApi: true,
-	LLMProvider:  true,
-	LLMProxy:     true,
-	MCPProxy:     true,
+	RestApi:     true,
+	LLMProvider: true,
+	LLMProxy:    true,
+	MCPProxy:    true,
 }
 
 // Throttle limit unit constants
 const (
-	ThrottleLimitUnitSecond = "SECOND"
 	ThrottleLimitUnitMinute = "MINUTE"
 	ThrottleLimitUnitHour   = "HOUR"
 	ThrottleLimitUnitDay    = "DAY"
 	ThrottleLimitUnitMonth  = "MONTH"
-	ThrottleLimitUnitYear   = "YEAR"
 )
 
 // Subscription plan limit type constants (subscription_plan_limits.limit_type).
@@ -242,12 +240,10 @@ const (
 
 // ValidThrottleLimitUnits holds accepted values for subscription_plan_limits.time_unit
 var ValidThrottleLimitUnits = map[string]bool{
-	ThrottleLimitUnitSecond: true,
 	ThrottleLimitUnitMinute: true,
 	ThrottleLimitUnitHour:   true,
 	ThrottleLimitUnitDay:    true,
 	ThrottleLimitUnitMonth:  true,
-	ThrottleLimitUnitYear:   true,
 }
 
 // Metadata key constants for deployment metadata

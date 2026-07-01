@@ -85,7 +85,6 @@ SCOPES=(
   # organization
   "ap:organization:manage"
   "ap:organization:read"
-  "ap:organization:subscription:read"
 
   # project
   "ap:project:create"
@@ -100,7 +99,6 @@ SCOPES=(
   "ap:rest_api:update"
   "ap:rest_api:delete"
   "ap:rest_api:manage"
-  "ap:rest_api:import"
   "ap:rest_api:deployment:create"
   "ap:rest_api:deployment:read"
   "ap:rest_api:deployment:manage"
@@ -160,9 +158,6 @@ SCOPES=(
   "ap:devportal:update"
   "ap:devportal:delete"
   "ap:devportal:manage"
-
-  # git
-  "ap:git:read"
 
   # llm_template
   "ap:llm_template:create"

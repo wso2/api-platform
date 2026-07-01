@@ -22,7 +22,6 @@ roles:
       - ap:api_key:read
       - ap:organization:manage
       - ap:project:manage
-      - ap:git:read
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
       - ap:rest_api:manage
@@ -40,9 +39,7 @@ roles:
     scopes:
       - ap:api_key:read
       - ap:organization:read
-      - ap:organization:subscription:read
       - ap:project:read
-      - ap:git:read
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
       - ap:subscription_plan:manage
@@ -71,9 +68,7 @@ roles:
     scopes:
       - ap:api_key:read
       - ap:organization:read
-      - ap:organization:subscription:read
       - ap:project:manage
-      - ap:git:read
       - ap:gateway:read
       - ap:gateway:artifact:read
       - ap:gateway:manifest:read
@@ -93,7 +88,6 @@ roles:
     scopes:
       - ap:api_key:read
       - ap:organization:read
-      - ap:organization:subscription:read
       - ap:project:read
       - ap:gateway:read
       - ap:gateway:artifact:read

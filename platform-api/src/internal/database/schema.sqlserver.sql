@@ -20,7 +20,7 @@ IF OBJECT_ID(N'dbo.organizations', N'U') IS NULL
 CREATE TABLE dbo.organizations (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
@@ -34,7 +34,7 @@ IF OBJECT_ID(N'dbo.projects', N'U') IS NULL
 CREATE TABLE dbo.projects (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -53,7 +53,7 @@ CREATE TABLE dbo.applications (
     handle VARCHAR(40) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     type VARCHAR(50) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -88,7 +88,7 @@ CREATE TABLE dbo.rest_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -114,7 +114,7 @@ IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
     expiry_time DATETIME2(7),
     organization_uuid VARCHAR(40) NOT NULL,
@@ -143,6 +143,18 @@ CREATE TABLE dbo.subscription_plan_limits (
     -- (plans themselves cascade from organizations).
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
     UNIQUE(subscription_plan_uuid, limit_type, time_amount, time_unit)
+);
+
+-- API supported subscription plans (many-to-many): which subscription plans an API (artifact) offers.
+IF OBJECT_ID(N'dbo.artifact_subscription_plans', N'U') IS NULL
+CREATE TABLE dbo.artifact_subscription_plans (
+    artifact_uuid VARCHAR(40) NOT NULL,
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(200),
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (artifact_uuid, subscription_plan_uuid),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -194,7 +206,7 @@ CREATE TABLE dbo.gateways (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
     vhost VARCHAR(255) NOT NULL,
@@ -280,7 +292,7 @@ CREATE TABLE dbo.gateway_tokens (
 IF OBJECT_ID(N'dbo.deployments', N'U') IS NULL
 CREATE TABLE dbo.deployments (
     uuid VARCHAR(40) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
@@ -337,7 +349,7 @@ CREATE TABLE dbo.llm_provider_templates (
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
     group_id VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
@@ -361,7 +373,7 @@ IF OBJECT_ID(N'dbo.llm_providers', N'U') IS NULL
 CREATE TABLE dbo.llm_providers (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
     template_uuid VARCHAR(40) NOT NULL,
@@ -387,7 +399,7 @@ IF OBJECT_ID(N'dbo.llm_proxies', N'U') IS NULL
 CREATE TABLE dbo.llm_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -414,7 +426,7 @@ IF OBJECT_ID(N'dbo.mcp_proxies', N'U') IS NULL
 CREATE TABLE dbo.mcp_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40),
     description VARCHAR(1023),
@@ -433,88 +445,11 @@ CREATE TABLE dbo.mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
--- WEBSUB APIs table
-IF OBJECT_ID(N'dbo.websub_apis', N'U') IS NULL
-CREATE TABLE dbo.websub_apis (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
-    project_uuid VARCHAR(40) NOT NULL,
-    description VARCHAR(1023),
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
-);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_apis_project' AND object_id = OBJECT_ID(N'dbo.websub_apis'))
-CREATE INDEX idx_websub_apis_project ON dbo.websub_apis(project_uuid);
-
--- WebSub API HMAC secrets table (for inbound webhook event verification)
-IF OBJECT_ID(N'dbo.websub_api_hmac_secrets', N'U') IS NULL
-CREATE TABLE dbo.websub_api_hmac_secrets (
-    uuid VARCHAR(40) PRIMARY KEY,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255),
-    encrypted_secret VARBINARY(MAX) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    CONSTRAINT uq_websub_api_hmac_secrets_artifact_handle UNIQUE (artifact_uuid, handle)
-);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_api_hmac_secrets_artifact' AND object_id = OBJECT_ID(N'dbo.websub_api_hmac_secrets'))
-CREATE INDEX idx_websub_api_hmac_secrets_artifact ON dbo.websub_api_hmac_secrets(artifact_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_api_hmac_secrets_status' AND object_id = OBJECT_ID(N'dbo.websub_api_hmac_secrets'))
-CREATE INDEX idx_websub_api_hmac_secrets_status ON dbo.websub_api_hmac_secrets(status);
-
--- WEBBROKER APIs table
-IF OBJECT_ID(N'dbo.webbroker_apis', N'U') IS NULL
-CREATE TABLE dbo.webbroker_apis (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
-    project_uuid VARCHAR(40) NOT NULL,
-    description VARCHAR(1023),
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
-);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_webbroker_apis_project' AND object_id = OBJECT_ID(N'dbo.webbroker_apis'))
-CREATE INDEX idx_webbroker_apis_project ON dbo.webbroker_apis(project_uuid);
-
--- API Keys table (stores API keys for artifacts with hashes as JSON string)
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(63) NOT NULL,
+    display_name VARCHAR(63) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes VARBINARY(MAX) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -527,7 +462,7 @@ CREATE TABLE dbo.api_keys (
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, name)
+    UNIQUE(artifact_uuid, display_name)
 );
 
 -- Application API Key mappings table
@@ -635,16 +570,15 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifact
 CREATE INDEX idx_application_artifact_mappings_artifact_id ON dbo.application_artifact_mappings(artifact_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_rest_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.rest_apis'))
 CREATE INDEX idx_rest_apis_lifecycle_status ON dbo.rest_apis(lifecycle_status);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.websub_apis'))
-CREATE INDEX idx_websub_apis_lifecycle_status ON dbo.websub_apis(lifecycle_status);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_webbroker_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.webbroker_apis'))
-CREATE INDEX idx_webbroker_apis_lifecycle_status ON dbo.webbroker_apis(lifecycle_status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_org' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
 CREATE INDEX idx_subscription_plans_org    ON dbo.subscription_plans(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_status' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
 CREATE INDEX idx_subscription_plans_status ON dbo.subscription_plans(status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
 CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(subscription_plan_uuid);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_subscription_plans_plan' AND object_id = OBJECT_ID(N'dbo.artifact_subscription_plans'))
+CREATE INDEX idx_artifact_subscription_plans_plan ON dbo.artifact_subscription_plans(subscription_plan_uuid);
 
 -- EventHub tables for multi-replica HA sync and gateway event propagation.
 -- Keyed columns are bounded NVARCHAR to stay within SQL Server index-key limits.
@@ -701,7 +635,7 @@ CREATE TABLE dbo.secrets (
     uuid              VARCHAR(40)    NOT NULL PRIMARY KEY,
     organization_uuid VARCHAR(40)    NOT NULL,
     handle            VARCHAR(40)    NOT NULL,
-    name              VARCHAR(255)   NOT NULL,
+    display_name              VARCHAR(255)   NOT NULL,
     description       VARCHAR(1023),
     ciphertext        VARBINARY(MAX) NOT NULL,
     hash              VARCHAR(255)   NOT NULL,

@@ -16,8 +16,6 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1
-kind: LlmProviderTemplate
 metadata:
   name: mistralai
 spec:

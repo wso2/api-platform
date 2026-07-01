@@ -7,7 +7,7 @@ Layered Go service exposing REST endpoints over HTTPS with SQLite persistence an
 ## Components
 
 ### HTTPS Server (Port 9243)
-- Gin router serving `/api/v1/**` and `/api/internal/v1/**` routes.
+- Gin router serving `/api/v0.9/**` and `/api/internal/v1/**` routes.
 - TLS enabled with auto-generated self-signed certificate for development.
 - WebSocket upgrade support at `/api/internal/v1/ws/gateways/connect`.
 

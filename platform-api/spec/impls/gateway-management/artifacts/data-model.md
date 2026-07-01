@@ -464,15 +464,15 @@ CREATE INDEX IF NOT EXISTS idx_gateway_tokens_created
 **Important**: Despite the database-level organization ownership, gateways are exposed as a **root resource** in the REST API:
 
 ```
-POST   /api/v1/gateways                        # Register gateway
-GET    /api/v1/gateways                        # List gateways (can filter by org_id)
-GET    /api/v1/gateways/{gatewayId}            # Get gateway by UUID
-GET    /api/v1/status/gateways               # Get gateway status of the gateways in a org can filter by gatewayId
-PUT    /api/v1/gateways/{gatewayId}            # Update gateway
-DELETE /api/v1/gateways/{gatewayId}            # Delete gateway
+POST   /api/v0.9/gateways                        # Register gateway
+GET    /api/v0.9/gateways                        # List gateways (can filter by org_id)
+GET    /api/v0.9/gateways/{gatewayId}            # Get gateway by UUID
+GET    /api/v0.9/status/gateways               # Get gateway status of the gateways in a org can filter by gatewayId
+PUT    /api/v0.9/gateways/{gatewayId}            # Update gateway
+DELETE /api/v0.9/gateways/{gatewayId}            # Delete gateway
 
-POST   /api/v1/gateways/{gatewayId}/tokens     # Rotate token
-DELETE /api/v1/gateways/{uuid}/tokens/{token_uuid}  # Revoke token
+POST   /api/v0.9/gateways/{gatewayId}/tokens     # Rotate token
+DELETE /api/v0.9/gateways/{uuid}/tokens/{token_uuid}  # Revoke token
 ```
 
 **Rationale for Root Resource**:
