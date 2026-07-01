@@ -189,6 +189,24 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	return org, nil
 }
 
+func (s *OrganizationService) GetOrganizationByHandle(handle string) (*api.Organization, error) {
+	orgModel, err := s.orgRepo.GetOrganizationByHandle(handle)
+	if err != nil {
+		return nil, err
+	}
+
+	if orgModel == nil {
+		return nil, constants.ErrOrganizationNotFound
+	}
+
+	org, convErr := s.modelToAPI(orgModel)
+	if convErr != nil {
+		return nil, convErr
+	}
+
+	return org, nil
+}
+
 // Mapping functions
 func (s *OrganizationService) apiToModel(org *api.Organization, id string) *model.Organization {
 	if org == nil {

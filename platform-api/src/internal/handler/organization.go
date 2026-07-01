@@ -100,14 +100,14 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	httputil.WriteJSON(w, http.StatusCreated, org)
 }
 
-// HeadOrganizationByUuid handles HEAD /api/v0.9/organizations/{uuid}
-func (h *OrganizationHandler) HeadOrganizationByUuid(w http.ResponseWriter, r *http.Request) {
+// HeadOrganization handles HEAD /api/v0.9/organizations/{id}
+func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Request) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	orgID := r.PathValue("uuid")
+	handle := r.PathValue("id")
 
 	h.slogger.Debug("Organization from token", "organizationId", organizationIdFromContext)
 	// to do: enable this check after finalizing authentication method
@@ -118,7 +118,7 @@ func (h *OrganizationHandler) HeadOrganizationByUuid(w http.ResponseWriter, r *h
 	// 	return
 	// }
 
-	_, err := h.orgService.GetOrganizationByUUID(orgID)
+	_, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			w.WriteHeader(http.StatusNotFound)
@@ -131,18 +131,18 @@ func (h *OrganizationHandler) HeadOrganizationByUuid(w http.ResponseWriter, r *h
 	w.WriteHeader(http.StatusOK)
 }
 
-// GetOrganizationByUUID handles GET /api/v0.9/organizations/{uuid}
-func (h *OrganizationHandler) GetOrganizationByUUID(w http.ResponseWriter, r *http.Request) {
-	orgID := r.PathValue("uuid")
+// GetOrganizationByID handles GET /api/v0.9/organizations/{id}
+func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http.Request) {
+	handle := r.PathValue("id")
 
-	org, err := h.orgService.GetOrganizationByUUID(orgID)
+	org, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Organization not found"))
 			return
 		}
-		h.slogger.Error("Failed to get organization by UUID", "organizationId", orgID, "error", err)
+		h.slogger.Error("Failed to get organization by handle", "handle", handle, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get organization"))
 		return
@@ -184,6 +184,6 @@ func (h *OrganizationHandler) GetOrganization(w http.ResponseWriter, r *http.Req
 func (h *OrganizationHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/organizations", h.RegisterOrganization)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", h.GetOrganization)
-	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{uuid}", h.HeadOrganizationByUuid)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{uuid}", h.GetOrganizationByUUID)
+	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{id}", h.HeadOrganization)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{id}", h.GetOrganizationByID)
 }

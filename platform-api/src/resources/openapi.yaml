@@ -99,12 +99,12 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /organizations/{uuid}:
+  /organizations/{id}:
     get:
-      summary: Get organization by UUID
+      summary: Get organization by ID
       description: |
-        Returns the organization with the specified UUID.
-      operationId: GetOrganizationByUUID
+        Returns the organization with the specified handle (id).
+      operationId: GetOrganization
       security:
         - OAuth2Security:
             - ap:organization:read
@@ -112,7 +112,13 @@ paths:
       tags:
         - Organizations
       parameters:
-        - $ref: '#/components/parameters/organizationUuid'
+        - name: id
+          in: path
+          required: true
+          description: ID of the organization.
+          schema:
+            type: string
+            maxLength: 50
       responses:
         '200':
           description: Organization retrieved successfully
@@ -129,9 +135,9 @@ paths:
     head:
       summary: Check if organization exists
       description: |
-        Checks if an organization with the specified UUID.
+        Checks if an organization with the specified handle (id) exists.
         Returns only headers without a response body.
-      operationId: HeadOrganizationByUuid
+      operationId: HeadOrganization
       security:
         - OAuth2Security:
             - ap:organization:read
@@ -139,7 +145,13 @@ paths:
       tags:
         - Organizations
       parameters:
-        - $ref: '#/components/parameters/organizationUuid'
+        - name: id
+          in: path
+          required: true
+          description: ID of the organization.
+          schema:
+            type: string
+            maxLength: 50
       responses:
         '200':
           description: Organization exists
@@ -4292,7 +4304,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /subscription-plans/{uuid}:
+  /subscription-plans/{id}:
     get:
       summary: Get subscription plan by ID
       operationId: GetSubscriptionPlan
@@ -4303,12 +4315,12 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: uuid
+        - name: id
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+            maxLength: 50
       responses:
         '200':
           description: Subscription plan details
@@ -4332,12 +4344,12 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: uuid
+        - name: id
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+            maxLength: 50
       requestBody:
         required: true
         content:
@@ -4373,12 +4385,12 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: uuid
+        - name: id
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+            maxLength: 50
       responses:
         '204':
           description: Subscription plan deleted (no content)
