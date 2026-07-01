@@ -185,7 +185,6 @@ CREATE TABLE IF NOT EXISTS gateways (
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
-    vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties BLOB NOT NULL,
     manifest BLOB,
@@ -199,6 +198,15 @@ CREATE TABLE IF NOT EXISTS gateways (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
+
+-- Gateway Endpoints table (links network endpoints to gateways)
+CREATE TABLE IF NOT EXISTS gateway_endpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    url VARCHAR(255) NOT NULL,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gateway_endpoints_gateway_uuid ON gateway_endpoints(gateway_uuid);
 
 -- Artifact Gateway Mapping table (links artifacts to gateways)
 CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (

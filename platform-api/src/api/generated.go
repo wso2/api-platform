@@ -692,6 +692,9 @@ type CreateGatewayRequest struct {
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints []string `binding:"required" json:"endpoints" yaml:"endpoints"`
+
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType CreateGatewayRequestFunctionalityType `binding:"required" json:"functionalityType" yaml:"functionalityType"`
 
@@ -706,9 +709,6 @@ type CreateGatewayRequest struct {
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`). Defaults to `1.0` if not provided.
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Vhost Virtual host (domain name) for the gateway
-	Vhost string `binding:"required" json:"vhost" yaml:"vhost"`
 }
 
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
@@ -1127,6 +1127,9 @@ type GatewayResponse struct {
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints *[]string `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *GatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
@@ -1150,9 +1153,6 @@ type GatewayResponse struct {
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Vhost Virtual host (domain name) for the gateway
-	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
 // GatewayResponseFunctionalityType Type of gateway functionality
@@ -1216,9 +1216,11 @@ type LLMModelProvider struct {
 
 // LLMPolicy defines model for LLMPolicy.
 type LLMPolicy struct {
-	Name    string          `binding:"required" json:"name" yaml:"name"`
-	Paths   []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version string          `binding:"required" json:"version" yaml:"version"`
+	Name  string          `binding:"required" json:"name" yaml:"name"`
+	Paths []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMPolicyPath defines model for LLMPolicyPath.
@@ -1785,7 +1787,9 @@ type OperationPolicy struct {
 	ExecutionCondition *string               `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
 	Name               string                `binding:"required" json:"name" yaml:"name"`
 	Paths              []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version            string                `binding:"required" json:"version" yaml:"version"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // OperationPolicyPath defines model for OperationPolicyPath.
@@ -1856,7 +1860,7 @@ type Policy struct {
 	// Params Key-value pairs of parameters for the policy
 	Params *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
 
-	// Version Semantic version of the policy
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
 	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
@@ -1983,6 +1987,9 @@ type RESTAPIGatewayResponse struct {
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints *[]string `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *RESTAPIGatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
@@ -2009,9 +2016,6 @@ type RESTAPIGatewayResponse struct {
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Vhost Virtual host (domain name) for the gateway
-	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
 // RESTAPIGatewayResponseFunctionalityType Type of gateway functionality

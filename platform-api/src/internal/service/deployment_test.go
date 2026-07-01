@@ -399,7 +399,7 @@ func TestRestoreDeployment(t *testing.T) {
 			mockGateway: &model.Gateway{
 				ID:             testGatewayID,
 				OrganizationID: testOrgUUID,
-				Vhost:          "api.example.com",
+				Endpoints:      []string{"https://api.example.com"},
 			},
 			mockSetCurrentTime: testUpdatedAt,
 			wantErr:            false,
@@ -421,7 +421,7 @@ func TestRestoreDeployment(t *testing.T) {
 			mockGateway: &model.Gateway{
 				ID:             testGatewayID,
 				OrganizationID: testOrgUUID,
-				Vhost:          "api.example.com",
+				Endpoints:      []string{"https://api.example.com"},
 			},
 			mockSetCurrentTime: testUpdatedAt,
 			wantErr:            false,
@@ -508,7 +508,7 @@ func TestRestoreDeployment(t *testing.T) {
 			mockGateway: &model.Gateway{
 				ID:             testGatewayID,
 				OrganizationID: "00000000-0000-0000-0000-000000000124", // Different organization
-				Vhost:          "api.example.com",
+				Endpoints:      []string{"https://api.example.com"},
 			},
 			wantErr:     true,
 			expectedErr: constants.ErrGatewayNotFound,
@@ -529,7 +529,7 @@ func TestRestoreDeployment(t *testing.T) {
 			mockGateway: &model.Gateway{
 				ID:             testGatewayID,
 				OrganizationID: testOrgUUID,
-				Vhost:          "api.example.com",
+				Endpoints:      []string{"https://api.example.com"},
 			},
 			mockSetCurrentError: errors.New("database write failed"),
 			wantErr:             true,
@@ -656,7 +656,7 @@ func TestUndeployDeployment(t *testing.T) {
 			mockGateway: &model.Gateway{
 				ID:             testGatewayID,
 				OrganizationID: testOrgUUID,
-				Vhost:          "api.example.com",
+				Endpoints:      []string{"https://api.example.com"},
 			},
 			mockSetCurrentTime: testUpdatedAt,
 			wantErr:            false,
@@ -728,7 +728,7 @@ func TestUndeployDeployment(t *testing.T) {
 			mockGateway: &model.Gateway{
 				ID:             testGatewayID,
 				OrganizationID: testOrgUUID,
-				Vhost:          "api.example.com",
+				Endpoints:      []string{"https://api.example.com"},
 			},
 			mockSetCurrentError: errors.New("database write failed"),
 			wantErr:             true,
@@ -1326,7 +1326,7 @@ func TestRollbackDeployment_WhenAllDeploymentsArchived(t *testing.T) {
 		gateway: &model.Gateway{
 			ID:             testGatewayID,
 			OrganizationID: testOrgUUID,
-			Vhost:          "api.example.com",
+			Endpoints:      []string{"https://api.example.com"},
 		},
 	}
 
@@ -1383,7 +1383,7 @@ func TestRollbackDeployment_ToArchivedWhenCurrentUndeployed(t *testing.T) {
 		gateway: &model.Gateway{
 			ID:             testGatewayID,
 			OrganizationID: testOrgUUID,
-			Vhost:          "api.example.com",
+			Endpoints:      []string{"https://api.example.com"},
 		},
 	}
 
@@ -1571,7 +1571,7 @@ func TestUndeployDeployment_WhenOnlyOneDeploymentExists(t *testing.T) {
 		gateway: &model.Gateway{
 			ID:             testGatewayID,
 			OrganizationID: testOrgUUID,
-			Vhost:          "api.example.com",
+			Endpoints:      []string{"https://api.example.com"},
 		},
 	}
 
@@ -1622,7 +1622,7 @@ func TestRollbackDeployment_CurrentlyDeployedSameID(t *testing.T) {
 		gateway: &model.Gateway{
 			ID:             testGatewayID,
 			OrganizationID: testOrgUUID,
-			Vhost:          "api.example.com",
+			Endpoints:      []string{"https://api.example.com"},
 		},
 	}
 

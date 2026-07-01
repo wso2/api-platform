@@ -31,7 +31,7 @@ type Gateway struct {
 	Handle            string                 `json:"handle" db:"handle"`
 	Description       string                 `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
-	Vhost             string                 `json:"vhost" db:"vhost"`
+	Endpoints         []string               `json:"endpoints" db:"-"`
 	IsCritical        bool                   `json:"isCritical" db:"is_critical"`
 	FunctionalityType string                 `json:"functionalityType" db:"gateway_functionality_type"`
 	Version           string                 `json:"version" db:"version"`
@@ -89,7 +89,7 @@ type APIGatewayWithDetails struct {
 	Handle            string                 `json:"handle" db:"handle"`
 	Description       string                 `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
-	Vhost             string                 `json:"vhost" db:"vhost"`
+	Endpoints         []string               `json:"endpoints" db:"-"`
 	IsCritical        bool                   `json:"isCritical" db:"is_critical"`
 	FunctionalityType string                 `json:"functionalityType" db:"functionality_type"`
 	IsActive          bool                   `json:"isActive" db:"is_active"`
