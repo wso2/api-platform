@@ -19,6 +19,7 @@
 metadata:
   name: gemini
 spec:
+  groupId: gemini
   displayName: Gemini
   managedBy: wso2
   version: v1.0

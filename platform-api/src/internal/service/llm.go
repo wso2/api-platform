@@ -138,7 +138,10 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Metadata == nil || strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl)) == "" {
+	if req.Metadata == nil {
+		return nil, constants.ErrInvalidInput
+	}
+	if err := utils.ValidateURL(strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -272,9 +275,17 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if existing.ManagedBy == "wso2" {
 		return nil, constants.ErrLLMProviderTemplateReadOnly
 	}
-	// In-place update never changes the version; a new version is created via
-	// POST /llm-provider-templates/{id}/versions. Reject a request that tries to change it
-	// rather than silently ignoring the supplied value.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
+
+	if req.Metadata == nil {
+		return nil, constants.ErrInvalidInput
+	}
+	if err := utils.ValidateURL(strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
+		return nil, constants.ErrInvalidInput
+	}
+
 	if req.Version != "" && req.Version != existing.Version {
 		return nil, fmt.Errorf("%w: template version cannot be changed via update; use the versions endpoint", constants.ErrInvalidInput)
 	}
@@ -606,6 +617,36 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 		return fmt.Errorf("failed to delete template version: %w", err)
 	}
 	return nil
+}
+
+// SetEnabledByHandle enables or disables the single template version identified by its unique handle. 
+// The handle is resolved to its (groupId, version) and the existing version-level rules apply (built-ins are read-only).
+func (s *LLMProviderTemplateService) SetEnabledByHandle(orgUUID, handle string, enabled bool) (*api.LLMProviderTemplate, error) {
+	if strings.TrimSpace(handle) == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	target, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template: %w", err)
+	}
+	if target == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	return s.SetVersionEnabled(orgUUID, target.GroupID, target.Version, enabled)
+}
+
+func (s *LLMProviderTemplateService) DeleteByHandle(orgUUID, handle string) error {
+	if strings.TrimSpace(handle) == "" {
+		return constants.ErrInvalidInput
+	}
+	target, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve template: %w", err)
+	}
+	if target == nil {
+		return constants.ErrLLMProviderTemplateNotFound
+	}
+	return s.DeleteVersion(orgUUID, target.GroupID, target.Version)
 }
 
 func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvider) (*api.LLMProvider, error) {

@@ -165,8 +165,6 @@ export default function ServiceProviderNew() {
   const [selectedVersionTemplateId, setSelectedVersionTemplateId] = useState<
     string | null
   >(null);
-  // Family group id of the selected template — version routes are keyed by it.
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   // Template just clicked, pending version selection in the dialog.
   const [pendingTemplate, setPendingTemplate] = useState<ProviderTemplate | null>(
     null
@@ -403,7 +401,6 @@ export default function ServiceProviderNew() {
     groupId: string | null
   ) => {
     setSelectedTemplateId(baseTemplate.id ?? null);
-    setSelectedGroupId(groupId ?? baseTemplate.groupId ?? baseTemplate.id ?? null);
     setSelectedVersionTemplateId(versionTemplateId);
     setSelectedTemplateVersion(version);
     setFormState((prev) => ({ ...prev, providerType: baseTemplate.displayName }));
@@ -522,9 +519,7 @@ export default function ServiceProviderNew() {
 
           {selectedTemplateId && (
             <ProviderTemplateProvider
-              handle={selectedTemplateId}
-              groupId={selectedGroupId ?? undefined}
-              version={selectedTemplateVersion ?? undefined}
+              handle={selectedVersionTemplateId ?? selectedTemplateId}
             >
               <TemplateBasedFormFieldsContainer
                 formState={formState}

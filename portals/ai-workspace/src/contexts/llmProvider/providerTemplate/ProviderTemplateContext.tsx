@@ -50,11 +50,9 @@ const ProviderTemplateContext = createContext<ProviderTemplateContextValue>({
 interface ProviderTemplateProviderProps {
   children: React.ReactNode;
   handle: string;
-  groupId?: string;
-  version?: string;
 }
 
-export function ProviderTemplateProvider({ children, handle, groupId, version }: ProviderTemplateProviderProps) {
+export function ProviderTemplateProvider({ children, handle }: ProviderTemplateProviderProps) {
   const { currentOrganization } = useAppShell();
   const [template, setTemplate] = useState<ProviderTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,7 +60,7 @@ export function ProviderTemplateProvider({ children, handle, groupId, version }:
 
   const organizationId = currentOrganization?.uuid ?? '';
 
-  // Fetch single template (a specific version if requested, else latest)
+  // Fetch the single template version addressed by its handle.
   const fetchTemplate = useCallback(async () => {
     if (!handle || !organizationId) {
       setTemplate(null);
@@ -73,9 +71,7 @@ export function ProviderTemplateProvider({ children, handle, groupId, version }:
     try {
       setIsLoading(true);
       setError(null);
-      const fetchedTemplate = version
-        ? await providerTemplateApis.getProviderTemplateVersion(groupId ?? handle, version, organizationId, PLATFORM_API_BASE_URL)
-        : await providerTemplateApis.getProviderTemplate(handle, organizationId, PLATFORM_API_BASE_URL);
+      const fetchedTemplate = await providerTemplateApis.getProviderTemplate(handle, organizationId, PLATFORM_API_BASE_URL);
       setTemplate(fetchedTemplate);
     } catch (err) {
       logger.error(`Failed to fetch provider template ${handle}:`, err);
@@ -84,7 +80,7 @@ export function ProviderTemplateProvider({ children, handle, groupId, version }:
     } finally {
       setIsLoading(false);
     }
-  }, [handle, groupId, version, organizationId, PLATFORM_API_BASE_URL]);
+  }, [handle, organizationId, PLATFORM_API_BASE_URL]);
 
   useEffect(() => {
     fetchTemplate();

@@ -237,9 +237,11 @@ export default function ProviderTemplateOverview() {
     if (!templateId || !organizationId || version === selectedVersion) return;
     setIsLoading(true);
     try {
-      const full = await providerTemplateApis.getProviderTemplateVersion(
-        template?.groupId ?? templateId,
-        version,
+      
+      const targetHandle =
+        versions.find((v) => v.version === version)?.id ?? templateId;
+      const full = await providerTemplateApis.getProviderTemplate(
+        targetHandle,
         organizationId,
         PLATFORM_API_BASE_URL
       );
@@ -555,8 +557,7 @@ export default function ProviderTemplateOverview() {
       }
       const updated =
         await providerTemplateApis.setProviderTemplateVersionEnabled(
-          template.groupId ?? template.id,
-          currentVersion,
+          template.id,
           next,
           organizationId,
           PLATFORM_API_BASE_URL
@@ -621,8 +622,7 @@ export default function ProviderTemplateOverview() {
       }
 
       await providerTemplateApis.deleteProviderTemplateVersion(
-        template.groupId ?? template.id,
-        currentVersion,
+        template.id,
         organizationId,
         PLATFORM_API_BASE_URL
       );
