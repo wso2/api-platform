@@ -68,6 +68,10 @@ import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
 import { buildProjectPath } from '../../../../utils/projectRouting';
 import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
+import {
   getCurrentDeployment,
   getProxyIdentifier,
 } from './ProviderMap/ProviderMapTab';
@@ -155,6 +159,7 @@ export default function ServiceProviderOverviewTab({
   const apiKeyLocation = provider?.security?.apiKey?.in ?? 'header';
   const apiKeyName = provider?.security?.apiKey?.key ?? 'X-API-Key';
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
 
   const parsedOpenApiSpec = useMemo(
     () => parseOpenApiSpec(provider?.openapi || ''),
@@ -598,7 +603,11 @@ export default function ServiceProviderOverviewTab({
   );
 
   const handleDeleteApiKey = async () => {
-    if (!deleteTargetKeyName || !provider?.id || !currentOrganization?.uuid) {
+    if (
+      !deleteTargetKeyName ||
+      !provider?.id ||
+      !currentOrganization?.uuid
+    ) {
       return;
     }
 
@@ -814,25 +823,16 @@ export default function ServiceProviderOverviewTab({
                           />
                         </Typography>
                       </Box>
-                      <Tooltip
-                        title={
-                          deployedGateways.length === 0
-                            ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
-                            : ''
-                        }
-                        placement="top"
-                      >
-                        <span>
-                          <Button
-                            variant="contained"
-                            size="medium"
-                            onClick={handleOpenApiKeyModal}
-                            disabled={deployedGateways.length === 0}
-                          >
-                            Generate API Key
-                          </Button>
-                        </span>
-                      </Tooltip>
+                      <DisabledActionTooltip disabled={false}>
+                        <Button
+                          variant="contained"
+                          size="medium"
+                          onClick={handleOpenApiKeyModal}
+                          disabled={deployedGateways.length === 0}
+                        >
+                          Generate API Key
+                        </Button>
+                      </DisabledActionTooltip>
                     </Stack>
 
                     {keyError && (

@@ -45,13 +45,15 @@ import { FormattedMessage } from 'react-intl';
  */
 export default function LLMProxySecurityTab() {
   const { proxy, isLoading, error, setLocalProxy } = useProxy();
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
 
   const [authenticationType, setAuthenticationType] = useState('');
   const [apiKeyEnabled, setApiKeyEnabled] = useState(true);
   const [keyName, setKeyName] = useState('');
   const [keyLocation, setKeyLocation] = useState<'header' | 'query'>('header');
 
-  const isFormDisabled = !apiKeyEnabled || isLoading || Boolean(error);
+  const isFormDisabled =
+    !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProxy;
 
   useEffect(() => {
     if (!proxy) return;
@@ -82,24 +84,28 @@ export default function LLMProxySecurityTab() {
   };
 
   const handleAuthChange = (event: { target: { value: string } }) => {
+    if (isReadOnlyProxy) return;
     const nextType = event.target.value;
     setAuthenticationType(nextType);
     stageSecurity(nextType, keyName, keyLocation, apiKeyEnabled);
   };
 
   const handleApiKeyEnabledChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (isReadOnlyProxy) return;
     const nextEnabled = event.target.checked;
     setApiKeyEnabled(nextEnabled);
     stageSecurity(authenticationType, keyName, keyLocation, nextEnabled);
   };
 
   const handleKeyNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (isReadOnlyProxy) return;
     const nextKey = event.target.value;
     setKeyName(nextKey);
     stageSecurity(authenticationType, nextKey, keyLocation, apiKeyEnabled);
   };
 
   const handleKeyLocationChange = (event: { target: { value: string } }) => {
+    if (isReadOnlyProxy) return;
     const nextIn = event.target.value as 'header' | 'query';
     setKeyLocation(nextIn);
     stageSecurity(authenticationType, keyName, nextIn, apiKeyEnabled);
@@ -135,7 +141,7 @@ export default function LLMProxySecurityTab() {
                 <Switch
                   size="small"
                   checked={apiKeyEnabled}
-                  disabled={isLoading || Boolean(error)}
+                  disabled={isLoading || Boolean(error) || isReadOnlyProxy}
                   onChange={handleApiKeyEnabledChange}
                 />
               </Tooltip>
@@ -144,7 +150,11 @@ export default function LLMProxySecurityTab() {
 
           <FormControl fullWidth size="small">
             <FormLabel>Authentication type</FormLabel>
-            <Select value={authenticationType} onChange={handleAuthChange}>
+            <Select
+              value={authenticationType}
+              onChange={handleAuthChange}
+              disabled={isReadOnlyProxy}
+            >
               <MenuItem value="apiKey">API Key</MenuItem>
             </Select>
           </FormControl>

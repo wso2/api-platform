@@ -93,7 +93,6 @@ const PROVIDER_LOGO_MAP: Record<string, string> = {
   mistralai: MistralAILogo,
   mistral: MistralAILogo,
 };
-const MAX_LLM_PROVIDERS_PER_ORG = 5;
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -153,8 +152,7 @@ export default function ServiceProviders() {
   // Access the list from the API response
   const providers = providersResponse.list;
   const emptyMessage = 'No Available LLM Providers';
-  const isProviderQuotaReached =
-    (providersResponse.count ?? providers.length) >= MAX_LLM_PROVIDERS_PER_ORG;
+  const isProviderQuotaReached = false;
   const providerQuotaTooltip =
     'You cannot create more providers because your organization has reached the maximum limit of 5 LLM providers.';
 

@@ -19,6 +19,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Button,
   PageContent,
   Stack,
@@ -39,30 +40,16 @@ import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
 
 type ExternalServersDeployLayoutProps = {
-  serverId: string;
+  server: MCPServer | null;
 };
 
-function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutProps) {
+function ExternalServersDeployLayout({ server }: ExternalServersDeployLayoutProps) {
   const navigate = useNavigate();
   const { deployments } = useGatewayDeploy();
-  const { currentOrganization } = useAppShell();
-  const organizationId = currentOrganization?.uuid ?? '';
-  const apimBaseUrl = PLATFORM_API_BASE_URL;
-
-  const [server, setServer] = useState<MCPServer | null>(null);
-
-  useEffect(() => {
-    if (!serverId || !organizationId) return;
-    let cancelled = false;
-    mcpProxiesApis
-      .getMCPServer(serverId, apimBaseUrl)
-      .then((res) => { if (!cancelled) setServer(res); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [serverId, organizationId, apimBaseUrl]);
 
   const hasDeployments = (deployments?.list ?? []).some((d) => d.status === 'DEPLOYED');
   const hasPolicies = (server?.policies?.length ?? 0) > 0;
+  const isReadOnly = Boolean(server?.readOnly);
 
   const handleStepClick = (stepId: ExternalServerStepBannerStepId) => {
     if (stepId === 'add-policies') {
@@ -99,6 +86,13 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
             defaultMessage="Deploy MCP Proxy to your Gateways"
           />
         </Typography>
+        {isReadOnly && (
+          <Alert severity="info">
+            This MCP proxy was created from a gateway. You can view its
+            deployments, but deploy, redeploy, restore and undeploy actions are
+            managed by the gateway and are unavailable in AI Workspace.
+          </Alert>
+        )}
         <GatewayDeployMainSection showConfigureOption={false} />
       </Stack>
     </PageContent>
@@ -107,6 +101,21 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
 
 export default function ExternalServersDeploy() {
   const { serverId } = useParams<{ serverId: string }>();
+  const { currentOrganization } = useAppShell();
+  const organizationId = currentOrganization?.uuid ?? '';
+  const apimBaseUrl = PLATFORM_API_BASE_URL;
+
+  const [server, setServer] = useState<MCPServer | null>(null);
+
+  useEffect(() => {
+    if (!serverId || !organizationId) return;
+    let cancelled = false;
+    mcpProxiesApis
+      .getMCPServer(serverId, PLATFORM_API_BASE_URL)
+      .then((res) => { if (!cancelled) setServer(res); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [serverId, organizationId, apimBaseUrl]);
 
   if (!serverId) {
     return (
@@ -122,8 +131,12 @@ export default function ExternalServersDeploy() {
   }
 
   return (
-    <GatewayDeployProvider apiId={serverId} resourceType="mcp-server">
-      <ExternalServersDeployLayout serverId={serverId} />
+    <GatewayDeployProvider
+      apiId={serverId}
+      resourceType="mcp-server"
+      readOnly={Boolean(server?.readOnly)}
+    >
+      <ExternalServersDeployLayout server={server} />
     </GatewayDeployProvider>
   );
 }

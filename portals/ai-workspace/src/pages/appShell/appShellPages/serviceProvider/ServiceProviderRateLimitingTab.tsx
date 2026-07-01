@@ -57,6 +57,7 @@ import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAcces
 import { ResourceRow } from '../../../../Components/ResourceView';
 import { FormattedMessage } from 'react-intl';
 import type { AccessControl } from '../../../../utils/types';
+import { GATEWAY_MANAGED_ARTIFACT_TOOLTIP } from '../../../../utils/readOnlyArtifacts';
 
 type ResourceItem = {
   method: string;
@@ -79,6 +80,7 @@ type CriteriaMap = Record<string, RateLimitCriteria[]>;
 type CriteriaRowsProps = {
   criteria: RateLimitCriteria[];
   onChange: (next: RateLimitCriteria[]) => void;
+  disabled?: boolean;
 };
 
 const UNITS = ['hour', 'day', 'week', 'month'] as const;
@@ -142,7 +144,11 @@ function extractResourcesFromSpecJson(spec: any): ResourceItem[] {
   return extracted;
 }
 
-function CriteriaRows({ criteria, onChange }: CriteriaRowsProps) {
+function CriteriaRows({
+  criteria,
+  onChange,
+  disabled = false,
+}: CriteriaRowsProps) {
   const [rows, setRows] = useState<RateLimitCriteria[]>(criteria);
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 
@@ -221,13 +227,14 @@ function CriteriaRows({ criteria, onChange }: CriteriaRowsProps) {
                     <Switch
                       size="small"
                       checked={Boolean(item.enabled)}
+                      disabled={disabled}
                       onChange={() => toggleEnabled(item.label)}
                     />
                   }
                 />
                 <IconButton
                   size="small"
-                  disabled={!item.enabled}
+                  disabled={!item.enabled || disabled}
                   onClick={() => toggleOpen(item.label)}
                 >
                   {openMap[item.label] ? (
@@ -249,6 +256,7 @@ function CriteriaRows({ criteria, onChange }: CriteriaRowsProps) {
                       <TextField
                         size="small"
                         value={item.quota}
+                        disabled={disabled}
                         onChange={(e) =>
                           updateRow(item.label, { quota: e.target.value })
                         }
@@ -276,6 +284,7 @@ function CriteriaRows({ criteria, onChange }: CriteriaRowsProps) {
                           size="small"
                           type="number"
                           value={item.resetValue}
+                          disabled={disabled}
                           onChange={(e) =>
                             updateRow(item.label, { resetValue: e.target.value })
                           }
@@ -285,6 +294,7 @@ function CriteriaRows({ criteria, onChange }: CriteriaRowsProps) {
                         <Select
                           size="small"
                           value={item.resetUnit || 'hour'}
+                          disabled={disabled}
                           onChange={(e) => {
                             updateRow(item.label, {
                               resetUnit: String(e.target.value),
@@ -318,6 +328,8 @@ function ModeToggle({
   disableResource,
   disableGlobalReason,
   disableResourceReason,
+  disabled = false,
+  disabledReason,
 }: {
   value: 'global' | 'resource';
   onChange: (v: 'global' | 'resource') => void;
@@ -325,6 +337,8 @@ function ModeToggle({
   disableResource?: boolean;
   disableGlobalReason?: string;
   disableResourceReason?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const handleChange = (
     _e: React.MouseEvent<HTMLElement>,
@@ -341,13 +355,19 @@ function ModeToggle({
       onChange={handleChange}
     >
       <Tooltip
-        title={disableGlobal ? disableGlobalReason || '' : ''}
+        title={
+          disabled
+            ? disabledReason || ''
+            : disableGlobal
+              ? disableGlobalReason || ''
+              : ''
+        }
         placement="top"
       >
         <Box component="span">
           <ToggleButton
             value="global"
-            disabled={Boolean(disableGlobal)}
+            disabled={disabled || Boolean(disableGlobal)}
             sx={{ textTransform: 'none' }}
           >
             Provider-wide
@@ -355,13 +375,19 @@ function ModeToggle({
         </Box>
       </Tooltip>
       <Tooltip
-        title={disableResource ? disableResourceReason || '' : ''}
+        title={
+          disabled
+            ? disabledReason || ''
+            : disableResource
+              ? disableResourceReason || ''
+              : ''
+        }
         placement="top"
       >
         <Box component="span">
           <ToggleButton
             value="resource"
-            disabled={Boolean(disableResource)}
+            disabled={disabled || Boolean(disableResource)}
             sx={{ textTransform: 'none' }}
           >
             Per Resource
@@ -527,6 +553,7 @@ export default function ServiceProviderRateLimitingTab({
 }: ServiceProviderRateLimitingTabProps) {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
   const [backendRateMode, setBackendRateMode] = useState<'global' | 'resource'>(
     'global'
   );
@@ -818,7 +845,7 @@ export default function ServiceProviderRateLimitingTab({
   };
 
   const handleSaveRateLimiting = async (): Promise<boolean> => {
-    if (!provider || isLoading || error) return false;
+    if (!provider || isLoading || error || isReadOnlyProvider) return false;
     if (backendHasGlobalConfig && backendHasResourceConfig) {
       showSnackbar(
         'Backend cannot have both Provider-wide and Per Resource values. Remove one side and try again.',
@@ -930,6 +957,8 @@ export default function ServiceProviderRateLimitingTab({
                 <ModeToggle
                   value={backendRateMode}
                   onChange={handleBackendModeChange}
+                  disabled={isReadOnlyProvider}
+                  disabledReason={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                   disableGlobal={
                     backendRateMode !== 'global' && backendHasResourceConfig
                   }
@@ -1002,6 +1031,7 @@ export default function ServiceProviderRateLimitingTab({
                         >
                           <CriteriaRows
                             criteria={backendDefaultCriteria}
+                            disabled={isReadOnlyProvider}
                             onChange={(next) => {
                               setBackendDefaultCriteria(next);
                               setIsDirty(true);
@@ -1119,6 +1149,7 @@ export default function ServiceProviderRateLimitingTab({
                               >
                                 <CriteriaRows
                                   criteria={criteria}
+                                  disabled={isReadOnlyProvider}
                                   onChange={(next) =>
                                     updateBackendResourceCriteria(key, next)
                                   }
@@ -1136,6 +1167,7 @@ export default function ServiceProviderRateLimitingTab({
                     <Divider />
                     <CriteriaRows
                       criteria={backendGlobalCriteria}
+                      disabled={isReadOnlyProvider}
                       onChange={(next) => {
                         setBackendGlobalCriteria(next);
                         setIsDirty(true);
@@ -1165,6 +1197,8 @@ export default function ServiceProviderRateLimitingTab({
                 <ModeToggle
                   value={consumerRateMode}
                   onChange={handleConsumerModeChange}
+                  disabled={isReadOnlyProvider}
+                  disabledReason={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                   disableGlobal={consumerRateMode !== 'global' && consumerHasResourceConfig}
                   disableResource={consumerRateMode !== 'resource' && consumerHasGlobalConfig}
                   disableGlobalReason='If you need Provider-wide, remove Per Resource values first.'
@@ -1232,6 +1266,7 @@ export default function ServiceProviderRateLimitingTab({
                         >
                           <CriteriaRows
                             criteria={consumerDefaultCriteria}
+                            disabled={isReadOnlyProvider}
                             onChange={(next) => {
                               setConsumerDefaultCriteria(next);
                               setIsDirty(true);
@@ -1351,6 +1386,7 @@ export default function ServiceProviderRateLimitingTab({
                               >
                                 <CriteriaRows
                                   criteria={criteria}
+                                  disabled={isReadOnlyProvider}
                                   onChange={(next) =>
                                     updateConsumerResourceCriteria(key, next)
                                   }
@@ -1368,6 +1404,7 @@ export default function ServiceProviderRateLimitingTab({
                     <Divider />
                     <CriteriaRows
                       criteria={consumerGlobalCriteria}
+                      disabled={isReadOnlyProvider}
                       onChange={(next) => {
                         setConsumerGlobalCriteria(next);
                         setIsDirty(true);

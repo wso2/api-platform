@@ -54,6 +54,10 @@ import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { UserAPIKey } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
+import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
 
 type ServiceProviderDeploymentsCardProps = {
   isGatewaysLoading: boolean;
@@ -122,6 +126,7 @@ export default function ServiceProviderDeploymentsCard({
 
   const apiKeyLocation = provider?.security?.apiKey?.in ?? 'header';
   const apiKeyName = provider?.security?.apiKey?.key ?? 'X-API-Key';
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
 
   const deployedGateways = useMemo(() => {
     if (!deployments?.list || deployments.list.length === 0) return [];
@@ -456,25 +461,16 @@ export default function ServiceProviderDeploymentsCard({
                     />
                   </Typography>
                 </Box>
-                <Tooltip
-                  title={
-                    gateways.length === 0
-                      ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
-                      : ''
-                  }
-                  placement="top"
-                >
-                  <span>
-                    <Button
-                      variant="contained"
-                      size="medium"
-                      onClick={handleOpenApiKeyModal}
-                      disabled={gateways.length === 0}
-                    >
-                      Generate API Key
-                    </Button>
-                  </span>
-                </Tooltip>
+                <DisabledActionTooltip disabled={false}>
+                  <Button
+                    variant="contained"
+                    size="medium"
+                    onClick={handleOpenApiKeyModal}
+                    disabled={gateways.length === 0}
+                  >
+                    Generate API Key
+                  </Button>
+                </DisabledActionTooltip>
               </Stack>
 
               {keyError && (

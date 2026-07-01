@@ -50,6 +50,7 @@ function EditServiceProviderForm() {
   const { currentOrganization } = useAppShell();
   const { provider, isLoading, error, updateProvider } = useLLMProvider();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -81,6 +82,9 @@ function EditServiceProviderForm() {
   };
 
   const handleSubmit = async () => {
+    // Allowed even for gateway-created providers: name/version/context stay locked
+    // (they are part of the runtime artifact), so only the description can change,
+    // which the control plane accepts without altering the gateway runtime artifact.
     if (!providerId) return;
 
     setIsSubmitting(true);
@@ -187,6 +191,13 @@ function EditServiceProviderForm() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyProvider ? (
+              <Alert severity="info">
+                This provider was created from a gateway. The name, version and
+                context are part of the gateway runtime configuration and are
+                read-only here; only the description can be edited.
+              </Alert>
+            ) : null}
             {isContextOrVersionChanged && (
               <Alert severity="warning">
                 You have modified the context or version of this service
@@ -201,6 +212,7 @@ function EditServiceProviderForm() {
                   fullWidth
                   required
                   value={name}
+                  disabled={isReadOnlyProvider}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter service provider name"
                   error={name.length > MAX_NAME_LENGTH}
@@ -217,6 +229,7 @@ function EditServiceProviderForm() {
                 <TextField
                   fullWidth
                   value={version}
+                  disabled={isReadOnlyProvider}
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="e.g., 1.0"
                   error={version.length > MAX_VERSION_LENGTH}
@@ -252,6 +265,7 @@ function EditServiceProviderForm() {
               <TextField
                 fullWidth
                 value={context}
+                disabled={isReadOnlyProvider}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Enter context path"
                 error={context.length > MAX_CONTEXT_LENGTH}
