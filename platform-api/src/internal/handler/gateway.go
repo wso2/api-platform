@@ -266,6 +266,12 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.DisplayName == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"displayName is required"))
+		return
+	}
+
 	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, &req)
 	if err != nil {

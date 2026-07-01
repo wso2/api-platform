@@ -259,6 +259,10 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	}
 
 	displayName := req.DisplayName
+	if displayName == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
+		return
+	}
 	update := &model.SubscriptionPlanUpdate{
 		Name:               &displayName,
 		BillingPlan:        req.BillingPlan,
