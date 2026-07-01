@@ -1051,83 +1051,6 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
-
-  /llm-provider-templates/copy:
-    post:
-      summary: Create a new version by copying an existing one
-      description: |
-        Creates a new version within a template family by cloning an existing
-        version (`fromTemplateId`) and applying optional field overrides from
-        the body. The new version lands in the same family as the source and
-        becomes the latest.
-
-        Versions start at v1.0 and only go higher — `toVersion` must match the
-        `v<major>.<minor>` pattern with a major of at least 1 (e.g. v2.0); v0.x
-        is rejected. `toTemplateId`, when supplied, must equal the handle
-        derived from the family and `toVersion`. Organization is identified via
-        the JWT token.
-      operationId: copyLLMProviderTemplateVersion
-      security:
-        - OAuth2Security:
-            - ap:llm_template:create
-            - ap:llm_template:manage
-      tags:
-        - LLM Provider Templates
-      parameters:
-        - name: fromTemplateId
-          in: query
-          required: true
-          description: Handle (id) of the source version to copy from.
-          schema:
-            type: string
-          example: openai-v3-0
-        - name: toTemplateId
-          in: query
-          required: false
-          description: >-
-            Expected handle of the new version. Must equal the handle derived
-            from the source family and toVersion; used to validate the target.
-          schema:
-            type: string
-          example: openai-v4-0
-        - name: toVersion
-          in: query
-          required: true
-          description: >-
-            New version identifier, e.g. v4.0. Must match v<major>.<minor> with
-            a major of at least 1, and be unique within the family.
-          schema:
-            type: string
-          example: v4.0
-      requestBody:
-        required: false
-        description: >-
-          Optional overrides applied on top of the copied config. Any field
-          present replaces the value cloned from the source version.
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
-      responses:
-        '201':
-          description: New version created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LLMProviderTemplate'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
     get:
       summary: List templates, list a family's versions, or get a single version
       description: |
@@ -1218,6 +1141,82 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-provider-templates/copy:
+    post:
+      summary: Create a new version by copying an existing one
+      description: |
+        Creates a new version within a template family by cloning an existing
+        version (`fromTemplateId`) and applying optional field overrides from
+        the body. The new version lands in the same family as the source and
+        becomes the latest.
+
+        Versions start at v1.0 and only go higher — `toVersion` must match the
+        `v<major>.<minor>` pattern with a major of at least 1 (e.g. v2.0); v0.x
+        is rejected. `toTemplateId`, when supplied, must equal the handle
+        derived from the family and `toVersion`. Organization is identified via
+        the JWT token.
+      operationId: copyLLMProviderTemplateVersion
+      security:
+        - OAuth2Security:
+            - ap:llm_template:create
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: fromTemplateId
+          in: query
+          required: true
+          description: Handle (id) of the source version to copy from.
+          schema:
+            type: string
+          example: openai-v3-0
+        - name: toTemplateId
+          in: query
+          required: false
+          description: >-
+            Expected handle of the new version. Must equal the handle derived
+            from the source family and toVersion; used to validate the target.
+          schema:
+            type: string
+          example: openai-v4-0
+        - name: toVersion
+          in: query
+          required: true
+          description: >-
+            New version identifier, e.g. v4.0. Must match v<major>.<minor> with
+            a major of at least 1, and be unique within the family.
+          schema:
+            type: string
+          example: v4.0
+      requestBody:
+        required: false
+        description: >-
+          Optional overrides applied on top of the copied config. Any field
+          present replaces the value cloned from the source version.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
+      responses:
+        '201':
+          description: New version created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
