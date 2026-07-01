@@ -517,8 +517,23 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
+func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, description, vhost string, isCritical bool,
 	functionalityType, version, createdBy string, properties map[string]interface{}) (*api.GatewayResponse, error) {
+	// Determine handle: use provided id or auto-generate from displayName
+	var name string
+	if id != nil && strings.TrimSpace(*id) != "" {
+		name = strings.TrimSpace(*id)
+	} else {
+		var err error
+		name, err = utils.GenerateHandle(displayName, func(h string) bool {
+			existing, _ := s.gatewayRepo.GetByHandleAndOrgID(h, orgID)
+			return existing != nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate gateway handle: %w", err)
+		}
+	}
+
 	// 1. Validate inputs
 	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
 		return nil, err
@@ -734,18 +749,15 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 
 // ListTokens retrieves all active tokens for a gateway
 func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoResponse, error) {
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
 		return nil, errors.New("gateway not found")
 	}
-	if gateway.OrganizationID != orgId {
-		return nil, errors.New("gateway not found")
-	}
 
-	activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gatewayId)
+	activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gateway.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tokens: %w", err)
 	}
@@ -773,19 +785,16 @@ func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoRes
 // RotateToken generates a new token for a gateway (max 2 active tokens)
 func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.TokenRotationResponse, error) {
 	// 1. Validate gateway exists
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
 		return nil, errors.New("gateway not found")
 	}
-	if gateway.OrganizationID != orgId {
-		return nil, errors.New("gateway not found")
-	}
 
 	// 2. Count active tokens
-	activeCount, err := s.gatewayRepo.CountActiveTokens(gatewayId)
+	activeCount, err := s.gatewayRepo.CountActiveTokens(gateway.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count active tokens: %w", err)
 	}
@@ -811,7 +820,7 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 	}
 	gatewayToken := &model.GatewayToken{
 		ID:        tokenId,
-		GatewayID: gatewayId,
+		GatewayID: gateway.ID,
 		TokenHash: tokenHash,
 		Salt:      "",
 		Status:    constants.GatewayTokenStatusActive,
@@ -831,14 +840,11 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 
 // RevokeToken revokes a specific token for a gateway
 func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string) error {
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return errors.New("gateway not found")
-	}
-	if gateway.OrganizationID != orgId {
 		return errors.New("gateway not found")
 	}
 
@@ -849,7 +855,7 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 	if token == nil {
 		return errors.New("token not found")
 	}
-	if token.GatewayID != gatewayId {
+	if token.GatewayID != gateway.ID {
 		return errors.New("token not found")
 	}
 

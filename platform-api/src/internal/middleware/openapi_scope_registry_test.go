@@ -17,7 +17,7 @@ paths:
         - OAuth2Security:
             - ap:project:create
             - ap:project:manage
-  /projects/{id}:
+  /projects/{projectId}:
     get:
       operationId: GetProject
       security:
@@ -58,7 +58,7 @@ func TestLoadScopeRegistry(t *testing.T) {
 		wantScopes []string
 	}{
 		{"POST", "/api/v0.9/projects", true, []string{"ap:project:create", "ap:project:manage"}},
-		{"GET", "/api/v0.9/projects/{id}", true, []string{"ap:project:read", "ap:project:manage"}},
+		{"GET", "/api/v0.9/projects/{projectId}", true, []string{"ap:project:read", "ap:project:manage"}},
 		{"POST", "/api/v0.9/organizations", false, nil},
 	}
 	for _, tc := range tests {

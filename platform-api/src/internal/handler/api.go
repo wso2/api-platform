@@ -176,7 +176,7 @@ func (h *APIHandler) GetAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -256,7 +256,7 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -335,7 +335,7 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -372,7 +372,7 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -429,7 +429,7 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))

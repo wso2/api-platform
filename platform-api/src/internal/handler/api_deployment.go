@@ -55,7 +55,7 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -144,7 +144,7 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -217,7 +217,7 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -291,7 +291,7 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
@@ -344,7 +344,7 @@ func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
@@ -389,7 +389,7 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiId := r.PathValue("id")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -438,7 +438,7 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 // RegisterRoutes registers all deployment-related routes
 func (h *DeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
 	h.slogger.Debug("Registering deployment routes")
-	base := constants.APIBasePath + "/rest-apis/{id}"
+	base := constants.APIBasePath + "/rest-apis/{restApiId}"
 	mux.HandleFunc("POST "+base+"/deployments", h.DeployAPI)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/restore", h.RestoreDeployment)

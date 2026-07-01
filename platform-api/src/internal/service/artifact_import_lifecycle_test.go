@@ -821,7 +821,7 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 	// CP-origin MCP proxy via the service.
 	proj := importTestProjectID
 	if _, err := svc.Create(importTestOrgID, "tester", &api.MCPProxy{
-		Id:        "cp-mcp",
+		Id:        strPointer("cp-mcp"),
 		DisplayName:      "CP MCP",
 		Version:   "v1.0",
 		ProjectId: &proj,
@@ -922,7 +922,7 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
 		mustImport(t, d, dpMCPReq("dp-m", "blk-mcp", "M"))
 		if _, err := svc.Update(importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{
-			Id: "blk-mcp", DisplayName: "Hacked", Version: "v2",
+			Id: strPointer("blk-mcp"), DisplayName: "Hacked", Version: "v2",
 			Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
 		}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("MCP Update(DP) = %v, want ErrArtifactReadOnly", err)

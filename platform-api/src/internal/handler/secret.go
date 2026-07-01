@@ -46,9 +46,9 @@ func (h *SecretHandler) RegisterRoutes(mux *http.ServeMux) {
 	for _, version := range []string{"/api/v0.9", "/api/v1"} {
 		mux.HandleFunc("POST "+version+"/secrets", h.CreateSecret)
 		mux.HandleFunc("GET "+version+"/secrets", h.ListSecrets)
-		mux.HandleFunc("GET "+version+"/secrets/{id}", h.GetSecret)
-		mux.HandleFunc("PUT "+version+"/secrets/{id}", h.UpdateSecret)
-		mux.HandleFunc("DELETE "+version+"/secrets/{id}", h.DeleteSecret)
+		mux.HandleFunc("GET "+version+"/secrets/{secretId}", h.GetSecret)
+		mux.HandleFunc("PUT "+version+"/secrets/{secretId}", h.UpdateSecret)
+		mux.HandleFunc("DELETE "+version+"/secrets/{secretId}", h.DeleteSecret)
 	}
 }
 
@@ -144,7 +144,7 @@ func (h *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handle := r.PathValue("id")
+	handle := r.PathValue("secretId")
 	if handle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
@@ -171,7 +171,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handle := r.PathValue("id")
+	handle := r.PathValue("secretId")
 	if handle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
@@ -213,7 +213,7 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handle := r.PathValue("id")
+	handle := r.PathValue("secretId")
 	if handle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return

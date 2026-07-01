@@ -47,7 +47,7 @@ func NewLLMProxyAPIKeyHandler(apiKeyService *service.LLMProxyAPIKeyService, slog
 	}
 }
 
-// ListAPIKeys handles GET /api/v0.9/llm-proxies/{id}/api-keys
+// ListAPIKeys handles GET /api/v0.9/llm-proxies/{llmProxyId}/api-keys
 func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -56,7 +56,7 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	proxyID := r.PathValue("id")
+	proxyID := r.PathValue("llmProxyId")
 	if proxyID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -81,7 +81,7 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Reque
 	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/llm-proxies/{id}/api-keys/{apiKeyId}
+// DeleteAPIKey handles DELETE /api/v0.9/llm-proxies/{llmProxyId}/api-keys/{apiKeyId}
 func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -90,7 +90,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	proxyID := r.PathValue("id")
+	proxyID := r.PathValue("llmProxyId")
 	if proxyID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -133,7 +133,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// CreateAPIKey handles POST /api/v0.9/llm-proxies/{id}/api-keys
+// CreateAPIKey handles POST /api/v0.9/llm-proxies/{llmProxyId}/api-keys
 func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -142,7 +142,7 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	proxyID := r.PathValue("id")
+	proxyID := r.PathValue("llmProxyId")
 	if proxyID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -186,14 +186,14 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	h.slogger.Info("Successfully created LLM proxy API key", "proxyId", proxyID, "organizationId", orgID, "keyId", response.KeyId)
+	h.slogger.Info("Successfully created LLM proxy API key", "proxyId", proxyID, "organizationId", orgID, "keyId", response.Id)
 
 	httputil.WriteJSON(w, http.StatusCreated, response)
 }
 
 // RegisterRoutes registers LLM proxy API key routes with the router
 func (h *LLMProxyAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies/{id}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{id}/api-keys", h.ListAPIKeys)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{id}/api-keys/{apiKeyId}", h.DeleteAPIKey)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies/{llmProxyId}/api-keys", h.CreateAPIKey)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{llmProxyId}/api-keys", h.ListAPIKeys)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{llmProxyId}/api-keys/{apiKeyId}", h.DeleteAPIKey)
 }

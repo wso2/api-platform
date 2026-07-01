@@ -54,9 +54,9 @@ func NewWebSubAPIKeyHandler(websubAPIService *egservice.WebSubAPIService, apiKey
 
 // RegisterRoutes registers WebSub API key routes
 func (h *WebSubAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{id}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{id}/api-keys/{apiKeyId}", h.UpdateAPIKey)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{id}/api-keys/{apiKeyId}", h.DeleteAPIKey)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{webSubApiId}/api-keys", h.CreateAPIKey)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{webSubApiId}/api-keys/{apiKeyId}", h.UpdateAPIKey)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{webSubApiId}/api-keys/{apiKeyId}", h.DeleteAPIKey)
 }
 
 // CreateAPIKey handles POST /api/v0.9/websub-apis/:apiId/api-keys
@@ -67,7 +67,7 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiHandle := r.PathValue("id")
+	apiHandle := r.PathValue("webSubApiId")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -93,23 +93,16 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
 	} else {
-		displayName := ""
-		if req.DisplayName != nil {
-			displayName = *req.DisplayName
-		}
-		generatedName, err := utils.GenerateHandle(displayName, nil)
+		generatedName, err := utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Failed to generate API key name"))
 			return
 		}
 		name = generatedName
-		req.Name = &name
-	}
-	if req.DisplayName == nil || *req.DisplayName == "" {
-		req.DisplayName = &name
+		req.Id = &name
 	}
 
 	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, orgID, userId, &req); err != nil {
@@ -128,7 +121,7 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 
 	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
 		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Name,
+		KeyId:   req.Id,
 		Message: "API key created and broadcasted to gateways successfully",
 	})
 }
@@ -141,7 +134,7 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiHandle := r.PathValue("id")
+	apiHandle := r.PathValue("webSubApiId")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -212,7 +205,7 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiHandle := r.PathValue("id")
+	apiHandle := r.PathValue("webSubApiId")
 	keyName := r.PathValue("apiKeyId")
 
 	if apiHandle == "" {

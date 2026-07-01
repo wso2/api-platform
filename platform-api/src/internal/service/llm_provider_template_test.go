@@ -191,7 +191,7 @@ func TestLLMProviderTemplateServiceCreate_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if resp == nil || !strings.HasPrefix(resp.Id, "my-custom-provider") {
+	if resp == nil || resp.Id == nil || !strings.HasPrefix(*resp.Id, "my-custom-provider") {
 		t.Fatalf("expected handle to be derived from name, got: %#v", resp)
 	}
 	if repo.created == nil || repo.created.CreatedBy != "alice" {
@@ -360,7 +360,8 @@ func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	req := validTemplateRequest("Name")
-	req.Id = "some-other-handle"
+	otherHandle := "some-other-handle"
+	req.Id = &otherHandle
 	_, err := svc.Update("org-1", "mistralai", "alice", req)
 	if !errors.Is(err, constants.ErrHandleImmutable) {
 		t.Fatalf("expected ErrHandleImmutable, got: %v", err)

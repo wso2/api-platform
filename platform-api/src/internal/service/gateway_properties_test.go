@@ -99,9 +99,10 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		auditRepo:   &noopAuditRepo{},
 	}
 
+	gatewayID := "prod-gateway-01"
 	response, err := service.RegisterGateway(
 		orgID,
-		"prod-gateway-01",
+		&gatewayID,
 		"Production Gateway",
 		"Gateway for prod traffic",
 		"api.example.com",

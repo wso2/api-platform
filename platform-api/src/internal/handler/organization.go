@@ -100,14 +100,14 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	httputil.WriteJSON(w, http.StatusCreated, org)
 }
 
-// HeadOrganization handles HEAD /api/v0.9/organizations/{id}
+// HeadOrganization handles HEAD /api/v0.9/organizations/{organizationId}
 func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Request) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	handle := r.PathValue("id")
+	handle := r.PathValue("organizationId")
 
 	h.slogger.Debug("Organization from token", "organizationId", organizationIdFromContext)
 	// to do: enable this check after finalizing authentication method
@@ -131,9 +131,9 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 }
 
-// GetOrganizationByID handles GET /api/v0.9/organizations/{id}
+// GetOrganizationByID handles GET /api/v0.9/organizations/{organizationId}
 func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http.Request) {
-	handle := r.PathValue("id")
+	handle := r.PathValue("organizationId")
 
 	org, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
@@ -184,6 +184,6 @@ func (h *OrganizationHandler) GetOrganization(w http.ResponseWriter, r *http.Req
 func (h *OrganizationHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/organizations", h.RegisterOrganization)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", h.GetOrganization)
-	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{id}", h.HeadOrganization)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{id}", h.GetOrganizationByID)
+	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{organizationId}", h.HeadOrganization)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{organizationId}", h.GetOrganizationByID)
 }

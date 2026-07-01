@@ -227,14 +227,14 @@ func generateAPIKeyName(displayName string) (string, error) {
 // from the display name (or the API handle as a fallback) using the same slug algorithm
 // as the gateway controller. It retries with a short random suffix on collision.
 func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.CreateAPIKeyRequest, apiHandle string) (string, error) {
-	if req.Name != nil && strings.TrimSpace(*req.Name) != "" {
-		return strings.TrimSpace(*req.Name), nil
+	if req.Id != nil && strings.TrimSpace(*req.Id) != "" {
+		return strings.TrimSpace(*req.Id), nil
 	}
 
 	// Determine display name to slug from
 	var displayName string
-	if req.DisplayName != nil && strings.TrimSpace(*req.DisplayName) != "" {
-		displayName = strings.TrimSpace(*req.DisplayName)
+	if strings.TrimSpace(req.DisplayName) != "" {
+		displayName = strings.TrimSpace(req.DisplayName)
 	} else {
 		// Auto-generate: "<api-handle>-key-<short-id>"
 		shortID, err := utils.GenerateUUID()

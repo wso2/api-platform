@@ -1104,8 +1104,8 @@ func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(
 
 	request := validProviderRequest("openai")
 	request.ModelProviders = &[]api.LLMModelProvider{
-		{Id: "openai", Models: &[]api.LLMModel{{Id: "gpt-4o"}}},
-		{Id: "anthropic", Models: &[]api.LLMModel{{Id: "claude-3-5-sonnet"}}},
+		{Id: strPointer("openai"), Models: &[]api.LLMModel{{Id: strPointer("gpt-4o")}}},
+		{Id: strPointer("anthropic"), Models: &[]api.LLMModel{{Id: strPointer("claude-3-5-sonnet")}}},
 	}
 
 	_, err := service.Create("org-1", "alice", request)
@@ -1140,8 +1140,8 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 
 	request := validProviderRequest("awsbedrock")
 	request.ModelProviders = &[]api.LLMModelProvider{
-		{Id: "claude", Models: &[]api.LLMModel{{Id: "claude-3-5-sonnet"}}},
-		{Id: "deepseek", Models: &[]api.LLMModel{{Id: "deepseek-r1"}}},
+		{Id: strPointer("claude"), Models: &[]api.LLMModel{{Id: strPointer("claude-3-5-sonnet")}}},
+		{Id: strPointer("deepseek"), Models: &[]api.LLMModel{{Id: strPointer("deepseek-r1")}}},
 	}
 
 	response, err := service.Create("org-1", "alice", request)
@@ -1426,7 +1426,7 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 
 func validProviderRequest(template string) *api.LLMProvider {
 	return &api.LLMProvider{
-		Id:       "provider-1",
+		Id:       strPointer("provider-1"),
 		DisplayName:     "Test Provider",
 		Version:  "v1.0",
 		Template: template,
@@ -1439,7 +1439,7 @@ func validProviderRequest(template string) *api.LLMProvider {
 
 func validProxyRequest(providerID, projectID string) *api.LLMProxy {
 	return &api.LLMProxy{
-		Id:        "proxy-1",
+		Id:        strPointer("proxy-1"),
 		DisplayName:      "Test Proxy",
 		Version:   "v1.0",
 		ProjectId: projectID,

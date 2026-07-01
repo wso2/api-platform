@@ -191,8 +191,8 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	}
 
 	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
 	} else {
 		name, err = utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {
@@ -302,7 +302,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	return &api.CreateLLMProxyAPIKeyResponse{
 		Status:  "success",
 		Message: "API key created successfully",
-		KeyId:   name,
+		Id:      name,
 		ApiKey:  apiKey,
 	}, nil
 }

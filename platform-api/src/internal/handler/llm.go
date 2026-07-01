@@ -54,29 +54,29 @@ func (h *LLMHandler) RegisterRoutes(mux *http.ServeMux) {
 	// LLM Provider Templates
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates", h.CreateLLMProviderTemplate)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates", h.ListLLMProviderTemplates)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{id}", h.GetLLMProviderTemplate)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{id}/versions", h.ListLLMProviderTemplateVersions)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{id}/versions/{version}", h.GetLLMProviderTemplateVersion)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates/{id}/versions", h.CreateLLMProviderTemplateVersion)
-	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{id}/versions/{version}", h.SetLLMProviderTemplateVersionEnabled)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{id}/versions/{version}", h.DeleteLLMProviderTemplateVersion)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{id}", h.UpdateLLMProviderTemplate)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{id}", h.DeleteLLMProviderTemplate)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.GetLLMProviderTemplate)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}/versions", h.ListLLMProviderTemplateVersions)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}/versions/{version}", h.GetLLMProviderTemplateVersion)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}/versions", h.CreateLLMProviderTemplateVersion)
+	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}/versions/{version}", h.SetLLMProviderTemplateVersionEnabled)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}/versions/{version}", h.DeleteLLMProviderTemplateVersion)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.UpdateLLMProviderTemplate)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.DeleteLLMProviderTemplate)
 
 	// LLM Providers
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers", h.CreateLLMProvider)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers", h.ListLLMProviders)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{id}", h.GetLLMProvider)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{id}/llm-proxies", h.ListLLMProxiesByProvider)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-providers/{id}", h.UpdateLLMProvider)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{id}", h.DeleteLLMProvider)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.GetLLMProvider)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}/llm-proxies", h.ListLLMProxiesByProvider)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.UpdateLLMProvider)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.DeleteLLMProvider)
 
 	// LLM Proxies
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies", h.CreateLLMProxy)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies", h.ListLLMProxies)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{id}", h.GetLLMProxy)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-proxies/{id}", h.UpdateLLMProxy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{id}", h.DeleteLLMProxy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.GetLLMProxy)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.UpdateLLMProxy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.DeleteLLMProxy)
 }
 
 // ---- Templates ----
@@ -163,7 +163,7 @@ func (h *LLMHandler) GetLLMProviderTemplate(w http.ResponseWriter, r *http.Reque
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 
 	resp, err := h.templateService.Get(orgID, id)
 	if err != nil {
@@ -189,7 +189,7 @@ func (h *LLMHandler) ListLLMProviderTemplateVersions(w http.ResponseWriter, r *h
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || limit <= 0 {
@@ -227,7 +227,7 @@ func (h *LLMHandler) CreateLLMProviderTemplateVersion(w http.ResponseWriter, r *
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	var req api.CreateLLMProviderTemplateVersionRequest
@@ -266,7 +266,7 @@ func (h *LLMHandler) GetLLMProviderTemplateVersion(w http.ResponseWriter, r *htt
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 	version := r.PathValue("version")
 
 	resp, err := h.templateService.GetVersion(orgID, id, version)
@@ -293,7 +293,7 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter,
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 	version := r.PathValue("version")
 
 	var body struct {
@@ -331,7 +331,7 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 
 	var req api.LLMProviderTemplate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -376,7 +376,7 @@ func (h *LLMHandler) DeleteLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.templateService.Delete(orgID, id, deletedBy); err != nil {
@@ -413,7 +413,7 @@ func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 	version := r.PathValue("version")
 
 	if err := h.templateService.DeleteVersion(orgID, id, version); err != nil {
@@ -527,7 +527,7 @@ func (h *LLMHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderId")
 
 	resp, err := h.providerService.Get(orgID, id)
 	if err != nil {
@@ -553,7 +553,7 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderId")
 
 	var req api.LLMProvider
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -598,7 +598,7 @@ func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderId")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
@@ -721,7 +721,7 @@ func (h *LLMHandler) ListLLMProxiesByProvider(w http.ResponseWriter, r *http.Req
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	providerID := r.PathValue("id")
+	providerID := r.PathValue("llmProviderId")
 
 	limitStr := r.URL.Query().Get("limit")
 	if limitStr == "" {
@@ -769,7 +769,7 @@ func (h *LLMHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProxyId")
 
 	resp, err := h.proxyService.Get(orgID, id)
 	if err != nil {
@@ -795,7 +795,7 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProxyId")
 
 	var req api.LLMProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -837,7 +837,7 @@ func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProxyId")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {

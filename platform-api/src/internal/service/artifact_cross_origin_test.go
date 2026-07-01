@@ -272,7 +272,7 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 	)
 
 	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
-		Id:            "cp-provider",
+		Id:            strPointer("cp-provider"),
 		DisplayName:          "CP Provider",
 		Version:       "v1.0",
 		Template:      templateHandle, // references the DP template
@@ -282,7 +282,7 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create CP provider from DP template: %v", err)
 	}
-	if created == nil || created.Id != "cp-provider" {
+	if created == nil || created.Id == nil || *created.Id != "cp-provider" {
 		t.Fatalf("unexpected created provider: %#v", created)
 	}
 	// The new provider is control-plane originated, hence not read-only.
@@ -313,7 +313,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 	)
 
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
-		Id:        "cp-proxy",
+		Id:        strPointer("cp-proxy"),
 		DisplayName:      "CP Proxy",
 		Version:   "v1.0",
 		ProjectId: importTestProjectID,
@@ -322,7 +322,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create CP proxy from DP provider: %v", err)
 	}
-	if created == nil || created.Id != "cp-proxy" {
+	if created == nil || created.Id == nil || *created.Id != "cp-proxy" {
 		t.Fatalf("unexpected created proxy: %#v", created)
 	}
 	if created.ReadOnly == nil || *created.ReadOnly {

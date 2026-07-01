@@ -55,7 +55,7 @@ func NewLLMProxyDeploymentHandler(deploymentService *service.LLMProxyDeploymentS
 	return &LLMProxyDeploymentHandler{deploymentService: deploymentService, slogger: slogger}
 }
 
-// DeployLLMProvider handles POST /api/v0.9/llm-providers/{id}/deployments
+// DeployLLMProvider handles POST /api/v0.9/llm-providers/{llmProviderId}/deployments
 func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -64,7 +64,7 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, 
 		return
 	}
 
-	providerId := r.PathValue("id")
+	providerId := r.PathValue("llmProviderId")
 	if providerId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
@@ -142,7 +142,7 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, 
 	httputil.WriteJSON(w, http.StatusCreated, deployment)
 }
 
-// UndeployLLMProviderDeployment handles POST /api/v0.9/llm-providers/{id}/deployments/{deploymentId}/undeploy
+// UndeployLLMProviderDeployment handles POST /api/v0.9/llm-providers/{llmProviderId}/deployments/{deploymentId}/undeploy
 func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -151,7 +151,7 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.Resp
 		return
 	}
 
-	providerId := r.PathValue("id")
+	providerId := r.PathValue("llmProviderId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 
@@ -197,7 +197,7 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.Resp
 	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
-// RestoreLLMProviderDeployment handles POST /api/v0.9/llm-providers/{id}/deployments/{deploymentId}/restore
+// RestoreLLMProviderDeployment handles POST /api/v0.9/llm-providers/{llmProviderId}/deployments/{deploymentId}/restore
 func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -206,7 +206,7 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.Respo
 		return
 	}
 
-	providerId := r.PathValue("id")
+	providerId := r.PathValue("llmProviderId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 
@@ -252,7 +252,7 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.Respo
 	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
-// DeleteLLMProviderDeployment handles DELETE /api/v0.9/llm-providers/{id}/deployments/{deploymentId}
+// DeleteLLMProviderDeployment handles DELETE /api/v0.9/llm-providers/{llmProviderId}/deployments/{deploymentId}
 func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -261,7 +261,7 @@ func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.Respon
 		return
 	}
 
-	providerId := r.PathValue("id")
+	providerId := r.PathValue("llmProviderId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if providerId == "" {
@@ -300,7 +300,7 @@ func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.Respon
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetLLMProviderDeployment handles GET /api/v0.9/llm-providers/{id}/deployments/{deploymentId}
+// GetLLMProviderDeployment handles GET /api/v0.9/llm-providers/{llmProviderId}/deployments/{deploymentId}
 func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -309,7 +309,7 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployment(w http.ResponseW
 		return
 	}
 
-	providerId := r.PathValue("id")
+	providerId := r.PathValue("llmProviderId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if providerId == "" {
@@ -345,7 +345,7 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployment(w http.ResponseW
 	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
-// GetLLMProviderDeployments handles GET /api/v0.9/llm-providers/{id}/deployments
+// GetLLMProviderDeployments handles GET /api/v0.9/llm-providers/{llmProviderId}/deployments
 func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -354,7 +354,7 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.Response
 		return
 	}
 
-	providerId := r.PathValue("id")
+	providerId := r.PathValue("llmProviderId")
 	if providerId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
@@ -394,7 +394,7 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.Response
 
 // RegisterRoutes registers all LLM provider deployment-related routes
 func (h *LLMProviderDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
-	base := constants.APIBasePath + "/llm-providers/{id}"
+	base := constants.APIBasePath + "/llm-providers/{llmProviderId}"
 	mux.HandleFunc("POST "+base+"/deployments", h.DeployLLMProvider)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", h.UndeployLLMProviderDeployment)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/restore", h.RestoreLLMProviderDeployment)
@@ -403,7 +403,7 @@ func (h *LLMProviderDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", h.DeleteLLMProviderDeployment)
 }
 
-// DeployLLMProxy handles POST /api/v0.9/llm-proxies/{id}/deployments
+// DeployLLMProxy handles POST /api/v0.9/llm-proxies/{llmProxyId}/deployments
 func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -412,7 +412,7 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *htt
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("llmProxyId")
 	if proxyId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -486,7 +486,7 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *htt
 	httputil.WriteJSON(w, http.StatusCreated, deployment)
 }
 
-// UndeployLLMProxyDeployment handles POST /api/v0.9/llm-proxies/{id}/deployments/{deploymentId}/undeploy
+// UndeployLLMProxyDeployment handles POST /api/v0.9/llm-proxies/{llmProxyId}/deployments/{deploymentId}/undeploy
 func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -495,7 +495,7 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWr
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("llmProxyId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 
@@ -541,7 +541,7 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWr
 	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
-// RestoreLLMProxyDeployment handles POST /api/v0.9/llm-proxies/{id}/deployments/{deploymentId}/restore
+// RestoreLLMProxyDeployment handles POST /api/v0.9/llm-proxies/{llmProxyId}/deployments/{deploymentId}/restore
 func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -550,7 +550,7 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWri
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("llmProxyId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 
@@ -596,7 +596,7 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWri
 	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
-// DeleteLLMProxyDeployment handles DELETE /api/v0.9/llm-proxies/{id}/deployments/{deploymentId}
+// DeleteLLMProxyDeployment handles DELETE /api/v0.9/llm-proxies/{llmProxyId}/deployments/{deploymentId}
 func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -605,7 +605,7 @@ func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWrit
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("llmProxyId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
@@ -644,7 +644,7 @@ func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWrit
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetLLMProxyDeployment handles GET /api/v0.9/llm-proxies/{id}/deployments/{deploymentId}
+// GetLLMProxyDeployment handles GET /api/v0.9/llm-proxies/{llmProxyId}/deployments/{deploymentId}
 func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -653,7 +653,7 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployment(w http.ResponseWriter,
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("llmProxyId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
@@ -689,7 +689,7 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployment(w http.ResponseWriter,
 	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
-// GetLLMProxyDeployments handles GET /api/v0.9/llm-proxies/{id}/deployments
+// GetLLMProxyDeployments handles GET /api/v0.9/llm-proxies/{llmProxyId}/deployments
 func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -698,7 +698,7 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("llmProxyId")
 	if proxyId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -738,7 +738,7 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter
 
 // RegisterRoutes registers all LLM proxy deployment-related routes
 func (h *LLMProxyDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
-	base := constants.APIBasePath + "/llm-proxies/{id}"
+	base := constants.APIBasePath + "/llm-proxies/{llmProxyId}"
 	mux.HandleFunc("POST "+base+"/deployments", h.DeployLLMProxy)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", h.UndeployLLMProxyDeployment)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/restore", h.RestoreLLMProxyDeployment)

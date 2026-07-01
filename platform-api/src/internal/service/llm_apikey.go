@@ -190,8 +190,8 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	}
 
 	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
 	} else {
 		if req.DisplayName == "" {
 			s.slogger.Error("Failed to generate API key name", "providerId", providerID, "error", constants.ErrHandleSourceEmpty)
@@ -314,7 +314,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	return &api.CreateLLMProviderAPIKeyResponse{
 		Status:  "success",
 		Message: "API key created successfully",
-		KeyId:   name,
+		Id:      name,
 		ApiKey:  apiKey,
 	}, nil
 }

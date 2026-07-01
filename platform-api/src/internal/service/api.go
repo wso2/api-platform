@@ -884,7 +884,7 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 
 	// Add deployment details if deployed
 	if gwd.IsDeployed && gwd.DeploymentID != nil && gwd.DeployedAt != nil {
-		status := api.RESTAPIDeploymentDetailsStatusAPPROVED
+		status := api.APPROVED
 		response.Deployment = &api.RESTAPIDeploymentDetails{
 			DeployedAt: *gwd.DeployedAt,
 			Status:     status,

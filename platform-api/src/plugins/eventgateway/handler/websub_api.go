@@ -54,9 +54,9 @@ func NewWebSubAPIHandler(websubAPIService *egservice.WebSubAPIService, slogger *
 func (h *WebSubAPIHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis", h.CreateWebSubAPI)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis", h.ListWebSubAPIs)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{id}", h.GetWebSubAPI)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{id}", h.UpdateWebSubAPI)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{id}", h.DeleteWebSubAPI)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{webSubApiId}", h.GetWebSubAPI)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{webSubApiId}", h.UpdateWebSubAPI)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{webSubApiId}", h.DeleteWebSubAPI)
 }
 
 // CreateWebSubAPI handles POST /api/v0.9/websub-apis
@@ -128,7 +128,7 @@ func (h *WebSubAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	id := r.PathValue("id")
+	id := r.PathValue("webSubApiId")
 	resp, err := h.websubAPIService.Get(orgID, id)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -146,7 +146,7 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	id := r.PathValue("id")
+	id := r.PathValue("webSubApiId")
 
 	var req api.WebSubAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -173,7 +173,7 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	id := r.PathValue("id")
+	id := r.PathValue("webSubApiId")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
