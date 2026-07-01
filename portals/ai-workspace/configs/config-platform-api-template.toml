@@ -104,9 +104,9 @@ enabled  = false
 enabled = true
 
 [auth.file_based.organization]
-id     = ""             # Required: stable UUID for this org — generate with: uuidgen
-name   = "My Organization"
-handle = "my-org"       # URL-safe slug
+id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
+name   = "default"
+handle = "default"
 region = "us"
 
 # Add one [[auth.file_based.users]] block per user.
