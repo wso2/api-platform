@@ -255,7 +255,9 @@
     .finally(function () { fetchDone = true; tryFinish(); });
   }
 
-  // TODO: re-enable before release
+  // Server already decides whether to render this overlay at all (demo mode + not yet
+  // seeded — see showOnboarding in orgContentController.js). This session-scoped check
+  // just avoids re-showing it after a "skip" click within the same browser session.
   try {
     if (sessionStorage.getItem(STORAGE_KEY)) {
       overlay.style.display = 'none';

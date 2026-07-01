@@ -87,6 +87,11 @@ const CONFIG_DEFAULTS = {
     },
     authorizedPages: [],
     authenticatedPages: [],
+    demo: {
+        // When true, sample APIs/MCPs can be seeded (Settings button + onboarding overlay).
+        // Default off so production deployments never expose seeding.
+        enabled: false,
+    },
     designMode: {
         enabled: false,
         apiSamplesPath: './samples/apis/',
