@@ -58,7 +58,7 @@ func (h *LLMHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates", h.ListLLMProviderTemplates)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.GetLLMProviderTemplate)
 	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.UpdateLLMProviderTemplate)
-	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateIdid}", h.SetLLMProviderTemplateVersionEnabled)
+	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.SetLLMProviderTemplateVersionEnabled)
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.DeleteLLMProviderTemplateVersion)
 
 	// LLM Providers
@@ -235,10 +235,6 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid groupId"))
 			return
 		}
-		// groupId + version selects a single template version and returns the
-		// full template (same body as GET /{id}). The version may be packed into
-		// the query DSL (query=groupId:x&version:v2.0) or passed as its own
-		// top-level query param (?query=groupId:x&version=v2.0).
 		version := q.Version
 		if version == "" {
 			version = strings.TrimSpace(r.URL.Query().Get("version"))

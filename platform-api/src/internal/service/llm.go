@@ -427,7 +427,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	if groupID == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.DisplayName == "" {
+	if utils.ValueOrEmpty(req.DisplayName) == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	version, ok := normalizeTemplateVersion(req.Version)
@@ -453,7 +453,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 		OrganizationUUID: orgUUID,
 		ID:               makeTemplateHandle(baseHandle, version),
 		GroupID:          baseHandle,
-		Name:             req.DisplayName,
+		Name:             utils.ValueOrEmpty(req.DisplayName),
 		Description:      utils.ValueOrEmpty(req.Description),
 		ManagedBy:        managedBy,
 		CreatedBy:        createdBy,
@@ -513,7 +513,7 @@ func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemp
 
 	seed := mapTemplateModelToAPI(source)
 	merged := &api.CreateLLMProviderTemplateVersionRequest{
-		Name:             seed.Name,
+		DisplayName:      &seed.DisplayName,
 		Version:          version,
 		Description:      seed.Description,
 		ManagedBy:        seed.ManagedBy,
@@ -528,8 +528,8 @@ func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemp
 		ResourceMappings: seed.ResourceMappings,
 	}
 	if req != nil {
-		if strings.TrimSpace(req.Name) != "" {
-			merged.Name = req.Name
+		if strings.TrimSpace(utils.ValueOrEmpty(req.DisplayName)) != "" {
+			merged.DisplayName = req.DisplayName
 		}
 		if req.Description != nil {
 			merged.Description = req.Description

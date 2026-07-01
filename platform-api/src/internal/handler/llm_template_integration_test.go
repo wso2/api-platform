@@ -138,7 +138,7 @@ func copyVersionPath(fromID, toID, toVersion string) string {
 // createFamily POSTs a new custom family and returns its handle + groupId.
 func createFamily(t *testing.T, r http.Handler, name string) (handle, groupID string) {
 	t.Helper()
-	body := `{"name":"` + name + `","managedBy":"customer","metadata":{"endpointUrl":"https://api.example.com"}}`
+	body := `{"displayName":"` + name + `","managedBy":"customer","metadata":{"endpointUrl":"https://api.example.com"}}`
 	w := doJSON(t, r, http.MethodPost, tmplBase, body, true)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create family %q: expected 201, got %d: %s", name, w.Code, w.Body.String())
@@ -170,14 +170,14 @@ func TestLLMTemplateHTTP_CreateFamily_Errors(t *testing.T) {
 	defer cleanup()
 
 	// Missing endpointUrl -> 400.
-	w := doJSON(t, r, http.MethodPost, tmplBase, `{"name":"No Endpoint","managedBy":"customer"}`, true)
+	w := doJSON(t, r, http.MethodPost, tmplBase, `{"displayName":"No Endpoint","managedBy":"customer"}`, true)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("missing endpoint: expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// Reserved managedBy=wso2 -> 400.
 	w = doJSON(t, r, http.MethodPost, tmplBase,
-		`{"name":"Reserved","managedBy":"wso2","metadata":{"endpointUrl":"https://x"}}`, true)
+		`{"displayName":"Reserved","managedBy":"wso2","metadata":{"endpointUrl":"https://x"}}`, true)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("reserved managedBy: expected 400, got %d: %s", w.Code, w.Body.String())
 	}
@@ -185,7 +185,7 @@ func TestLLMTemplateHTTP_CreateFamily_Errors(t *testing.T) {
 	// Duplicate handle -> 409.
 	createFamily(t, r, "Dup Family")
 	w = doJSON(t, r, http.MethodPost, tmplBase,
-		`{"name":"Dup Family","managedBy":"customer","metadata":{"endpointUrl":"https://x"}}`, true)
+		`{"displayName":"Dup Family","managedBy":"customer","metadata":{"endpointUrl":"https://x"}}`, true)
 	if w.Code != http.StatusConflict {
 		t.Errorf("duplicate: expected 409, got %d: %s", w.Code, w.Body.String())
 	}
@@ -387,7 +387,7 @@ func TestLLMTemplateHTTP_UpdateReadOnlyBuiltin(t *testing.T) {
 	r, _, cleanup := setupLLMTemplateEnv(t)
 	defer cleanup()
 
-	body := `{"id":"openai","name":"Hacked","version":"v1.0","metadata":{"endpointUrl":"https://x"}}`
+	body := `{"id":"openai","displayName":"Hacked","version":"v1.0","metadata":{"endpointUrl":"https://x"}}`
 	if w := doJSON(t, r, http.MethodPut, tmplBase+"/openai", body, true); w.Code != http.StatusForbidden {
 		t.Errorf("update built-in: expected 403, got %d: %s", w.Code, w.Body.String())
 	}

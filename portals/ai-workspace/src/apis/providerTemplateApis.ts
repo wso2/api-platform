@@ -43,6 +43,20 @@ function buildTemplateQuery(groupId: string): string {
   return encodeURIComponent(`groupId:${groupId}`);
 }
 
+function templateFromApi(
+  raw: ProviderTemplate & { displayName?: string },
+): ProviderTemplate {
+  const { displayName, ...rest } = raw;
+  return { ...rest, name: displayName ?? raw.name };
+}
+
+function templateToApi<T extends Partial<ProviderTemplate>>(
+  body: T,
+): Omit<T, 'name'> & { displayName?: string } {
+  const { name, ...rest } = body;
+  return name === undefined ? { ...rest } : { ...rest, displayName: name };
+}
+
 /**
  * Create a new Provider Template
  * 
@@ -66,11 +80,11 @@ export async function createProviderTemplate(
 ): Promise<ProviderTemplate> {
   try {
     const response = await post<ProviderTemplate>(
-      `/llm-provider-templates`,
-      template,
+      `/llm-provider-templates?organizationId=${encodeURIComponent(organizationId)}`,
+      templateToApi(template),
       baseUrl
     );
-    return response;
+    return templateFromApi(response);
   } catch (error) {
     logger.error('Failed to create provider template:', error);
     throw error;
@@ -99,7 +113,7 @@ export async function getProviderTemplates(organizationId: string, baseUrl: stri
       undefined,
       baseUrl
     );
-    return response;
+    return { ...response, list: (response.list ?? []).map(templateFromApi) };
   } catch (error) {
     logger.error('Failed to fetch provider templates:', error);
     throw error;
@@ -130,7 +144,7 @@ export async function getProviderTemplate(
       undefined,
       baseUrl
     );
-    return response;
+    return templateFromApi(response);
   } catch (error) {
     logger.error(`Failed to fetch provider template ${templateId}:`, error);
     throw error;
@@ -158,7 +172,8 @@ export async function getProviderTemplateVersions(
       undefined,
       baseUrl
     );
-    return Array.isArray(response) ? response : response.list ?? [];
+    const list = Array.isArray(response) ? response : response.list ?? [];
+    return list.map(templateFromApi);
   } catch (error) {
     logger.error(`Failed to fetch versions for provider template ${groupId}:`, error);
     throw error;
@@ -197,10 +212,10 @@ export async function createProviderTemplateVersion(
     });
     const response = await post<ProviderTemplate>(
       `/llm-provider-templates/copy?${params.toString()}`,
-      overrides,
+      templateToApi(overrides),
       baseUrl
     );
-    return response;
+    return templateFromApi(response);
   } catch (error) {
     logger.error(`Failed to create new version from ${fromTemplateId}:`, error);
     throw error;
@@ -245,7 +260,7 @@ export async function setProviderTemplateVersionEnabled(
       { enabled },
       baseUrl
     );
-    return response;
+    return templateFromApi(response);
   } catch (error) {
     logger.error(`Failed to set enabled=${enabled} for provider template ${templateId}:`, error);
     throw error;
@@ -285,11 +300,11 @@ export async function updateProviderTemplate(
 ): Promise<ProviderTemplate> {
   try {
     const response = await put<ProviderTemplate>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}`,
-      updates,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      templateToApi(updates),
       baseUrl
     );
-    return response;
+    return templateFromApi(response);
   } catch (error) {
     logger.error(`Failed to update provider template ${templateId}:`, error);
     throw error;

@@ -205,7 +205,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsMissingEndpoint(t *testing.T) {
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	// No metadata at all.
-	req := &api.LLMProviderTemplate{Name: "No Endpoint", Version: "v1.0"}
+	req := &api.LLMProviderTemplate{DisplayName: "No Endpoint", Version: "v1.0"}
 	if _, err := svc.Create("org-1", "alice", req); !errors.Is(err, constants.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput when endpoint is missing, got: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsMissingEndpoint(t *testing.T) {
 	// Metadata present but endpointUrl blank.
 	blank := "   "
 	req2 := &api.LLMProviderTemplate{
-		Name:     "Blank Endpoint",
+		DisplayName: "Blank Endpoint",
 		Version:  "v1.0",
 		Metadata: &api.LLMProviderTemplateMetadata{EndpointUrl: &blank},
 	}
@@ -397,7 +397,7 @@ func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "v2.0"}
+	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v2.0"}
 	resp, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
@@ -418,7 +418,7 @@ func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsCustomerMana
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	wso2 := "wso2"
-	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "v2.0", ManagedBy: &wso2}
+	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v2.0", ManagedBy: &wso2}
 	resp, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if err != nil {
 		t.Fatalf("expected no error when forking a built-in, got: %v", err)
@@ -438,7 +438,7 @@ func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *te
 	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 0}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "v2.0"}
+	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v2.0"}
 	_, err := svc.CreateVersion("org-1", "does-not-exist", "test-user", req)
 	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
@@ -452,7 +452,7 @@ func TestLLMProviderTemplateServiceCreateVersion_ConflictWhenVersionExists(t *te
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "v1.0"}
+	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v1.0"}
 	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if !errors.Is(err, constants.ErrLLMProviderTemplateVersionExists) {
 		t.Fatalf("expected ErrLLMProviderTemplateVersionExists, got: %v", err)
@@ -463,7 +463,7 @@ func TestLLMProviderTemplateServiceCreateVersion_RejectsInvalidVersionFormat(t *
 	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
-	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "2.0"}
+	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "2.0"}
 	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if !errors.Is(err, constants.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
@@ -478,7 +478,7 @@ func TestLLMProviderTemplateServiceCreateVersion_RejectsV0(t *testing.T) {
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	// Versions start at v1.0; v0.x is not creatable.
-	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v0.0"}
+	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v0.0"}
 	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if !errors.Is(err, constants.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput for v0.0, got: %v", err)

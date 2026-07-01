@@ -725,8 +725,10 @@ type CreateLLMProviderTemplateVersionRequest struct {
 	// Description Description of the LLM provider template
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// DisplayName Human-readable LLM Template name
-	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+	// DisplayName Human-readable LLM Template name. Optional — when omitted, the new
+	// version inherits the family's existing name. Supplying a different
+	// value renames the template family.
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
 	// ManagedBy Identifies who manages the template. Custom templates default to 'customer'.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
@@ -1284,14 +1286,11 @@ type LLMProviderTemplate struct {
 	// DisplayName Human-readable LLM Template name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Enabled Whether this version is offered when creating providers. Disabled
-	// versions stay in the catalog but are hidden from the provider picker.
-	// Response-only: create/update default new versions to enabled; toggle
-	// via PATCH /llm-provider-templates/{llmProviderTemplateId}/versions/{version}.
+	// Enabled Whether this version is offered when creating providers. If false, the
+	// template version is hidden from the provider creation UI and API.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
-	// GroupId Stable identifier shared by every version of a template family
-	// (defaults to the first version's handle). Read-only.
+	// GroupId Stable identifier shared by every version of a template family.
 	GroupId *string `json:"groupId,omitempty" yaml:"groupId,omitempty"`
 
 	// Id Unique handle for the template
@@ -1302,8 +1301,6 @@ type LLMProviderTemplate struct {
 
 	// ManagedBy Identifies who manages the template. Built-in templates use 'wso2';
 	// custom templates default to 'customer' and may be set to any value.
-	// Optional on create/update — the server defaults it to 'customer' when
-	// omitted, so a request/YAML without a managedBy is accepted.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
@@ -1327,10 +1324,8 @@ type LLMProviderTemplate struct {
 	// UpdatedBy Username of the last user to update the template
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
-	// Version Content version, e.g. v1.0. Required. A new template starts at v1.0;
-	// editing updates that version in place. Supply a new unique version
-	// only when creating a new version via
-	// POST /llm-provider-templates/{llmProviderTemplateId}/versions.
+	// Version Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
+	// Must be unique for this template.
 	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
@@ -1361,7 +1356,9 @@ type LLMProviderTemplateListItem struct {
 	// GroupId Stable identifier shared by every version of a template family
 	// (defaults to the first version's handle). Read-only.
 	GroupId *string `json:"groupId,omitempty" yaml:"groupId,omitempty"`
-	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Id Unique handle for this specific template version.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsLatest Whether this is the latest version of the template.
 	IsLatest *bool `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
@@ -2529,28 +2526,36 @@ type SyncCustomPolicyParams struct {
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
+	// Query URL-encoded search DSL. `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av1.0). The version may instead be supplied via the standalone `version` query param.
+	Query *string `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+
+	// Version Selects a single version within the family named by `query=groupId:<id>`, returning the full template for that (groupId, version). Alternative to packing `&version:<ver>` inside the `query` value; ignored when `query` has no groupId.
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+
 	// Limit Maximum number of LLM provider templates to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
 	// Offset Number of LLM provider templates to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 
-	// Versions Which versions to include. The default ("latest") returns one entry
-	// per template — its latest version, for the catalog. Use "all" to
-	// return every version row across all templates.
-	Versions *ListLLMProviderTemplatesParamsVersions `form:"versions,omitempty" json:"versions,omitempty" yaml:"versions,omitempty"`
+	// Latest Which versions to include. By default (false) the response contains
+	// every version row across all templates (full history). Set to true
+	// to return only the latest version of each family (one entry per
+	// built-in/custom bucket), for the catalog listing. May also be passed
+	// inside the query DSL as `query=latest:true`.
+	Latest *bool `form:"latest,omitempty" json:"latest,omitempty" yaml:"latest,omitempty"`
 }
 
-// ListLLMProviderTemplatesParamsVersions defines parameters for ListLLMProviderTemplates.
-type ListLLMProviderTemplatesParamsVersions string
+// CopyLLMProviderTemplateVersionParams defines parameters for CopyLLMProviderTemplateVersion.
+type CopyLLMProviderTemplateVersionParams struct {
+	// FromTemplateId Handle (id) of the source version to copy from.
+	FromTemplateId string `form:"fromTemplateId" json:"fromTemplateId" yaml:"fromTemplateId"`
 
-// ListLLMProviderTemplateVersionsParams defines parameters for ListLLMProviderTemplateVersions.
-type ListLLMProviderTemplateVersionsParams struct {
-	// Limit Maximum number of versions to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// ToTemplateId Expected handle of the new version. Must equal the handle derived from the source family and toVersion; used to validate the target.
+	ToTemplateId *string `form:"toTemplateId,omitempty" json:"toTemplateId,omitempty" yaml:"toTemplateId,omitempty"`
 
-	// Offset Number of versions to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// ToVersion New version identifier, e.g. v4.0. Must match v<major>.<minor> with a major of at least 1, and be unique within the family.
+	ToVersion string `form:"toVersion" json:"toVersion" yaml:"toVersion"`
 }
 
 // SetLLMProviderTemplateVersionEnabledJSONBody defines parameters for SetLLMProviderTemplateVersionEnabled.
@@ -2790,14 +2795,14 @@ type UpdateGatewayJSONRequestBody = GatewayResponse
 // CreateLLMProviderTemplateJSONRequestBody defines body for CreateLLMProviderTemplate for application/json ContentType.
 type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
 
-// UpdateLLMProviderTemplateJSONRequestBody defines body for UpdateLLMProviderTemplate for application/json ContentType.
-type UpdateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
-
-// CreateLLMProviderTemplateVersionJSONRequestBody defines body for CreateLLMProviderTemplateVersion for application/json ContentType.
-type CreateLLMProviderTemplateVersionJSONRequestBody = CreateLLMProviderTemplateVersionRequest
+// CopyLLMProviderTemplateVersionJSONRequestBody defines body for CopyLLMProviderTemplateVersion for application/json ContentType.
+type CopyLLMProviderTemplateVersionJSONRequestBody = CreateLLMProviderTemplateVersionRequest
 
 // SetLLMProviderTemplateVersionEnabledJSONRequestBody defines body for SetLLMProviderTemplateVersionEnabled for application/json ContentType.
 type SetLLMProviderTemplateVersionEnabledJSONRequestBody SetLLMProviderTemplateVersionEnabledJSONBody
+
+// UpdateLLMProviderTemplateJSONRequestBody defines body for UpdateLLMProviderTemplate for application/json ContentType.
+type UpdateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
 
 // CreateLLMProviderJSONRequestBody defines body for CreateLLMProvider for application/json ContentType.
 type CreateLLMProviderJSONRequestBody = LLMProvider

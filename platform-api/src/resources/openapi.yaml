@@ -1063,7 +1063,7 @@ paths:
         identified via the JWT token.
 
         Note: with `version`, the response is a single `LLMProviderTemplate`
-        object (the same body as `GET /llm-provider-templates/{id}`); otherwise
+        object (the same body as `GET /llm-provider-templates/{llmProviderTemplateId}`); otherwise
         it is an `LLMProviderTemplateListResponse`.
       operationId: listLLMProviderTemplates
       security:
@@ -1313,7 +1313,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique handle of the template version.
@@ -1365,7 +1365,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique handle of the template version.

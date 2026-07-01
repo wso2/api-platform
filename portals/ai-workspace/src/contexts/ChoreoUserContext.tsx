@@ -96,7 +96,7 @@ async function fetchPlatformOrganization(): Promise<Organization[]> {
     id: platformOrg.id,      // UUID string
     uuid: platformOrg.id,    // alias kept for backward compat
     handle: platformOrg.handle,
-    name: platformOrg.name,
+    name: platformOrg.displayName,
     region: platformOrg.region,
     owner: { id: 0, idpId: '' },
   };
