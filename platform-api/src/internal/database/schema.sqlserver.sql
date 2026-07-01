@@ -228,10 +228,7 @@ IF OBJECT_ID(N'dbo.gateway_endpoints', N'U') IS NULL
 CREATE TABLE dbo.gateway_endpoints (
     id INT IDENTITY(1,1) PRIMARY KEY,
     gateway_uuid VARCHAR(40) NOT NULL,
-    host VARCHAR(255) NOT NULL,
-    protocol VARCHAR(10) NOT NULL,
-    port INT NOT NULL,
-    context VARCHAR(255) NOT NULL DEFAULT '',
+    url VARCHAR(255) NOT NULL,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_endpoints_gateway_uuid' AND object_id = OBJECT_ID(N'dbo.gateway_endpoints'))

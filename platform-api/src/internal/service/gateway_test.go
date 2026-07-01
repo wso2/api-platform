@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"platform-api/src/internal/constants"
-	"platform-api/src/internal/model"
 )
 
 // TestValidateGatewayInput tests input validation logic
@@ -326,84 +325,58 @@ func TestTokenHashingRoundTrip(t *testing.T) {
 	}
 }
 
-// TestValidateGatewayEndpoints tests field-level validation of individual endpoint objects.
+// TestValidateGatewayEndpoints tests URL-level validation of endpoint strings.
 func TestValidateGatewayEndpoints(t *testing.T) {
 	tests := []struct {
 		name        string
-		endpoints   []model.GatewayEndpoint
+		endpoints   []string
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name:      "valid single endpoint",
-			endpoints: []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 8443}},
+			endpoints: []string{"https://api.example.com:8443"},
 			wantErr:   false,
 		},
 		{
-			name: "valid multiple endpoints",
-			endpoints: []model.GatewayEndpoint{
-				{Host: "api.example.com", Protocol: "https", Port: 443},
-				{Host: "events.example.com", Protocol: "wss", Port: 9000},
-			},
-			wantErr: false,
+			name:      "valid multiple endpoints",
+			endpoints: []string{"https://api.example.com:443", "wss://events.example.com:9000"},
+			wantErr:   false,
 		},
 		{
-			name:        "port at minimum boundary",
-			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 1}},
-			wantErr:     false,
+			name:      "valid endpoint with path",
+			endpoints: []string{"https://api.example.com:8443/api/v1"},
+			wantErr:   false,
 		},
 		{
-			name:        "port at maximum boundary",
-			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 65535}},
-			wantErr:     false,
-		},
-		{
-			name:        "empty host",
-			endpoints:   []model.GatewayEndpoint{{Host: "", Protocol: "https", Port: 443}},
+			name:        "empty string",
+			endpoints:   []string{""},
 			wantErr:     true,
-			errContains: "host is required",
+			errContains: "url is required",
 		},
 		{
-			name:        "whitespace-only host",
-			endpoints:   []model.GatewayEndpoint{{Host: "   ", Protocol: "https", Port: 443}},
+			name:        "whitespace-only string",
+			endpoints:   []string{"   "},
 			wantErr:     true,
-			errContains: "host is required",
+			errContains: "url is required",
 		},
 		{
-			name:        "empty protocol",
-			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "", Port: 443}},
+			name:        "missing scheme",
+			endpoints:   []string{"api.example.com:443"},
 			wantErr:     true,
-			errContains: "protocol is required",
+			errContains: "not a valid URL",
 		},
 		{
-			name:        "whitespace-only protocol",
-			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "   ", Port: 443}},
+			name:        "path only",
+			endpoints:   []string{"/api/v1"},
 			wantErr:     true,
-			errContains: "protocol is required",
-		},
-		{
-			name:        "port zero",
-			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 0}},
-			wantErr:     true,
-			errContains: "port must be between",
-		},
-		{
-			name:        "port negative",
-			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: -1}},
-			wantErr:     true,
-			errContains: "port must be between",
-		},
-		{
-			name:        "port above maximum",
-			endpoints:   []model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 65536}},
-			wantErr:     true,
-			errContains: "port must be between",
+			errContains: "not a valid URL",
 		},
 		{
 			name: "invalid endpoint at second index reports correct index",
-			endpoints: []model.GatewayEndpoint{
-				{Host: "api.example.com", Protocol: "https", Port: 443},
-				{Host: "", Protocol: "https", Port: 443},
+			endpoints: []string{
+				"https://api.example.com:443",
+				"",
 			},
 			wantErr:     true,
 			errContains: "endpoint[1]",

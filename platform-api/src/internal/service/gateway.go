@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
@@ -516,17 +517,15 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 // defaultGatewayVersion is the value stored when a client registers a gateway without a version.
 const defaultGatewayVersion = "1.0"
 
-// validateGatewayEndpoints checks that every endpoint has the required fields set.
-func validateGatewayEndpoints(endpoints []model.GatewayEndpoint) error {
-	for i, ep := range endpoints {
-		if strings.TrimSpace(ep.Host) == "" {
-			return fmt.Errorf("endpoint[%d]: host is required", i)
+// validateGatewayEndpoints checks that every endpoint is a non-empty, valid URL.
+func validateGatewayEndpoints(endpoints []string) error {
+	for i, raw := range endpoints {
+		if strings.TrimSpace(raw) == "" {
+			return fmt.Errorf("endpoint[%d]: url is required", i)
 		}
-		if strings.TrimSpace(ep.Protocol) == "" {
-			return fmt.Errorf("endpoint[%d]: protocol is required", i)
-		}
-		if ep.Port < 1 || ep.Port > 65535 {
-			return fmt.Errorf("endpoint[%d]: port must be between 1 and 65535", i)
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("endpoint[%d]: %q is not a valid URL (e.g. https://host:port/path)", i, raw)
 		}
 	}
 	return nil
@@ -534,7 +533,7 @@ func validateGatewayEndpoints(endpoints []model.GatewayEndpoint) error {
 
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description string, isCritical bool,
-	functionalityType, version, createdBy string, properties map[string]interface{}, endpoints []model.GatewayEndpoint) (*api.GatewayResponse, error) {
+	functionalityType, version, createdBy string, properties map[string]interface{}, endpoints []string) (*api.GatewayResponse, error) {
 	// 1. Validate inputs
 	if err := s.validateGatewayInput(orgID, name, displayName, functionalityType); err != nil {
 		return nil, err
@@ -677,7 +676,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 
 // UpdateGateway updates gateway details
 func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, description, displayName *string,
-	isCritical *bool, properties *map[string]interface{}, endpoints *[]model.GatewayEndpoint) (*api.GatewayResponse, error) {
+	isCritical *bool, properties *map[string]interface{}, endpoints *[]string) (*api.GatewayResponse, error) {
 	// Get existing gateway
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
@@ -1124,16 +1123,7 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
-	endpoints := make([]api.GatewayEndpoint, 0, len(gateway.Endpoints))
-	for _, ep := range gateway.Endpoints {
-		epContext := ep.Context
-		endpoints = append(endpoints, api.GatewayEndpoint{
-			Host:     ep.Host,
-			Protocol: api.GatewayEndpointProtocol(ep.Protocol),
-			Port:     ep.Port,
-			Context:  &epContext,
-		})
-	}
+	endpoints := gateway.Endpoints
 
 	return &api.GatewayResponse{
 		Id:                &gatewayID,

@@ -114,8 +114,8 @@ func setupImportTest(t *testing.T) *importTestDeps {
 		importTestGatewayID, importTestOrgID, "gw1", "Gateway 1", "", "{}"); err != nil {
 		t.Fatalf("seed gateway: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
-		importTestGatewayID, "gw.example.com", "https", 443, ""); err != nil {
+	if _, err := db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, url) VALUES (?, ?)`,
+		importTestGatewayID, "https://gw.example.com:443"); err != nil {
 		t.Fatalf("seed gateway endpoint: %v", err)
 	}
 

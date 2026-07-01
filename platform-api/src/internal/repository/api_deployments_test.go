@@ -144,8 +144,8 @@ func createTestGateway(t *testing.T, db *database.DB, gatewayUUID, orgUUID strin
 	if err != nil {
 		t.Fatalf("Failed to create test gateway: %v", err)
 	}
-	_, err = db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
-		gatewayUUID, "api.example.com", "https", 443, "")
+	_, err = db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, url) VALUES (?, ?)`,
+		gatewayUUID, "https://api.example.com:443")
 	if err != nil {
 		t.Fatalf("Failed to create test gateway endpoint: %v", err)
 	}

@@ -41,23 +41,23 @@ func NewGatewayRepo(db *database.DB) GatewayRepository {
 
 // loadEndpointsFromDB fetches all endpoints for the given gateway UUID from the
 // gateway_endpoints table, ordered by insertion id.
-func loadEndpointsFromDB(db *database.DB, gatewayUUID string) ([]model.GatewayEndpoint, error) {
-	query := `SELECT host, protocol, port, context FROM gateway_endpoints WHERE gateway_uuid = ? ORDER BY id`
+func loadEndpointsFromDB(db *database.DB, gatewayUUID string) ([]string, error) {
+	query := `SELECT url FROM gateway_endpoints WHERE gateway_uuid = ? ORDER BY id`
 	rows, err := db.Query(db.Rebind(query), gatewayUUID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var endpoints []model.GatewayEndpoint
+	var endpoints []string
 	for rows.Next() {
-		var ep model.GatewayEndpoint
-		if err := rows.Scan(&ep.Host, &ep.Protocol, &ep.Port, &ep.Context); err != nil {
+		var url string
+		if err := rows.Scan(&url); err != nil {
 			return nil, err
 		}
-		endpoints = append(endpoints, ep)
+		endpoints = append(endpoints, url)
 	}
 	if endpoints == nil {
-		endpoints = []model.GatewayEndpoint{}
+		endpoints = []string{}
 	}
 	return endpoints, rows.Err()
 }
@@ -65,10 +65,10 @@ func loadEndpointsFromDB(db *database.DB, gatewayUUID string) ([]model.GatewayEn
 // insertEndpointsInTx inserts all gateway endpoints within an existing transaction.
 func insertEndpointsInTx(db *database.DB, tx interface {
 	Exec(query string, args ...any) (sql.Result, error)
-}, gatewayUUID string, endpoints []model.GatewayEndpoint) error {
-	epQuery := `INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`
-	for _, ep := range endpoints {
-		if _, err := tx.Exec(db.Rebind(epQuery), gatewayUUID, ep.Host, ep.Protocol, ep.Port, ep.Context); err != nil {
+}, gatewayUUID string, endpoints []string) error {
+	epQuery := `INSERT INTO gateway_endpoints (gateway_uuid, url) VALUES (?, ?)`
+	for _, url := range endpoints {
+		if _, err := tx.Exec(db.Rebind(epQuery), gatewayUUID, url); err != nil {
 			return err
 		}
 	}
@@ -195,14 +195,13 @@ func (r *GatewayRepo) scanGatewaysWithEndpoints(query string, args ...any) ([]*m
 		var propertiesBytes []byte
 		var isCritical, isActive int
 		var description, createdBy, updatedBy sql.NullString
-		var epHost, epProtocol, epContext sql.NullString
-		var epPort sql.NullInt64
+		var epURL sql.NullString
 
 		gw := &model.Gateway{}
 		if err := rows.Scan(
 			&gw.ID, &gw.OrganizationID, &gw.Handle, &gw.Name, &description, &propertiesBytes,
 			&isCritical, &gw.FunctionalityType, &gw.Version, &isActive, &createdBy, &updatedBy, &gw.CreatedAt, &gw.UpdatedAt,
-			&epHost, &epProtocol, &epPort, &epContext,
+			&epURL,
 		); err != nil {
 			return nil, err
 		}
@@ -219,18 +218,13 @@ func (r *GatewayRepo) scanGatewaysWithEndpoints(query string, args ...any) ([]*m
 					return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
 				}
 			}
-			gw.Endpoints = []model.GatewayEndpoint{}
+			gw.Endpoints = []string{}
 			index[gw.ID] = gw
 			order = append(order, gw.ID)
 			existing = gw
 		}
-		if epHost.Valid {
-			existing.Endpoints = append(existing.Endpoints, model.GatewayEndpoint{
-				Host:     epHost.String,
-				Protocol: epProtocol.String,
-				Port:     int(epPort.Int64),
-				Context:  epContext.String,
-			})
+		if epURL.Valid {
+			existing.Endpoints = append(existing.Endpoints, epURL.String)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -249,7 +243,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 	query := `
 		SELECT g.uuid, g.organization_uuid, g.handle, g.display_name, g.description, g.properties, g.is_critical,
 		       g.gateway_functionality_type, g.version, g.is_active, g.created_by, g.updated_by, g.created_at, g.updated_at,
-		       ge.host, ge.protocol, ge.port, ge.context
+		       ge.url
 		FROM gateways g
 		LEFT JOIN gateway_endpoints ge ON ge.gateway_uuid = g.uuid
 		WHERE g.organization_uuid = ?
@@ -285,7 +279,7 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
 		SELECT g.uuid, g.organization_uuid, g.handle, g.display_name, g.description, g.properties, g.is_critical,
 		       g.gateway_functionality_type, g.version, g.is_active, g.created_by, g.updated_by, g.created_at, g.updated_at,
-		       ge.host, ge.protocol, ge.port, ge.context
+		       ge.url
 		FROM gateways g
 		LEFT JOIN gateway_endpoints ge ON ge.gateway_uuid = g.uuid
 		ORDER BY g.created_at DESC, ge.id

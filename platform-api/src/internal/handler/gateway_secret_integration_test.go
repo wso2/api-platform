@@ -94,8 +94,8 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 		VALUES (?, ?, 'test-gw', 'Test GW', '', '1.0', '{}', 1, datetime('now'), datetime('now'))`, gatewayID, orgID); err != nil {
 		t.Fatalf("insert gateway: %v", err)
 	}
-	if _, err = db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
-		gatewayID, "localhost", "https", 443, ""); err != nil {
+	if _, err = db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, url) VALUES (?, ?)`,
+		gatewayID, "https://localhost:443"); err != nil {
 		t.Fatalf("insert gateway endpoint: %v", err)
 	}
 
@@ -422,8 +422,8 @@ func TestGatewaySecretHandler_SecretNotReturnedForOtherGateway(t *testing.T) {
 		VALUES (?, ?, 'test-gw-b', 'Test GW B', '', '1.0', '{}', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID); err != nil {
 		t.Fatalf("insert second gateway: %v", err)
 	}
-	if _, err := env.db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
-		gwBID, "localhost2", "https", 443, ""); err != nil {
+	if _, err := env.db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, url) VALUES (?, ?)`,
+		gwBID, "https://localhost2:443"); err != nil {
 		t.Fatalf("insert second gateway endpoint: %v", err)
 	}
 	hashB := testHashToken(plainTokenB)
@@ -463,8 +463,8 @@ func TestGatewaySecretHandler_SharedSecretReturnedForBothGateways(t *testing.T) 
 		VALUES (?, ?, 'test-gw-shared', 'Test GW Shared', '', '1.0', '{}', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID); err != nil {
 		t.Fatalf("insert shared gateway: %v", err)
 	}
-	if _, err := env.db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
-		gwBID, "localhost3", "https", 443, ""); err != nil {
+	if _, err := env.db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, url) VALUES (?, ?)`,
+		gwBID, "https://localhost3:443"); err != nil {
 		t.Fatalf("insert shared gateway endpoint: %v", err)
 	}
 	hashB := testHashToken(plainTokenB)

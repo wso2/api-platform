@@ -7553,19 +7553,13 @@ components:
           example: "Production gateway for handling API traffic"
         endpoints:
           type: array
-          description: Network endpoints exposed by this gateway
+          description: Network endpoints exposed by this gateway, each as a full URL string
           minItems: 1
           items:
-            $ref: '#/components/schemas/GatewayEndpoint'
+            type: string
           example:
-            - host: api.example.com
-              protocol: https
-              port: 8443
-              context: /api/v1
-            - host: events.example.com
-              protocol: wss
-              port: 8444
-              context: ''
+            - "https://api.example.com:8443/api/v1"
+            - "wss://events.example.com:8444"
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production
@@ -7707,19 +7701,13 @@ components:
           example: {"region": "us-west", "tier": "premium"}
         endpoints:
           type: array
-          description: Network endpoints exposed by this gateway
+          description: Network endpoints exposed by this gateway, each as a full URL string
           minItems: 1
           items:
-            $ref: '#/components/schemas/GatewayEndpoint'
+            type: string
           example:
-            - host: api.example.com
-              protocol: https
-              port: 8443
-              context: /api/v1
-            - host: events.example.com
-              protocol: wss
-              port: 8444
-              context: ''
+            - "https://api.example.com:8443/api/v1"
+            - "wss://events.example.com:8444"
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production
@@ -7772,45 +7760,12 @@ components:
           example: {"region": "us-west", "tier": "premium"}
         endpoints:
           type: array
-          description: Network endpoints exposed by this gateway
+          description: Network endpoints exposed by this gateway, each as a full URL string
           minItems: 1
           items:
-            $ref: '#/components/schemas/GatewayEndpoint'
+            type: string
           example:
-            - host: api.example.com
-              protocol: https
-              port: 8443
-              context: /api/v1
-
-    GatewayEndpoint:
-      type: object
-      required:
-        - host
-        - protocol
-        - port
-      properties:
-        host:
-          type: string
-          description: Hostname of the endpoint
-          maxLength: 255
-          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
-          example: api.example.com
-        protocol:
-          type: string
-          enum: [http, https, ws, wss]
-          description: Protocol used by the endpoint
-          example: https
-        port:
-          type: integer
-          minimum: 1
-          maximum: 65535
-          description: Port number
-          example: 8443
-        context:
-          type: string
-          maxLength: 255
-          description: Context path for the endpoint
-          example: /api/v1
+            - "https://api.example.com:8443/api/v1"
 
     Pagination:
       type: object

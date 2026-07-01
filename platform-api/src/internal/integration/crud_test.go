@@ -179,7 +179,7 @@ func TestLifecycle_GatewayCreateListAndTokenGenerate(t *testing.T) {
 			Name:              fmt.Sprintf("gateway %d", i),
 			Handle:            fmt.Sprintf("gw-%d-%s", i, id()[:6]),
 			Description:       "created by integration test",
-			Endpoints:         []model.GatewayEndpoint{{Host: "localhost", Protocol: "https", Port: 443}},
+			Endpoints:         []string{"https://localhost:443"},
 			FunctionalityType: "REGULAR",
 			Version:           "1.0.0",
 			Properties:        map[string]interface{}{"region": "us"},
@@ -279,12 +279,12 @@ func TestLifecycle_GatewayEndpointRoundTrip(t *testing.T) {
 	orgID, _ := seedOrgProject(t, it, "ep")
 	gwRepo := repository.NewGatewayRepo(it.db)
 
-	twoEndpoints := []model.GatewayEndpoint{
-		{Host: "primary.example.com", Protocol: "https", Port: 443, Context: "/api"},
-		{Host: "secondary.example.com", Protocol: "http", Port: 8080, Context: "/api"},
+	twoEndpoints := []string{
+		"https://primary.example.com:443/api",
+		"http://secondary.example.com:8080/api",
 	}
-	oneEndpoint := []model.GatewayEndpoint{
-		{Host: "single.example.com", Protocol: "https", Port: 443, Context: "/"},
+	oneEndpoint := []string{
+		"https://single.example.com:443/",
 	}
 
 	gwMulti := &model.Gateway{
@@ -321,9 +321,8 @@ func TestLifecycle_GatewayEndpointRoundTrip(t *testing.T) {
 			t.Fatalf("[%s] %s: want %d endpoints for multi-ep gateway, got %d", it.driver, label, len(twoEndpoints), len(got.Endpoints))
 		}
 		for i, want := range twoEndpoints {
-			ep := got.Endpoints[i]
-			if ep.Host != want.Host || ep.Protocol != want.Protocol || ep.Port != want.Port || ep.Context != want.Context {
-				t.Fatalf("[%s] %s: endpoint[%d] mismatch: want %+v, got %+v", it.driver, label, i, want, ep)
+			if got.Endpoints[i] != want {
+				t.Fatalf("[%s] %s: endpoint[%d] mismatch: want %q, got %q", it.driver, label, i, want, got.Endpoints[i])
 			}
 		}
 
@@ -331,7 +330,7 @@ func TestLifecycle_GatewayEndpointRoundTrip(t *testing.T) {
 		if gotSingle == nil {
 			t.Fatalf("[%s] %s: single-endpoint gateway missing from results", it.driver, label)
 		}
-		if len(gotSingle.Endpoints) != 1 || gotSingle.Endpoints[0].Host != "single.example.com" {
+		if len(gotSingle.Endpoints) != 1 || gotSingle.Endpoints[0] != "https://single.example.com:443/" {
 			t.Fatalf("[%s] %s: single-ep gateway endpoints mismatch: %+v", it.driver, label, gotSingle.Endpoints)
 		}
 	}
@@ -354,9 +353,7 @@ func TestLifecycle_GatewayEndpointRoundTrip(t *testing.T) {
 	checkEndpoints(t, "List", all)
 
 	// Replace the endpoints on the multi-endpoint gateway and verify the list reflects it.
-	updatedEndpoints := []model.GatewayEndpoint{
-		{Host: "new.example.com", Protocol: "https", Port: 9443, Context: "/v2"},
-	}
+	updatedEndpoints := []string{"https://new.example.com:9443/v2"}
 	gwMulti.Endpoints = updatedEndpoints
 	gwMulti.UpdatedBy = "it-user"
 	if err := gwRepo.UpdateGateway(gwMulti); err != nil {
@@ -374,7 +371,7 @@ func TestLifecycle_GatewayEndpointRoundTrip(t *testing.T) {
 	if updated == nil {
 		t.Fatalf("[%s] updated gateway missing from list", it.driver)
 	}
-	if len(updated.Endpoints) != 1 || updated.Endpoints[0].Host != "new.example.com" {
+	if len(updated.Endpoints) != 1 || updated.Endpoints[0] != "https://new.example.com:9443/v2" {
 		t.Fatalf("[%s] post-update endpoints mismatch: %+v", it.driver, updated.Endpoints)
 	}
 }

@@ -23,13 +23,6 @@ import (
 	"platform-api/src/internal/constants"
 )
 
-type GatewayEndpoint struct {
-	Host     string `json:"host"`
-	Protocol string `json:"protocol"`
-	Port     int    `json:"port"`
-	Context  string `json:"context"`
-}
-
 // Gateway represents a registered gateway instance within an organization
 type Gateway struct {
 	ID                string                 `json:"id" db:"uuid"`
@@ -38,7 +31,7 @@ type Gateway struct {
 	Handle            string                 `json:"handle" db:"handle"`
 	Description       string                 `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
-	Endpoints         []GatewayEndpoint      `json:"endpoints"`
+	Endpoints         []string               `json:"endpoints"`
 	IsCritical        bool                   `json:"isCritical" db:"is_critical"`
 	FunctionalityType string                 `json:"functionalityType" db:"gateway_functionality_type"`
 	Version           string                 `json:"version" db:"version"`
@@ -96,7 +89,7 @@ type APIGatewayWithDetails struct {
 	Handle            string                 `json:"handle" db:"handle"`
 	Description       string                 `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
-	Endpoints         []GatewayEndpoint      `json:"endpoints"`
+	Endpoints         []string               `json:"endpoints"`
 	IsCritical        bool                   `json:"isCritical" db:"is_critical"`
 	FunctionalityType string                 `json:"functionalityType" db:"functionality_type"`
 	IsActive          bool                   `json:"isActive" db:"is_active"`
