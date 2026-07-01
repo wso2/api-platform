@@ -75,6 +75,7 @@ import type {
   UpdateProviderTemplateRequest,
 } from '../../../../utils/types';
 import { downloadTemplateYaml } from '../../../../utils/providerTemplateManifest';
+import { GatewayArtifactReadOnlyBanner } from '../../../../utils/readOnlyArtifacts';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import TemplateTokenMapping from './TemplateTokenMapping';
 
@@ -1024,17 +1025,7 @@ export default function ProviderTemplateOverview() {
 
             <TabPanel value={tabIndex} index={1}>
               {isDpOrigin && !isReadOnly && (
-                <Card sx={{ bgcolor: 'action.hover', mb: 2 }}>
-                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ p: 2 }}>
-                    <Lock size={18} />
-                    <Typography variant="body2">
-                      <strong>
-                        Connection settings are managed by the gateway that created this
-                        template and are read-only here.
-                      </strong>
-                    </Typography>
-                  </Stack>
-                </Card>
+                <GatewayArtifactReadOnlyBanner message="Connection settings are managed by the gateway that created this template and are read-only here." />
               )}
               <Box
                 sx={
@@ -1117,17 +1108,7 @@ export default function ProviderTemplateOverview() {
 
             <TabPanel value={tabIndex} index={2}>
               {isDpOrigin && !isReadOnly && (
-                <Card sx={{ bgcolor: 'action.hover', mb: 2 }}>
-                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ p: 2 }}>
-                    <Lock size={18} />
-                    <Typography variant="body2">
-                      <strong>
-                        Token mapping is managed by the gateway that created this template
-                        and is read-only here.
-                      </strong>
-                    </Typography>
-                  </Stack>
-                </Card>
+                <GatewayArtifactReadOnlyBanner message="Token mapping is managed by the gateway that created this template and is read-only here." />
               )}
               <Box
                 sx={

@@ -21,6 +21,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
   Button,
+  CircularProgress,
   PageContent,
   Stack,
   Typography,
@@ -106,14 +107,19 @@ export default function ExternalServersDeploy() {
   const apimBaseUrl = PLATFORM_API_BASE_URL;
 
   const [server, setServer] = useState<MCPServer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!serverId || !organizationId) return;
     let cancelled = false;
+    setLoading(true);
+    setError(false);
     mcpProxiesApis
       .getMCPServer(serverId, PLATFORM_API_BASE_URL)
       .then((res) => { if (!cancelled) setServer(res); })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [serverId, organizationId, apimBaseUrl]);
 
@@ -130,11 +136,38 @@ export default function ExternalServersDeploy() {
     );
   }
 
+  if (loading) {
+    return (
+      <PageContent fullWidth>
+        <Stack alignItems="center" sx={{ py: 6 }}>
+          <CircularProgress />
+        </Stack>
+      </PageContent>
+    );
+  }
+
+  // A failed or empty fetch must NOT fall back to a writable deploy UI: the
+  // read-only guard is derived from the server, so rendering the deploy actions
+  // without a resolved server would expose deploy/undeploy on a gateway-managed
+  // (read-only) proxy. Show an error instead and gate the writable UI entirely.
+  if (error || !server) {
+    return (
+      <PageContent fullWidth>
+        <Alert severity="error">
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.externalServers.deploy.failed.to.load.server"
+            defaultMessage="Failed to load the MCP proxy. Please try again."
+          />
+        </Alert>
+      </PageContent>
+    );
+  }
+
   return (
     <GatewayDeployProvider
       apiId={serverId}
       resourceType="mcp-server"
-      readOnly={Boolean(server?.readOnly)}
+      readOnly={Boolean(server.readOnly)}
     >
       <ExternalServersDeployLayout server={server} />
     </GatewayDeployProvider>
