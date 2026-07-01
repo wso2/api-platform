@@ -1104,8 +1104,8 @@ func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(
 
 	request := validProviderRequest("openai")
 	request.ModelProviders = &[]api.LLMModelProvider{
-		{Id: strPointer("openai"), Models: &[]api.LLMModel{{Id: strPointer("gpt-4o")}}},
-		{Id: strPointer("anthropic"), Models: &[]api.LLMModel{{Id: strPointer("claude-3-5-sonnet")}}},
+		{Id: strPointer("openai"), DisplayName: "OpenAI", Models: &[]api.LLMModel{{Id: strPointer("gpt-4o"), DisplayName: "GPT-4o"}}},
+		{Id: strPointer("anthropic"), DisplayName: "Anthropic", Models: &[]api.LLMModel{{Id: strPointer("claude-3-5-sonnet"), DisplayName: "Claude 3.5 Sonnet"}}},
 	}
 
 	_, err := service.Create("org-1", "alice", request)
@@ -1140,8 +1140,8 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 
 	request := validProviderRequest("awsbedrock")
 	request.ModelProviders = &[]api.LLMModelProvider{
-		{Id: strPointer("claude"), Models: &[]api.LLMModel{{Id: strPointer("claude-3-5-sonnet")}}},
-		{Id: strPointer("deepseek"), Models: &[]api.LLMModel{{Id: strPointer("deepseek-r1")}}},
+		{Id: strPointer("claude"), DisplayName: "Claude", Models: &[]api.LLMModel{{Id: strPointer("claude-3-5-sonnet"), DisplayName: "Claude 3.5 Sonnet"}}},
+		{Id: strPointer("deepseek"), DisplayName: "DeepSeek", Models: &[]api.LLMModel{{Id: strPointer("deepseek-r1"), DisplayName: "DeepSeek R1"}}},
 	}
 
 	response, err := service.Create("org-1", "alice", request)
