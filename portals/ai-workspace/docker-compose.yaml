@@ -50,7 +50,7 @@ services:
   # Platform API  (Go HTTPS backend)
   # ---------------------------------------------------------------------------
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.10.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
