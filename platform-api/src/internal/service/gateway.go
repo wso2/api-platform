@@ -1113,23 +1113,13 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 		return nil
 	}
 
-	gatewayID, err := uuid.Parse(gateway.ID)
-	if err != nil {
-		return nil
-	}
-	orgID, err := uuid.Parse(gateway.OrganizationID)
-	if err != nil {
-		return nil
-	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
-
 	endpoints := gateway.Endpoints
 
 	return &api.GatewayResponse{
-		Id:                &gatewayID,
-		OrganizationId:    &orgID,
-		Name:              &gateway.Name,
-		DisplayName:       &gateway.Handle,
+		Id:                &gateway.Handle,
+		OrganizationId:    &gateway.OrganizationID,
+		DisplayName:       gateway.Name,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
 		Endpoints:         &endpoints,
@@ -1148,14 +1138,8 @@ func gatewayStatusModelToAPI(gateway *model.Gateway) *api.GatewayStatusResponse 
 		return nil
 	}
 
-	gatewayID, err := uuid.Parse(gateway.ID)
-	if err != nil {
-		return nil
-	}
-
 	return &api.GatewayStatusResponse{
-		Id:         &gatewayID,
-		Name:       &gateway.Name,
+		Id:         &gateway.Handle,
 		IsActive:   &gateway.IsActive,
 		IsCritical: &gateway.IsCritical,
 	}

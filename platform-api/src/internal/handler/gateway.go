@@ -105,8 +105,13 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var handle string
+	if req.Id != nil {
+		handle = *req.Id
+	}
+
 	createdBy, _ := middleware.GetUserIDFromRequest(r)
-	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description,
+	gateway, err := h.gatewayService.RegisterGateway(orgId, handle, req.DisplayName, description,
 		isCritical, functionalityType, version, createdBy, properties, req.Endpoints)
 	if err != nil {
 		errMsg := err.Error()

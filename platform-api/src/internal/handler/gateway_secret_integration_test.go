@@ -84,13 +84,13 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	const gatewayID = "gw-001"
 	const plainToken = "super-secret-token"
 
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES (?, 'gw-org', 'GW Org', 'default', datetime('now'), datetime('now'))`, orgID); err != nil {
 		t.Fatalf("insert organization: %v", err)
 	}
 
 	// Insert gateway (properties must be non-NULL — repo scans it)
-	if _, err = db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, name, description, version, properties, is_active, created_at, updated_at)
+	if _, err = db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, version, properties, is_active, created_at, updated_at)
 		VALUES (?, ?, 'test-gw', 'Test GW', '', '1.0', '{}', 1, datetime('now'), datetime('now'))`, gatewayID, orgID); err != nil {
 		t.Fatalf("insert gateway: %v", err)
 	}
@@ -114,21 +114,21 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	secretRepo := repository.NewSecretRepo(db)
 	secretSvc := service.NewSecretService(secretRepo, v)
 
-	deploymentRepo := repository.NewDeploymentRepo(db)
+	deploymentRepo := repository.NewDeploymentRepo(db, repository.NewArtifactTableRegistry())
 	gatewayRepo := repository.NewGatewayRepo(db)
 
 	gatewaySvc := service.NewGatewayService(gatewayRepo, nil, nil, nil, nil, slog.Default(), false, false, nil)
 
 	cfg := &config.Server{}
 	gwInternalSvc := service.NewGatewayInternalAPIService(
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 		deploymentRepo, gatewayRepo,
 		nil, nil, nil, nil,
 		secretRepo,
 		cfg, slog.Default(),
 	)
 
-	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, nil, nil, secretSvc, slog.Default())
+	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, nil, secretSvc, slog.Default())
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -418,7 +418,7 @@ func TestGatewaySecretHandler_SecretNotReturnedForOtherGateway(t *testing.T) {
 	// Create a second gateway
 	gwBID := "gw-002"
 	plainTokenB := "token-for-gw-b"
-	if _, err := env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, name, description, version, properties, is_active, created_at, updated_at)
+	if _, err := env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, version, properties, is_active, created_at, updated_at)
 		VALUES (?, ?, 'test-gw-b', 'Test GW B', '', '1.0', '{}', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID); err != nil {
 		t.Fatalf("insert second gateway: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestGatewaySecretHandler_SharedSecretReturnedForBothGateways(t *testing.T) 
 	// Second gateway
 	gwBID := "gw-003"
 	plainTokenB := "token-shared-gw-b"
-	if _, err := env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, name, description, version, properties, is_active, created_at, updated_at)
+	if _, err := env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, version, properties, is_active, created_at, updated_at)
 		VALUES (?, ?, 'test-gw-shared', 'Test GW Shared', '', '1.0', '{}', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID); err != nil {
 		t.Fatalf("insert shared gateway: %v", err)
 	}
