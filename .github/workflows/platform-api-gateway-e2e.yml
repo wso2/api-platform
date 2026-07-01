@@ -11,9 +11,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'tests/integration-e2e/**'
-      - '.github/workflows/platform-api-gateway-e2e.yml'
 
 permissions:
   contents: read
