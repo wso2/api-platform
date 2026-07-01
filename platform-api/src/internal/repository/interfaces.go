@@ -136,6 +136,9 @@ type DeploymentRepository interface {
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 	HasActiveDeployment(artifactUUID, orgUUID string) (bool, error)
 	GetLatestDeploymentTime(artifactUUID, orgUUID string) (*time.Time, error)
+	// GetLiveGatewayIDs returns the gateways on which the artifact is currently live
+	// (status DEPLOYED, DEPLOYING, or UNDEPLOYING) — i.e. still present on the gateway.
+	GetLiveGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 
 	// Gateway deployment methods
 	GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
@@ -237,6 +240,9 @@ type LLMProviderRepository interface {
 	Update(p *model.LLMProvider) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the provider if one
+	// does not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // APIKeyRepository defines the interface for API key persistence
@@ -264,6 +270,9 @@ type LLMProxyRepository interface {
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
+	// not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -278,6 +287,7 @@ type MCPProxyRepository interface {
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
