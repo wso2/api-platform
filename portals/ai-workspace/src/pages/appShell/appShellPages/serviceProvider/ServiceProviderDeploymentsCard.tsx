@@ -553,7 +553,7 @@ export default function ServiceProviderDeploymentsCard({
                               title={
                                 key.id
                                   ? 'Delete API key'
-                                  : 'Unable to delete key without a name'
+                                  : 'Unable to delete key without an identifier'
                               }
                             >
                               <span>
