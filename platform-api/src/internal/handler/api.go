@@ -453,11 +453,11 @@ func (h *APIHandler) RegisterRoutes(mux *http.ServeMux) {
 	base := constants.APIBasePath + "/rest-apis"
 	mux.HandleFunc("POST "+base, h.CreateAPI)
 	mux.HandleFunc("GET "+base, h.ListAPIs)
-	mux.HandleFunc("GET "+base+"/{id}", h.GetAPI)
-	mux.HandleFunc("PUT "+base+"/{id}", h.UpdateAPI)
-	mux.HandleFunc("DELETE "+base+"/{id}", h.DeleteAPI)
-	mux.HandleFunc("GET "+base+"/{id}/gateways", h.GetAPIGateways)
-	mux.HandleFunc("POST "+base+"/{id}/gateways", h.AddGatewaysToAPI)
+	mux.HandleFunc("GET "+base+"/{restApiId}", h.GetAPI)
+	mux.HandleFunc("PUT "+base+"/{restApiId}", h.UpdateAPI)
+	mux.HandleFunc("DELETE "+base+"/{restApiId}", h.DeleteAPI)
+	mux.HandleFunc("GET "+base+"/{restApiId}/gateways", h.GetAPIGateways)
+	mux.HandleFunc("POST "+base+"/{restApiId}/gateways", h.AddGatewaysToAPI)
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {
