@@ -29,7 +29,6 @@ const VALID_LIMIT_TYPES = ['REQUEST_COUNT', 'EVENT_COUNT', 'BANDWIDTH', 'TOTAL_T
 const buildSubscriptionPlanRow = (orgId, plan) => {
   return {
     org_uuid: orgId,
-    uuid: plan.id ?? undefined,
     handle: plan.handle,
     name: plan.name,
     description: plan.description,
@@ -123,7 +122,6 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
 
     // Don't update primary keys
     delete row.org_uuid;
-    delete row.uuid;
     if (!Object.prototype.hasOwnProperty.call(plan, 'refId')) {
       delete row.ref_id;
     }

@@ -26,7 +26,7 @@ Creates an API workflow in the selected view. If `handle` is omitted, the servic
 ```json
 {
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
+  "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "contentType": "ARAZZO",
   "apiWorkflowDefinition": {
@@ -282,7 +282,7 @@ Updates API workflow metadata and content for the selected view. Duplicate handl
 ```json
 {
   "name": "Weather onboarding v2",
-  "handle": "weather-onboarding-v2",
+  "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -411,7 +411,7 @@ Generates the default agent prompt text for a proposed API workflow using the su
   ],
   "orgHandle": "acme",
   "viewName": "default",
-  "handle": "weather-onboarding"
+  "id": "weather-onboarding"
 }
 ```
 

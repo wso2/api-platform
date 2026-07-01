@@ -2599,7 +2599,7 @@ components:
               summary: Create an Arazzo API workflow
               value:
                 name: Weather onboarding
-                handle: weather-onboarding
+                id: weather-onboarding
                 description: Guides users through the Weather API onboarding workflow.
                 contentType: ARAZZO
                 apiWorkflowDefinition:
@@ -2640,7 +2640,7 @@ components:
             description: Guides users through the Weather API onboarding workflow.
             orgHandle: acme
             viewName: default
-            handle: weather-onboarding
+            id: weather-onboarding
             apis:
               - name: Weather API
                 version: v1
@@ -2689,15 +2689,17 @@ components:
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
                   fields: `name`, `version`, `description`, `type`,
-                  `agentVisibility`, `status`, `referenceId`, `handle`, `tags`, `labels`,
+                  `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`,
                   `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
-                  handle }` objects — only `handle` is read; the plan must already exist in the organization).
+                  id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes
+                  the API's stored handle; when the API is created from a YAML artifact instead, the handle is
+                  always taken from `metadata.name`.
                 example: >-
                   {"name":"Weather API","version":"v1","description":"Weather forecast
                   API","type":"REST","agentVisibility":"VISIBLE",
                   "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
                   "productionURL":"https://api.example.com/weather",
-                  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"handle":"Gold"}]}
+                  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"id":"Gold"}]}
     ApiContentZipMultipartBody:
       required: true
       description: |
@@ -2733,14 +2735,14 @@ components:
       description: >-
         Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field.
         When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description`
-        as the description, and `spec.handle` or `metadata.name` as the handle.
+        as the description, and always takes the handle from `metadata.name` (any `id` sent alongside YAML is ignored).
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ApplicationRequest"
           example:
             displayName: Weather App
-            handle: weather-app
+            id: my-weather-app
             description: Application used to call Weather APIs.
         multipart/form-data:
           schema:
@@ -2753,11 +2755,11 @@ components:
               displayName:
                 type: string
                 description: Application display name when sending form fields instead of YAML.
-              handle:
+              id:
                 type: string
                 description: >-
-                  Immutable, org-scoped slug for the application. Optional — defaults to `displayName`
-                  when omitted.
+                  Immutable, org-scoped slug for the application, stored as its handle. Optional — defaults to
+                  `displayName` when omitted.
               description:
                 type: string
           examples:
@@ -2765,7 +2767,7 @@ components:
               summary: Multipart form fields
               value:
                 displayName: Weather App
-                handle: weather-app
+                id: my-weather-app
                 description: Application used to call Weather APIs.
             yamlFile:
               summary: Application YAML upload
@@ -3970,18 +3972,19 @@ components:
     SubscriptionPlanRequest:
       type: object
       required:
-        - handle
+        - id
         - name
         - type
       properties:
         id:
           type: string
-          description: Optional external/APIM-assigned plan UUID.
+          description: >-
+            Desired handle for the plan (unique per org), stored as-is. When the plan is created from a
+            SubscriptionPlan YAML artifact instead, the handle is always taken from `metadata.name`.
+          example: Gold
         refId:
           type: string
           description: Platform API subscription plan UUID to associate with this plan.
-        handle:
-          type: string
         name:
           type: string
         description:
@@ -4024,12 +4027,12 @@ components:
         displayName:
           type: string
           example: Weather App
-        handle:
+        id:
           type: string
           description: >-
-            Immutable, org-scoped slug for the application. Optional — defaults to the application's
-            `displayName` when omitted.
-          example: weather-app
+            Immutable, org-scoped slug for the application, stored as its handle. Optional — defaults to the
+            application's `displayName` when omitted.
+          example: my-weather-app
         description:
           type: string
           example: Application used to call Weather APIs.
@@ -4046,7 +4049,7 @@ components:
         subscriptionPlanId:
           type: string
           description: Developer Portal subscription plan ID.
-          example: plan-7f4c2a6b
+          example: Gold
       additionalProperties: false
     SubscriptionUpdateRequest:
       type: object
@@ -4667,8 +4670,9 @@ components:
         name:
           type: string
           example: Weather onboarding
-        handle:
+        id:
           type: string
+          description: Desired handle for the workflow (unique per org and view), stored as-is.
           example: weather-onboarding
         description:
           type: string
@@ -4711,8 +4715,9 @@ components:
         name:
           type: string
           example: Weather onboarding v2
-        handle:
+        id:
           type: string
+          description: Desired handle for the workflow (unique per org and view), stored as-is.
           example: weather-onboarding-v2
         description:
           type: string
@@ -4767,8 +4772,9 @@ components:
           type: string
           default: default
           example: default
-        handle:
+        id:
           type: string
+          description: The workflow's (would-be) handle, used only to build the workflow detail URL referenced in the generated prompt.
           example: weather-onboarding
     WebhookEventDelivery:
       type: object

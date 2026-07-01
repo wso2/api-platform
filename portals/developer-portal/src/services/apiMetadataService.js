@@ -83,6 +83,9 @@ const createAPIMetadata = async (req, res) => {
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
             apiMetadata.type = util.resolveApiType(apiMetadata.type);
+            if (apiMetadata.id) {
+                apiMetadata.handle = apiMetadata.id;
+            }
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
@@ -128,7 +131,7 @@ const createAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.id);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
@@ -420,6 +423,9 @@ const updateAPIMetadata = async (req, res) => {
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
             apiMetadata.type = util.resolveApiType(apiMetadata.type);
+            if (apiMetadata.id) {
+                apiMetadata.handle = apiMetadata.id;
+            }
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
@@ -511,7 +517,7 @@ const updateAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.id);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
@@ -1123,9 +1129,18 @@ const putSubscriptionPlans = async (req, res) => {
     }
 }
 
+// The plan's own `id` in the request body is what the client wants to become the stored handle.
+// YAML-sourced plans already carry `.handle` (set from metadata.name), so this is a no-op for them.
+function normalizePlanHandle(plan) {
+    if (plan && plan.id) {
+        plan.handle = plan.id;
+    }
+    return plan;
+}
+
 const createSubscriptionPlan = async (req, res) => {
     const orgId = req.orgId;
-    const subscriptionPlan = req.body;
+    const subscriptionPlan = normalizePlanHandle(req.body);
     const userId = util.resolveActor(req);
     logger.info('Creating subscription plan...', {
         orgId
@@ -1182,6 +1197,7 @@ const createSubscriptionPlans = async (req, res) => {
                 timeout: 60000,
             }, async (t) => {
                 for (const plan of subscriptionPlans) {
+                    normalizePlanHandle(plan);
                     const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
                     if (!created) {
                         throw new CustomError(
@@ -1213,7 +1229,7 @@ const updateSubscriptionPlan = async (req, res) => {
     logger.info('Updating subscription plan...', {
         orgId
     });
-    const subscriptionPlan = req.body;
+    const subscriptionPlan = normalizePlanHandle(req.body);
     const userId = util.resolveActor(req);
 
     if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
@@ -1264,6 +1280,7 @@ const updateSubscriptionPlans = async (req, res) => {
                 timeout: 60000,
             }, async (t) => {
                 for (const plan of subscriptionPlans) {
+                    normalizePlanHandle(plan);
                     const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
                     if (!result?.subscriptionPlanResponse) {
                         throw new CustomError(
@@ -1791,7 +1808,7 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
     const businessInformation = spec.businessInformation || {};
 
     const subscriptionPlans = util.normalizeStringArray(spec.subscriptionPlans)
-        .map(planName => ({ handle: planName }));
+        .map(planName => ({ id: planName }));
 
     return {
         name: spec.displayName,

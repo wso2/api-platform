@@ -156,9 +156,8 @@ Creates one subscription plan when the request body is an object, or multiple su
 
 ```json
 {
-  "id": "string",
+  "id": "Gold",
   "refId": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "type": "requestcount",
@@ -168,9 +167,8 @@ Creates one subscription plan when the request body is an object, or multiple su
 ```
 
 ```yaml
-id: string
+id: Gold
 refId: string
-handle: string
 name: string
 description: string
 type: requestcount
@@ -298,9 +296,8 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 
 ```json
 {
-  "id": "string",
+  "id": "Gold",
   "refId": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "type": "requestcount",
@@ -310,9 +307,8 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 ```
 
 ```yaml
-id: string
+id: Gold
 refId: string
-handle: string
 name: string
 description: string
 type: requestcount

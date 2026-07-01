@@ -172,8 +172,8 @@ const createAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
     const viewName = req.params.viewName;
     const userId = util.resolveActor(req);
-    const { name, handle, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
-    let resolvedHandle = (handle && handle.trim()) ? handle.trim() : generateHandle(name);
+    const { name, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
+    let resolvedHandle = (id && id.trim()) ? id.trim() : generateHandle(name);
     if (!resolvedHandle) {
         const suffix = Math.random().toString(36).slice(2, 10);
         resolvedHandle = `workflow-${suffix}`;
@@ -235,7 +235,7 @@ const updateAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
     const { apiWorkflowId: apiWorkflowHandle, viewName } = req.params;
     const userId = util.resolveActor(req);
-    const { name, handle, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
+    const { name, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
     if (status !== undefined && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
         return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.` });
     }
@@ -262,7 +262,7 @@ const updateAPIWorkflow = async (req, res) => {
         }
         const [count] = await apiWorkflowDao.update(orgId, viewId, existing.uuid, {
             name,
-            handle,
+            handle: id,
             description,
             agentPrompt,
             status,
@@ -345,10 +345,10 @@ const getAllAPIWorkflows = async (req, res) => {
 };
 
 const generatePrompt = async (req, res) => {
-    const { name, description, apis, orgHandle, viewName, handle } = req.body;
+    const { name, description, apis, orgHandle, viewName, id } = req.body;
     try {
         const baseUrl = config.baseUrl || `${req.protocol}://${req.get('host')}`;
-        const prompt = generateAgentPrompt(name, description, apis || [], orgHandle || '', viewName || 'default', baseUrl, handle || '');
+        const prompt = generateAgentPrompt(name, description, apis || [], orgHandle || '', viewName || 'default', baseUrl, id || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {
         logger.error('Error generating agent prompt', { error: error.message });

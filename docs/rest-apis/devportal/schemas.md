@@ -894,9 +894,8 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "id": "string",
+  "id": "Gold",
   "refId": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "type": "requestcount",
@@ -910,9 +909,8 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|Optional external/APIM-assigned plan UUID.|
+|id|string|true|none|Desired handle for the plan (unique per org), stored as-is. When the plan is created from a SubscriptionPlan YAML artifact instead, the handle is always taken from `metadata.name`.|
 |refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
-|handle|string|true|none|none|
 |name|string|true|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
@@ -987,7 +985,7 @@ xor
 ```json
 {
   "displayName": "Weather App",
-  "handle": "weather-app",
+  "id": "my-weather-app",
   "description": "Application used to call Weather APIs."
 }
 
@@ -998,7 +996,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |displayName|string|true|none|none|
-|handle|string|false|none|Immutable, org-scoped slug for the application. Optional — defaults to the application's `displayName` when omitted.|
+|id|string|false|none|Immutable, org-scoped slug for the application, stored as its handle. Optional — defaults to the application's `displayName` when omitted.|
 |description|string|true|none|none|
 
 <h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
@@ -1011,7 +1009,7 @@ xor
 ```json
 {
   "apiId": "weather-api-v1",
-  "subscriptionPlanId": "plan-7f4c2a6b"
+  "subscriptionPlanId": "Gold"
 }
 
 ```
@@ -1815,7 +1813,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 ```json
 {
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
+  "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
@@ -1832,7 +1830,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
@@ -1879,7 +1877,7 @@ continued
 ```json
 {
   "name": "Weather onboarding v2",
-  "handle": "weather-onboarding-v2",
+  "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -1896,7 +1894,7 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|false|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
@@ -1949,7 +1947,7 @@ continued
   ],
   "orgHandle": "acme",
   "viewName": "default",
-  "handle": "weather-onboarding"
+  "id": "weather-onboarding"
 }
 
 ```
@@ -1963,7 +1961,7 @@ continued
 |apis|[object]|false|none|none|
 |orgHandle|string|false|none|none|
 |viewName|string|false|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|The workflow's (would-be) handle, used only to build the workflow detail URL referenced in the generated prompt.|
 
 <h2 id="tocS_WebhookEventDelivery">WebhookEventDelivery</h2>
 

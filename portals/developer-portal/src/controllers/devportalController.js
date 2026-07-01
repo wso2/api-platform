@@ -56,10 +56,11 @@ function parseApplicationDataFromRequest(req) {
         return {
             displayName,
             description: spec.description,
-            handle: spec.handle || parsed.metadata?.name,
+            handle: parsed.metadata?.name,
         };
     }
-    return req.body;
+    const { id, ...rest } = req.body;
+    return { ...rest, handle: id };
 }
 
 // ***** Save Application *****

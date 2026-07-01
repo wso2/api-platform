@@ -26,7 +26,7 @@ Creates a subscription for an API. The API must exist in the Developer Portal an
 ```json
 {
   "apiId": "weather-api-v1",
-  "subscriptionPlanId": "plan-7f4c2a6b"
+  "subscriptionPlanId": "Gold"
 }
 ```
 
