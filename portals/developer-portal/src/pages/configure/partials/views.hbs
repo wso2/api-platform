@@ -5,8 +5,8 @@
 <table class="table table-striped mt-4">
     <thead>
         <tr>
+            <th>Handle</th>
             <th>Name</th>
-            <th>Display Name</th>
             <th>Labels</th>
             <th>Attached Labels</th>
             <th class="text-center">Actions</th>
@@ -16,23 +16,23 @@
         {{#views}}
         <tr>
             <td class="w-10">
-                <input type="text" class="form-control w-50" id="viewName{{name}}" name="viewName" required
-                    value="{{name}}">
+                <input type="text" class="form-control w-50" id="viewHandle{{handle}}" name="viewHandle" required
+                    value="{{handle}}" readonly>
             </td>
             <td class="w-10">
-                <input type="text" class="form-control w-50" id="displayName{{displayName}}" name="displayName" required
-                    value="{{displayName}}">
+                <input type="text" class="form-control w-50" id="viewDisplayName{{handle}}" name="viewDisplayName" required
+                    value="{{name}}">
             </td>
             <td class="w-20">
-                <select id="labelSelect{{name}}" class="form-select"
-                    onchange="addViewLabel('labelSelect{{name}}', 'labelsContainer{{name}}')">
+                <select id="labelSelect{{handle}}" class="form-select"
+                    onchange="addViewLabel('labelSelect{{handle}}', 'labelsContainer{{handle}}')">
                     {{#each @root.orgLabels as |orgLabelGroup|}}
                     <option>{{orgLabelGroup.name}}</option>
                     {{/each}}
                 </select>
             </td>
             <td class="w-20">
-                <div id="labelsContainer{{name}}" class="d-flex flex-wrap gap-2 mb-3">
+                <div id="labelsContainer{{handle}}" class="d-flex flex-wrap gap-2 mb-3">
                     {{#each labels}}
                     <span class="span-tag">{{this}}<span class="remove">&times;</span></span>
                     {{/each}}
@@ -40,12 +40,12 @@
             </td>
             <td class="text-center">
                 <button type="button" class="common-btn-outlined"
-                    onclick="editView('{{json labels}}', 'labelsContainer{{name}}', 'displayName{{displayName}}', 'viewName{{name}}', '{{@root.orgID}}')">
+                    onclick="editView('{{json labels}}', 'labelsContainer{{handle}}', 'viewDisplayName{{handle}}', 'viewHandle{{handle}}', '{{@root.orgId}}')">
                     <i class="bi bi-save"></i>
                 </button>
-                {{#unless (eq name "default")}}
+                {{#unless (eq handle "default")}}
                 <button type="button" class="common-btn-outlined" style="margin-right: 10px;"
-                    onclick="openWarningModal('DeleteView', '{{@root.orgID}}', '{{name}}', '', '', '', '')">
+                    onclick="openWarningModal('DeleteView', '{{@root.orgId}}', '{{handle}}', '', '', '', '')">
                     <i class="bi bi-trash"></i>
                 </button>
                 {{/unless}}

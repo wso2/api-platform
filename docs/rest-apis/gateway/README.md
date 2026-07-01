@@ -1,11 +1,11 @@
 
-<h1 id="gateway-controller-management-api">Gateway Controller Management API v0.9.0</h1>
+<h1 id="gateway-controller-management-api">Gateway Controller Management API v1.0.0</h1>
 
 REST API for managing API configurations in the WSO2 API Platform Gateway.
 
 Base URLs:
-* <a href="http://localhost:9090/api/management/v0.9">http://localhost:9090/api/management/v0.9</a>
-* <a href="http://gateway-controller:9090/api/management/v0.9">http://gateway-controller:9090/api/management/v0.9</a>
+* <a href="http://localhost:9090/api/management/v1">http://localhost:9090/api/management/v1</a>
+* <a href="http://gateway-controller:9090/api/management/v1">http://gateway-controller:9090/api/management/v1</a>
 
 ## Table of Contents
 
@@ -107,6 +107,10 @@ Base URLs:
 - [Regenerate API key for a WebSub API](websub-api-management.md#regenerate-api-key-for-a-websub-api)
 - [Update an API key for a WebSub API](websub-api-management.md#update-an-api-key-for-a-websub-api)
 - [Revoke an API key for a WebSub API](websub-api-management.md#revoke-an-api-key-for-a-websub-api)
+- [Generate a new HMAC secret for a WebSub API](websub-api-management.md#generate-a-new-hmac-secret-for-a-websub-api)
+- [List HMAC secrets for a WebSub API](websub-api-management.md#list-hmac-secrets-for-a-websub-api)
+- [Regenerate (rotate) a WebSub API HMAC secret](websub-api-management.md#regenerate-rotate-a-websub-api-hmac-secret)
+- [Delete a WebSub API HMAC secret](websub-api-management.md#delete-a-websub-api-hmac-secret)
 - [Get WebSubAPI by id](websub-api-management.md#get-websubapi-by-id)
 - [Update an existing WebSubAPI](websub-api-management.md#update-an-existing-websubapi)
 - [Delete a WebSubAPI](websub-api-management.md#delete-a-websubapi)

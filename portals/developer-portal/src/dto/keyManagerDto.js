@@ -22,22 +22,12 @@
  */
 class KeyManagerDTO {
     constructor(km) {
-        this.id = km.KM_ID;
-        this.orgId = km.ORG_ID;
-        this.name = km.NAME;
-        this.type = km.TYPE;
-        this.enabled = km.ENABLED;
-        this.tokenEndpoint = km.TOKEN_ENDPOINT;
-        this.clientRegistrationEndpoint = km.CLIENT_REG_ENDPOINT;
-        if (km.ISSUER) {
-            this.issuer = km.ISSUER;
-        }
-        if (km.JWKS_URL) {
-            this.jwksURL = km.JWKS_URL;
-        }
-        this.supportedGrantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
-        this.supportedScopes = km.SUPPORTED_SCOPES || ['openid'];
-        this.additionalProperties = km.ADDITIONAL_PROPERTIES || {};
+        this.id = km.uuid;
+        this.orgId = km.org_uuid;
+        this.name = km.name;
+        this.type = km.type;
+        this.enabled = !!km.enabled;
+        this.tokenEndpoint = km.token_endpoint;
     }
 }
 
@@ -47,12 +37,10 @@ class KeyManagerDTO {
  */
 class KeyManagerPublicDTO {
     constructor(km) {
-        this.id = km.KM_ID;
-        this.name = km.NAME;
-        this.type = km.TYPE;
-        this.tokenEndpoint = km.TOKEN_ENDPOINT;
-        this.supportedGrantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
-        this.supportedScopes = km.SUPPORTED_SCOPES || ['openid'];
+        this.id = km.uuid;
+        this.name = km.name;
+        this.type = km.type;
+        this.tokenEndpoint = km.token_endpoint;
     }
 }
 

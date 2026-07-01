@@ -266,6 +266,9 @@ export default function ResourceRow({
           display: 'inline-flex',
           alignItems: 'center',
           color: '#3b4151',
+          [DARK_MODE_SELECTOR]: {
+            color: '#fff !important',
+          },
           '& .MuiIconButton-root': {
             borderRadius: 0.5,
             p: 0.35,

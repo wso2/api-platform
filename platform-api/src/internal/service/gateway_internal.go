@@ -29,8 +29,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // GatewayInternalAPIService handles internal gateway API operations
@@ -49,18 +47,21 @@ type GatewayInternalAPIService struct {
 	projectRepo          repository.ProjectRepository
 	apiKeyRepo           repository.APIKeyRepository
 	artifactRepo         repository.ArtifactRepository
+	secretRepo           repository.SecretRepository
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
 }
 
-// NewGatewayInternalAPIService creates a new gateway internal API service
+// NewGatewayInternalAPIService creates a new gateway internal API service.
+// websubAPIRepo and webbrokerAPIRepo are nil in OSS builds and injected by the
+// event-gateway plugin in experimental builds via SetEventArtifactRepos.
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
-	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, websubAPIRepo repository.WebSubAPIRepository,
-	webbrokerAPIRepo repository.WebBrokerAPIRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
+	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
+	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
-	artifactRepo repository.ArtifactRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
+	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
 		apiRepo:              apiRepo,
 		subscriptionRepo:     subscriptionRepo,
@@ -68,18 +69,57 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		providerRepo:         providerRepo,
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
-		websubAPIRepo:        websubAPIRepo,
-		webbrokerAPIRepo:     webbrokerAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
 		projectRepo:          projectRepo,
 		apiKeyRepo:           apiKeyRepo,
 		artifactRepo:         artifactRepo,
+		secretRepo:           secretRepo,
 		apiUtil:              &utils.APIUtil{},
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
+}
+
+// SetEventArtifactRepos injects the WebSub/WebBroker repositories after construction.
+// Called by the server when the event-gateway plugin is loaded (experimental builds).
+func (s *GatewayInternalAPIService) SetEventArtifactRepos(
+	websubRepo repository.WebSubAPIRepository,
+	webbrokerRepo repository.WebBrokerAPIRepository,
+) {
+	s.websubAPIRepo = websubRepo
+	s.webbrokerAPIRepo = webbrokerRepo
+}
+
+// GetSecretsByGateway returns secrets referenced by artifacts deployed on this gateway.
+// Handles are sourced from artifact_secret_refs (gateway_id rows, maintained at deploy time) so no
+// config blob JOIN or application-level regex is needed here.
+// If updatedAfter is set, only secrets updated after that time are included.
+func (s *GatewayInternalAPIService) GetSecretsByGateway(orgID, gatewayID string, updatedAfter *time.Time) ([]*model.Secret, error) {
+	handles, err := s.deploymentRepo.GetSecretHandlesByGateway(gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret handles for gateway: %w", err)
+	}
+	if len(handles) == 0 {
+		return nil, nil
+	}
+	return s.secretRepo.ListByHandles(orgID, handles, updatedAfter)
+}
+
+// IsSecretDeployedOnGateway reports whether a secret handle is referenced by any
+// artifact currently deployed on the given gateway.
+func (s *GatewayInternalAPIService) IsSecretDeployedOnGateway(orgID, gatewayID, handle string) (bool, error) {
+	handles, err := s.deploymentRepo.GetSecretHandlesByGateway(gatewayID, orgID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get secret handles for gateway: %w", err)
+	}
+	for _, h := range handles {
+		if h == handle {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // GetAPIByUUID retrieves an API by its ID
@@ -229,7 +269,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 	for i, sub := range subs {
 		items[i] = dto.GatewaySubscriptionInfo{
 			ID:                 sub.UUID,
-			APIID:              sub.APIUUID,
+			APIID:              sub.ArtifactUUID,
 			ApplicationID:      sub.ApplicationID,
 			SubscriptionToken:  sub.SubscriptionToken,
 			SubscriptionPlanID: sub.SubscriptionPlanID,
@@ -266,7 +306,8 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 	for i, plan := range plans {
 		items[i] = dto.GatewaySubscriptionPlanInfo{
 			ID:                 plan.UUID,
-			PlanName:           plan.PlanName,
+			Handle:             plan.Handle,
+			PlanName:           plan.Name,
 			BillingPlan:        plan.BillingPlan,
 			StopOnQuotaReach:   plan.StopOnQuotaReach,
 			ThrottleLimitCount: plan.ThrottleLimitCount,
@@ -308,6 +349,9 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	if s.websubAPIRepo == nil {
+		return nil, constants.ErrWebSubAPINotFound
+	}
 	websubAPI, err := s.websubAPIRepo.GetByUUID(apiID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get WebSub API: %w", err)
@@ -333,6 +377,9 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 
 // GetActiveWebBrokerAPIDeploymentByGateway retrieves the currently deployed WebBroker API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	if s.webbrokerAPIRepo == nil {
+		return nil, constants.ErrWebBrokerAPINotFound
+	}
 	webbrokerAPI, err := s.webbrokerAPIRepo.GetByUUID(apiID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get WebBroker API: %w", err)
@@ -356,195 +403,12 @@ func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(api
 	return apiYamlMap, nil
 }
 
-// CreateGatewayDeployment handles the registration of an API deployment from a gateway
-func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, gatewayID string,
-	notification dto.DeploymentNotification, deploymentID *string) (*dto.GatewayDeploymentResponse, error) {
-	// Note: deploymentID parameter is reserved for future use
-	_ = deploymentID
-
-	// Validate input
-	if apiHandle == "" || orgID == "" || gatewayID == "" {
-		return nil, constants.ErrInvalidInput
-	}
-
-	// Check if the gateway exists and belongs to the organization
-	gatewayModel, err := s.gatewayRepo.GetByUUID(gatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gateway: %w", err)
-	}
-	if gatewayModel == nil {
-		return nil, constants.ErrGatewayNotFound
-	}
-	if gatewayModel.OrganizationID != orgID {
-		return nil, constants.ErrGatewayNotFound
-	}
-
-	// Find the project by name within the organization
-	projectName := notification.ProjectIdentifier
-	project, err := s.projectRepo.GetProjectByNameAndOrgID(projectName, orgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get project by name: %w", err)
-	}
-	if project == nil {
-		return nil, fmt.Errorf("project not found: %s", projectName)
-	}
-	projectID := project.ID
-
-	// Check if API already exists by getting metadata
-	existingAPIMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing API: %w", err)
-	}
-
-	apiCreated := false
-	apiUUID := ""
-	now := time.Now()
-	if existingAPIMetadata == nil {
-		// Convert operations from notification to API operations
-		operations := make([]model.Operation, 0, len(notification.Configuration.Spec.Operations))
-		for _, op := range notification.Configuration.Spec.Operations {
-			operation := model.Operation{
-				Name:        fmt.Sprintf("%s %s", op.Method, op.Path),
-				Description: fmt.Sprintf("Operation for %s %s", op.Method, op.Path),
-				Request: &model.OperationRequest{
-					Method: op.Method,
-					Path:   op.Path,
-				},
-			}
-			operations = append(operations, operation)
-		}
-
-		// Create new API from notification
-		newAPI := &model.API{
-			Handle:          apiHandle, // Use provided apiID as handle
-			Name:            notification.Configuration.Spec.Name,
-			Version:         notification.Configuration.Spec.Version,
-			ProjectID:       projectID,
-			OrganizationID:  orgID,
-			CreatedBy:       "admin", // Default provider
-			LifeCycleStatus: "CREATED",
-			Kind:            notification.Configuration.Kind,
-			Transport:       []string{"http", "https"},
-			Configuration: model.RestAPIConfig{
-				Context:    &notification.Configuration.Spec.Context,
-				Operations: operations,
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		}
-
-		err = s.apiRepo.CreateAPI(newAPI)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create API: %w", err)
-		}
-
-		// CreateAPI sets the UUID on the model
-		apiUUID = newAPI.ID
-
-		apiCreated = true
-	} else {
-		// Validate that existing API belongs to the same organization
-		if existingAPIMetadata.OrganizationID != orgID {
-			return nil, constants.ErrAPINotFound
-		}
-		apiUUID = existingAPIMetadata.ID
-	}
-
-	// Check if deployment already exists
-	existingDeploymentID, status, _, err := s.deploymentRepo.GetStatus(apiUUID, orgID, gatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check deployment status of gateway: %w", err)
-	}
-
-	// Check if this gateway already has this API deployed or undeployed
-	if existingDeploymentID != "" && (status == model.DeploymentStatusDeployed || status == model.DeploymentStatusUndeployed) {
-		switch status {
-		case model.DeploymentStatusDeployed:
-			// An active deployment already exists for this API-gateway combination
-			return nil, fmt.Errorf("API already deployed to this gateway")
-		case model.DeploymentStatusUndeployed:
-			// A deployment record exists, but it is currently undeployed
-			return nil, fmt.Errorf("a deployment already exists for this API-gateway combination with status %s", status)
-		default:
-			// Fallback in case new statuses are introduced in the future
-			return nil, fmt.Errorf("a deployment already exists for this API-gateway combination with status %s", status)
-		}
-	}
-
-	// Check if API-gateway association exists, create if not
-	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
-	}
-
-	// Check if gateway is already associated with the API
-	isAssociated := false
-	for _, assoc := range existingAssociations {
-		if assoc.ResourceID == gatewayID {
-			isAssociated = true
-			break
-		}
-	}
-
-	// If gateway is not associated with the API, create the association
-	if !isAssociated {
-		association := &model.APIAssociation{
-			ArtifactID:      apiUUID,
-			OrganizationID:  orgID,
-			ResourceID:      gatewayID,
-			AssociationType: constants.AssociationTypeGateway,
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		}
-		if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
-			return nil, fmt.Errorf("failed to create API-gateway association: %w", err)
-		}
-	}
-
-	// Create deployment record
-	deploymentName := fmt.Sprintf("deployment-%d", now.Unix())
-	deployed := model.DeploymentStatusDeployed
-
-	// Generate deployment content YAML from notification configuration
-	deploymentContent, err := yaml.Marshal(notification.Configuration)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize deployment content: %w", err)
-	}
-
-	deployment := &model.Deployment{
-		Name:           deploymentName,
-		ArtifactID:     apiUUID,
-		GatewayID:      gatewayID,
-		OrganizationID: orgID,
-		Content:        deploymentContent,
-		Status:         &deployed,
-		CreatedAt:      now,
-	}
-
-	// Use same limit computation as DeploymentService: MaxPerAPIGateway + buffer
-	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
-		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
-	}
-	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
-	err = s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create deployment record: %w", err)
-	}
-
-	return &dto.GatewayDeploymentResponse{
-		APIId:        apiUUID,
-		DeploymentId: 0, // Legacy field, no longer used with new deployment model
-		Message:      "API deployment registered successfully",
-		Created:      apiCreated,
-	}, nil
-}
-
 // GetDeploymentsByGateway retrieves all deployments for a specific gateway
 // Used to compare local gateway state with platform-api state
 // If since is provided, only returns deployments updated after that timestamp
 func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID string, since *time.Time) (*dto.GatewayDeploymentsResponse, error) {
 	// Get all deployments for this gateway (optionally filtered by timestamp)
-	deployments, err := s.deploymentRepo.GetAllDeploymentsByGateway(gatewayID, orgID, since)
+	deployments, err := s.deploymentRepo.GetControlPlaneDeploymentsByGateway(gatewayID, orgID, since)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployments: %w", err)
 	}
@@ -556,7 +420,7 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 		items[i] = dto.GatewayDeploymentInfo{
 			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
-			Kind:         dep.Kind,
+			Kind:         dep.Type,
 			State:        string(dep.Status),
 			DeployedAt:   deployedAt,
 			Etag:         utils.GenerateDeterministicUUIDv7(dep.DeploymentID, deployedAt),

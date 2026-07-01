@@ -17,33 +17,28 @@
 
 package middleware
 
-import "github.com/gin-gonic/gin"
+import "net/http"
 
-// Authenticator abstracts credential validation. Implementations populate the Gin
+// Authenticator abstracts credential validation. Implementations populate the request
 // context with identity values (user_id, organization, scope, platform_roles, …)
-// when authentication succeeds, and write an error response then abort on failure.
-//
-// JWTAuthenticator is the default; add new implementations (e.g. BasicAuthAuthenticator)
-// without touching server wiring.
+// when authentication succeeds, and write an error response on failure.
 type Authenticator interface {
-	// Middleware returns the ordered Gin handler chain that validates credentials
-	// and populates the request context with identity values. Multiple handlers
-	// may be returned (e.g. JWKS validation followed by claims extraction).
-	Middleware() []gin.HandlerFunc
+	// Middleware returns the ordered handler chain that validates credentials
+	// and populates the request context with identity values.
+	Middleware() []func(http.Handler) http.Handler
 }
 
-// JWTAuthenticator wraps one or more Gin middleware functions that perform JWT
+// JWTAuthenticator wraps one or more middleware functions that perform JWT
 // validation and claims extraction behind the Authenticator interface.
 type JWTAuthenticator struct {
-	handlers []gin.HandlerFunc
+	handlers []func(http.Handler) http.Handler
 }
 
-// NewJWTAuthenticator creates an Authenticator backed by the given Gin handlers.
-// Pass LocalJWTAuthMiddleware or the IDP auth+claims pair here.
-func NewJWTAuthenticator(handlers ...gin.HandlerFunc) *JWTAuthenticator {
+// NewJWTAuthenticator creates an Authenticator backed by the given middleware handlers.
+func NewJWTAuthenticator(handlers ...func(http.Handler) http.Handler) *JWTAuthenticator {
 	return &JWTAuthenticator{handlers: handlers}
 }
 
-func (a *JWTAuthenticator) Middleware() []gin.HandlerFunc {
+func (a *JWTAuthenticator) Middleware() []func(http.Handler) http.Handler {
 	return a.handlers
 }

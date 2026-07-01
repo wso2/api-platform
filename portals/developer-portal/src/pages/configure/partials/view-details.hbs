@@ -20,7 +20,7 @@
                         <div class="mb-0">
                             <select id="uploadViewContent" class="form-select">
                                 {{#each views}}
-                                <option>{{name}}</option>
+                                <option value="{{handle}}">{{name}}</option>
                                 {{/each}}
                             </select>
                         </div>
@@ -29,7 +29,7 @@
                             <input type="file" class="form-control" id="file" name="file" required>
                         </div>
                         <!-- Upload button -->
-                        <button type="button" class="common-btn-outlined" onclick="uploadContent('{{orgID}}')">
+                        <button type="button" class="common-btn-outlined" onclick="uploadContent('{{orgId}}')">
                             Upload
                         </button>
                     </div>

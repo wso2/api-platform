@@ -182,7 +182,7 @@ func (a *llmProviderAdapter) Deploy(ctx context.Context, k8sClient client.Client
 		specPayload = m
 	}
 
-	body, err := gatewayclient.BuildEnvelopeYAML(apiv1.GroupVersion.String(), "LlmProvider",
+	body, err := gatewayclient.BuildEnvelopeYAML(gatewayclient.ManagementArtifactAPIVersion, "LlmProvider",
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,

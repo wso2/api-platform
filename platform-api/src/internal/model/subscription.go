@@ -31,13 +31,15 @@ const (
 // Subscription represents a subscription to a REST API
 type Subscription struct {
 	UUID               string             `json:"id" db:"uuid"`
-	APIUUID            string             `json:"apiId" db:"api_uuid"`
-	SubscriberID      string             `json:"subscriberId" db:"subscriber_id"`
+	ArtifactUUID       string             `json:"artifactId" db:"artifact_uuid"`
+	SubscriberID       string             `json:"subscriberId" db:"subscriber_id"`
 	ApplicationID      *string            `json:"applicationId,omitempty" db:"application_id"`
 	SubscriptionToken  string             `json:"subscriptionToken" db:"subscription_token"` // Decrypted for API response
 	SubscriptionPlanID *string            `json:"subscriptionPlanId,omitempty" db:"subscription_plan_uuid"`
 	OrganizationUUID   string             `json:"organizationId" db:"organization_uuid"`
 	Status             SubscriptionStatus `json:"status" db:"status"`
+	CreatedBy          string             `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy          string             `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt          time.Time          `json:"createdAt" db:"created_at"`
 	UpdatedAt          time.Time          `json:"updatedAt" db:"updated_at"`
 }

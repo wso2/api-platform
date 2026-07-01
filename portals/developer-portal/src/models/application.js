@@ -20,174 +20,200 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
 const constants = require('../utils/constants');
-const SubscriptionPolicy = require('./subscriptionPolicy');
-const APISubscriptionPolicy = require('./apiSubscriptionPolicy');
+const SubscriptionPlan = require('./subscriptionPlan');
+const APISubscriptionPlan = require('./apiSubscriptionPlan');
+const { KeyManager } = require('./keyManager');
 
 
-const Application = sequelize.define('DP_APPLICATION', {
+const Application = sequelize.define('dp_application', {
 
-    APP_ID: {
-        type: DataTypes.UUID,
+    uuid: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4
+    org_uuid: {
+        type: DataTypes.STRING(40),
+        allowNull: false
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    NAME: {
+    name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    DESCRIPTION: {
+    handle: {
         type: DataTypes.STRING,
+        allowNull: false
+    },
+    description: {
+        type: DataTypes.STRING(1023),
         allowNull: true
     },
-    TYPE: {
+    created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    updated_by: {
         type: DataTypes.STRING,
         allowNull: false
-    }
+    },
+    updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_APPLICATION',
+    tableName: 'dp_applications',
     returning: true,
     indexes: [
-        { name: 'IDX_APPLICATION_ORG_CREATED_BY', fields: ['ORG_ID', 'CREATED_BY'] },
+        { name: 'idx_application_org_created_by', fields: ['org_uuid', 'created_by'] },
+        { name: 'uq_application_org_handle', unique: true, fields: ['org_uuid', 'handle'] },
     ],
 });
 
-const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
+const ApplicationKeyMapping = sequelize.define('dp_app_key_mapping', {
 
-    MAPPING_ID: {
-        type: DataTypes.UUID,
+    uuid: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    APP_ID: {
-        type: DataTypes.UUID,
+    app_uuid: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    km_uuid: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
-    KM_ID: {
-        type: DataTypes.UUID,
-        allowNull: true
-    },
-    AS_CLIENT_ID: {
+    as_client_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    KEY_TYPE: {
-        type: DataTypes.STRING,
+    type: {
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PRODUCTION'
     },
-    ADDITIONAL_PROPERTIES: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-        get() {
-            const raw = this.getDataValue('ADDITIONAL_PROPERTIES');
-            return raw ? JSON.parse(raw) : null;
-        },
-        set(val) {
-            this.setDataValue('ADDITIONAL_PROPERTIES', val ? JSON.stringify(val) : null);
-        }
-    }
+    created_by: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    updated_by: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_APP_KEY_MAPPING',
-    returning: true
-},
-);
+    tableName: 'dp_app_key_mappings',
+    returning: true,
+    indexes: [
+        { name: 'idx_app_key_mappings_app_uuid', fields: ['app_uuid'] },
+        { name: 'idx_app_key_mappings_km_uuid', fields: ['km_uuid'] },
+    ],
+});
 
-const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
+const SubscriptionMapping = sequelize.define('dp_subscription', {
 
-    SUB_ID: {
-        type: DataTypes.UUID,
+    uuid: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    CREATED_BY: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    API_ID: {
-        type: DataTypes.UUID,
+    api_uuid: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: APIMetadata,
-            key: 'API_ID',
+            key: 'uuid',
         },
     },
-    POLICY_ID: {
-        type: DataTypes.UUID,
+    plan_uuid: {
+        type: DataTypes.STRING(40),
         allowNull: true,
         references: {
-            model: SubscriptionPolicy,
-            key: 'POLICY_ID',
+            model: SubscriptionPlan,
+            key: 'uuid',
         },
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    org_uuid: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
-    SUB_TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
-    STATUS:      { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'ACTIVE' },
-    CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    token:      { type: DataTypes.STRING(512), allowNull: true, unique: true },
+    status:     { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'ACTIVE' },
+    created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    updated_by: { type: DataTypes.STRING, allowNull: false },
+    updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,
-    tableName: 'DP_API_SUBSCRIPTION',
+    tableName: 'dp_subscriptions',
     returning: true,
     indexes: [
-        { name: 'IDX_SUBSCRIPTION_ORG_CREATED_BY', fields: ['ORG_ID', 'CREATED_BY'] },
-        { name: 'IDX_SUBSCRIPTION_ORG_API_ID', fields: ['ORG_ID', 'API_ID'] },
+        { name: 'idx_subscription_org_created_by', fields: ['org_uuid', 'created_by'] },
+        { name: 'idx_subscription_org_api_uuid', fields: ['org_uuid', 'api_uuid'] },
+        { name: 'idx_subscription_plan_uuid', fields: ['plan_uuid'] },
+        { name: 'idx_subscription_status', fields: ['status'] },
     ],
 });
 
 SubscriptionMapping.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'org_uuid'
 })
 Organization.hasMany(SubscriptionMapping, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'org_uuid'
 })
-APIMetadata.belongsToMany(SubscriptionPolicy, {
-    through: APISubscriptionPolicy,
-    foreignKey: "API_ID",
-    otherKey: "POLICY_ID",
+APIMetadata.belongsToMany(SubscriptionPlan, {
+    through: APISubscriptionPlan,
+    foreignKey: "api_uuid",
+    otherKey: "plan_uuid",
 });
 
-SubscriptionPolicy.belongsToMany(APIMetadata, {
-    through: APISubscriptionPolicy,
-    foreignKey: "POLICY_ID",
-    otherKey: "API_ID",
+SubscriptionPlan.belongsToMany(APIMetadata, {
+    through: APISubscriptionPlan,
+    foreignKey: "plan_uuid",
+    otherKey: "api_uuid",
 });
 
-SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
-SubscriptionMapping.belongsTo(SubscriptionPolicy, { foreignKey: 'POLICY_ID', as: 'DP_SUBSCRIPTION_POLICY' });
+SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'api_uuid' });
+SubscriptionMapping.belongsTo(SubscriptionPlan, { foreignKey: 'plan_uuid' });
 
 Application.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'org_uuid'
 })
 Organization.hasMany(Application, {
-    foreignKey: 'ORG_ID'
-})
-ApplicationKeyMapping.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
-})
-Organization.hasMany(ApplicationKeyMapping, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'org_uuid'
 })
 ApplicationKeyMapping.belongsTo(Application, {
-    foreignKey: 'APP_ID'
+    foreignKey: 'app_uuid',
 })
 Application.hasMany(ApplicationKeyMapping, {
-    foreignKey: 'APP_ID'
+    foreignKey: 'app_uuid',
+})
+ApplicationKeyMapping.belongsTo(KeyManager, {
+    foreignKey: 'km_uuid'
+})
+KeyManager.hasMany(ApplicationKeyMapping, {
+    foreignKey: 'km_uuid'
 })
 
 module.exports = {
@@ -195,4 +221,3 @@ module.exports = {
     ApplicationKeyMapping,
     SubscriptionMapping
 }
-

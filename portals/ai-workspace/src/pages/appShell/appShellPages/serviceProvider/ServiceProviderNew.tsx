@@ -38,6 +38,8 @@ import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
+import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import {
   buildOrgPath,
   buildProjectPath,
@@ -51,6 +53,9 @@ import type {
   FormState,
   GuardrailSelection,
 } from './AddNewProvider/serviceProviderTypes';
+import type { ProviderTemplate } from '../../../../utils/types';
+import { familyHandle } from '../../../../utils/providerTemplateDisplay';
+import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
 import { FormattedMessage } from 'react-intl';
 
 const VERSION_PATTERN = /^v\d+\.\d+$/;
@@ -94,10 +99,15 @@ function TemplateBasedFormFieldsContainer({
       valuePrefix: template?.metadata?.auth?.valuePrefix || '',
     }));
 
-    // Fetch OpenAPI spec
+    // Resolve OpenAPI spec. Prefer the inline spec stored on the template
+    // (e.g. templates created by uploading an OpenAPI spec); otherwise fall
+    // back to fetching it from the template's openapiSpecUrl.
     if (templateChanged) {
+      const inlineSpec = template?.openapi;
       const specUrl = template?.metadata?.openapiSpecUrl;
-      if (specUrl) {
+      if (inlineSpec) {
+        setOpenapiSpec(inlineSpec);
+      } else if (specUrl) {
         fetch(specUrl)
           .then((res) => res.text())
           .then((text) => {
@@ -147,6 +157,19 @@ export default function ServiceProviderNew() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null
   );
+
+  const [selectedTemplateVersion, setSelectedTemplateVersion] = useState<
+    string | null
+  >(null);
+
+  const [selectedVersionTemplateId, setSelectedVersionTemplateId] = useState<
+    string | null
+  >(null);
+  // Template just clicked, pending version selection in the dialog.
+  const [pendingTemplate, setPendingTemplate] = useState<ProviderTemplate | null>(
+    null
+  );
+  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [openapiSpec, setOpenapiSpec] = useState<string>('');
 
   const [formState, setFormState] = useState<FormState>({
@@ -299,24 +322,18 @@ export default function ServiceProviderNew() {
     if (!isFormValid || !selectedTemplateId) return;
 
     try {
-      const selectedTemplate = templatesResponse?.list?.find(
-        (t) => t.id === selectedTemplateId
-      );
       const providerId = toProviderId(formState.name);
 
       const upstream = {
         main: {
-          url: selectedTemplate?.metadata?.endpointUrl || formState.upstreamUrl,
+          url: formState.upstreamUrl,
           ref: '',
           auth: {
-            type:
-              selectedTemplate?.metadata?.auth?.type ||
-              formState.upstreamAuthType,
-            header:
-              selectedTemplate?.metadata?.auth?.header ||
-              formState.upstreamAuthHeader,
+            type: formState.upstreamAuthType,
+            header: formState.upstreamAuthHeader,
+
             value: formState.valuePrefix
-              ? `${formState.valuePrefix}${formState.upstreamAuthValue}`
+              ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
               : formState.upstreamAuthValue,
           },
         },
@@ -328,30 +345,18 @@ export default function ServiceProviderNew() {
         description: formState.description.trim(),
         version: formState.version.trim(),
         context: formState.context.trim() || '/',
-        template: selectedTemplateId,
+        template: selectedVersionTemplateId ?? selectedTemplateId,
         openapi: openapiSpec,
         upstream,
-        policies: [
-          ...(selectedTemplateId !== 'azure-openai' &&
-          selectedTemplateId !== 'azureai-foundry'
-            ? [
-                {
-                  name: 'llm-cost',
-                  version: 'v1',
-                  paths: [{ path: '/*', methods: ['*'], params: {} }],
-                },
-              ]
+        globalPolicies: [
+          ...(familyHandle(selectedTemplateId) !== 'azure-openai' &&
+          familyHandle(selectedTemplateId) !== 'azureai-foundry'
+            ? [{ name: 'llm-cost', version: 'v1', params: {} }]
             : []),
           ...guardrails.map((guardrail) => ({
             name: guardrail.name,
             version: guardrail.version,
-            paths: [
-              {
-                path: '/*',
-                methods: ['*'],
-                params: guardrail.settings ?? {},
-              },
-            ],
+            params: guardrail.settings ?? {},
           })),
         ],
         accessControl: {
@@ -389,6 +394,54 @@ export default function ServiceProviderNew() {
     }
   };
 
+  const applyTemplateSelection = (
+    baseTemplate: ProviderTemplate,
+    version: string,
+    versionTemplateId: string | null
+  ) => {
+    setSelectedTemplateId(baseTemplate.id ?? null);
+    setSelectedVersionTemplateId(versionTemplateId);
+    setSelectedTemplateVersion(version);
+    setFormState((prev) => ({ ...prev, providerType: baseTemplate.name }));
+    setOpenapiSpec('');
+    setVersionDialogOpen(false);
+    setPendingTemplate(null);
+  };
+
+  const handleSelectTemplate = async (template: ProviderTemplate) => {
+    const organizationId = currentOrganization?.uuid;
+    if (!template.id || !organizationId) return;
+    try {
+      const enabledVersions = (
+        await providerTemplateApis.getProviderTemplateVersions(
+          template.id,
+          organizationId,
+          PLATFORM_API_BASE_URL
+        )
+      ).filter((v) => v.enabled !== false);
+      if (enabledVersions.length === 0) {
+        showSnackbar(
+          'No enabled versions are available for this template.',
+          'error'
+        );
+        return;
+      }
+      if (enabledVersions.length === 1) {
+        const only = enabledVersions[0];
+        applyTemplateSelection(
+          template,
+          only?.version ?? template.version ?? 'v1.0',
+          only?.id ?? null
+        );
+        return;
+      }
+    } catch {
+      // Couldn't load versions — fall back to the picker.
+    }
+    setPendingTemplate(template);
+    setVersionDialogOpen(true);
+  };
+
   return (
     <PageContent fullWidth>
       <Button
@@ -408,7 +461,7 @@ export default function ServiceProviderNew() {
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderNew.add.llm.service.provider"
-              defaultMessage={'Add LLM Service Provider'}
+              defaultMessage={'Add LLM Provider'}
             />
           </PageTitle.Header>
         </PageTitle>
@@ -423,18 +476,30 @@ export default function ServiceProviderNew() {
             templatesResponse={templatesResponse}
             selectedTemplateId={selectedTemplateId}
             onRetryTemplates={refreshTemplates}
-            onSelectTemplate={(template) => {
-              setSelectedTemplateId(template.id ?? null);
-              setFormState((prev) => ({
-                ...prev,
-                providerType: template.name,
-              }));
-              setOpenapiSpec('');
-            }}
+            selectedTemplateVersion={selectedTemplateVersion ?? undefined}
+            onSelectTemplate={(template) => void handleSelectTemplate(template)}
           />
 
+          {pendingTemplate && (
+            <TemplateVersionDialog
+              open={versionDialogOpen}
+              templateId={pendingTemplate.id ?? ''}
+              templateName={pendingTemplate.name}
+              onClose={() => {
+                setVersionDialogOpen(false);
+                setPendingTemplate(null);
+              }}
+              onConfirm={(vt) =>
+                applyTemplateSelection(pendingTemplate, vt.version ?? '', vt.id ?? null)
+              }
+            />
+          )}
+
           {selectedTemplateId && (
-            <ProviderTemplateProvider templateId={selectedTemplateId}>
+            <ProviderTemplateProvider
+              templateId={selectedTemplateId}
+              version={selectedTemplateVersion ?? undefined}
+            >
               <TemplateBasedFormFieldsContainer
                 formState={formState}
                 setFormState={setFormState}

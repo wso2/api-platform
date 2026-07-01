@@ -32,7 +32,7 @@ function resolveDir(samplesDir) {
 
 /**
  * Load subscription plan details from subscriptionPlans.yaml in samplesDir.
- * Returns a map of policyName → plan object. Missing file → empty map.
+ * Returns a map of planName → plan object. Missing file → empty map.
  */
 function loadSubscriptionPlans() {
     const plansPath = path.isAbsolute(config.designMode.subscriptionPlansPath)
@@ -42,7 +42,7 @@ function loadSubscriptionPlans() {
     try {
         const plans = yaml.load(fs.readFileSync(plansPath, 'utf-8'));
         if (!Array.isArray(plans)) return {};
-        return Object.fromEntries(plans.map(p => [p.policyName, p]));
+        return Object.fromEntries(plans.map(p => [p.handle, p]));
     } catch (_) {
         return {};
     }
@@ -62,11 +62,11 @@ function parseApiYaml(apiHandle, samplesDir) {
     const name = metadata.name || apiHandle;
 
     const plansMap = loadSubscriptionPlans();
-    const policies = (spec.subscriptionPolicies || []).map(p => {
+    const plans = (spec.subscriptionPlans || []).map(p => {
         const plan = plansMap[p];
         return {
-            policyName: p,
-            displayName: plan?.displayName ?? p,
+            handle: p,
+            name: plan?.name ?? p,
             description: plan?.description ?? '',
             requestCount: plan?.requestCount ?? 1000,
         };
@@ -85,34 +85,27 @@ function parseApiYaml(apiHandle, samplesDir) {
     }
 
     return {
-        apiID: name,
-        apiHandle: name,
-        provider: spec.provider || 'WSO2',
-        apiInfo: {
-            apiName: spec.displayName || name,
-            apiVersion: spec.version || '',
-            apiDescription: spec.description || '',
-            apiType: spec.type || 'REST',
-            apiStatus: spec.status || 'PUBLISHED',
-            visibility: spec.visibility || 'PUBLIC',
-            visibleGroups: spec.visibleGroups || [],
-            tags: spec.tags || [],
-            labels: spec.labels || [],
-            gatewayVendor: 'wso2',
-            gatewayType: spec.gatewayType || null,
-            owners: spec.businessInformation ? {
-                businessOwner: spec.businessInformation.businessOwner,
-                businessOwnerEmail: spec.businessInformation.businessOwnerEmail,
-                technicalOwner: spec.businessInformation.technicalOwner,
-                technicalOwnerEmail: spec.businessInformation.technicalOwnerEmail,
-            } : undefined,
-            apiImageMetadata: Object.keys(apiImageMetadata).length ? apiImageMetadata : undefined,
-        },
+        id: name,
+        handle: name,
+        name: spec.displayName || name,
+        version: spec.version || '',
+        description: spec.description || '',
+        type: spec.type || 'REST',
+        status: spec.status || 'PUBLISHED',
+        tags: spec.tags || [],
+        labels: spec.labels || [],
+        owners: spec.businessInformation ? {
+            businessOwner: spec.businessInformation.businessOwner,
+            businessOwnerEmail: spec.businessInformation.businessOwnerEmail,
+            technicalOwner: spec.businessInformation.technicalOwner,
+            technicalOwnerEmail: spec.businessInformation.technicalOwnerEmail,
+        } : undefined,
+        apiImageMetadata: Object.keys(apiImageMetadata).length ? apiImageMetadata : undefined,
         endPoints: {
             sandboxURL: spec.endpoints?.sandboxUrl || '',
             productionURL: spec.endpoints?.productionUrl || '',
         },
-        subscriptionPolicies: policies,
+        subscriptionPlans: plans,
         docTypes: buildDocTypes(name, samplesDir),
     };
 }

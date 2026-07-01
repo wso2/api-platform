@@ -18,12 +18,10 @@
 package service
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"mime/multipart"
-	pathpkg "path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,14 +29,11 @@ import (
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
-	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"gopkg.in/yaml.v3"
 )
 
 // APIService handles business logic for API operations
@@ -48,44 +43,39 @@ type APIService struct {
 	orgRepo              repository.OrganizationRepository
 	gatewayRepo          repository.GatewayRepository
 	deploymentRepo       repository.DeploymentRepository
-	devPortalRepo        repository.DevPortalRepository
-	publicationRepo      repository.APIPublicationRepository
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	customPolicyRepo     repository.CustomPolicyRepository
 	gatewayEventsService *GatewayEventsService
-	devPortalService     *DevPortalService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
 	orgRepo repository.OrganizationRepository, gatewayRepo repository.GatewayRepository,
 	deploymentRepo repository.DeploymentRepository,
-	devPortalRepo repository.DevPortalRepository, publicationRepo repository.APIPublicationRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	customPolicyRepo repository.CustomPolicyRepository,
-	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil,
-	slogger *slog.Logger) *APIService {
+	gatewayEventsService *GatewayEventsService, apiUtil *utils.APIUtil,
+	slogger *slog.Logger, auditRepo repository.AuditRepository) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
 		orgRepo:              orgRepo,
 		gatewayRepo:          gatewayRepo,
 		deploymentRepo:       deploymentRepo,
-		devPortalRepo:        devPortalRepo,
-		publicationRepo:      publicationRepo,
 		subscriptionPlanRepo: subscriptionPlanRepo,
 		customPolicyRepo:     customPolicyRepo,
 		gatewayEventsService: gatewayEventsService,
-		devPortalService:     devPortalService,
 		apiUtil:              apiUtil,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
 }
 
 // CreateAPI creates a new API with validation and business logic
-func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID string) (*api.RESTAPI, error) {
+func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy string) (*api.RESTAPI, error) {
 	// Validate request
 	if err := s.validateCreateAPIRequest(req, orgUUID); err != nil {
 		return nil, err
@@ -120,7 +110,6 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID string) (*
 
 	// Set default values if not provided
 	if req.CreatedBy == nil || *req.CreatedBy == "" {
-		createdBy := "admin"
 		req.CreatedBy = &createdBy
 	}
 	if req.Kind == nil || *req.Kind == "" {
@@ -152,13 +141,9 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID string) (*
 	// Get the generated UUID from the model (set by CreateAPI)
 	apiUUID := apiModel.ID
 
-	// Automatically create DevPortal association for default DevPortal (use internal UUID)
-	if err := s.createDefaultDevPortalAssociation(apiUUID, orgUUID); err != nil {
-		// Log error but don't fail API creation if default DevPortal association fails
-		s.slogger.Error("Failed to create default DevPortal association for API", "apiUUID", apiUUID, "error", err)
-	}
-
 	s.refreshCustomPolicyUsages(apiUUID, orgUUID, apiModel)
+
+	_ = s.auditRepo.Record("CREATE", apiUUID, "rest_api", orgUUID, createdBy)
 
 	return s.apiUtil.ModelToRESTAPI(apiModel)
 }
@@ -258,7 +243,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID string) (
 }
 
 // UpdateAPI updates an existing API
-func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, orgUUID string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, orgUUID, updatedBy string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
 		return nil, errors.New("API id is required")
 	}
@@ -275,6 +260,11 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 		return nil, constants.ErrAPINotFound
 	}
 
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existingAPIModel.Origin); err != nil {
+		return nil, err
+	}
+
 	// Apply updates using shared helper
 	updatedAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgUUID)
 	if err != nil {
@@ -284,17 +274,20 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 	// Update API in repository
 	updatedAPIModel := s.apiUtil.RESTAPIToModel(updatedAPI, orgUUID)
 	updatedAPIModel.ID = apiUUID // Ensure UUID remains unchanged
+	updatedAPIModel.UpdatedBy = updatedBy
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
 	}
 
 	s.refreshCustomPolicyUsages(apiUUID, orgUUID, updatedAPIModel)
 
+	_ = s.auditRepo.Record("UPDATE", apiUUID, "rest_api", orgUUID, updatedBy)
+
 	return s.apiUtil.ModelToRESTAPI(updatedAPIModel)
 }
 
 // DeleteAPI deletes an API
-func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
+func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 	if apiUUID == "" {
 		return errors.New("API id is required")
 	}
@@ -309,6 +302,11 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 	}
 	if api.OrganizationID != orgUUID {
 		return constants.ErrAPINotFound
+	}
+
+	// DP-originated artifacts may only be deleted once undeployed on all gateways.
+	if err := ensureOriginDeletable(s.deploymentRepo, api.Origin, apiUUID, orgUUID); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -330,6 +328,8 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 		return fmt.Errorf("failed to delete api: %w", err)
 	}
 
+	_ = s.auditRepo.Record("DELETE", apiUUID, "rest_api", orgUUID, deletedBy)
+
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -349,16 +349,16 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 }
 
 // UpdateAPIByHandle updates an existing API identified by handle
-func (s *APIService) UpdateAPIByHandle(handle string, req *api.UpdateRESTAPIRequest, orgId string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPIByHandle(handle string, req *api.UpdateRESTAPIRequest, orgId, updatedBy string) (*api.RESTAPI, error) {
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	return s.UpdateAPI(apiUUID, req, orgId)
+	return s.UpdateAPI(apiUUID, req, orgId, updatedBy)
 }
 
 // DeleteAPIByHandle deletes an API identified by handle
-func (s *APIService) DeleteAPIByHandle(handle, orgId string) error {
+func (s *APIService) DeleteAPIByHandle(handle, orgId, deletedBy string) error {
 	// Get API UUID by handle
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
@@ -366,7 +366,7 @@ func (s *APIService) DeleteAPIByHandle(handle, orgId string) error {
 	}
 
 	// Delete API using existing UUID-based method
-	return s.DeleteAPI(apiUUID, orgId)
+	return s.DeleteAPI(apiUUID, orgId, deletedBy)
 }
 
 // AddGatewaysToAPIByHandle associates multiple gateways with an API identified by handle
@@ -387,36 +387,8 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string) (*api.RESTAPIG
 	return s.GetAPIGateways(apiUUID, orgId)
 }
 
-// PublishAPIToDevPortalByHandle publishes an API identified by handle to a DevPortal
-func (s *APIService) PublishAPIToDevPortalByHandle(handle string, req *api.PublishToDevPortalRequest, orgID string) error {
-	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
-	if err != nil {
-		return err
-	}
-	return s.PublishAPIToDevPortal(apiUUID, req, orgID)
-}
-
-// UnpublishAPIFromDevPortalByHandle unpublishes an API identified by handle from a DevPortal
-func (s *APIService) UnpublishAPIFromDevPortalByHandle(handle, devPortalUUID, orgID string) error {
-	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
-	if err != nil {
-		return err
-	}
-	return s.UnpublishAPIFromDevPortal(apiUUID, devPortalUUID, orgID)
-}
-
-// GetAPIPublicationsByHandle retrieves all DevPortals associated with an API identified by handle
-func (s *APIService) GetAPIPublicationsByHandle(handle, orgID string) (*api.RESTAPIDevPortalListResponse, error) {
-	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
-	if err != nil {
-		return nil, err
-	}
-	return s.GetAPIPublications(apiUUID, orgID)
-}
-
 // AddGatewaysToAPI associates multiple gateways with an API
 func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID string) (*api.RESTAPIGatewayListResponse, error) {
-	// Validate that the API exists and belongs to the organization
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -427,8 +399,6 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
-
-	// Validate that all gateways exist and belong to the same organization
 	var validGateways []*model.Gateway
 	for _, gatewayId := range gatewayIds {
 		gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
@@ -443,34 +413,26 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 		}
 		validGateways = append(validGateways, gateway)
 	}
-
-	// Get existing associations to determine which are new vs existing
 	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-
 	existingGatewayIds := make(map[string]bool)
 	for _, assoc := range existingAssociations {
-		existingGatewayIds[assoc.ResourceID] = true
+		existingGatewayIds[assoc.GatewayID] = true
 	}
-
-	// Process each gateway: create new associations or update existing ones
 	for _, gateway := range validGateways {
 		if existingGatewayIds[gateway.ID] {
-			// Update existing association timestamp
 			if err := s.apiRepo.UpdateAPIAssociation(apiUUID, gateway.ID, constants.AssociationTypeGateway, orgUUID); err != nil {
 				return nil, err
 			}
 		} else {
-			// Create new association
 			association := &model.APIAssociation{
-				ArtifactID:      apiUUID,
-				OrganizationID:  orgUUID,
-				ResourceID:      gateway.ID,
-				AssociationType: constants.AssociationTypeGateway,
-				CreatedAt:       time.Now(),
-				UpdatedAt:       time.Now(),
+				ArtifactID:     apiUUID,
+				OrganizationID: orgUUID,
+				GatewayID:      gateway.ID,
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
 			}
 			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 				return nil, err
@@ -478,14 +440,11 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 			existingGatewayIds[gateway.ID] = true
 		}
 	}
-
-	// Return all gateways currently associated with the API including deployment details
 	return s.GetAPIGateways(apiUUID, orgUUID)
 }
 
 // GetAPIGateways retrieves all gateways associated with an API including deployment details
 func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewayListResponse, error) {
-	// Validate that the API exists and belongs to the organization
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -496,56 +455,15 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewa
 	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
-
-	// Get all gateways associated with this API including deployment details
 	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-
 	response, err := apiGatewayDetailsToAPIList(gatewayDetails)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert API gateway details: %w", err)
 	}
-
 	return response, nil
-}
-
-// createDefaultDevPortalAssociation creates an association between the API and the default DevPortal
-func (s *APIService) createDefaultDevPortalAssociation(apiId, orgId string) error {
-	// Get default DevPortal for the organization
-	defaultDevPortal, err := s.devPortalRepo.GetDefaultByOrganizationUUID(orgId)
-	if err != nil {
-		// If no default DevPortal exists, skip association (not an error)
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			s.slogger.Info("No default DevPortal found for organization, skipping association", "orgId", orgId)
-			return nil
-		}
-		return fmt.Errorf("failed to get default DevPortal: %w", err)
-	}
-
-	// Create API-DevPortal association
-	association := &model.APIAssociation{
-		ArtifactID:      apiId,
-		OrganizationID:  orgId,
-		ResourceID:      defaultDevPortal.UUID,
-		AssociationType: constants.AssociationTypeDevPortal,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-	}
-
-	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
-		// Check if association already exists (shouldn't happen, but handle gracefully)
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") ||
-			strings.Contains(err.Error(), "duplicate key") {
-			s.slogger.Info("API association with default DevPortal already exists", "apiId", apiId)
-			return nil
-		}
-		return fmt.Errorf("failed to create API-DevPortal association: %w", err)
-	}
-
-	s.slogger.Info("Successfully created association between API and default DevPortal", "apiId", apiId, "devPortalUUID", defaultDevPortal.UUID)
-	return nil
 }
 
 // Validation methods
@@ -633,25 +551,28 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	return nil
 }
 
-// validateSubscriptionPlans ensures each plan name exists in the organization and is ACTIVE.
-// It normalizes planNames in place by trimming each element. Repository errors are returned
+// validateSubscriptionPlans ensures each plan handle exists in the organization and is ACTIVE.
+// It normalizes planHandles in place by trimming each element. Repository errors are returned
 // directly; ErrSubscriptionPlanNotFoundOrInactive is only returned when plan is nil or inactive.
-func (s *APIService) validateSubscriptionPlans(planNames *[]string, orgUUID string) error {
-	if planNames == nil || len(*planNames) == 0 {
+func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID string) error {
+	if planHandles == nil || len(*planHandles) == 0 {
 		return nil
 	}
-	for i := range *planNames {
-		(*planNames)[i] = strings.TrimSpace((*planNames)[i])
-		name := (*planNames)[i]
-		if name == "" {
+	for i := range *planHandles {
+		(*planHandles)[i] = strings.TrimSpace((*planHandles)[i])
+		handle := (*planHandles)[i]
+		if handle == "" {
 			continue
 		}
-		plan, err := s.subscriptionPlanRepo.GetByNameAndOrg(name, orgUUID)
+		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
+			}
 			return err
 		}
 		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
-			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, name)
+			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
 		}
 	}
 	return nil
@@ -842,503 +763,6 @@ func (s *APIService) generateDefaultChannels(asyncAPIType *string) []api.Channel
 	}
 }
 
-// ImportAPIProject imports an API project from a Git repository
-func (s *APIService) ImportAPIProject(req *api.ImportAPIProjectRequest, orgUUID string, gitService GitService) (*api.RESTAPI, error) {
-	// 1. Validate if there is a .api-platform directory with config.yaml
-	config, err := gitService.ValidateAPIProject(req.RepoUrl, req.Branch, req.Path)
-	if err != nil {
-		if strings.Contains(err.Error(), "api project not found") {
-			return nil, constants.ErrAPIProjectNotFound
-		}
-		if strings.Contains(err.Error(), "malformed api project") {
-			return nil, constants.ErrMalformedAPIProject
-		}
-		if strings.Contains(err.Error(), "invalid api project") {
-			return nil, constants.ErrInvalidAPIProject
-		}
-		return nil, err
-	}
-
-	// For now, we'll process the first API in the config (can be extended later for multiple APIs)
-	if len(config.APIs) == 0 {
-		return nil, constants.ErrMalformedAPIProject
-	}
-
-	apiConfig := config.APIs[0]
-
-	// 5. Fetch the WSO2 artifact file content
-	wso2ArtifactClean := pathpkg.Clean(apiConfig.WSO2Artifact)
-	wso2ArtifactPath := pathpkg.Join(req.Path, wso2ArtifactClean)
-	artifactData, err := gitService.FetchWSO2Artifact(req.RepoUrl, req.Branch, wso2ArtifactPath)
-	if err != nil {
-		return nil, constants.ErrWSO2ArtifactNotFound
-	}
-
-	createReq := s.createRequestFromAPIYAMLData(&artifactData.Spec)
-	// Overwrite scalar fields from user input (user data takes precedence)
-	createReq.Name = req.Api.Name
-	createReq.Context = req.Api.Context
-	createReq.Version = req.Api.Version
-	createReq.ProjectId = req.Api.ProjectId
-	// Optional overrides
-	if req.Api.Id != nil && *req.Api.Id != "" {
-		createReq.Id = req.Api.Id
-	}
-	if req.Api.Description != nil && *req.Api.Description != "" {
-		createReq.Description = req.Api.Description
-	}
-	if req.Api.CreatedBy != nil && *req.Api.CreatedBy != "" {
-		createReq.CreatedBy = req.Api.CreatedBy
-	}
-	if req.Api.Kind != nil && *req.Api.Kind != "" {
-		createReq.Kind = req.Api.Kind
-	}
-	if req.Api.LifeCycleStatus != nil && string(*req.Api.LifeCycleStatus) != "" {
-		status := api.CreateRESTAPIRequestLifeCycleStatus(*req.Api.LifeCycleStatus)
-		createReq.LifeCycleStatus = &status
-	}
-	if req.Api.Transport != nil && len(*req.Api.Transport) > 0 {
-		createReq.Transport = req.Api.Transport
-	}
-
-	// Fallback: if YAML doesn't provide upstream/operations and user input does, use user input.
-	if s.isEmptyUpstream(createReq.Upstream) && !s.isEmptyUpstream(req.Api.Upstream) {
-		createReq.Upstream = req.Api.Upstream
-	}
-	if (createReq.Operations == nil || len(*createReq.Operations) == 0) && req.Api.Operations != nil && len(*req.Api.Operations) > 0 {
-		ops := *req.Api.Operations
-		createReq.Operations = &ops
-	}
-	if (createReq.Policies == nil || len(*createReq.Policies) == 0) && req.Api.Policies != nil && len(*req.Api.Policies) > 0 {
-		policies := *req.Api.Policies
-		createReq.Policies = &policies
-	}
-
-	return s.CreateAPI(createReq, orgUUID)
-}
-
-// ValidateAndRetrieveAPIProject validates an API project from Git repository with comprehensive checks
-func (s *APIService) ValidateAndRetrieveAPIProject(req *api.ValidateAPIProjectRequest,
-	gitService GitService) (*api.RESTAPIProjectValidationResponse, error) {
-	errorsList := make([]string, 0)
-	response := &api.RESTAPIProjectValidationResponse{
-		IsRESTAPIProjectValid:    false,
-		IsAPIConfigValid:         false,
-		IsRESTAPIDefinitionValid: false,
-		Errors:                   nil,
-		Api:                      nil,
-	}
-
-	// Step 1: Check if .api-platform directory exists and validate config
-	config, err := gitService.ValidateAPIProject(req.RepoUrl, req.Branch, req.Path)
-	if err != nil {
-		errorsList = append(errorsList, err.Error())
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Process the first API entry (assuming single API per project for now)
-	apiEntry := config.APIs[0]
-
-	// Step 3: Fetch OpenAPI definition
-	openAPIClean := pathpkg.Clean(apiEntry.OpenAPI)
-	openAPIPath := pathpkg.Join(req.Path, openAPIClean)
-	openAPIContent, err := gitService.FetchFileContent(req.RepoUrl, req.Branch, openAPIPath)
-	if err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("failed to fetch OpenAPI file: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Basic OpenAPI validation (check if it's valid YAML/JSON with required fields)
-	if err := s.apiUtil.ValidateOpenAPIDefinition(openAPIContent); err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("invalid OpenAPI definition: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	response.IsRESTAPIDefinitionValid = true
-
-	// Step 4: Fetch WSO2 artifact (api.yaml)
-	wso2ArtifactClean := pathpkg.Clean(apiEntry.WSO2Artifact)
-	wso2ArtifactPath := pathpkg.Join(req.Path, wso2ArtifactClean)
-	wso2ArtifactContent, err := gitService.FetchFileContent(req.RepoUrl, req.Branch, wso2ArtifactPath)
-	if err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("failed to fetch WSO2 artifact file: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	var wso2Artifact dto.APIDeploymentYAML
-	if err := yaml.Unmarshal(wso2ArtifactContent, &wso2Artifact); err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("invalid WSO2 artifact format: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Step 5: Validate WSO2 artifact structure
-	if err := s.apiUtil.ValidateWSO2Artifact(&wso2Artifact); err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("invalid WSO2 artifact: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	response.IsAPIConfigValid = true
-
-	// Step 6: Check if OpenAPI and WSO2 artifact match (optional validation)
-	if err := s.apiUtil.ValidateAPIDefinitionConsistency(openAPIContent, &wso2Artifact); err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("API definitions mismatch: %s", err.Error()))
-		response.Errors = &errorsList
-		response.IsRESTAPIProjectValid = false
-		return response, nil
-	}
-
-	// Step 7: If all validations pass, convert to API DTO
-	artifactREST := s.restAPIFromAPIYAMLData(&wso2Artifact.Spec)
-	response.Api = s.restAPIToProjectValidationAPI(artifactREST)
-	response.IsRESTAPIProjectValid = response.IsAPIConfigValid && response.IsRESTAPIDefinitionValid
-	if len(errorsList) > 0 {
-		response.Errors = &errorsList
-	}
-
-	return response, nil
-}
-
-// PublishAPIToDevPortal publishes an API to a specific DevPortal
-func (s *APIService) PublishAPIToDevPortal(apiID string, req *api.PublishToDevPortalRequest, orgID string) error {
-	// Get the API
-	apiREST, err := s.GetAPIByUUID(apiID, orgID)
-	if err != nil {
-		return err
-	}
-
-	// Publish API to DevPortal
-	return s.devPortalService.PublishAPIToDevPortal(apiID, apiREST, req, orgID)
-}
-
-// UnpublishAPIFromDevPortal unpublishes an API from a specific DevPortal
-func (s *APIService) UnpublishAPIFromDevPortal(apiID, devPortalUUID, orgID string) error {
-	// Unpublish API from DevPortal
-	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID)
-}
-
-// GetAPIPublications retrieves all DevPortals associated with an API including publication details
-// This mirrors the GetAPIGateways implementation for consistency
-func (s *APIService) GetAPIPublications(apiUUID, orgUUID string) (*api.RESTAPIDevPortalListResponse, error) {
-	// Validate that the API exists and belongs to the organization
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Get all DevPortals associated with this API including publication details
-	devPortalDetails, err := s.publicationRepo.GetAPIDevPortalsWithDetails(apiUUID, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get API-DevPortal associations: %w", err)
-	}
-
-	// Convert models to API types with publication details
-	responses := make([]api.RESTAPIDevPortalResponse, 0, len(devPortalDetails))
-	for _, dpd := range devPortalDetails {
-		response, err := s.convertToAPIDevPortalResponse(dpd)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert API DevPortal response: %w", err)
-		}
-		responses = append(responses, response)
-	}
-
-	// Create paginated response
-	listResponse := &api.RESTAPIDevPortalListResponse{
-		Count: len(responses),
-		List:  responses,
-		Pagination: api.Pagination{
-			Total:  len(responses),
-			Offset: 0,
-			Limit:  len(responses),
-		},
-	}
-
-	return listResponse, nil
-}
-
-// convertToAPIDevPortalResponse converts APIDevPortalWithDetails to RESTAPIDevPortalResponse
-func (s *APIService) convertToAPIDevPortalResponse(dpd *model.APIDevPortalWithDetails) (api.RESTAPIDevPortalResponse, error) {
-	// Parse UUIDs
-	orgUUID, err := uuid.Parse(dpd.OrganizationUUID)
-	if err != nil {
-		return api.RESTAPIDevPortalResponse{}, fmt.Errorf("failed to parse OrganizationUUID: %w", err)
-	}
-	portalUUID, err := uuid.Parse(dpd.UUID)
-	if err != nil {
-		return api.RESTAPIDevPortalResponse{}, fmt.Errorf("failed to parse UUID: %w", err)
-	}
-	visibility := api.RESTAPIDevPortalResponseVisibility(dpd.Visibility)
-
-	// Create the API DevPortal response
-	apiDevPortalResponse := api.RESTAPIDevPortalResponse{
-		ApiUrl:           dpd.APIUrl,
-		AssociatedAt:     dpd.AssociatedAt,
-		CreatedAt:        dpd.CreatedAt,
-		Description:      utils.StringPtrIfNotEmpty(dpd.Description),
-		Hostname:         dpd.Hostname,
-		Identifier:       dpd.Identifier,
-		IsActive:         dpd.IsActive,
-		IsDefault:        dpd.IsDefault,
-		IsEnabled:        dpd.IsEnabled,
-		IsPublished:      dpd.IsPublished,
-		Name:             dpd.Name,
-		OrganizationUuid: orgUUID,
-		UiUrl:            fmt.Sprintf("%s/%s/views/default/apis", dpd.APIUrl, dpd.Identifier),
-		UpdatedAt:        dpd.UpdatedAt,
-		Uuid:             portalUUID,
-		Visibility:       visibility,
-	}
-
-	// Add publication details if published
-	if dpd.IsPublished && dpd.PublishedAt != nil {
-		status := api.RESTAPIPublicationDetailsStatusPublished
-		if dpd.PublicationStatus != nil && *dpd.PublicationStatus != "" {
-			status = api.RESTAPIPublicationDetailsStatus(*dpd.PublicationStatus)
-		}
-
-		publicationDetails := api.RESTAPIPublicationDetails{
-			Status:      status,
-			PublishedAt: *dpd.PublishedAt,
-		}
-
-		if dpd.APIVersion != nil {
-			publicationDetails.ApiVersion = dpd.APIVersion
-		}
-		if dpd.DevPortalRefID != nil {
-			publicationDetails.DevPortalRefId = dpd.DevPortalRefID
-		}
-		if dpd.SandboxEndpointURL != nil {
-			publicationDetails.SandboxEndpoint = dpd.SandboxEndpointURL
-		}
-		if dpd.ProductionEndpointURL != nil {
-			publicationDetails.ProductionEndpoint = dpd.ProductionEndpointURL
-		}
-
-		apiDevPortalResponse.Publication = &publicationDetails
-	}
-
-	return apiDevPortalResponse, nil
-}
-
-// ValidateOpenAPIDefinition validates an OpenAPI definition from multipart form data
-func (s *APIService) ValidateOpenAPIDefinition(url *string, definition *multipart.FileHeader) (*api.OpenAPIValidationResponse, error) {
-	errorsList := make([]string, 0)
-	response := &api.OpenAPIValidationResponse{
-		IsRESTAPIDefinitionValid: false,
-		Errors:                   nil,
-		Api:                      nil,
-	}
-
-	var content []byte
-	var err error
-
-	// If URL is provided, fetch content from URL
-	if url != nil && *url != "" {
-		content, err = s.apiUtil.FetchOpenAPIFromURL(*url)
-		if err != nil {
-			content = make([]byte, 0)
-			errorsList = append(errorsList, fmt.Sprintf("failed to fetch OpenAPI from URL: %s", err.Error()))
-		}
-	}
-
-	// If definition file is provided, read from file
-	if definition != nil {
-		file, err := definition.Open()
-		if err != nil {
-			errorsList = append(errorsList, fmt.Sprintf("failed to open definition file: %s", err.Error()))
-			response.Errors = &errorsList
-			return response, nil
-		}
-		defer file.Close()
-
-		content, err = io.ReadAll(file)
-		if err != nil {
-			errorsList = append(errorsList, fmt.Sprintf("failed to read definition file: %s", err.Error()))
-			response.Errors = &errorsList
-			return response, nil
-		}
-	}
-
-	// If neither URL nor file is provided
-	if len(content) == 0 {
-		errorsList = append(errorsList, "either URL or definition file must be provided")
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Validate the OpenAPI definition
-	if err := s.apiUtil.ValidateOpenAPIDefinition(content); err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("invalid OpenAPI definition: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Parse API specification to extract metadata directly into API DTO using libopenapi
-	parsed, err := s.apiUtil.ParseAPIDefinitionToRESTAPI(content)
-	if err != nil {
-		errorsList = append(errorsList, fmt.Sprintf("failed to parse API specification: %s", err.Error()))
-		response.Errors = &errorsList
-		return response, nil
-	}
-
-	// Set the parsed API for response
-	response.IsRESTAPIDefinitionValid = true
-	response.Api = s.restAPIToOpenAPIValidationAPI(parsed)
-	if len(errorsList) > 0 {
-		response.Errors = &errorsList
-	}
-
-	return response, nil
-}
-
-// ImportFromOpenAPI imports an API from an OpenAPI definition
-func (s *APIService) ImportFromOpenAPI(userAPI *api.RESTAPI, url *string, definition *multipart.FileHeader, orgId string) (*api.RESTAPI, error) {
-	var content []byte
-	var err error
-	var errorList []string
-
-	// If URL is provided, fetch content from URL
-	if url != nil && *url != "" {
-		content, err = s.apiUtil.FetchOpenAPIFromURL(*url)
-		if err != nil {
-			content = make([]byte, 0)
-			errorList = append(errorList, fmt.Sprintf("failed to fetch OpenAPI from URL: %s", err.Error()))
-		}
-	}
-
-	// If definition file is provided, read from file
-	if definition != nil {
-		file, err := definition.Open()
-		if err != nil {
-			errorList = append(errorList, fmt.Sprintf("failed to open OpenAPI definition file: %s", err.Error()))
-			return nil, errors.New(strings.Join(errorList, "; "))
-		}
-		defer file.Close()
-
-		content, err = io.ReadAll(file)
-		if err != nil {
-			errorList = append(errorList, fmt.Sprintf("failed to read OpenAPI definition file: %s", err.Error()))
-			return nil, errors.New(strings.Join(errorList, "; "))
-		}
-	}
-
-	// If neither URL nor file is provided
-	if len(content) == 0 {
-		errorList = append(errorList, "either URL or definition file must be provided")
-		return nil, errors.New(strings.Join(errorList, "; "))
-	}
-
-	// Validate and parse the OpenAPI definition
-	apiDetails, err := s.apiUtil.ValidateAndParseOpenAPIToRESTAPI(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate and parse OpenAPI definition: %w", err)
-	}
-
-	// Merge provided API details with extracted details from OpenAPI
-	mergedAPI := s.apiUtil.MergeRESTAPIDetails(userAPI, apiDetails)
-	if mergedAPI == nil {
-		return nil, errors.New("failed to merge API details")
-	}
-
-	// Create API using existing CreateAPI logic
-	createReq := s.restAPIToCreateRequest(mergedAPI)
-
-	err = s.validateCreateAPIRequest(createReq, orgId)
-	if err != nil {
-		return nil, fmt.Errorf("validation failed for merged API details: %w", err)
-	}
-
-	// Create the API
-	return s.CreateAPI(createReq, orgId)
-}
-
-// ValidateAPI validates if an API with the given identifier or name+version combination exists within an organization
-func (s *APIService) ValidateAPI(params *api.ValidateRESTAPIParams, orgUUID string) (*api.RESTAPIValidationResponse, error) {
-	var identifier, name, version string
-	if params != nil {
-		if params.Identifier != nil {
-			identifier = string(*params.Identifier)
-		}
-		if params.Name != nil {
-			name = string(*params.Name)
-		}
-		if params.Version != nil {
-			version = string(*params.Version)
-		}
-	}
-
-	// Validate request - either identifier OR both name and version must be provided
-	if identifier == "" && (name == "" || version == "") {
-		return nil, errors.New("either 'identifier' or both 'name' and 'version' parameters are required")
-	}
-
-	// Check if organization exists
-	organization, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if organization == nil {
-		return nil, constants.ErrOrganizationNotFound
-	}
-
-	var exists bool
-	var validationError *struct {
-		Code    string `json:"code" yaml:"code"`
-		Message string `json:"message" yaml:"message"`
-	}
-
-	// Check existence based on the provided parameters
-	if identifier != "" {
-		// Validate by identifier
-		exists, err = s.apiRepo.CheckAPIExistsByHandleInOrganization(identifier, orgUUID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check API existence by identifier: %w", err)
-		}
-		if exists {
-			validationError = &struct {
-				Code    string `json:"code" yaml:"code"`
-				Message string `json:"message" yaml:"message"`
-			}{
-				Code:    "api-identifier-already-exists",
-				Message: fmt.Sprintf("An API with identifier '%s' already exists in the organization.", identifier),
-			}
-		}
-	} else {
-		// Validate by name and version
-		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, "")
-		if err != nil {
-			return nil, fmt.Errorf("failed to check API existence by name and version: %w", err)
-		}
-		if exists {
-			validationError = &struct {
-				Code    string `json:"code" yaml:"code"`
-				Message string `json:"message" yaml:"message"`
-			}{
-				Code: "api-name-version-already-exists",
-				Message: fmt.Sprintf("The API name '%s' with version '%s' already exists in the organization.",
-					name, version),
-			}
-		}
-	}
-
-	// Create response
-	return &api.RESTAPIValidationResponse{
-		Valid: !exists,
-		Error: validationError,
-	}, nil
-}
-
 func (s *APIService) isEmptyUpstream(upstream api.Upstream) bool {
 	if !s.isEmptyUpstreamDefinition(upstream.Main) {
 		return false
@@ -1387,306 +811,6 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 		Transport:         req.Transport,
 		Upstream:          req.Upstream,
 		Version:           req.Version,
-	}
-}
-
-func (s *APIService) restAPIToCreateRequest(rest *api.RESTAPI) *api.CreateRESTAPIRequest {
-	if rest == nil {
-		return nil
-	}
-
-	req := &api.CreateRESTAPIRequest{
-		Name:      rest.Name,
-		Context:   rest.Context,
-		Version:   rest.Version,
-		ProjectId: rest.ProjectId,
-		Upstream:  rest.Upstream,
-	}
-
-	if rest.Id != nil && *rest.Id != "" {
-		req.Id = rest.Id
-	}
-	if rest.Description != nil && *rest.Description != "" {
-		req.Description = rest.Description
-	}
-	if rest.CreatedBy != nil && *rest.CreatedBy != "" {
-		req.CreatedBy = rest.CreatedBy
-	}
-	if rest.Kind != nil && *rest.Kind != "" {
-		req.Kind = rest.Kind
-	}
-	if rest.LifeCycleStatus != nil && string(*rest.LifeCycleStatus) != "" {
-		status := api.CreateRESTAPIRequestLifeCycleStatus(*rest.LifeCycleStatus)
-		req.LifeCycleStatus = &status
-	}
-	if rest.Transport != nil && len(*rest.Transport) > 0 {
-		req.Transport = rest.Transport
-	}
-	if rest.Operations != nil && len(*rest.Operations) > 0 {
-		req.Operations = rest.Operations
-	}
-	if rest.Channels != nil && len(*rest.Channels) > 0 {
-		req.Channels = rest.Channels
-	}
-	if rest.Policies != nil && len(*rest.Policies) > 0 {
-		req.Policies = rest.Policies
-	}
-	if rest.SubscriptionPlans != nil && len(*rest.SubscriptionPlans) > 0 {
-		req.SubscriptionPlans = rest.SubscriptionPlans
-	}
-
-	return req
-}
-
-func (s *APIService) createRequestFromAPIYAMLData(yamlData *dto.APIYAMLData) *api.CreateRESTAPIRequest {
-	// NOTE: project ID must be set by caller.
-	req := &api.CreateRESTAPIRequest{
-		Name:      "",
-		Context:   "",
-		Version:   "",
-		ProjectId: openapi_types.UUID{},
-		Upstream:  api.Upstream{},
-	}
-	if yamlData == nil {
-		return req
-	}
-
-	req.Name = yamlData.DisplayName
-	req.Context = yamlData.Context
-	req.Version = yamlData.Version
-
-	// Upstream
-	if yamlData.Upstream != nil {
-		req.Upstream = s.upstreamFromYAML(yamlData.Upstream)
-	}
-
-	// Policies
-	if len(yamlData.Policies) > 0 {
-		policies := make([]api.Policy, len(yamlData.Policies))
-		for i, p := range yamlData.Policies {
-			policies[i] = api.Policy{
-				ExecutionCondition: p.ExecutionCondition,
-				Name:               p.Name,
-				Params:             p.Params,
-				Version:            p.Version,
-			}
-		}
-		req.Policies = &policies
-	}
-
-	// SubscriptionPlans
-	if len(yamlData.SubscriptionPlans) > 0 {
-		req.SubscriptionPlans = &yamlData.SubscriptionPlans
-	}
-
-	// Operations
-	if len(yamlData.Operations) > 0 {
-		ops := make([]api.Operation, len(yamlData.Operations))
-		for i, op := range yamlData.Operations {
-			// Keep behavior consistent with previous DTO mapping.
-			name := fmt.Sprintf("Operation-%d", i+1)
-			description := fmt.Sprintf("Operation for %s %s", op.Method, op.Path)
-			policies := op.Policies
-			if policies == nil {
-				policies = &[]api.Policy{}
-			}
-			ops[i] = api.Operation{
-				Name:        utils.StringPtrIfNotEmpty(name),
-				Description: utils.StringPtrIfNotEmpty(description),
-				Request: api.OperationRequest{
-					Method:   api.OperationRequestMethod(op.Method),
-					Path:     op.Path,
-					Policies: policies,
-				},
-			}
-		}
-		req.Operations = &ops
-	}
-
-	return req
-}
-
-func (s *APIService) restAPIFromAPIYAMLData(yamlData *dto.APIYAMLData) *api.RESTAPI {
-	// Convert YAML to a RESTAPI shape suitable for validation responses.
-	createReq := s.createRequestFromAPIYAMLData(yamlData)
-	// Use empty handle and empty project ID for validation endpoints.
-	createReq.ProjectId = openapi_types.UUID{}
-	return s.createRequestToRESTAPI(createReq, "")
-}
-
-func (s *APIService) upstreamFromYAML(upstream *dto.UpstreamYAML) api.Upstream {
-	if upstream == nil {
-		return api.Upstream{}
-	}
-
-	var main api.UpstreamDefinition
-	if upstream.Main != nil {
-		main = api.UpstreamDefinition{
-			Url: utils.StringPtrIfNotEmpty(upstream.Main.URL),
-			Ref: utils.StringPtrIfNotEmpty(upstream.Main.Ref),
-		}
-	}
-
-	var sandbox *api.UpstreamDefinition
-	if upstream.Sandbox != nil {
-		def := api.UpstreamDefinition{
-			Url: utils.StringPtrIfNotEmpty(upstream.Sandbox.URL),
-			Ref: utils.StringPtrIfNotEmpty(upstream.Sandbox.Ref),
-		}
-		sandbox = &def
-	}
-
-	return api.Upstream{Main: main, Sandbox: sandbox}
-}
-
-func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct {
-	Channels          *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
-	Context           string                                                  `binding:"required" json:"context" yaml:"context"`
-	CreatedAt         *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy         *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description       string                                                  `json:"description" yaml:"description"`
-	Id                *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind              *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
-	LifeCycleStatus   *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name              string                                                  `binding:"required" json:"name" yaml:"name"`
-	Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
-	Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
-	ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
-	SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-	Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream          api.Upstream                                            `json:"upstream" yaml:"upstream"`
-	Version           string                                                  `binding:"required" json:"version" yaml:"version"`
-} {
-	if restAPI == nil {
-		return nil
-	}
-
-	desc := ""
-	if restAPI.Description != nil {
-		desc = *restAPI.Description
-	}
-
-	var status *api.RESTAPIProjectValidationResponseApiLifeCycleStatus
-	if restAPI.LifeCycleStatus != nil {
-		v := api.RESTAPIProjectValidationResponseApiLifeCycleStatus(*restAPI.LifeCycleStatus)
-		status = &v
-	}
-
-	operations := []api.Operation{}
-	if restAPI.Operations != nil {
-		operations = *restAPI.Operations
-	}
-
-	return &struct {
-		Channels          *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context           string                                                  `binding:"required" json:"context" yaml:"context"`
-		CreatedAt         *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-		CreatedBy         *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description       string                                                  `json:"description" yaml:"description"`
-		Id                *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
-		Kind              *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
-		LifeCycleStatus   *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-		Name              string                                                  `binding:"required" json:"name" yaml:"name"`
-		Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
-		Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
-		ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
-		SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-		Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
-		UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		Upstream          api.Upstream                                            `json:"upstream" yaml:"upstream"`
-		Version           string                                                  `binding:"required" json:"version" yaml:"version"`
-	}{
-		Channels:          restAPI.Channels,
-		Context:           restAPI.Context,
-		CreatedAt:         restAPI.CreatedAt,
-		CreatedBy:         restAPI.CreatedBy,
-		Description:       desc,
-		Id:                restAPI.Id,
-		Kind:              restAPI.Kind,
-		LifeCycleStatus:   status,
-		Name:              restAPI.Name,
-		Operations:        operations,
-		Policies:          restAPI.Policies,
-		ProjectId:         openapi_types.UUID{},
-		SubscriptionPlans: restAPI.SubscriptionPlans,
-		Transport:         restAPI.Transport,
-		UpdatedAt:         restAPI.UpdatedAt,
-		Upstream:          restAPI.Upstream,
-		Version:           restAPI.Version,
-	}
-}
-
-func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct {
-	Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-	Context           string                                           `binding:"required" json:"context" yaml:"context"`
-	CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-	Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-	LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name              string                                           `binding:"required" json:"name" yaml:"name"`
-	Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
-	Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-	ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-	SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-	Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
-	Version           string                                           `binding:"required" json:"version" yaml:"version"`
-} {
-	if restAPI == nil {
-		return nil
-	}
-
-	var status *api.OpenAPIValidationResponseApiLifeCycleStatus
-	if restAPI.LifeCycleStatus != nil {
-		v := api.OpenAPIValidationResponseApiLifeCycleStatus(*restAPI.LifeCycleStatus)
-		status = &v
-	}
-
-	operations := []api.Operation{}
-	if restAPI.Operations != nil {
-		operations = *restAPI.Operations
-	}
-
-	return &struct {
-		Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context           string                                           `binding:"required" json:"context" yaml:"context"`
-		CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-		CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-		Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-		Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-		LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-		Name              string                                           `binding:"required" json:"name" yaml:"name"`
-		Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
-		Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-		ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-		SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-		Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-		UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
-		Version           string                                           `binding:"required" json:"version" yaml:"version"`
-	}{
-		Channels:          restAPI.Channels,
-		Context:           restAPI.Context,
-		CreatedAt:         restAPI.CreatedAt,
-		CreatedBy:         restAPI.CreatedBy,
-		Description:       restAPI.Description,
-		Id:                restAPI.Id,
-		Kind:              restAPI.Kind,
-		LifeCycleStatus:   status,
-		Name:              restAPI.Name,
-		Operations:        operations,
-		Policies:          restAPI.Policies,
-		ProjectId:         openapi_types.UUID{},
-		SubscriptionPlans: restAPI.SubscriptionPlans,
-		Transport:         restAPI.Transport,
-		UpdatedAt:         restAPI.UpdatedAt,
-		Upstream:          restAPI.Upstream,
-		Version:           restAPI.Version,
 	}
 }
 
@@ -1745,7 +869,7 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 		AssociatedAt:      gwd.AssociatedAt,
 		CreatedAt:         utils.TimePtrIfNotZero(gwd.CreatedAt),
 		Description:       utils.StringPtrIfNotEmpty(gwd.Description),
-		DisplayName:       utils.StringPtrIfNotEmpty(gwd.DisplayName),
+		DisplayName:       utils.StringPtrIfNotEmpty(gwd.Handle),
 		FunctionalityType: restAPIGatewayFunctionalityTypePtr(gwd.FunctionalityType),
 		Id:                gatewayID,
 		IsActive:          utils.BoolPtr(gwd.IsActive),

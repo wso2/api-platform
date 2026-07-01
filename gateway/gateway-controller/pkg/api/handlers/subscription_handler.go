@@ -24,8 +24,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/wso2/go-httpkit/httputil"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -33,30 +33,30 @@ import (
 )
 
 // CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
-func (s *APIServer) CreateSubscription(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) CreateSubscription(w http.ResponseWriter, r *http.Request) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
 	var req api.SubscriptionCreateRequest
-	if err := s.bindRequestBody(c, &req); err != nil {
+	if err := s.bindRequestBody(r, &req); err != nil {
 		log.Warn("Invalid subscription create body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
 		return
 	}
 	if strings.TrimSpace(req.ApiId) == "" {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiId is required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiId is required"})
 		return
 	}
 	if strings.TrimSpace(req.SubscriptionToken) == "" {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "subscriptionToken is required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "subscriptionToken is required"})
 		return
 	}
 
 	// Resolve apiId (deployment ID or handle) to the internal deployment ID used for persistence.
-	apiID, err := s.resolveAPIIDByHandle(c, req.ApiId, log)
+	apiID, err := s.resolveAPIIDByHandle(w, r, req.ApiId, log)
 	if err != nil {
 		// resolveAPIIDByHandle already wrote the appropriate response.
 		return
@@ -69,14 +69,14 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 			log.Warn("Subscription plan not found for subscription creation",
 				slog.String("subscription_plan_id", *req.SubscriptionPlanId),
 				slog.String("api_id", apiID))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: "Subscription plan not found or not enabled",
 			})
 			return
 		}
 		if plan.Status != models.SubscriptionPlanStatusActive {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: "Subscription plan is not active",
 			})
@@ -86,7 +86,7 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		if err != nil || cfg == nil {
 			log.Error("Failed to load API configuration for subscription plan validation",
 				slog.String("api_id", apiID), slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to validate subscription plan",
 			})
@@ -103,7 +103,7 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 						}
 					}
 					if !enabled {
-						c.JSON(http.StatusBadRequest, api.ErrorResponse{
+						httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 							Status:  "error",
 							Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
 						})
@@ -123,7 +123,7 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 			models.SubscriptionStatusRevoked:
 			status = st
 		default:
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("invalid status: %s", *req.Status),
 			})
@@ -146,25 +146,25 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 	}
 	if err := s.getSubscriptionResourceService().SaveSubscription(sub, correlationID, log); err != nil {
 		if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Application already subscribed to this API"})
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Application already subscribed to this API"})
 			return
 		}
 		log.Error("Failed to save subscription", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription"})
 		return
 	}
 	resp := subscriptionToResponseWithToken(sub)
-	c.JSON(http.StatusCreated, resp)
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // ListSubscriptions implements ServerInterface.ListSubscriptions (GET /subscriptions)
-func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptionsParams) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) ListSubscriptions(w http.ResponseWriter, r *http.Request, params api.ListSubscriptionsParams) {
+	log := middleware.GetLogger(r, s.logger)
 
 	var apiID, appID, status *string
 	if params.ApiId != nil && *params.ApiId != "" {
 		// Normalize apiId to the internal deployment ID (accepts handle or deployment ID).
-		resolvedID, err := s.resolveAPIIDByHandle(c, *params.ApiId, log)
+		resolvedID, err := s.resolveAPIIDByHandle(w, r, *params.ApiId, log)
 		if err != nil {
 			// resolveAPIIDByHandle already wrote the response.
 			return
@@ -188,44 +188,44 @@ func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptio
 	list, err := s.db.ListSubscriptionsByAPI(apiIDValue, "", appID, status)
 	if err != nil {
 		log.Error("Failed to list subscriptions", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscriptions"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscriptions"})
 		return
 	}
 	out := make([]api.SubscriptionResponse, 0, len(list))
 	for _, sub := range list {
 		out = append(out, subscriptionToResponse(sub))
 	}
-	c.JSON(http.StatusOK, api.SubscriptionListResponse{
+	httputil.WriteJSON(w, http.StatusOK, api.SubscriptionListResponse{
 		Subscriptions: &out,
 		Count:         ptr(int(len(list))),
 	})
 }
 
 // GetSubscription implements ServerInterface.GetSubscription (GET /subscriptions/{subscriptionId})
-func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) GetSubscription(w http.ResponseWriter, r *http.Request, subscriptionId string) {
+	log := middleware.GetLogger(r, s.logger)
 
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
 		}
 		log.Error("Failed to get subscription", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
 		return
 	}
 	if sub == nil {
-		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 		return
 	}
-	c.JSON(http.StatusOK, subscriptionToResponse(sub))
+	httputil.WriteJSON(w, http.StatusOK, subscriptionToResponse(sub))
 }
 
 // UpdateSubscription implements ServerInterface.UpdateSubscription (PUT /subscriptions/{subscriptionId})
-func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) UpdateSubscription(w http.ResponseWriter, r *http.Request, subscriptionId string) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
@@ -233,21 +233,21 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
 		}
 		log.Error("Failed to get subscription for update", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
 		return
 	}
 	if sub == nil {
-		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 		return
 	}
 	var req api.SubscriptionUpdateRequest
-	if err := s.bindRequestBody(c, &req); err != nil {
+	if err := s.bindRequestBody(r, &req); err != nil {
 		log.Warn("Invalid subscription update body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
 		return
 	}
 	if req.Status != nil {
@@ -258,7 +258,7 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 			models.SubscriptionStatusRevoked:
 			sub.Status = st
 		default:
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("invalid status: %s", *req.Status),
 			})
@@ -267,20 +267,20 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 	}
 	if err := s.getSubscriptionResourceService().UpdateSubscription(sub, correlationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
 		}
 		log.Error("Failed to update subscription", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription"})
 		return
 	}
-	c.JSON(http.StatusOK, subscriptionToResponse(sub))
+	httputil.WriteJSON(w, http.StatusOK, subscriptionToResponse(sub))
 }
 
 // DeleteSubscription implements ServerInterface.DeleteSubscription (DELETE /subscriptions/{subscriptionId})
-func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) DeleteSubscription(w http.ResponseWriter, r *http.Request, subscriptionId string) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
@@ -288,27 +288,27 @@ func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
 		}
 		log.Error("Failed to get subscription for deletion", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
 		return
 	}
 	if sub == nil {
-		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 		return
 	}
 	if err := s.getSubscriptionResourceService().DeleteSubscription(subscriptionId, correlationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
 		}
 		log.Error("Failed to delete subscription", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription"})
 		return
 	}
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // subscriptionToResponse builds a response without the subscription token.

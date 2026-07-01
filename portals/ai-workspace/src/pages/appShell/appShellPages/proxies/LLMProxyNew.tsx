@@ -520,6 +520,7 @@ function LLMProxyNewContent({
                     name: event.target.value,
                   }))
                 }
+                data-cyid="proxy-name-input"
               />
             </FormControl>
           </Grid>
@@ -545,6 +546,7 @@ function LLMProxyNewContent({
                     version: event.target.value,
                   }))
                 }
+                data-cyid="proxy-version-input"
               />
             </FormControl>
           </Grid>
@@ -572,6 +574,7 @@ function LLMProxyNewContent({
                     description: event.target.value,
                   }))
                 }
+                data-cyid="proxy-description-input"
               />
             </FormControl>
           </Grid>
@@ -590,7 +593,7 @@ function LLMProxyNewContent({
                   <FormLabel sx={{ mb: 0.5 }}>
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.llm.service.provider"
-                      defaultMessage="LLM Service Provider"
+                      defaultMessage="LLM Provider"
                     />
                   </FormLabel>
                   <Select
@@ -603,6 +606,7 @@ function LLMProxyNewContent({
                     }
                     displayEmpty
                     disabled={isProvidersLoading || isProviderSelectionLocked}
+                    data-cyid="proxy-provider-select"
                   >
                     {isProviderSelectionLocked && lockedProviderId ? (
                       <MenuItem value={lockedProviderId}>
@@ -665,6 +669,7 @@ function LLMProxyNewContent({
                           onChange={(event) =>
                             setManualApiKeyValue(event.target.value)
                           }
+                          data-cyid="proxy-api-key-input"
                         />
                         {isManualKeyReady && (
                           <Alert severity="success">
@@ -776,6 +781,7 @@ function LLMProxyNewContent({
                 fullWidth
                 value={effectiveContext}
                 onChange={(event) => setContextOverride(event.target.value)}
+                data-cyid="proxy-context-input"
               />
             </FormControl>
           </Grid>
@@ -804,6 +810,7 @@ function LLMProxyNewContent({
               !isSelectedProviderApiKeyReady ||
               isCreating
             }
+            data-cyid="create-proxy-button"
           >
             {isCreating ? (
               <CircularProgress size={20} />

@@ -18,11 +18,11 @@
 
 /**
  * Extract org and view names from the current URL
- * URL format: /orgName/views/viewName/api-flows
+ * URL format: /orgName/views/viewName/api-workflows
  */
 function getOrgAndViewFromURL() {
     const pathParts = window.location.pathname.split('/').filter(p => p);
-    // Format: [orgName, views, viewName, api-flows]
+    // Format: [orgName, views, viewName, api-workflows]
     const orgName = pathParts[0];
     const viewName = pathParts[2];
     return { orgName, viewName };
@@ -32,9 +32,9 @@ function getOrgAndViewFromURL() {
  * Open the agent prompt modal using data already on the page
  */
 function openAgentPromptModal(handle, flowName) {
-    let flows = window.apiFlowsData;
+    let flows = window.apiWorkflowsData;
     if (!flows) {
-        const container = document.getElementById('apiFlowsDataContainer');
+        const container = document.getElementById('apiWorkflowsDataContainer');
         if (!container) {
             showNotification('No prompt available for this workflow.', 'error');
             return;
@@ -86,12 +86,11 @@ async function copyPromptFromModal() {
         const promptText = document.getElementById('promptText').textContent;
         await navigator.clipboard.writeText(promptText);
         const btn = document.getElementById('btnCopyPrompt');
-        const icon = btn.querySelector('i');
-        icon.className = 'bi bi-check-lg';
-        setTimeout(() => { icon.className = 'bi bi-copy'; }, 2000);
-    } catch (error) {
-        showNotification('Error copying prompt', 'error');
-    }
+        if (!btn) return;
+        btn.classList.add('copy-btn--copied');
+        if (btn._copyTimer) clearTimeout(btn._copyTimer);
+        btn._copyTimer = setTimeout(() => { btn.classList.remove('copy-btn--copied'); }, 1600);
+    } catch (error) {}
 }
 
 /**

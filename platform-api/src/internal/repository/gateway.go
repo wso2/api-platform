@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 )
@@ -44,64 +45,88 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 	gateway.UpdatedAt = time.Now()
 	gateway.IsActive = false // Set default value to false at registration
 
-	// Serialize properties to JSON
-	var propertiesJSON string
+	// Serialize properties to JSON bytes (BYTEA/BLOB column)
+	var propertiesBytes []byte
 	if gateway.Properties != nil {
-		jsonBytes, err := json.Marshal(gateway.Properties)
+		var err error
+		propertiesBytes, err = json.Marshal(gateway.Properties)
 		if err != nil {
 			return fmt.Errorf("failed to marshal properties: %w", err)
 		}
-		propertiesJSON = string(jsonBytes)
 	} else {
-		propertiesJSON = "{}"
+		propertiesBytes = []byte("{}")
+	}
+
+	// Convert bools to ints for SMALLINT/INTEGER columns
+	isCriticalInt := 0
+	if gateway.IsCritical {
+		isCriticalInt = 1
+	}
+	isActiveInt := 0
+	if gateway.IsActive {
+		isActiveInt = 1
 	}
 
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical,
-		                      gateway_functionality_type, version, is_active, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, vhost, is_critical,
+		                      gateway_functionality_type, version, is_active, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
-		gateway.Description, propertiesJSON, gateway.Vhost, gateway.IsCritical, gateway.FunctionalityType, gateway.Version,
-		gateway.IsActive, gateway.CreatedAt, gateway.UpdatedAt)
+	_, err := r.db.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Handle, gateway.Name,
+		gateway.Description, propertiesBytes, gateway.Vhost, isCriticalInt, gateway.FunctionalityType, gateway.Version,
+		isActiveInt, gateway.CreatedBy, gateway.UpdatedBy, gateway.CreatedAt, gateway.UpdatedAt)
 	return err
+}
+
+// scanGateway scans a single gateway row and handles SMALLINT bool columns and JSON properties.
+func (r *GatewayRepo) scanGateway(row interface {
+	Scan(...any) error
+}) (*model.Gateway, error) {
+	gateway := &model.Gateway{}
+	var propertiesBytes []byte
+	var isCritical, isActive int
+	var createdBy, updatedBy sql.NullString
+	if err := row.Scan(
+		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
+		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &createdBy, &updatedBy, &gateway.CreatedAt, &gateway.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	gateway.IsCritical = isCritical != 0
+	gateway.IsActive = isActive != 0
+	gateway.CreatedBy = createdBy.String
+	gateway.UpdatedBy = updatedBy.String
+	if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
+		if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
+		}
+	}
+	return gateway, nil
 }
 
 // GetByUUID retrieves a gateway by ID
 func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
-	gateway := &model.Gateway{}
-	var propertiesJSON string
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(r.db.Rebind(query), gatewayId).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+	gateway, err := r.scanGateway(r.db.QueryRow(r.db.Rebind(query), gatewayId))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-
-	// Deserialize properties from JSON
-	if propertiesJSON != "" && propertiesJSON != "{}" {
-		if err := json.Unmarshal([]byte(propertiesJSON), &gateway.Properties); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-		}
-	}
-
 	return gateway, nil
 }
 
 // GetByOrganizationID retrieves all gateways for an organization
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -114,62 +139,38 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 
 	var gateways []*model.Gateway
 	for rows.Next() {
-		gateway := &model.Gateway{}
-		var propertiesJSON string
-		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+		gateway, err := r.scanGateway(rows)
 		if err != nil {
 			return nil, err
 		}
-
-		// Deserialize properties from JSON
-		if propertiesJSON != "" && propertiesJSON != "{}" {
-			if err := json.Unmarshal([]byte(propertiesJSON), &gateway.Properties); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-			}
-		}
-
 		gateways = append(gateways, gateway)
 	}
-	return gateways, nil
+	return gateways, rows.Err()
 }
 
-// GetByNameAndOrgID checks if a gateway with the given name exists within an organization
-func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, error) {
-	gateway := &model.Gateway{}
-	var propertiesJSON string
+// GetByHandleAndOrgID checks if a gateway with the given handle exists within an organization
+func (r *GatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		       created_by, updated_by, created_at, updated_at
 		FROM gateways
-		WHERE name = ? AND organization_uuid = ?
+		WHERE handle = ? AND organization_uuid = ?
 	`
-	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+	gateway, err := r.scanGateway(r.db.QueryRow(r.db.Rebind(query), handle, orgID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-
-	// Deserialize properties from JSON
-	if propertiesJSON != "" && propertiesJSON != "{}" {
-		if err := json.Unmarshal([]byte(propertiesJSON), &gateway.Properties); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-		}
-	}
-
 	return gateway, nil
 }
 
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, handle, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
 	`
@@ -181,25 +182,13 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 
 	var gateways []*model.Gateway
 	for rows.Next() {
-		gateway := &model.Gateway{}
-		var propertiesJSON string
-		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+		gateway, err := r.scanGateway(rows)
 		if err != nil {
 			return nil, err
 		}
-
-		// Deserialize properties from JSON
-		if propertiesJSON != "" && propertiesJSON != "{}" {
-			if err := json.Unmarshal([]byte(propertiesJSON), &gateway.Properties); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-			}
-		}
-
 		gateways = append(gateways, gateway)
 	}
-	return gateways, nil
+	return gateways, rows.Err()
 }
 
 // Delete removes a gateway with organization isolation and cleans up all associations
@@ -211,9 +200,7 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 	}
 	defer tx.Rollback()
 
-	// Delete API associations for this gateway
-	deleteAssocQuery := `DELETE FROM association_mappings 
-	                     WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
+	deleteAssocQuery := `DELETE FROM artifact_gateway_mappings WHERE gateway_uuid = ? AND organization_uuid = ?`
 	_, err = tx.Exec(r.db.Rebind(deleteAssocQuery), gatewayID, organizationID)
 	if err != nil {
 		return err
@@ -242,35 +229,43 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 
 // UpdateGateway updates gateway details
 func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
-	// Serialize properties to JSON
-	var propertiesJSON string
+	var propertiesBytes []byte
 	if gateway.Properties != nil {
-		jsonBytes, err := json.Marshal(gateway.Properties)
+		var err error
+		propertiesBytes, err = json.Marshal(gateway.Properties)
 		if err != nil {
 			return fmt.Errorf("failed to marshal properties: %w", err)
 		}
-		propertiesJSON = string(jsonBytes)
 	} else {
-		propertiesJSON = "{}"
+		propertiesBytes = []byte("{}")
+	}
+
+	isCriticalInt := 0
+	if gateway.IsCritical {
+		isCriticalInt = 1
 	}
 
 	query := `
 		UPDATE gateways
-		SET display_name = ?, description = ?, is_critical = ?, properties = ?, updated_at = ?
+		SET display_name = ?, description = ?, is_critical = ?, properties = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), gateway.DisplayName, gateway.Description, gateway.IsCritical, propertiesJSON, gateway.UpdatedAt, gateway.ID)
+	_, err := r.db.Exec(r.db.Rebind(query), gateway.Name, gateway.Description, isCriticalInt, propertiesBytes, gateway.UpdatedBy, gateway.UpdatedAt, gateway.ID)
 	return err
 }
 
 // UpdateActiveStatus updates the is_active status of a gateway
 func (r *GatewayRepo) UpdateActiveStatus(gatewayId string, isActive bool) error {
+	isActiveInt := 0
+	if isActive {
+		isActiveInt = 1
+	}
 	query := `
 		UPDATE gateways
 		SET is_active = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), isActive, time.Now(), gatewayId)
+	_, err := r.db.Exec(r.db.Rebind(query), isActiveInt, time.Now(), gatewayId)
 	return err
 }
 
@@ -279,23 +274,23 @@ func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
 	token.CreatedAt = time.Now()
 
 	query := `
-		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_by, created_at, revoked_by, revoked_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status, token.CreatedAt,
-		token.RevokedAt)
+	_, err := r.db.Exec(r.db.Rebind(query), token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status,
+		token.CreatedBy, token.CreatedAt, token.RevokedBy, token.RevokedAt)
 	return err
 }
 
 // GetActiveTokensByGatewayUUID retrieves all active tokens for a gateway
 func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.GatewayToken, error) {
 	query := `
-		SELECT uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at
+		SELECT uuid, gateway_uuid, token_hash, salt, status, created_by, created_at, revoked_by, revoked_at
 		FROM gateway_tokens
-		WHERE gateway_uuid = ? AND status = 'active'
+		WHERE gateway_uuid = ? AND status = ?
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(r.db.Rebind(query), gatewayId)
+	rows, err := r.db.Query(r.db.Rebind(query), gatewayId, constants.GatewayTokenStatusActive)
 	if err != nil {
 		return nil, err
 	}
@@ -304,11 +299,20 @@ func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.G
 	var tokens []*model.GatewayToken
 	for rows.Next() {
 		token := &model.GatewayToken{}
+		var createdBy sql.NullString
+		var revokedBy sql.NullString
 		err := rows.Scan(
-			&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+			&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status,
+			&createdBy, &token.CreatedAt, &revokedBy, &token.RevokedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if createdBy.Valid {
+			token.CreatedBy = createdBy.String
+		}
+		if revokedBy.Valid {
+			token.RevokedBy = &revokedBy.String
 		}
 		tokens = append(tokens, token)
 	}
@@ -318,20 +322,29 @@ func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.G
 // GetActiveTokenByHash retrieves an active token by its hash
 func (r *GatewayRepo) GetActiveTokenByHash(tokenHash string) (*model.GatewayToken, error) {
 	token := &model.GatewayToken{}
+	var createdBy sql.NullString
+	var revokedBy sql.NullString
 	query := `
-		SELECT uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at
+		SELECT uuid, gateway_uuid, token_hash, salt, status, created_by, created_at, revoked_by, revoked_at
 		FROM gateway_tokens
-		WHERE token_hash = ? AND status = 'active'
-		LIMIT 1
-	`
-	err := r.db.QueryRow(r.db.Rebind(query), tokenHash).Scan(
-		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+		WHERE token_hash = ? AND status = ?
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
+	err := r.db.QueryRow(r.db.Rebind(query), tokenHash, constants.GatewayTokenStatusActive).Scan(
+		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status,
+		&createdBy, &token.CreatedAt, &revokedBy, &token.RevokedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
+	}
+	if createdBy.Valid {
+		token.CreatedBy = createdBy.String
+	}
+	if revokedBy.Valid {
+		token.RevokedBy = &revokedBy.String
 	}
 	return token, nil
 }
@@ -339,13 +352,16 @@ func (r *GatewayRepo) GetActiveTokenByHash(tokenHash string) (*model.GatewayToke
 // GetTokenByUUID retrieves a specific token by UUID
 func (r *GatewayRepo) GetTokenByUUID(tokenId string) (*model.GatewayToken, error) {
 	token := &model.GatewayToken{}
+	var createdBy sql.NullString
+	var revokedBy sql.NullString
 	query := `
-		SELECT uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at
+		SELECT uuid, gateway_uuid, token_hash, salt, status, created_by, created_at, revoked_by, revoked_at
 		FROM gateway_tokens
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), tokenId).Scan(
-		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status,
+		&createdBy, &token.CreatedAt, &revokedBy, &token.RevokedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -353,18 +369,28 @@ func (r *GatewayRepo) GetTokenByUUID(tokenId string) (*model.GatewayToken, error
 		}
 		return nil, err
 	}
+	if createdBy.Valid {
+		token.CreatedBy = createdBy.String
+	}
+	if revokedBy.Valid {
+		token.RevokedBy = &revokedBy.String
+	}
 	return token, nil
 }
 
 // RevokeToken updates token status to revoked
-func (r *GatewayRepo) RevokeToken(tokenId string) error {
+func (r *GatewayRepo) RevokeToken(tokenId, revokedBy string) error {
 	now := time.Now()
+	var revokedByVal interface{}
+	if revokedBy != "" {
+		revokedByVal = revokedBy
+	}
 	query := `
 		UPDATE gateway_tokens
-		SET status = 'revoked', revoked_at = ?
+		SET status = ?, revoked_by = ?, revoked_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), now, tokenId)
+	_, err := r.db.Exec(r.db.Rebind(query), constants.GatewayTokenStatusRevoked, revokedByVal, now, tokenId)
 	return err
 }
 
@@ -373,9 +399,9 @@ func (r *GatewayRepo) CountActiveTokens(gatewayId string) (int, error) {
 	var count int
 	query := `
 		SELECT COUNT(*) FROM gateway_tokens
-		WHERE gateway_uuid = ? AND status = 'active'
+		WHERE gateway_uuid = ? AND status = ?
 	`
-	err := r.db.QueryRow(r.db.Rebind(query), gatewayId).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayId, constants.GatewayTokenStatusActive).Scan(&count)
 	return count, err
 }
 
@@ -395,36 +421,41 @@ func (r *GatewayRepo) HasGatewayDeployments(gatewayID, organizationID string) (b
 
 // HasGatewayAssociations checks if a gateway has any associations
 func (r *GatewayRepo) HasGatewayAssociations(gatewayID, organizationID string) (bool, error) {
-	var associationCount int
-	associationQuery := `SELECT COUNT(*) FROM association_mappings WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
-	err := r.db.QueryRow(r.db.Rebind(associationQuery), gatewayID, organizationID).Scan(&associationCount)
+	var count int
+	query := `SELECT COUNT(*) FROM artifact_gateway_mappings WHERE gateway_uuid = ? AND organization_uuid = ?`
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayID, organizationID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
-
-	return associationCount > 0, nil
+	return count > 0, nil
 }
 
 // HasGatewayAssociationsOrDeployments checks if a gateway has any associations (deployments or associations)
 func (r *GatewayRepo) HasGatewayAssociationsOrDeployments(gatewayID, organizationID string) (bool, error) {
-	// Check deployments first
-	hasDeployments, err := r.HasGatewayDeployments(gatewayID, organizationID)
-	if err != nil {
-		return false, err
-	}
-
-	if hasDeployments {
-		return true, nil
-	}
-
-	// Check associations
-	return r.HasGatewayAssociations(gatewayID, organizationID)
+	var count int
+	query := `
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM deployment_status
+			WHERE gateway_uuid = ? AND organization_uuid = ? AND status = ?
+			UNION ALL
+			SELECT 1 FROM artifact_gateway_mappings
+			WHERE gateway_uuid = ? AND organization_uuid = ?
+		) combined`
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayID, organizationID, string(model.DeploymentStatusDeployed), gatewayID, organizationID).Scan(&count)
+	return count > 0, err
 }
 
 // UpdateGatewayManifest persists the gateway manifest JSON to the gateway row.
 func (r *GatewayRepo) UpdateGatewayManifest(gatewayID string, manifest []byte) error {
 	query := `UPDATE gateways SET manifest = ? WHERE uuid = ?`
-	_, err := r.db.Exec(r.db.Rebind(query), string(manifest), gatewayID)
+	_, err := r.db.Exec(r.db.Rebind(query), manifest, gatewayID)
+	return err
+}
+
+// UpdateGatewayVersion persists the version string reported by the gateway controller on manifest push.
+func (r *GatewayRepo) UpdateGatewayVersion(gatewayID, version string) error {
+	query := `UPDATE gateways SET version = ?, updated_at = ? WHERE uuid = ?`
+	_, err := r.db.Exec(r.db.Rebind(query), version, time.Now(), gatewayID)
 	return err
 }
 
@@ -433,7 +464,7 @@ func (r *GatewayRepo) UpdateGatewayManifest(gatewayID string, manifest []byte) e
 // Returns an error if the gateway row does not exist.
 func (r *GatewayRepo) GetGatewayManifest(gatewayID string) ([]byte, error) {
 	query := `SELECT manifest FROM gateways WHERE uuid = ?`
-	var raw *string
+	var raw []byte
 	err := r.db.QueryRow(r.db.Rebind(query), gatewayID).Scan(&raw)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -441,8 +472,5 @@ func (r *GatewayRepo) GetGatewayManifest(gatewayID string) ([]byte, error) {
 		}
 		return nil, err
 	}
-	if raw == nil {
-		return nil, nil
-	}
-	return []byte(*raw), nil
+	return raw, nil
 }

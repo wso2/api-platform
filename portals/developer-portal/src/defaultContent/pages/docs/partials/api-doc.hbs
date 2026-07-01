@@ -17,8 +17,22 @@
  */
  -->
 {{#if isAPIDefinition}}
+<div class="adoc-file-badge adoc-file-badge--spec">
+  <i class="bi bi-code-slash"></i>
+  {{#if (eq apiType "GRAPHQL")}}schema.graphql
+  {{else if (eq apiType "SOAP")}}apiDefinition.xml
+  {{else if (eq apiType "WS")}}asyncapi.yaml
+  {{else if (eq apiType "WEBSUB")}}asyncapi.yaml
+  {{else}}openapi.yaml
+  {{/if}}
+</div>
 {{> api-specification}}
 {{else}}
+{{#if currentDocName}}
+<div class="adoc-file-badge adoc-file-badge--doc">
+  <i class="bi bi-file-text"></i> {{currentDocName}}.md
+</div>
+{{/if}}
 <div class="api-markdown-content">
     {{{apiMD}}}
 </div>

@@ -20,11 +20,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgconn"
-	sqlite3 "github.com/mattn/go-sqlite3"
 
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
@@ -32,11 +28,12 @@ import (
 )
 
 type ApplicationRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
-func NewApplicationRepo(db *database.DB) ApplicationRepository {
-	return &ApplicationRepo{db: db}
+func NewApplicationRepo(db *database.DB, reg *ArtifactTableRegistry) ApplicationRepository {
+	return &ApplicationRepo{db: db, reg: reg}
 }
 
 func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
@@ -46,15 +43,15 @@ func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
 
 	query := `
 		INSERT INTO applications (
-			uuid, handle, project_uuid, organization_uuid, created_by,
-			name, description, type, created_at, updated_at
+			uuid, handle, project_uuid, organization_uuid, created_by, updated_by,
+			display_name, description, type, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := r.db.Exec(
 		r.db.Rebind(query),
-		app.UUID, app.Handle, app.ProjectUUID, app.OrganizationUUID, app.CreatedBy,
+		app.UUID, app.Handle, app.ProjectUUID, app.OrganizationUUID, app.CreatedBy, app.UpdatedBy,
 		app.Name, app.Description, app.Type, app.CreatedAt, app.UpdatedAt,
 	)
 	return err
@@ -62,7 +59,7 @@ func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
 
 func (r *ApplicationRepo) GetApplicationByUUID(appID string) (*model.Application, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE uuid = ?
 	`), appID)
@@ -76,12 +73,12 @@ func (r *ApplicationRepo) GetApplicationByUUID(appID string) (*model.Application
 
 func (r *ApplicationRepo) GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE organization_uuid = ? AND (uuid = ? OR handle = ?)
 		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, appIDOrHandle, appIDOrHandle, appIDOrHandle)
+		`+r.db.FetchFirstClause(1)),
+		orgID, appIDOrHandle, appIDOrHandle, appIDOrHandle)
 
 	app, err := scanApplication(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -92,9 +89,12 @@ func (r *ApplicationRepo) GetApplicationByIDOrHandle(appIDOrHandle, orgID string
 
 func (r *ApplicationRepo) GetAssociationTargetByUUID(targetUUID, orgID string) (*model.Artifact, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at
-		FROM artifacts
-		WHERE uuid = ? AND organization_uuid = ?
+		SELECT a.uuid, src.handle, src.display_name, src.version, a.type, a.organization_uuid, src.created_at, src.updated_at
+		FROM artifacts a
+		INNER JOIN (
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version", "created_at", "updated_at")+`
+		) src ON src.uuid = a.uuid
+		WHERE a.uuid = ? AND a.organization_uuid = ?
 	`), targetUUID, orgID)
 
 	target := &model.Artifact{}
@@ -103,7 +103,7 @@ func (r *ApplicationRepo) GetAssociationTargetByUUID(targetUUID, orgID string) (
 		&target.Handle,
 		&target.Name,
 		&target.Version,
-		&target.Kind,
+		&target.Type,
 		&target.OrganizationUUID,
 		&target.CreatedAt,
 		&target.UpdatedAt,
@@ -120,12 +120,15 @@ func (r *ApplicationRepo) GetAssociationTargetByUUID(targetUUID, orgID string) (
 
 func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, orgID string) (*model.Artifact, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at
-		FROM artifacts
-		WHERE organization_uuid = ? AND (uuid = ? OR handle = ?)
-		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+		SELECT a.uuid, src.handle, src.display_name, src.version, a.type, a.organization_uuid, src.created_at, src.updated_at
+		FROM artifacts a
+		INNER JOIN (
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version", "created_at", "updated_at")+`
+		) src ON src.uuid = a.uuid
+		WHERE a.organization_uuid = ? AND (a.uuid = ? OR src.handle = ?)
+		ORDER BY CASE WHEN a.uuid = ? THEN 0 ELSE 1 END
+		`+r.db.FetchFirstClause(1)),
+		orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(
@@ -133,7 +136,7 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, org
 		&target.Handle,
 		&target.Name,
 		&target.Version,
-		&target.Kind,
+		&target.Type,
 		&target.OrganizationUUID,
 		&target.CreatedAt,
 		&target.UpdatedAt,
@@ -150,12 +153,15 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, org
 
 func (r *ApplicationRepo) GetAssociationTargetByIDOrHandleAndKind(targetIDOrHandle, kind, orgID string) (*model.Artifact, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at
-		FROM artifacts
-		WHERE organization_uuid = ? AND kind = ? AND (uuid = ? OR handle = ?)
-		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+		SELECT a.uuid, src.handle, src.display_name, src.version, a.type, a.organization_uuid, src.created_at, src.updated_at
+		FROM artifacts a
+		INNER JOIN (
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version", "created_at", "updated_at")+`
+		) src ON src.uuid = a.uuid
+		WHERE a.organization_uuid = ? AND a.type = ? AND (a.uuid = ? OR src.handle = ?)
+		ORDER BY CASE WHEN a.uuid = ? THEN 0 ELSE 1 END
+		`+r.db.FetchFirstClause(1)),
+		orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(
@@ -163,7 +169,7 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandleAndKind(targetIDOrHand
 		&target.Handle,
 		&target.Name,
 		&target.Version,
-		&target.Kind,
+		&target.Type,
 		&target.OrganizationUUID,
 		&target.CreatedAt,
 		&target.UpdatedAt,
@@ -183,7 +189,7 @@ func (r *ApplicationRepo) GetLLMProxyProjectUUID(targetUUID, orgID string) (stri
 		SELECT p.project_uuid
 		FROM llm_proxies p
 		INNER JOIN artifacts a ON a.uuid = p.uuid
-		WHERE a.uuid = ? AND a.organization_uuid = ? AND a.kind = ?
+		WHERE a.uuid = ? AND a.organization_uuid = ? AND a.type = ?
 	`), targetUUID, orgID, constants.LLMProxy)
 
 	var projectUUID string
@@ -200,10 +206,10 @@ func (r *ApplicationRepo) GetLLMProxyProjectUUID(targetUUID, orgID string) (stri
 
 func (r *ApplicationRepo) GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE project_uuid = ? AND organization_uuid = ?
-		ORDER BY created_at DESC, name ASC
+		ORDER BY created_at DESC, display_name ASC
 	`), projectID, orgID)
 	if err != nil {
 		return nil, err
@@ -215,10 +221,10 @@ func (r *ApplicationRepo) GetApplicationsByProjectID(projectID, orgID string) ([
 
 func (r *ApplicationRepo) GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE organization_uuid = ?
-		ORDER BY created_at DESC, name ASC
+		ORDER BY created_at DESC, display_name ASC
 	`), orgID)
 	if err != nil {
 		return nil, err
@@ -232,10 +238,10 @@ func (r *ApplicationRepo) GetApplicationsByProjectIDPaginated(projectID, orgID s
 	// TODO: Re-enable DB-level pagination when query placeholders and syntax are verified
 	// across all supported database drivers.
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE project_uuid = ? AND organization_uuid = ?
-		ORDER BY created_at DESC, name ASC
+		ORDER BY created_at DESC, display_name ASC
 	`), projectID, orgID)
 	if err != nil {
 		return nil, err
@@ -249,10 +255,10 @@ func (r *ApplicationRepo) GetApplicationsByOrganizationIDPaginated(orgID string,
 	// TODO: Re-enable DB-level pagination when query placeholders and syntax are verified
 	// across all supported database drivers.
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE organization_uuid = ?
-		ORDER BY created_at DESC, name ASC
+		ORDER BY created_at DESC, display_name ASC
 	`), orgID)
 	if err != nil {
 		return nil, err
@@ -292,9 +298,9 @@ func (r *ApplicationRepo) CountApplicationsByOrganizationID(orgID string) (int, 
 
 func (r *ApplicationRepo) GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
-		WHERE name = ? AND project_uuid = ? AND organization_uuid = ?
+		WHERE display_name = ? AND project_uuid = ? AND organization_uuid = ?
 	`), name, projectID, orgID)
 
 	app, err := scanApplication(row)
@@ -322,9 +328,9 @@ func (r *ApplicationRepo) UpdateApplication(app *model.Application) error {
 
 	_, err := r.db.Exec(r.db.Rebind(`
 		UPDATE applications
-		SET name = ?, description = ?, type = ?, updated_at = ?
+		SET display_name = ?, description = ?, type = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
-	`), app.Name, app.Description, app.Type, app.UpdatedAt, app.UUID, app.OrganizationUUID)
+	`), app.Name, app.Description, app.Type, app.UpdatedBy, app.UpdatedAt, app.UUID, app.OrganizationUUID)
 	return err
 }
 
@@ -335,10 +341,13 @@ func (r *ApplicationRepo) DeleteApplication(appID, orgID string) error {
 
 func (r *ApplicationRepo) GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT ak.uuid, ak.name, ak.artifact_uuid, art.handle, art.kind, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
+		SELECT ak.uuid, ak.display_name, ak.artifact_uuid, src.handle, art.type, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
 		FROM api_keys ak
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
-		WHERE art.organization_uuid = ? AND ak.name = ? AND art.handle = ?
+		INNER JOIN (
+			`+r.reg.UnionAllSelect("uuid", "handle")+`
+		) src ON src.uuid = ak.artifact_uuid
+		WHERE art.organization_uuid = ? AND ak.display_name = ? AND src.handle = ?
 	`), orgID, keyName, artifactHandle)
 
 	key, err := scanApplicationAPIKey(row)
@@ -373,12 +382,15 @@ func (r *ApplicationRepo) GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgI
 
 func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT ak.uuid, ak.name, ak.artifact_uuid, art.handle, art.kind, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
-		FROM application_api_keys aak
+		SELECT ak.uuid, ak.display_name, ak.artifact_uuid, src.handle, art.type, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
+		FROM application_api_key_mappings aak
 		INNER JOIN api_keys ak ON ak.uuid = aak.api_key_id
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
+		INNER JOIN (
+			`+r.reg.UnionAllSelect("uuid", "handle")+`
+		) src ON src.uuid = ak.artifact_uuid
 		WHERE aak.application_uuid = ?
-		ORDER BY aak.created_at DESC, ak.name ASC, ak.uuid ASC
+		ORDER BY aak.created_at DESC, ak.display_name ASC, ak.uuid ASC
 	`), applicationUUID)
 	if err != nil {
 		return nil, err
@@ -399,11 +411,14 @@ func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.Ap
 
 func (r *ApplicationRepo) ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT art.uuid, art.handle, art.name, art.version, art.kind, aa.created_at, aa.updated_at
-		FROM application_artifacts aa
+		SELECT art.uuid, src.handle, src.display_name, src.version, art.type, aa.created_at
+		FROM application_artifact_mappings aa
 		INNER JOIN artifacts art ON art.uuid = aa.artifact_uuid
+		INNER JOIN (
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version")+`
+		) src ON src.uuid = aa.artifact_uuid
 		WHERE aa.application_uuid = ?
-		ORDER BY aa.created_at DESC, art.name ASC, art.uuid ASC
+		ORDER BY aa.created_at DESC, src.display_name ASC, art.uuid ASC
 	`), applicationUUID)
 	if err != nil {
 		return nil, err
@@ -431,7 +446,7 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 
 	existingRows, err := tx.Query(r.db.Rebind(`
 		SELECT api_key_id
-		FROM application_api_keys
+		FROM application_api_key_mappings
 		WHERE application_uuid = ?
 	`), applicationUUID)
 	if err != nil {
@@ -461,9 +476,9 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 		}
 		now := time.Now()
 		if _, err = tx.Exec(r.db.Rebind(`
-			INSERT INTO application_api_keys (application_uuid, api_key_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
-		`), applicationUUID, apiKeyID, now, now); err != nil {
+			INSERT INTO application_api_key_mappings (application_uuid, api_key_id, created_at)
+			VALUES (?, ?, ?)
+		`), applicationUUID, apiKeyID, now); err != nil {
 			return err
 		}
 	}
@@ -481,10 +496,10 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	for _, targetUUID := range uniqueStrings(targetUUIDs) {
 		now := time.Now()
 		if _, err = tx.Exec(r.db.Rebind(`
-			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
-		`), applicationUUID, targetUUID, now, now); err != nil {
-			if isDuplicateKeyError(err) {
+			INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid, created_at)
+			VALUES (?, ?, ?)
+		`), applicationUUID, targetUUID, now); err != nil {
+			if r.db.IsDuplicateKeyError(err) {
 				continue
 			}
 			return err
@@ -494,30 +509,9 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	return tx.Commit()
 }
 
-func isDuplicateKeyError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return true
-	}
-
-	var sqliteErr sqlite3.Error
-	if errors.As(err, &sqliteErr) {
-		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
-			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
-	}
-
-	lowerMsg := strings.ToLower(err.Error())
-	return strings.Contains(lowerMsg, "duplicate key") ||
-		strings.Contains(lowerMsg, "unique constraint failed")
-}
-
 func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`
-		DELETE FROM application_api_keys
+		DELETE FROM application_api_key_mappings
 		WHERE application_uuid = ? AND api_key_id = ?
 	`), applicationUUID, apiKeyID)
 	return err
@@ -525,7 +519,7 @@ func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID stri
 
 func (r *ApplicationRepo) RemoveApplicationAssociation(applicationUUID, targetUUID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`
-		DELETE FROM application_artifacts
+		DELETE FROM application_artifact_mappings
 		WHERE application_uuid = ? AND artifact_uuid = ?
 	`), applicationUUID, targetUUID)
 	return err
@@ -538,6 +532,7 @@ type rowScanner interface {
 func scanApplication(scanner rowScanner) (*model.Application, error) {
 	var app model.Application
 	var createdBy sql.NullString
+	var updatedBy sql.NullString
 	var description sql.NullString
 
 	err := scanner.Scan(
@@ -546,6 +541,7 @@ func scanApplication(scanner rowScanner) (*model.Application, error) {
 		&app.ProjectUUID,
 		&app.OrganizationUUID,
 		&createdBy,
+		&updatedBy,
 		&app.Name,
 		&description,
 		&app.Type,
@@ -558,6 +554,9 @@ func scanApplication(scanner rowScanner) (*model.Application, error) {
 
 	if createdBy.Valid {
 		app.CreatedBy = createdBy.String
+	}
+	if updatedBy.Valid {
+		app.UpdatedBy = updatedBy.String
 	}
 	if description.Valid {
 		app.Description = description.String
@@ -590,7 +589,7 @@ func scanApplicationAPIKey(scanner rowScanner) (*model.ApplicationAPIKey, error)
 		&key.Name,
 		&key.ArtifactID,
 		&key.ArtifactHandle,
-		&key.ArtifactKind,
+		&key.ArtifactType,
 		&status,
 		&createdBy,
 		&key.CreatedAt,
@@ -627,9 +626,8 @@ func scanApplicationAssociationTarget(scanner rowScanner) (*model.ApplicationAss
 		&association.TargetHandle,
 		&association.TargetName,
 		&association.TargetVersion,
-		&association.Kind,
+		&association.Type,
 		&association.CreatedAt,
-		&association.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

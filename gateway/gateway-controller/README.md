@@ -140,29 +140,41 @@ Override any configuration value using the `APIP_GW_` prefix:
 
 ```bash
 # Override server API port
-export APIP_GW_GATEWAY__CONTROLLER_SERVER_API__PORT=9091
+export APIP_GW_CONTROLLER_SERVER_API__PORT=9091
 
 # Set storage type to memory
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=memory
+export APIP_GW_CONTROLLER_STORAGE_TYPE=memory
 
 # Override SQLite database path
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+export APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=/custom/path/gateway.db
 
 # Configure PostgreSQL storage
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=postgres
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_HOST=postgres.example.internal
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_PORT=5432
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_DATABASE=gateway
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_USER=gateway
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_PASSWORD=secret
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_SSLMODE=require
-export APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_MAX__OPEN__CONNS=25
+export APIP_GW_CONTROLLER_STORAGE_TYPE=postgres
+export APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST=postgres.example.internal
+export APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT=5432
+export APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE=gateway
+export APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER=gateway
+export APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD=secret
+export APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE=require
+export APIP_GW_CONTROLLER_STORAGE_POSTGRES_MAX__OPEN__CONNS=25
+
+# Configure SQL Server storage
+export APIP_GW_CONTROLLER_STORAGE_TYPE=sqlserver
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_DRIVER=sqlserver
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_HOST=sqlserver.example.internal
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_PORT=1433
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_DATABASE=gateway
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_USER=gateway
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD=secret
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_ENCRYPT=disable
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_TRUST__SERVER__CERTIFICATE=true
+export APIP_GW_CONTROLLER_STORAGE_DATABASE_MAX__OPEN__CONNS=25
 
 # Disable access logs
-export APIP_GW_GATEWAY__CONTROLLER_ROUTER_ACCESS__LOGS_ENABLED=false
+export APIP_GW_CONTROLLER_ROUTER_ACCESS__LOGS_ENABLED=false
 
 # Set debug logging
-export APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
+export APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
 
 ./bin/controller
 ```
@@ -200,6 +212,30 @@ storage:
     conn_max_lifetime: 30m
     conn_max_idle_time: 5m
     application_name: gateway-controller
+```
+
+#### Persistent Mode with SQL Server
+Use an external SQL Server instance for persistence:
+
+```yaml
+storage:
+  type: sqlserver
+  database:
+    driver: sqlserver
+    host: sqlserver.example.internal
+    port: 1433
+    database: gateway
+    user: gateway
+    password: ${DB_PASSWORD}
+    connect_timeout: 5s
+    max_open_conns: 25
+    max_idle_conns: 5
+    conn_max_lifetime: 30m
+    conn_max_idle_time: 5m
+    application_name: gateway-controller
+    options:
+      encrypt: disable
+      trust_server_certificate: "true"
 ```
 
 #### Memory-Only Mode
@@ -313,7 +349,7 @@ Response (the server echoes back the full k8s-shaped resource with a
 server-managed `status` block):
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "RestApi",
   "metadata": { "name": "weather-api-v1.0" },
   "spec": {
@@ -607,7 +643,7 @@ components:
       properties:
         apiVersion:
           type: string
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1
         kind:
           type: string
           example: RestApi
@@ -616,7 +652,7 @@ components:
         spec:
           $ref: "#/components/schemas/APIConfigData"
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: RestApi
         metadata:
           name: petstore-api-v1.0
@@ -646,10 +682,10 @@ The Gateway-Controller uses structured logging (Zap) with configurable levels.
 
 ```bash
 # Using environment variable
-APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug ./bin/controller
+APIP_GW_CONTROLLER_LOGGING_LEVEL=debug ./bin/controller
 
 # Or using config file
-export APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
+export APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
 ./bin/controller
 ```
 

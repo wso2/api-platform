@@ -1,0 +1,17 @@
+# PostgreSQL backend for platform-api cross-database integration tests.
+# The tests run on the host and connect to the published port; see
+# `make it-postgres` in platform-api/Makefile.
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: platform_api_it
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d platform_api_it"]
+      interval: 2s
+      timeout: 3s
+      retries: 40

@@ -187,6 +187,7 @@ export default function ServiceProviderGuardrailsTab() {
   const [editingTarget, setEditingTarget] = useState<{
     policyIndex: number;
     pathIndex: number | null;
+    source: 'global' | 'operation' | 'legacy';
   } | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['AI']);
   const [drawerGuardrails, setDrawerGuardrails] = useState<typeof availableGuardrails>([]);
@@ -241,43 +242,68 @@ export default function ServiceProviderGuardrailsTab() {
   const getDisplayName = (policyName: string): string =>
     displayNameMap[policyName] || policyName;
 
-  const globalGuardrails = useMemo(
-    () =>
-      policies.flatMap((policy, policyIndex) => {
-        const version = policy.version
-          ? `v${policy.version.replace(/^v/, '').split('.')[0]}`
-          : 'v0';
-        const displayName = getDisplayName(policy.name);
-        if (!policy.paths || policy.paths.length === 0) {
-          return [
-            {
-              id: `${policy.name}-${version}-${policyIndex}-default`,
+  const globalGuardrails = useMemo(() => {
+    const items: Array<{
+      id: string;
+      name: string;
+      displayName: string;
+      version: string;
+      source: 'global' | 'legacy';
+      policyIndex: number;
+      pathIndex: number | null;
+    }> = [];
+
+    // New globalPolicies list
+    (provider?.globalPolicies ?? []).forEach((policy, policyIndex) => {
+      const version = policy.version
+        ? `v${policy.version.replace(/^v/, '').split('.')[0]}`
+        : 'v0';
+      items.push({
+        id: `global-${policy.name}-${version}-${policyIndex}`,
+        name: policy.name,
+        displayName: getDisplayName(policy.name),
+        version,
+        source: 'global',
+        policyIndex,
+        pathIndex: null,
+      });
+    });
+
+    // Legacy policies with path === '/*'
+    policies.forEach((policy, policyIndex) => {
+      const version = policy.version
+        ? `v${policy.version.replace(/^v/, '').split('.')[0]}`
+        : 'v0';
+      const displayName = getDisplayName(policy.name);
+      if (!policy.paths || policy.paths.length === 0) {
+        items.push({
+          id: `legacy-${policy.name}-${version}-${policyIndex}-default`,
+          name: policy.name,
+          displayName,
+          version,
+          source: 'legacy',
+          policyIndex,
+          pathIndex: null,
+        });
+      } else {
+        policy.paths.forEach((pathConfig, pathIndex) => {
+          if (pathConfig.path === '/*') {
+            items.push({
+              id: `legacy-${policy.name}-${version}-${policyIndex}-${pathIndex}`,
               name: policy.name,
               displayName,
               version,
+              source: 'legacy',
               policyIndex,
-              pathIndex: null as number | null,
-            },
-          ];
-        }
+              pathIndex,
+            });
+          }
+        });
+      }
+    });
 
-        return policy.paths.flatMap((pathConfig, pathIndex) =>
-          pathConfig.path === '/*'
-            ? [
-                {
-                  id: `${policy.name}-${version}-${policyIndex}-${pathIndex}`,
-                  name: policy.name,
-                  displayName,
-                  version,
-                  policyIndex,
-                  pathIndex,
-                },
-              ]
-            : []
-        );
-      }),
-    [policies, displayNameMap]
-  );
+    return items;
+  }, [provider?.globalPolicies, policies, displayNameMap]);
 
   const resources = useMemo(
     () => parseOpenApiText(provider?.openapi || '', provider?.accessControl),
@@ -306,17 +332,38 @@ export default function ServiceProviderGuardrailsTab() {
   const handleEditGuardrailPill = (
     policyIndex: number,
     pathIndex: number | null,
-    scope: DrawerContext
+    scope: DrawerContext,
+    source: 'global' | 'operation' | 'legacy'
   ) => {
-    const policy = policies[policyIndex];
-    if (!policy) return;
+    let policyName: string;
+    let existingParams: ParameterValues = {};
 
-    const existingParams =
-      pathIndex !== null ? policy.paths?.[pathIndex]?.params ?? {} : {};
+    if (source === 'global') {
+      const policy = (provider?.globalPolicies ?? [])[policyIndex];
+      if (!policy) return;
+      policyName = policy.name;
+      existingParams = (policy.params as ParameterValues) ?? {};
+    } else if (source === 'operation') {
+      const policy = (provider?.operationPolicies ?? [])[policyIndex];
+      if (!policy) return;
+      policyName = policy.name;
+      existingParams =
+        pathIndex !== null
+          ? ((policy.paths[pathIndex]?.params as ParameterValues) ?? {})
+          : {};
+    } else {
+      const policy = policies[policyIndex];
+      if (!policy) return;
+      policyName = policy.name;
+      existingParams =
+        pathIndex !== null
+          ? ((policy.paths?.[pathIndex]?.params as ParameterValues) ?? {})
+          : {};
+    }
 
-    setEditingTarget({ policyIndex, pathIndex });
+    setEditingTarget({ policyIndex, pathIndex, source });
     setDrawerContext(scope);
-    setSelectedGuardrail(policy.name);
+    setSelectedGuardrail(policyName);
     setGuardrailSettings(existingParams);
     setIsDetailView(true);
     setPolicyDefinition(null);
@@ -324,7 +371,7 @@ export default function ServiceProviderGuardrailsTab() {
     setDrawerOpen(true);
 
     const guardrailMeta = availableGuardrails.find(
-      (g) => g.name === policy.name
+      (g) => g.name === policyName
     );
     if (!guardrailMeta?.version) {
       setDefinitionError('No version available for this guardrail.');
@@ -413,62 +460,93 @@ export default function ServiceProviderGuardrailsTab() {
       ...updatePayload
     } = provider;
 
-    const updatedPolicies = (() => {
-      // Edit mode: update existing policy path params
-      if (editingTarget) {
-        const { policyIndex, pathIndex } = editingTarget;
-        const updated = [...policies];
-        const existing = updated[policyIndex];
-        if (!existing) return policies;
-
-        if (pathIndex !== null) {
-          const existingPaths = [...(existing.paths ?? [])];
-          existingPaths[pathIndex] = {
-            ...existingPaths[pathIndex],
-            params,
-          };
-          updated[policyIndex] = { ...existing, paths: existingPaths };
-        }
-        return updated;
-      }
-
-      // Add mode: add new policy path
-      const nextPath = buildPolicyPath(params);
-      const existingIndex = policies.findIndex(
-        (policy) =>
-          policy.name === selectedGuardrailPolicy.name &&
-          policy.version === selectedGuardrailVersion
-      );
-
-      if (existingIndex === -1) {
-        return [
-          ...policies,
-          {
-            name: selectedGuardrailPolicy.name,
-            version: selectedGuardrailVersion,
-            paths: [nextPath],
-          },
-        ];
-      }
-
-      const existing = policies[existingIndex];
-      const existingPaths = existing.paths ?? [];
-
-      const updated = [...policies];
-      updated[existingIndex] = {
-        ...existing,
-        paths: [...existingPaths, nextPath],
-      };
-      return updated;
-    })();
-
     const isEditing = !!editingTarget;
 
     try {
-      await updateProvider({
-        ...updatePayload,
-        policies: updatedPolicies,
-      });
+      if (editingTarget) {
+        const { policyIndex, pathIndex, source } = editingTarget;
+        if (source === 'global') {
+          const globalPolicies = [...(provider.globalPolicies ?? [])];
+          globalPolicies[policyIndex] = { ...globalPolicies[policyIndex], params };
+          await updateProvider({ ...updatePayload, globalPolicies });
+        } else if (source === 'operation') {
+          const operationPolicies = [...(provider.operationPolicies ?? [])];
+          const existing = operationPolicies[policyIndex];
+          const paths = [...existing.paths];
+          if (pathIndex !== null) {
+            paths[pathIndex] = { ...paths[pathIndex], params };
+          }
+          operationPolicies[policyIndex] = { ...existing, paths };
+          await updateProvider({ ...updatePayload, operationPolicies });
+        } else {
+          // legacy
+          const updated = [...policies];
+          const existing = updated[policyIndex];
+          if (!existing) return;
+          if (pathIndex !== null) {
+            const existingPaths = [...(existing.paths ?? [])];
+            existingPaths[pathIndex] = { ...existingPaths[pathIndex], params };
+            updated[policyIndex] = { ...existing, paths: existingPaths };
+          }
+          await updateProvider({ ...updatePayload, policies: updated });
+        }
+      } else if (drawerContext.scope === 'global') {
+        // Add mode — global scope → globalPolicies
+        const globalPolicies = [...(provider.globalPolicies ?? [])];
+        const existingIndex = globalPolicies.findIndex(
+          (p) =>
+            p.name === selectedGuardrailPolicy.name &&
+            p.version === selectedGuardrailVersion
+        );
+        if (existingIndex === -1) {
+          globalPolicies.push({
+            name: selectedGuardrailPolicy.name,
+            version: selectedGuardrailVersion,
+            params,
+          });
+        } else {
+          globalPolicies[existingIndex] = {
+            ...globalPolicies[existingIndex],
+            params,
+          };
+        }
+        await updateProvider({ ...updatePayload, globalPolicies });
+      } else {
+        // Add mode — resource scope → operationPolicies
+        const operationPolicies = [...(provider.operationPolicies ?? [])];
+        const resourcePath = drawerContext.path;
+        const resourceMethod = drawerContext.method;
+        const newPathEntry = { path: resourcePath, methods: [resourceMethod], params };
+        const existingPolicyIndex = operationPolicies.findIndex(
+          (p) =>
+            p.name === selectedGuardrailPolicy.name &&
+            p.version === selectedGuardrailVersion
+        );
+        if (existingPolicyIndex === -1) {
+          operationPolicies.push({
+            name: selectedGuardrailPolicy.name,
+            version: selectedGuardrailVersion,
+            paths: [newPathEntry],
+          });
+        } else {
+          const existing = operationPolicies[existingPolicyIndex];
+          const alreadyHasPath = existing.paths.some(
+            (p) =>
+              p.path === resourcePath &&
+              p.methods
+                .map((m) => m.toUpperCase())
+                .includes(resourceMethod.toUpperCase())
+          );
+          if (!alreadyHasPath) {
+            operationPolicies[existingPolicyIndex] = {
+              ...existing,
+              paths: [...existing.paths, newPathEntry],
+            };
+          }
+        }
+        await updateProvider({ ...updatePayload, operationPolicies });
+      }
+
       setGuardrailSettings(params);
       if (!isDraftMode) {
         showSnackbar(
@@ -495,7 +573,8 @@ export default function ServiceProviderGuardrailsTab() {
 
   const handleRemoveAppliedGuardrail = async (
     policyIndex: number,
-    pathIndex: number | null
+    pathIndex: number | null,
+    source: 'global' | 'operation' | 'legacy'
   ) => {
     if (!provider || isLoading || error) return;
 
@@ -508,27 +587,39 @@ export default function ServiceProviderGuardrailsTab() {
       ...updatePayload
     } = provider;
 
-    const updatedPolicies = policies.flatMap((policy, index) => {
-      if (index !== policyIndex) return [policy];
-
-      if (pathIndex === null) {
-        return [];
-      }
-
-      const existingPaths = policy.paths ?? [];
-      const nextPaths = existingPaths.filter((_, idx) => idx !== pathIndex);
-      if (nextPaths.length === 0) {
-        return [];
-      }
-
-      return [{ ...policy, paths: nextPaths }];
-    });
-
     try {
-      await updateProvider({
-        ...updatePayload,
-        policies: updatedPolicies,
-      });
+      if (source === 'global') {
+        const globalPolicies = (provider.globalPolicies ?? []).filter(
+          (_, idx) => idx !== policyIndex
+        );
+        await updateProvider({ ...updatePayload, globalPolicies });
+      } else if (source === 'operation') {
+        const operationPolicies = [...(provider.operationPolicies ?? [])];
+        const existing = operationPolicies[policyIndex];
+        if (pathIndex !== null) {
+          const paths = existing.paths.filter((_, idx) => idx !== pathIndex);
+          if (paths.length === 0) {
+            operationPolicies.splice(policyIndex, 1);
+          } else {
+            operationPolicies[policyIndex] = { ...existing, paths };
+          }
+        } else {
+          operationPolicies.splice(policyIndex, 1);
+        }
+        await updateProvider({ ...updatePayload, operationPolicies });
+      } else {
+        // legacy
+        const updatedPolicies = policies.flatMap((policy, index) => {
+          if (index !== policyIndex) return [policy];
+          if (pathIndex === null) return [];
+          const existingPaths = policy.paths ?? [];
+          const nextPaths = existingPaths.filter((_, idx) => idx !== pathIndex);
+          if (nextPaths.length === 0) return [];
+          return [{ ...policy, paths: nextPaths }];
+        });
+        await updateProvider({ ...updatePayload, policies: updatedPolicies });
+      }
+
       if (!isDraftMode) {
         showSnackbar('Guardrail removed successfully.', 'success');
       }
@@ -598,10 +689,10 @@ export default function ServiceProviderGuardrailsTab() {
                 onClick={() =>
                   handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
                     scope: 'global',
-                  })
+                  }, g.source)
                 }
                 onRemove={() =>
-                  void handleRemoveAppliedGuardrail(g.policyIndex, g.pathIndex)
+                  void handleRemoveAppliedGuardrail(g.policyIndex, g.pathIndex, g.source)
                 }
               />
             ))}
@@ -686,6 +777,9 @@ export default function ServiceProviderGuardrailsTab() {
             <Stack spacing={1.25}>
               {(() => {
                 const hasResourcePolicy = (resource: ResourceItem) =>
+                  (provider?.operationPolicies ?? []).some((policy) =>
+                    policy.paths.some((pc) => matchesResource(pc, resource))
+                  ) ||
                   policies.some((policy) =>
                     (policy.paths ?? []).some(
                       (pc) => pc.path !== '/*' && matchesResource(pc, resource)
@@ -739,9 +833,31 @@ export default function ServiceProviderGuardrailsTab() {
                       name: string;
                       displayName: string;
                       version: string;
+                      source: 'operation' | 'legacy';
                       policyIndex: number;
                       pathIndex: number;
                     }> = [];
+                    // New operationPolicies
+                    (provider?.operationPolicies ?? []).forEach(
+                      (policy, policyIndex) => {
+                        policy.paths.forEach((pathConfig, pathIndex) => {
+                          if (!matchesResource(pathConfig, resource)) return;
+                          const version = policy.version
+                            ? `v${policy.version.replace(/^v/, '').split('.')[0]}`
+                            : 'v0';
+                          items.push({
+                            id: `op-${policy.name}-${version}-${policyIndex}-${pathIndex}`,
+                            name: policy.name,
+                            displayName: getDisplayName(policy.name),
+                            version,
+                            source: 'operation',
+                            policyIndex,
+                            pathIndex,
+                          });
+                        });
+                      }
+                    );
+                    // Legacy policies
                     policies.forEach((policy, policyIndex) => {
                       (policy.paths ?? []).forEach((pathConfig, pathIndex) => {
                         if (pathConfig.path === '/*') return;
@@ -749,12 +865,12 @@ export default function ServiceProviderGuardrailsTab() {
                         const version = policy.version
                           ? `v${policy.version.replace(/^v/, '').split('.')[0]}`
                           : 'v0';
-                        const displayName = getDisplayName(policy.name);
                         items.push({
-                          id: `${policy.name}-${version}-${policyIndex}-${pathIndex}`,
+                          id: `legacy-${policy.name}-${version}-${policyIndex}-${pathIndex}`,
                           name: policy.name,
-                          displayName,
+                          displayName: getDisplayName(policy.name),
                           version,
+                          source: 'legacy',
                           policyIndex,
                           pathIndex,
                         });
@@ -856,13 +972,15 @@ export default function ServiceProviderGuardrailsTab() {
                                               scope: 'resource',
                                               method,
                                               path: resource.path,
-                                            }
+                                            },
+                                            guardrail.source
                                           )
                                         }
                                         onRemove={() =>
                                           void handleRemoveAppliedGuardrail(
                                             guardrail.policyIndex,
-                                            guardrail.pathIndex
+                                            guardrail.pathIndex,
+                                            guardrail.source
                                           )
                                         }
                                       />

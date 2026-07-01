@@ -16,12 +16,12 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: LlmProviderTemplate
 metadata:
   name: mistralai
 spec:
   displayName: Mistral
+  managedBy: wso2
+  version: v1.0
   metadata:
     endpointUrl: https://api.mistral.ai
     auth:

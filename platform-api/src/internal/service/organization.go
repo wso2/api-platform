@@ -40,9 +40,8 @@ type OrganizationService struct {
 	llmProviderRepo   repository.LLMProviderRepository
 	llmProxyRepo      repository.LLMProxyRepository
 	mcpProxyRepo      repository.MCPProxyRepository
-	websubAPIRepo     repository.WebSubAPIRepository
-	devPortalService  *DevPortalService
 	llmTemplateSeeder *LLMTemplateSeeder
+	auditRepo         repository.AuditRepository
 	config            *config.Server
 	slogger           *slog.Logger
 }
@@ -55,120 +54,28 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	llmProviderRepo repository.LLMProviderRepository,
 	llmProxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
-	websubAPIRepo repository.WebSubAPIRepository,
-	devPortalService *DevPortalService,
 	llmTemplateSeeder *LLMTemplateSeeder,
+	auditRepo repository.AuditRepository,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:     orgRepo,
-		projectRepo: projectRepo,
+		orgRepo:           orgRepo,
+		projectRepo:       projectRepo,
 		applicationRepo:   applicationRepo,
 		apiRepo:           apiRepo,
 		gatewayRepo:       gatewayRepo,
 		llmProviderRepo:   llmProviderRepo,
 		llmProxyRepo:      llmProxyRepo,
 		mcpProxyRepo:      mcpProxyRepo,
-		websubAPIRepo:     websubAPIRepo,
-		devPortalService:  devPortalService,
 		llmTemplateSeeder: llmTemplateSeeder,
+		auditRepo:         auditRepo,
 		config:            cfg,
 		slogger:           slogger,
 	}
 }
 
-func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.OrganizationSubscription, error) {
-	if _, err := s.GetOrganizationByUUID(orgID); err != nil {
-		return nil, err
-	}
-
-	llmProvidersCount, err := s.llmProviderRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	llmProxiesCount, err := s.llmProxyRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	applicationsCount, err := s.applicationRepo.CountApplicationsByOrganizationID(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	mcpProxiesCount, err := s.mcpProxyRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	websubAPICount, err := s.websubAPIRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	apis, err := s.apiRepo.GetAPIsByOrganizationUUID(orgID, "")
-	if err != nil {
-		return nil, err
-	}
-
-	llmProvidersLimit := constants.MaxLLMProvidersPerOrganization
-	llmProvidersRemaining := max(llmProvidersLimit-llmProvidersCount, 0)
-
-	llmProxiesLimit := constants.MaxLLMProxiesPerOrganization
-	llmProxiesRemaining := max(llmProxiesLimit-llmProxiesCount, 0)
-
-	mcpProxiesLimit := constants.MaxMCPProxiesPerOrganization
-	mcpProxiesRemaining := max(mcpProxiesLimit-mcpProxiesCount, 0)
-
-	websubAPIsLimit := constants.MaxWebSubAPIsPerOrganization
-	websubAPIsRemaining := max(websubAPIsLimit-websubAPICount, 0)
-
-	res := &api.OrganizationSubscription{
-		Plan: "free",
-		Quotas: api.OrganizationSubscriptionQuotas{
-			LlmProviders: api.OrganizationQuota{
-				Used:      llmProvidersCount,
-				Limit:     intPtr(llmProvidersLimit),
-				Remaining: intPtr(llmProvidersRemaining),
-			},
-			LlmProxies: api.OrganizationQuota{
-				Used:      llmProxiesCount,
-				Limit:     intPtr(llmProxiesLimit),
-				Remaining: intPtr(llmProxiesRemaining),
-			},
-			Applications: api.OrganizationQuota{
-				Used: applicationsCount,
-			},
-			McpProxies: api.OrganizationQuota{
-				Used:      mcpProxiesCount,
-				Limit:     intPtr(mcpProxiesLimit),
-				Remaining: intPtr(mcpProxiesRemaining),
-			},
-			Gateways: api.OrganizationQuota{
-				Used: len(gateways),
-			},
-			Apis: api.OrganizationQuota{
-				Used: len(apis),
-			},
-			WebsubApis: &api.OrganizationQuota{
-				Used:      websubAPICount,
-				Limit:     intPtr(websubAPIsLimit),
-				Remaining: intPtr(websubAPIsRemaining),
-			},
-		},
-	}
-
-	return res, nil
-}
-
-func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string) (*api.Organization, error) {
+func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, performedBy string) (*api.Organization, error) {
 	// Auto-generate handle from name if not provided; otherwise validate the explicit handle.
 	if handle == "" {
 		generated, genErr := utils.GenerateHandle(name, func(h string) bool {
@@ -221,6 +128,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	if err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("CREATE", orgModel.ID, "organization", orgModel.ID, performedBy)
 
 	// Seed default LLM provider templates for the new organization (best-effort)
 	if s.llmTemplateSeeder != nil {
@@ -229,21 +137,10 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		}
 	}
 
-	// Create default DevPortal if enabled
-	if s.devPortalService != nil && s.config != nil && s.config.DefaultDevPortal.Enabled {
-		defaultDevPortal, devPortalErr := s.devPortalService.CreateDefaultDevPortal(id)
-		if devPortalErr != nil {
-			s.slogger.Warn("Failed to create default DevPortal for organization", "organization", name, "error", devPortalErr)
-			// Don't fail organization creation, but log the error
-		} else if defaultDevPortal != nil {
-			s.slogger.Info("Created default DevPortal for organization", "devPortal", defaultDevPortal.Name, "organization", name)
-		}
-		// No organization sync during creation - sync happens during DevPortal activation
-	}
-
 	// Create default project for the organization
 	defaultProject := &model.Project{
 		ID:             projectID,
+		Handle:         "default",
 		Name:           "default",
 		OrganizationID: id,
 		Description:    "Default project",

@@ -18,6 +18,10 @@
 # Global build arguments
 ARG PORT=9243
 
+# Set EXPERIMENTAL=true to include the event-gateway plugin.
+# The resulting image should be tagged with a "-experimental" suffix.
+ARG EXPERIMENTAL=false
+
 # Build stage
 FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
@@ -25,6 +29,7 @@ ARG TARGETARCH
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
+ARG EXPERIMENTAL=false
 
 WORKDIR /build
 
@@ -40,14 +45,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        fi \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy go mod files for dependencies (needed for go.mod replace directive)
+# Copy go mod files for dependencies (needed for go.mod replace directives)
 COPY --from=common go.mod go.sum /common/
+COPY --from=httpkit go.mod go.sum /httpkit/
 
 # Fetch dependencies before copying full source for better layer caching.
 COPY src/go.mod src/go.sum ./
 RUN go mod download
 
 COPY --from=common . /common
+COPY --from=httpkit . /httpkit
 COPY src/ ./
 
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
@@ -57,10 +64,13 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     else \
         export CC=gcc; \
     fi && \
+    BUILD_TAGS="" && \
+    if [ "$EXPERIMENTAL" = "true" ]; then BUILD_TAGS="-tags experimental"; fi && \
     CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=${TARGETARCH} \
     go build -a \
+        ${BUILD_TAGS} \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT}" \
         -o platform-api ./cmd/main.go
 
@@ -70,9 +80,12 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
 FROM ubuntu:24.04
 
 ARG PORT
+ARG EXPERIMENTAL=false
 ARG USERNAME=wso2
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
+
+LABEL org.opencontainers.image.experimental="${EXPERIMENTAL}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -89,6 +102,7 @@ COPY --from=builder /build/platform-api .
 # Schema files and LLM provider templates
 COPY src/internal/database/schema.sql            ./schema.sql
 COPY src/internal/database/schema.postgres.sql   ./schema.postgres.sql
+COPY src/internal/database/schema.sqlserver.sql ./schema.sqlserver.sql
 COPY src/internal/database/schema.sqlite.sql     ./schema.sqlite.sql
 COPY src/resources/default-llm-provider-templates ./default-llm-provider-templates
 COPY src/resources/openapi.yaml                  ./resources/openapi.yaml

@@ -41,7 +41,7 @@ export const useCreateOrganization = () => {
         ...overrides,
       };
 
-      const response = await fetch(`${baseUrl}/api/v1/organizations`, {
+      const response = await fetch(`${baseUrl}/api/v0.9/organizations`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -113,7 +113,7 @@ export const useOrganizationsApi = () => {
   const fetchOrganizations = useCallback(async (): Promise<OrganizationResponse[]> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/organizations`, {
+    const response = await fetch(`${baseUrl}/api/v0.9/organizations`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

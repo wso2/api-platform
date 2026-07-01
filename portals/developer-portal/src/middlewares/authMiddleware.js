@@ -38,23 +38,18 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
-
-const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
-
-function resolveTokenRefreshTimeoutMs() {
-    const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
-    if (Number.isFinite(timeout) && timeout > 0) {
-        return timeout;
-    }
-    return DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
-}
-
+const orgDao = require('../dao/organizationDao');
 
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const { payload } = await jwtVerify(token, jwks);
-        return { valid: true, scopes: payload.scope || '' };
+        const jwtVerifyOptions = {};
+        if (config.identityProvider?.issuer) jwtVerifyOptions.issuer = config.identityProvider.issuer;
+        if (config.identityProvider?.audience) jwtVerifyOptions.audience = config.identityProvider.audience;
+        const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
+        const rawScope = payload.scope ?? payload.scp;
+        const scopes = Array.isArray(rawScope) ? rawScope.join(' ') : (rawScope || '');
+        return { valid: true, scopes };
     } catch (err) {
         if (err.code === 'ERR_JWT_EXPIRED' && req.user && req.user.refreshToken) {
             try {
@@ -81,7 +76,7 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
 }
 
 async function verifyBearerToken(token, req) {
-    const idp = await resolveOrgIdp(req);
+    const idp = resolveOrgIdp();
     if (!idp || !idp.clientId) {
         // Local auth mode: verify Platform API JWT with shared secret when configured.
         const jwtSecret = config.platformApi?.jwtSecret;
@@ -98,13 +93,50 @@ async function verifyBearerToken(token, req) {
     return { valid: false, scopes: '' };
 }
 
-function checkOrgMembership(req) {
-    if (!req.user) return true;
-    const tokenOrg = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-    const targetOrg = req.user[constants.ORG_IDENTIFIER];
-    if (!targetOrg || tokenOrg === targetOrg) return true;
-    const authorizedOrgs = req.user.authorizedOrgs;
-    return Array.isArray(authorizedOrgs) && authorizedOrgs.includes(targetOrg);
+/**
+ * Resolves the org UUID from an IDP claim value (IDP_REF_ID) and sets req.orgId.
+ * Returns null on success, or an Error (with .status) on failure.
+ */
+async function resolveOrgFromClaim(req, orgClaim) {
+    if (!orgClaim) return null;
+    try {
+        req.orgId = await orgDao.getId(orgClaim);
+        return null;
+    } catch (e) {
+        if (e.name === 'SequelizeEmptyResultError') {
+            const err = new Error('Organization not found');
+            err.status = 404;
+            return err;
+        }
+        logger.error('Org lookup failed', { error: e.message, orgClaim });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return err;
+    }
+}
+
+/**
+ * Resolves the org UUID from the `organization` request header and sets req.orgId.
+ * Used for API-key, mTLS, and local-auth requests that carry no token org claim.
+ * Returns null when the header is absent (allows public endpoints through).
+ */
+async function resolveOrgFromHeader(req) {
+    const orgHeader = req.headers.organization;
+    if (!orgHeader) return null;
+    try {
+        req.orgId = await orgDao.getId(orgHeader);
+        return null;
+    } catch (e) {
+        if (e.name === 'SequelizeEmptyResultError') {
+            const err = new Error('Organization not found');
+            err.status = 404;
+            return err;
+        }
+        logger.error('Org lookup failed from header', { error: e.message, orgHeader });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return err;
+    }
 }
 
 /**
@@ -113,11 +145,16 @@ function checkOrgMembership(req) {
  */
 async function authResolver(req, res, next) {
     try {
-        // 1. Local auth users (platform JWT in session, no IdP configured)
+        // 1. Local auth users (platform JWT in session, no IdP configured).
+        // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
+        // sessions, so resolveOrgFromClaim works via the HANDLE lookup in orgDao.getId.
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && !config.identityProvider?.clientId) {
             const platformToken = req.user[constants.ACCESS_TOKEN];
             const claims = platformToken ? extractPlatformJwtClaims(platformToken, null) : null;
+            const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+            const orgErr = await resolveOrgFromClaim(req, orgHandle);
+            if (orgErr) return next(orgErr);
             req.auth = {
                 mode: 'platform-jwt',
                 preauthorized: false,
@@ -127,14 +164,35 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 2. Bearer token (session-attached or Authorization header)
+        // 2. Session fast-path: browser login via IDP — role check is done by ensureAuthenticated
+        // on page routes, so scope enforcement here is redundant and would require listing all
+        // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
+        // scope check for session users (same as API key and mTLS paths).
+        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.identityProvider?.clientId) {
+            const orgIDClaim = config.identityProvider?.orgIDClaim;
+            if (orgIDClaim) {
+                const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+                if (!sessionOrgClaim) {
+                    const err = new Error('Missing organization claim in session');
+                    err.status = 403;
+                    return next(err);
+                }
+                const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
+                if (orgErr) return next(orgErr);
+            }
+            req[constants.USER_ID] = req.user[constants.USER_ID];
+            req.auth = {
+                mode: 'oauth2',
+                preauthorized: true,
+                scopes: String(req.user.grantedScopes || '').split(' ').filter(Boolean),
+                userId: req.user[constants.USER_ID],
+            };
+            return next();
+        }
+
+        // 3. Bearer token (session-attached or Authorization header)
         const token = accessTokenPresent(req);
         if (token) {
-            if (!checkOrgMembership(req)) {
-                const err = new Error('Authentication required');
-                err.status = 401;
-                return next(err);
-            }
             const { valid, scopes } = await verifyBearerToken(token, req);
             if (!valid) {
                 const err = new Error('Authentication required');
@@ -142,6 +200,19 @@ async function authResolver(req, res, next) {
                 return next(err);
             }
             const decoded = jwt.decode(req.user?.[constants.ACCESS_TOKEN] || token) || {};
+            // Resolve org UUID from the token's org claim (IDP_REF_ID).
+            // Only in IDP mode — local-auth and platform-JWT tokens carry no org claim.
+            const orgIDClaim = config.identityProvider?.orgIDClaim;
+            if (config.identityProvider?.clientId && orgIDClaim) {
+                const tokenOrgClaim = decoded[orgIDClaim];
+                if (!tokenOrgClaim) {
+                    const err = new Error('Missing organization claim in token');
+                    err.status = 403;
+                    return next(err);
+                }
+                const orgErr = await resolveOrgFromClaim(req, tokenOrgClaim);
+                if (orgErr) return next(orgErr);
+            }
             req[constants.USER_ID] = decoded[constants.USER_ID];
             req.auth = {
                 mode: 'oauth2',
@@ -151,34 +222,35 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 3. API key
+        // 4. API key — org resolved from the `organization` request header
         if (config.advanced?.apiKey?.enabled) {
             const keyType = config.advanced.apiKey.keyType;
             if (keyType && config.advanced?.apiKey?.keyValue) {
                 const apiKey = req.headers[keyType.toLowerCase()];
                 if (apiKey && apiKey === config.advanced?.apiKey?.keyValue) {
-                    if (req.headers.organization && req.params && !req.params.orgId) {
-                        req.params.orgId = req.headers.organization;
-                    }
+                    const orgErr = await resolveOrgFromHeader(req);
+                    if (orgErr) return next(orgErr);
                     req.auth = { mode: 'apikey', preauthorized: true, scopes: [] };
                     return next();
                 }
             }
         }
 
-        // 4. mTLS
+        // 5. mTLS — org resolved from the `organization` request header
         if (typeof req.socket?.getPeerCertificate === 'function') {
             const cert = req.socket.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
                 const now = new Date();
                 if (new Date(cert.valid_from) <= now && new Date(cert.valid_to) >= now) {
+                    const orgErr = await resolveOrgFromHeader(req);
+                    if (orgErr) return next(orgErr);
                     req.auth = { mode: 'mtls', preauthorized: true, scopes: [] };
                     return next();
                 }
             }
         }
 
-        // 5. No usable credential — pass through as anonymous so the OpenAPI
+        // 6. No usable credential — pass through as anonymous so the OpenAPI
         // validator can enforce security on a per-operation basis. Operations
         // with `security: []` (public endpoints) will proceed; operations that
         // declare a security scheme will have their handler invoked by the

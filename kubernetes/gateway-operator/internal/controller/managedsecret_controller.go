@@ -114,7 +114,7 @@ func (a *managedSecretAdapter) Deploy(ctx context.Context, k8sClient client.Clie
 		Value:       val,
 	}
 
-	body, err := gatewayclient.BuildEnvelopeYAML(apiv1.GroupVersion.String(), "Secret",
+	body, err := gatewayclient.BuildEnvelopeYAML(gatewayclient.ManagementArtifactAPIVersion, "Secret",
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,

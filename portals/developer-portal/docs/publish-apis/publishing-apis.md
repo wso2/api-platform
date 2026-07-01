@@ -30,7 +30,6 @@ spec:
   displayName: Order API
   version: v1.0
   description: Create and manage customer orders
-  provider: WSO2
   status: PUBLISHED
 
   tags:
@@ -40,7 +39,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Bronze
     - Gold
     - Unlimited
@@ -74,13 +73,12 @@ spec:
   displayName: My MCP Server
   version: 1.0.0
   description: MCP server exposing AI tools.
-  provider: WSO2
   status: PUBLISHED
 
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
 
   visibility: PUBLIC
@@ -99,7 +97,7 @@ spec:
 
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
-> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 >   -d "username=admin&password=admin" | jq -r .token)
 > ```
 
@@ -107,7 +105,7 @@ Send the manifest and definition together as a multipart upload:
 
 ```bash
 # REST API with OpenAPI definition
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
+curl -X POST "http://localhost:3000/devportal/v1/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
@@ -115,7 +113,7 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 
 ```bash
 # GraphQL API
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
+curl -X POST "http://localhost:3000/devportal/v1/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@schema.graphql;type=application/graphql"
@@ -123,7 +121,7 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 
 ```bash
 # MCP server
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
+curl -X POST "http://localhost:3000/devportal/v1/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@mcp.yaml" \
   -F "apiDefinition=@mcp-spec.yaml;type=application/yaml"
@@ -136,17 +134,15 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 | `spec.displayName` | Yes | Display name shown in the catalog |
 | `spec.version` | Yes | Version string (e.g. `v1.0`, `2.3`) |
 | `spec.description` | No | Short description shown in the catalog listing |
-| `spec.provider` | No | Provider name (e.g. `WSO2`) |
 | `spec.status` | No | `PUBLISHED` (default) or `PROTOTYPED` |
 | `spec.tags` | No | Tags for search and filtering |
 | `spec.labels` | No | Labels that control which views the API appears in |
-| `spec.subscriptionPolicies` | No | Names of subscription plans available for this API |
+| `spec.subscriptionPlans` | No | Names of subscription plans available for this API |
 | `spec.visibility` | No | `PUBLIC` (visible to all) or `PRIVATE` (restricted) |
 | `spec.visibleGroups` | No | Groups that can see a `PRIVATE` API |
 | `spec.endpoints.productionUrl` | No | Production gateway URL |
 | `spec.endpoints.sandboxUrl` | No | Sandbox gateway URL |
 | `spec.businessInformation` | No | Business and technical owner contact details |
-| `spec.gatewayType` | No | Gateway type identifier — used to route webhook events to the matching gateway subscriber |
 
 The response includes the `apiId` needed for subsequent steps.
 
@@ -157,7 +153,7 @@ If you need to update the definition file independently of the manifest:
 ```bash
 # OpenAPI YAML
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content" \
+  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
@@ -165,7 +161,7 @@ curl -X POST \
 ```bash
 # AsyncAPI YAML
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content" \
+  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiDefinition=@asyncapi.yaml;type=application/yaml"
 ```
@@ -178,7 +174,7 @@ Add landing page content and documentation sections to give developers context a
 
 ## Access Control Patterns
 
-The portal supports three distinct consumption patterns. The pattern is determined by the combination of `spec.subscriptionPolicies` in the API manifest and the `securitySchemes` (and optional extension headers) in the OpenAPI definition.
+The portal supports three distinct consumption patterns. The pattern is determined by the combination of `spec.subscriptionPlans` in the API manifest and the `securitySchemes` (and optional extension headers) in the OpenAPI definition.
 
 ---
 
@@ -190,8 +186,7 @@ The consumer generates an API key from the portal and uses it directly to invoke
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies: []   # no subscription required
+  subscriptionPlans: []   # no subscription required
 ```
 
 **`openapi.yaml`** (relevant excerpt)
@@ -217,8 +212,7 @@ The consumer subscribes to a plan and then generates an API key bound to that AP
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Bronze
 ```
@@ -246,8 +240,7 @@ The consumer subscribes to a plan and generates an API key. They also receive a 
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Silver
     - Bronze
@@ -278,7 +271,7 @@ Consumers subscribe to a plan (receiving a subscription token), generate an API 
 
 ### Summary
 
-| Pattern | `subscriptionPolicies` | `securitySchemes` | `x-header-type: subscription-token` |
+| Pattern | `subscriptionPlans` | `securitySchemes` | `x-header-type: subscription-token` |
 |---|---|---|---|
 | API key only | `[]` | `apiKey` | No |
 | API key + direct subscription | one or more plans | `apiKey` | No |
@@ -299,13 +292,13 @@ spec:
   labels:
     - default
     - ecommerce
-  subscriptionPolicies:
+  subscriptionPlans:
     - Bronze
     - Gold
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
+curl -X PUT http://localhost:3000/devportal/v1/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api-update.yaml"
 ```
@@ -313,7 +306,7 @@ curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
 ## Delete an API
 
 ```bash
-curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
+curl -X DELETE http://localhost:3000/devportal/v1/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -322,19 +315,19 @@ curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} \
 ## List APIs
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/apis -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/apis -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get an API
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/apis/{apiId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Related
 
 - [API Content and Docs](api-content-and-docs.md) — upload landing page content and documentation
-- [Subscription Plans](../administer/subscription-plans.md) — create the plans referenced in `spec.subscriptionPolicies`
+- [Subscription Plans](../administer/subscription-plans.md) — create the plans referenced in `spec.subscriptionPlans`
 - [Manage Views](../administer/manage-views.md) — configure labels and views
 - [API Workflows](manage-api-workflows.md) — publish multi-step workflows for this API
 - [Consume with API Key](../consume-an-api/consume-with-api-key.md) — developer view of generating API keys

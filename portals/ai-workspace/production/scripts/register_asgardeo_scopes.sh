@@ -85,7 +85,6 @@ SCOPES=(
   # organization
   "ap:organization:manage"
   "ap:organization:read"
-  "ap:organization:subscription:read"
 
   # project
   "ap:project:create"
@@ -100,7 +99,6 @@ SCOPES=(
   "ap:rest_api:update"
   "ap:rest_api:delete"
   "ap:rest_api:manage"
-  "ap:rest_api:import"
   "ap:rest_api:deployment:create"
   "ap:rest_api:deployment:read"
   "ap:rest_api:deployment:manage"
@@ -129,11 +127,11 @@ SCOPES=(
   "ap:application:api_key:read"
   "ap:application:api_key:delete"
   "ap:application:api_key:manage"
-  "ap:application:associations:create"
-  "ap:application:associations:read"
-  "ap:application:associations:delete"
-  "ap:application:associations:manage"
-  "ap:application:associations:api_key:read"
+  "ap:application:association:create"
+  "ap:application:association:read"
+  "ap:application:association:delete"
+  "ap:application:association:manage"
+  "ap:application:association:api_key:read"
 
   # gateway
   "ap:gateway:create"
@@ -141,7 +139,7 @@ SCOPES=(
   "ap:gateway:update"
   "ap:gateway:delete"
   "ap:gateway:manage"
-  "ap:gateway:artifacts:read"
+  "ap:gateway:artifact:read"
   "ap:gateway:manifest:read"
   "ap:gateway:token:create"
   "ap:gateway:token:read"
@@ -160,9 +158,6 @@ SCOPES=(
   "ap:devportal:update"
   "ap:devportal:delete"
   "ap:devportal:manage"
-
-  # git
-  "ap:git:read"
 
   # llm_template
   "ap:llm_template:create"

@@ -1,40 +1,40 @@
-<div id="planModal-{{apiID}}" class="modal custom-modal subscription-plan-modal" tabindex="-1" role="dialog"
+<div id="planModal-{{id}}" class="modal custom-modal subscription-plan-modal" tabindex="-1" role="dialog"
     style="display:none;"
-    data-org-id="{{@root.orgID}}" data-api-refid="{{#if apiInfo.apiReferenceID}}{{apiInfo.apiReferenceID}}{{else}}{{apiID}}{{/if}}"
+    data-org-id="{{@root.orgId}}" data-api-refid="{{#if refId}}{{refId}}{{else}}{{id}}{{/if}}"
     data-has-subscription-token="{{@root.hasSubscriptionToken}}">
     <div class="modal-dialog modal-xl subscription-plan-modal-dialog" role="document">
         <div class="modal-content custom-modal-content">
             <div class="custom-modal-header">
                 <h2 class="custom-modal-title m-0">{{#if modalTitle}}{{modalTitle}}{{else}}Choose Your Subscription Plan{{/if}}</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"
-                    onclick="closeModal('planModal-{{apiID}}')"></button>
+                    onclick="closeModal('planModal-{{id}}')"></button>
             </div>
             <div class="custom-modal-body">
                 <div class="api-banner-content py-4 px-5">
                     <div class="d-flex align-items-center justify-content-between w-100">
                         <div class="col-12 col-md-7">
                             <div class="api-title pb-3">
-                                <h4>{{apiInfo.apiName}}</h4>
-                                <span class="mb-1"> {{apiInfo.apiVersion}}</span>
-                                <p class="api-description">{{apiInfo.apiDescription}}</p>
+                                <h4>{{name}}</h4>
+                                <span class="mb-1"> {{version}}</span>
+                                <p class="api-description">{{description}}</p>
                             </div>
                         </div>
                         <div class="col-12 col-md-5 text-md-right">
-                            {{#if apiInfo.apiImageMetadata.api-icon}}
-                            <img class="img-thumbnail api-image-small" src="{{apiInfo.apiImageMetadata.api-icon}}"
+                            {{#if apiImageMetadata.api-icon}}
+                            <img class="img-thumbnail api-image-small" src="{{apiImageMetadata.api-icon}}"
                                 alt="API Image" />
                             {{else}}
                             <div
                                 class="img-thumbnail api-image-small image-icon d-flex justify-content-center align-items-center">
-                                {{firstTwoLetters apiInfo.apiName}}</div>
+                                {{firstTwoLetters name}}</div>
                             {{/if}}
                         </div>
                     </div>
                 </div>
-                <div id="subscriptionTokenArea-{{apiID}}" class="subscription-token-area px-4" style="display:none;">
+                <div id="subscriptionTokenArea-{{id}}" class="subscription-token-area px-4" style="display:none;">
                     <!-- Token result will be injected here for token-based subscriptions -->
                 </div>
-                <div id="subscriptionContent-{{apiID}}" class="subscription-content px-4" style="display:none;">
+                <div id="subscriptionContent-{{id}}" class="subscription-content px-4" style="display:none;">
                     <!-- Subscription table and plans will be injected here dynamically -->
                 </div>
                 <div class="subscription-plans-body pb-4">
@@ -42,27 +42,27 @@
                     <p class="subscription-plans-subtitle">Please select the most suitable subscription plan from the
                         options
                         available for this API</p>
-                    <input type="hidden" id="modal-selected-app-{{apiID}}" value="" />
+                    <input type="hidden" id="modal-selected-app-{{id}}" value="" />
 
                     <div class="row row-gap-4 pt-3">
-                        {{#each subscriptionPolicyDetails}}
+                        {{#each subscriptionPlanDetails}}
                         <div class="col-12 col-md-6 col-lg-4">
-                            <div id="subscriptionCard-{{policyID}}" class="card dev-card subscription-card">
+                            <div id="subscriptionCard-{{id}}" class="card dev-card subscription-card">
                                 <div class="card-body align-items-center text-center p-0">
-                                    <span class="subscription-plans-card-title">{{displayName}}</span>
+                                    <span class="subscription-plans-card-title">{{name}}</span>
                                     <div class="mb-3 w-100">
                                         <div class="d-flex flex-column align-items-center gap-2" style="margin: 0 auto;">
                                             <span class="text-muted d-block mt-3 mb-0" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom:0 !important; min-height: 18px;">Rate Limit</span>
                                             <span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{requestCount}}<small class="text-muted d-inline" style="font-size: 11px;">&nbsp;req/min</small></span>
                                         </div>
                                     </div>
-                                    <button id="subscribe-btn-{{policyID}}" type="button"
+                                    <button id="subscribe-btn-{{id}}" type="button"
                                         class="common-btn-primary p-1 ps-2 pe-2 w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                        data-org-id="{{@root.orgID}}"
-                                        data-api-id="{{#if apiID}}{{apiID}}{{else}}{{../apiID}}{{/if}}"
-                                        data-policy-id="{{policyID}}"
-                                        data-policy-name="{{policyName}}"
-                                        data-display-name="{{displayName}}"
+                                        data-org-id="{{@root.orgId}}"
+                                        data-api-id="{{../id}}"
+                                        data-plan-id="{{id}}"
+                                        data-plan-name="{{handle}}"
+                                        data-display-name="{{name}}"
                                         {{#unless @root.isReadOnlyMode}}onclick="handlePlanSubscription(this)"{{/unless}}
                                         {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
                                 </div>
@@ -73,7 +73,7 @@
                 </div>
                 <div class="d-flex justify-content-end mb-3" id="applicationKeyUpdateButtonContainer">
                     <button class="common-btn-outlined pr-3 me-3" type="button"
-                        onclick="closeModal('planModal-{{apiID}}')">Cancel</button>
+                        onclick="closeModal('planModal-{{id}}')">Cancel</button>
                 </div>
             </div>
         </div>

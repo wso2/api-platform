@@ -398,7 +398,7 @@ func TestDeployAPIConfiguration_ValidationError(t *testing.T) {
 
 	// Invalid YAML that will pass parsing but fail validation
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: test-api
@@ -439,7 +439,7 @@ func TestDeployAPIConfiguration_DBConflictValidation(t *testing.T) {
 
 		params := APIDeploymentParams{
 			Data: []byte(`
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: another-rest-api
@@ -481,7 +481,7 @@ spec:
 
 		params := APIDeploymentParams{
 			Data: []byte(`
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: existing-rest-api
@@ -539,7 +539,7 @@ func TestDeployAPIConfiguration_InferKindFromPayload(t *testing.T) {
 
 	t.Run("Infers RestApi kind from payload", func(t *testing.T) {
 		yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: inferred-api
@@ -567,7 +567,7 @@ spec:
 
 	t.Run("Infers WebSubApi kind from payload", func(t *testing.T) {
 		yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: WebSubApi
 metadata:
   name: inferred-websub
@@ -598,7 +598,7 @@ func TestDeployAPIConfiguration_EmptyKindInPayload(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 metadata:
   name: no-kind-api
 spec:
@@ -640,7 +640,7 @@ func TestDeployAPIConfiguration_WebSubParseError(t *testing.T) {
 
 	// Create a WebSub API with invalid spec structure
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: WebSubApi
 metadata:
   name: test-websub
@@ -1130,4 +1130,61 @@ func TestResolveVhostSentinels_NilCfgNoOp(t *testing.T) {
 func TestResolveVhostSentinels_NilRouterCfgNoOp(t *testing.T) {
 	var cfg any = api.RestAPI{Kind: api.RestAPIKindRestApi}
 	require.NoError(t, resolveVhostSentinels(&cfg, nil)) // should not panic
+}
+
+// TestDeployAPIConfiguration_PreservesControlPlaneUUID verifies the CP->DP flow:
+// when the control plane deploys an artifact, the gateway preserves the CP-generated
+// UUID (passed as params.APIID) as the StoredConfig.UUID. This identity is required
+// for API keys, which are keyed by artifact UUID across both planes.
+func TestDeployAPIConfiguration_PreservesControlPlaneUUID(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	validator := config.NewAPIValidator()
+	routerConfig := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "api.example.com"},
+			Sandbox: config.VHostEntry{Default: "sandbox.example.com"},
+		},
+	}
+	service := newTestAPIDeploymentService(store, db, nil, validator, routerConfig)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	const cpUUID = "cp-generated-0000-0000-000000000001"
+	deployedAt := time.Now()
+	params := APIDeploymentParams{
+		Data: []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: cp-rest-api
+spec:
+  displayName: CP Rest API
+  version: "1.0.0"
+  context: /cp
+  upstream:
+    main:
+      url: https://example.com
+  operations:
+    - method: GET
+      path: /items
+`),
+		ContentType:   "application/yaml",
+		APIID:         cpUUID, // control-plane generated UUID
+		DeploymentID:  "cp-deployment-1",
+		Origin:        models.OriginControlPlane,
+		DeployedAt:    &deployedAt,
+		CorrelationID: "test-corr",
+		Logger:        logger,
+	}
+
+	result, err := service.DeployAPIConfiguration(params)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, cpUUID, result.StoredConfig.UUID,
+		"CP-generated UUID must be preserved on the gateway during CP->DP deploy")
+
+	// And it must be retrievable locally under the same UUID.
+	stored, err := db.GetConfig(cpUUID)
+	require.NoError(t, err)
+	assert.Equal(t, cpUUID, stored.UUID)
 }

@@ -1,0 +1,153 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+name: Event Gateway Integration Test (SQL Server)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'event-gateway/**'
+      - 'gateway/gateway-controller/**'
+      - 'common/**'
+      - 'sdk/**'
+      - '.github/workflows/event-gateway-integration-test-sqlserver.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-24.04
+    env:
+      # Used for both Compose interpolation and the runner-side sqlcmd checks below.
+      MSSQL_SA_PASSWORD: EGW_Strong!Pass123
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.2'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Read version
+        id: version
+        run: echo "version=$(cat event-gateway/VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build event-gateway-controller image
+        run: make -C event-gateway build-event-gateway-controller VERSION=${{ steps.version.outputs.version }}
+
+      - name: Build event-gateway-runtime image
+        run: make -C event-gateway build-gateway-runtime VERSION=${{ steps.version.outputs.version }}
+
+      - name: Build webhook-listener image
+        run: make -C event-gateway/webhook-listener build IMAGE_NAME=event-gateway/webhook-listener VERSION=local
+
+      - name: Verify event-gateway-controller uses SQL Server
+        run: |
+          set -euo pipefail
+          cd event-gateway
+
+          PROJECT="egw-it-sqlserver-verify"
+          cleanup() {
+            docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml up -d sqlserver mssql-init gateway-controller
+
+          timeout 120 bash -c '
+            until docker logs egw-it-gateway-controller 2>&1 | grep -qE "Initializing SQLServer schema|SQLServer schema initialized"; do
+              sleep 2
+            done
+          ' || {
+            echo "=== Schema init timed out — gateway-controller logs ==="
+            docker logs egw-it-gateway-controller 2>&1 || true
+            exit 1
+          }
+
+          # Dump controller logs on any subsequent failure so the cause is never hidden
+          # by the cleanup trap (otherwise an assertion failure tears everything down silently).
+          dump_logs() {
+            echo "=== gateway-controller logs ==="
+            docker logs egw-it-gateway-controller 2>&1 || true
+          }
+          trap 'dump_logs; cleanup' EXIT
+
+          table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml exec -T sqlserver \
+            /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d gateway_test -h -1 -W \
+            -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'artifacts'" | tr -d '[:space:]')"
+          echo "artifacts table_count=$table_count"
+          [ "$table_count" = "1" ]
+
+          # The controller's DSN sets 'app name=gateway-controller', so its sessions are
+          # tagged accordingly in sys.dm_exec_sessions (SQL Server's analog of pg_stat_activity).
+          conn_count="$(docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml exec -T sqlserver \
+            /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d gateway_test -h -1 -W \
+            -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE program_name = 'gateway-controller'" | tr -d '[:space:]')"
+          echo "gateway-controller conn_count=$conn_count"
+          [ "${conn_count:-0}" -ge 1 ]
+
+      - name: Run integration tests
+        run: IT_COMPOSE_FILE=../docker-compose.test.sqlserver.yaml make -C event-gateway/it test
+
+      - name: Upload compose logs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: compose-logs-sqlserver
+          path: event-gateway/it/logs/
+          retention-days: 7
+
+      - name: Debug on failure - Dump logs
+        if: failure()
+        run: |
+          echo "=== Docker Containers ==="
+          docker ps -a
+
+          for ctr in egw-it-gateway-controller egw-it-event-gateway egw-it-kafka egw-it-sqlserver; do
+            echo ""
+            echo "=== Docker logs: $ctr ==="
+            docker logs "$ctr" 2>&1 || echo "(container $ctr not found)"
+          done
+
+          echo ""
+          echo "=== event-gateway/it/logs Directory Contents ==="
+          if [ -d event-gateway/it/logs ]; then
+            if [ "$(ls -A event-gateway/it/logs)" ]; then
+              for f in event-gateway/it/logs/*; do
+                echo ""
+                echo "--- Contents of $f ---"
+                cat "$f"
+              done
+            else
+              echo "No log files found in event-gateway/it/logs."
+            fi
+          else
+            echo "Directory event-gateway/it/logs does not exist."
+          fi

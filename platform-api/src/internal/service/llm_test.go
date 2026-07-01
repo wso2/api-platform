@@ -16,6 +16,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// roundTripYAML marshals a dto artifact to YAML and back, normalising all
+// typed slices (e.g. []map[string]interface{}) to []interface{} the way a real
+// YAML round-trip does. Tests that inspect nested policy params use this to
+// keep their type assertions consistent with pre-Phase-8 behaviour.
+func roundTripYAML(t *testing.T, artifact dto.LLMProviderDeploymentYAML) dto.LLMProviderDeploymentYAML {
+	t.Helper()
+	b, err := yaml.Marshal(artifact)
+	if err != nil {
+		t.Fatalf("roundTripYAML marshal: %v", err)
+	}
+	var out dto.LLMProviderDeploymentYAML
+	if err := yaml.Unmarshal(b, &out); err != nil {
+		t.Fatalf("roundTripYAML unmarshal: %v", err)
+	}
+	return out
+}
+
 func TestMapTemplateResourceMappingAPI_RejectsEmptyResource(t *testing.T) {
 	mapped, err := mapTemplateResourceMappingAPI(&api.LLMProviderTemplateResourceMapping{Resource: "   "})
 	if err == nil {
@@ -316,15 +333,11 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 		},
 	}
 
-	yamlStr, err := generateLLMProviderDeploymentYAML(provider, "openai")
+	out, err := generateLLMProviderDeploymentYAML(provider, "openai")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	var out dto.LLMProviderDeploymentYAML
-	if err := yaml.Unmarshal([]byte(yamlStr), &out); err != nil {
-		t.Fatalf("failed to unmarshal generated yaml: %v", err)
-	}
 
 	if out.Metadata.Name != "tt" {
 		t.Fatalf("expected metadata name tt, got: %s", out.Metadata.Name)
@@ -358,33 +371,28 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 		t.Fatalf("expected access control mode allow_all, got: %s", out.Spec.AccessControl.Mode)
 	}
 
-	if len(out.Spec.Policies) != 1 {
-		t.Fatalf("expected 1 policy, got: %d", len(out.Spec.Policies))
+	if len(out.Spec.OperationPolicies) != 0 {
+		t.Fatalf("expected 0 operation policies, got: %d", len(out.Spec.OperationPolicies))
+	}
+	if len(out.Spec.GlobalPolicies) != 1 {
+		t.Fatalf("expected 1 global policy, got: %d", len(out.Spec.GlobalPolicies))
 	}
 
-	policy := out.Spec.Policies[0]
+	policy := out.Spec.GlobalPolicies[0]
 	if policy.Name != "api-key-auth" {
 		t.Fatalf("expected policy name api-key-auth, got: %s", policy.Name)
 	}
 	if policy.Version != "" {
 		t.Fatalf("expected policy version empty, got: %s", policy.Version)
 	}
-	if len(policy.Paths) != 1 {
-		t.Fatalf("expected 1 policy path, got: %d", len(policy.Paths))
+	if policy.Params == nil {
+		t.Fatalf("expected policy params to be present")
 	}
-
-	path := policy.Paths[0]
-	if path.Path != "/*" {
-		t.Fatalf("expected policy path /*, got: %s", path.Path)
+	if (*policy.Params)["key"] != "X-API-Key" {
+		t.Fatalf("expected params.key X-API-Key, got: %#v", (*policy.Params)["key"])
 	}
-	if len(path.Methods) != 1 || path.Methods[0] != "*" {
-		t.Fatalf("expected methods [*], got: %#v", path.Methods)
-	}
-	if path.Params["key"] != "X-API-Key" {
-		t.Fatalf("expected params.key X-API-Key, got: %#v", path.Params["key"])
-	}
-	if path.Params["in"] != "header" {
-		t.Fatalf("expected params.in header, got: %#v", path.Params["in"])
+	if (*policy.Params)["in"] != "header" {
+		t.Fatalf("expected params.in header, got: %#v", (*policy.Params)["in"])
 	}
 }
 
@@ -450,29 +458,28 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAndAdditionalPolicy(t *te
 		},
 	}
 
-	yamlStr, err := generateLLMProviderDeploymentYAML(provider, "openai")
+	out, err := generateLLMProviderDeploymentYAML(provider, "openai")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	var out dto.LLMProviderDeploymentYAML
-	if err := yaml.Unmarshal([]byte(yamlStr), &out); err != nil {
-		t.Fatalf("failed to unmarshal generated yaml: %v", err)
+
+	if len(out.Spec.OperationPolicies) != 1 {
+		t.Fatalf("expected 1 operation policy, got: %d", len(out.Spec.OperationPolicies))
+	}
+	if len(out.Spec.GlobalPolicies) != 1 {
+		t.Fatalf("expected 1 global policy, got: %d", len(out.Spec.GlobalPolicies))
 	}
 
-	if len(out.Spec.Policies) != 2 {
-		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
+	apiKeyPolicy := out.Spec.GlobalPolicies[0]
+	if apiKeyPolicy.Name != "api-key-auth" {
+		t.Fatalf("expected api-key-auth global policy, got: %s", apiKeyPolicy.Name)
+	}
+	if apiKeyPolicy.Params == nil || (*apiKeyPolicy.Params)["key"] != "X-API-Key" {
+		t.Fatalf("expected api-key-auth params.key X-API-Key")
 	}
 
-	apiKeyPolicy := findPolicy(out.Spec.Policies, "api-key-auth", "")
-	if apiKeyPolicy == nil {
-		t.Fatalf("expected api-key-auth policy to exist")
-	}
-	if len(apiKeyPolicy.Paths) != 1 || apiKeyPolicy.Paths[0].Path != "/*" {
-		t.Fatalf("expected api-key-auth path /*")
-	}
-
-	guardrailPolicy := findPolicy(out.Spec.Policies, "word-count-guardrail", "v0")
+	guardrailPolicy := findOperationPolicy(out.Spec.OperationPolicies, "word-count-guardrail")
 	if guardrailPolicy == nil {
 		t.Fatalf("expected word-count-guardrail policy to exist")
 	}
@@ -535,21 +542,26 @@ func TestGenerateLLMProviderDeploymentYAML_NormalizesPolicyVersionToMajor(t *tes
 		},
 	}
 
-	yamlStr, err := generateLLMProviderDeploymentYAML(provider, "openai")
+	out, err := generateLLMProviderDeploymentYAML(provider, "openai")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	var out dto.LLMProviderDeploymentYAML
-	if err := yaml.Unmarshal([]byte(yamlStr), &out); err != nil {
-		t.Fatalf("failed to unmarshal generated yaml: %v", err)
+
+	policyA := findOperationPolicy(out.Spec.OperationPolicies, "policy-a")
+	if policyA == nil {
+		t.Fatalf("expected policy-a to be present")
+	}
+	if policyA.Version != "v0" {
+		t.Fatalf("expected policy-a version to be normalized to v0, got: %s", policyA.Version)
 	}
 
-	if findPolicy(out.Spec.Policies, "policy-a", "v0") == nil {
-		t.Fatalf("expected policy-a version to be normalized to v0")
+	policyB := findOperationPolicy(out.Spec.OperationPolicies, "policy-b")
+	if policyB == nil {
+		t.Fatalf("expected policy-b to be present")
 	}
-	if findPolicy(out.Spec.Policies, "policy-b", "v10") == nil {
-		t.Fatalf("expected policy-b version to be normalized to v10")
+	if policyB.Version != "v10" {
+		t.Fatalf("expected policy-b version to be normalized to v10, got: %s", policyB.Version)
 	}
 }
 
@@ -589,34 +601,27 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderGlobalRateLimit(t *testin
 		},
 	}
 
-	yamlStr, err := generateLLMProviderDeploymentYAML(provider, "openai")
+	out, err := generateLLMProviderDeploymentYAML(provider, "openai")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
+	out = roundTripYAML(t, out)
 
-	var out dto.LLMProviderDeploymentYAML
-	if err := yaml.Unmarshal([]byte(yamlStr), &out); err != nil {
-		t.Fatalf("failed to unmarshal generated yaml: %v", err)
+
+	if len(out.Spec.GlobalPolicies) != 2 {
+		t.Fatalf("expected 2 global policies, got: %d", len(out.Spec.GlobalPolicies))
 	}
 
-	if len(out.Spec.Policies) != 2 {
-		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
-	}
-
-	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "")
+	tokenPolicy := findGlobalPolicy(out.Spec.GlobalPolicies, "token-based-ratelimit")
 	if tokenPolicy == nil {
-		t.Fatalf("expected token-based-ratelimit policy to exist")
+		t.Fatalf("expected token-based-ratelimit global policy to exist")
 	}
-	if len(tokenPolicy.Paths) != 1 {
-		t.Fatalf("expected token policy to have 1 path, got: %d", len(tokenPolicy.Paths))
+	if tokenPolicy.Params == nil {
+		t.Fatalf("expected token policy to have params")
 	}
-	tokenPath := tokenPolicy.Paths[0]
-	if tokenPath.Path != "/*" {
-		t.Fatalf("expected token policy path /*, got: %s", tokenPath.Path)
-	}
-	totalTokenLimits, ok := tokenPath.Params["totalTokenLimits"].([]interface{})
+	totalTokenLimits, ok := (*tokenPolicy.Params)["totalTokenLimits"].([]interface{})
 	if !ok || len(totalTokenLimits) != 1 {
-		t.Fatalf("expected totalTokenLimits with one entry, got: %#v", tokenPath.Params["totalTokenLimits"])
+		t.Fatalf("expected totalTokenLimits with one entry, got: %#v", (*tokenPolicy.Params)["totalTokenLimits"])
 	}
 	firstTokenLimit, ok := totalTokenLimits[0].(map[string]interface{})
 	if !ok {
@@ -629,20 +634,16 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderGlobalRateLimit(t *testin
 		t.Fatalf("expected token duration 1h, got: %#v", firstTokenLimit["duration"])
 	}
 
-	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "")
+	requestPolicy := findGlobalPolicy(out.Spec.GlobalPolicies, "advanced-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit policy to exist")
+		t.Fatalf("expected advanced-ratelimit global policy to exist")
 	}
-	if len(requestPolicy.Paths) != 1 {
-		t.Fatalf("expected request policy to have 1 path, got: %d", len(requestPolicy.Paths))
+	if requestPolicy.Params == nil {
+		t.Fatalf("expected request policy to have params")
 	}
-	requestPath := requestPolicy.Paths[0]
-	if requestPath.Path != "/*" {
-		t.Fatalf("expected request policy path /*, got: %s", requestPath.Path)
-	}
-	quotas, ok := requestPath.Params["quotas"].([]interface{})
+	quotas, ok := (*requestPolicy.Params)["quotas"].([]interface{})
 	if !ok || len(quotas) != 1 {
-		t.Fatalf("expected quotas with one entry, got: %#v", requestPath.Params["quotas"])
+		t.Fatalf("expected quotas with one entry, got: %#v", (*requestPolicy.Params)["quotas"])
 	}
 	firstQuota, ok := quotas[0].(map[string]interface{})
 	if !ok {
@@ -719,55 +720,52 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 		},
 	}
 
-	yamlStr, err := generateLLMProviderDeploymentYAML(provider, "openai")
+	out, err := generateLLMProviderDeploymentYAML(provider, "openai")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
+	out = roundTripYAML(t, out)
 
-	var out dto.LLMProviderDeploymentYAML
-	if err := yaml.Unmarshal([]byte(yamlStr), &out); err != nil {
-		t.Fatalf("failed to unmarshal generated yaml: %v", err)
+
+	if len(out.Spec.OperationPolicies) != 2 {
+		t.Fatalf("expected 2 operation policies, got: %d", len(out.Spec.OperationPolicies))
 	}
 
-	if len(out.Spec.Policies) != 2 {
-		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
-	}
-
-	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "")
+	tokenPolicy := findOperationPolicy(out.Spec.OperationPolicies, "token-based-ratelimit")
 	if tokenPolicy == nil {
-		t.Fatalf("expected token-based-ratelimit policy to exist")
+		t.Fatalf("expected token-based-ratelimit operation policy to exist")
 	}
 	if len(tokenPolicy.Paths) != 2 {
 		t.Fatalf("expected 2 token policy paths, got: %d", len(tokenPolicy.Paths))
 	}
 
-	assistantsTokenPath := findPath(tokenPolicy, "/assistants")
+	assistantsTokenPath := findOperationPath(tokenPolicy, "/assistants")
 	if assistantsTokenPath == nil {
 		t.Fatalf("expected token policy path /assistants")
 	}
-	audioTokenPath := findPath(tokenPolicy, "/audio/speech")
+	audioTokenPath := findOperationPath(tokenPolicy, "/audio/speech")
 	if audioTokenPath == nil {
 		t.Fatalf("expected token policy path /audio/speech")
 	}
 
-	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "")
+	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "advanced-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit policy to exist")
+		t.Fatalf("expected advanced-ratelimit operation policy to exist")
 	}
 	if len(requestPolicy.Paths) != 2 {
 		t.Fatalf("expected 2 request policy paths, got: %d", len(requestPolicy.Paths))
 	}
 
-	assistantsRequestPath := findPath(requestPolicy, "/assistants")
+	assistantsRequestPath := findOperationPath(requestPolicy, "/assistants")
 	if assistantsRequestPath == nil {
 		t.Fatalf("expected request policy path /assistants")
 	}
-	audioRequestPath := findPath(requestPolicy, "/audio/speech")
+	audioRequestPath := findOperationPath(requestPolicy, "/audio/speech")
 	if audioRequestPath == nil {
 		t.Fatalf("expected request policy path /audio/speech")
 	}
 
-	for _, p := range []*api.LLMPolicyPath{assistantsTokenPath, audioTokenPath} {
+	for _, p := range []*api.OperationPolicyPath{assistantsTokenPath, audioTokenPath} {
 		totalTokenLimits, ok := p.Params["totalTokenLimits"].([]interface{})
 		if !ok || len(totalTokenLimits) != 1 {
 			t.Fatalf("expected totalTokenLimits with one entry, got: %#v", p.Params["totalTokenLimits"])
@@ -784,7 +782,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 		}
 	}
 
-	for _, p := range []*api.LLMPolicyPath{assistantsRequestPath, audioRequestPath} {
+	for _, p := range []*api.OperationPolicyPath{assistantsRequestPath, audioRequestPath} {
 		quotas, ok := p.Params["quotas"].([]interface{})
 		if !ok || len(quotas) != 1 {
 			t.Fatalf("expected quotas with one entry, got: %#v", p.Params["quotas"])
@@ -865,41 +863,38 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 		},
 	}
 
-	yamlStr, err := generateLLMProviderDeploymentYAML(provider, "openai")
+	out, err := generateLLMProviderDeploymentYAML(provider, "openai")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
+	out = roundTripYAML(t, out)
 
-	var out dto.LLMProviderDeploymentYAML
-	if err := yaml.Unmarshal([]byte(yamlStr), &out); err != nil {
-		t.Fatalf("failed to unmarshal generated yaml: %v", err)
+
+	if len(out.Spec.OperationPolicies) != 2 {
+		t.Fatalf("expected 2 operation policies, got: %d", len(out.Spec.OperationPolicies))
 	}
 
-	if len(out.Spec.Policies) != 2 {
-		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
-	}
-
-	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "")
+	tokenPolicy := findOperationPolicy(out.Spec.OperationPolicies, "token-based-ratelimit")
 	if tokenPolicy == nil {
-		t.Fatalf("expected token-based-ratelimit policy to exist")
+		t.Fatalf("expected token-based-ratelimit operation policy to exist")
 	}
 	if len(tokenPolicy.Paths) != 3 {
 		t.Fatalf("expected 3 token policy paths (default + 2 unique resources), got: %d", len(tokenPolicy.Paths))
 	}
 
-	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "")
+	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "advanced-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit policy to exist")
+		t.Fatalf("expected advanced-ratelimit operation policy to exist")
 	}
 	if len(requestPolicy.Paths) != 3 {
 		t.Fatalf("expected 3 request policy paths (default + 2 unique resources), got: %d", len(requestPolicy.Paths))
 	}
 
 	for _, p := range []string{"/*", "/assistants", "/audio/speech"} {
-		if findPath(tokenPolicy, p) == nil {
+		if findOperationPath(tokenPolicy, p) == nil {
 			t.Fatalf("expected token policy path %s", p)
 		}
-		if findPath(requestPolicy, p) == nil {
+		if findOperationPath(requestPolicy, p) == nil {
 			t.Fatalf("expected request policy path %s", p)
 		}
 	}
@@ -941,16 +936,25 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 	}
 }
 
-func findPolicy(policies []api.LLMPolicy, name, version string) *api.LLMPolicy {
+func findGlobalPolicy(policies []api.Policy, name string) *api.Policy {
 	for i := range policies {
-		if policies[i].Name == name && policies[i].Version == version {
+		if policies[i].Name == name {
 			return &policies[i]
 		}
 	}
 	return nil
 }
 
-func findPath(policy *api.LLMPolicy, path string) *api.LLMPolicyPath {
+func findOperationPolicy(policies []api.OperationPolicy, name string) *api.OperationPolicy {
+	for i := range policies {
+		if policies[i].Name == name {
+			return &policies[i]
+		}
+	}
+	return nil
+}
+
+func findOperationPath(policy *api.OperationPolicy, path string) *api.OperationPolicyPath {
 	if policy == nil {
 		return nil
 	}
@@ -1082,6 +1086,12 @@ func (m *mockProjectRepo) GetProjectByUUID(projectID string) (*model.Project, er
 	return m.project, nil
 }
 
+type noopAuditRepo struct{}
+
+func (n *noopAuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
+	return nil
+}
+
 func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(t *testing.T) {
 	now := time.Now()
 	providerRepo := &mockLLMProviderRepo{}
@@ -1090,7 +1100,7 @@ func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(
 			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", CreatedAt: now, UpdatedAt: now}, nil
 		},
 	}
-	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	request := validProviderRequest("openai")
 	request.ModelProviders = &[]api.LLMModelProvider{
@@ -1122,11 +1132,11 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 	}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-agg", ID: "awsbedrock", CreatedAt: now, UpdatedAt: now}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-agg", ID: "awsbedrock", Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
 		},
 	}
 	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
-	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	request := validProviderRequest("awsbedrock")
 	request.ModelProviders = &[]api.LLMModelProvider{
@@ -1146,6 +1156,82 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 	}
 }
 
+// TestLLMProviderServiceCreateMigratesLegacyPolicies verifies Phase 10 save-time
+// migration: a provider created with the deprecated `policies` list has it split into
+// globalPolicies (for path "/*" + methods ["*"]) and operationPolicies (all other paths).
+// After save, `policies` is cleared in the stored config.
+func TestLLMProviderServiceCreateMigratesLegacyPolicies(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	providerRepo.getByIDFunc = func(providerID, orgUUID string) (*model.LLMProvider, error) {
+		if providerRepo.created == nil {
+			return nil, nil
+		}
+		created := *providerRepo.created
+		created.UUID = "prov-uuid"
+		created.CreatedAt = now
+		created.UpdatedAt = now
+		return &created, nil
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
+		},
+	}
+	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
+
+	request := validProviderRequest("openai")
+	request.Policies = &[]api.LLMPolicy{
+		// path "/*" + methods ["*"] → globalPolicies
+		{
+			Name:    "basic-ratelimit",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{"requests": 10}},
+			},
+		},
+		// specific path → operationPolicies
+		{
+			Name:    "token-ratelimit",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"POST"}, Params: map[string]interface{}{"tokens": 1000}},
+			},
+		},
+	}
+
+	if _, err := service.Create("org-1", "alice", request); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if providerRepo.created == nil {
+		t.Fatal("expected provider to be created")
+	}
+	cfg := providerRepo.created.Configuration
+
+	// Deprecated list cleared after migration.
+	if len(cfg.Policies) != 0 {
+		t.Fatalf("expected policies cleared after migration, got: %d", len(cfg.Policies))
+	}
+	// "/*" + ["*"] → globalPolicies
+	if len(cfg.GlobalPolicies) != 1 {
+		t.Fatalf("expected 1 globalPolicy, got: %d", len(cfg.GlobalPolicies))
+	}
+	if cfg.GlobalPolicies[0].Name != "basic-ratelimit" {
+		t.Fatalf("expected globalPolicy name basic-ratelimit, got: %s", cfg.GlobalPolicies[0].Name)
+	}
+	// specific path → operationPolicies
+	if len(cfg.OperationPolicies) != 1 {
+		t.Fatalf("expected 1 operationPolicy, got: %d", len(cfg.OperationPolicies))
+	}
+	if cfg.OperationPolicies[0].Name != "token-ratelimit" {
+		t.Fatalf("expected operationPolicy name token-ratelimit, got: %s", cfg.OperationPolicies[0].Name)
+	}
+	if len(cfg.OperationPolicies[0].Paths) != 1 || cfg.OperationPolicies[0].Paths[0].Path != "/chat/completions" {
+		t.Fatalf("expected operationPolicy path /chat/completions, got: %+v", cfg.OperationPolicies[0].Paths)
+	}
+}
+
 func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 	providerRepo := &mockLLMProviderRepo{existsResult: true}
 	templateRepo := &mockLLMTemplateRepo{
@@ -1153,7 +1239,7 @@ func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T)
 			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
 		},
 	}
-	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	_, err := service.Create("org-1", "alice", validProviderRequest("openai"))
 	if err != constants.ErrLLMProviderExists {
@@ -1195,7 +1281,7 @@ func TestLLMProviderServiceUpdatePreservesUpstreamAuthValue(t *testing.T) {
 			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
 		},
 	}
-	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	request := validProviderRequest("openai")
 	request.Name = "Updated Provider"
@@ -1205,7 +1291,7 @@ func TestLLMProviderServiceUpdatePreservesUpstreamAuthValue(t *testing.T) {
 		Value:  stringPtr(""),
 	}
 
-	_, err := service.Update("org-1", "provider-1", request)
+	_, err := service.Update("org-1", "provider-1", "test-user", request)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -1225,7 +1311,7 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 		},
 	}
 	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", OrganizationID: "org-1"}}
-	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default())
+	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if err != constants.ErrLLMProviderNotFound {
@@ -1240,7 +1326,7 @@ func TestLLMProxyServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if err != constants.ErrLLMProxyExists {
@@ -1257,7 +1343,6 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 			Name:        "Proxy One",
 			Version:     "v1.0",
 			ProjectUUID: "project-1",
-			Status:      "pending",
 			CreatedAt:   now,
 			UpdatedAt:   now,
 			Configuration: model.LLMProxyConfig{
@@ -1272,7 +1357,7 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	resp, err := service.ListByProvider("org-1", "provider-1", 10, 0)
 	if err != nil {
@@ -1317,7 +1402,7 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	request := validProxyRequest("provider-1", "project-1")
 	request.Name = "Updated Proxy"
@@ -1327,7 +1412,7 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 		Value:  stringPtr(""),
 	}
 
-	_, err := service.Update("org-1", "proxy-1", request)
+	_, err := service.Update("org-1", "proxy-1", "test-user", request)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

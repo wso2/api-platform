@@ -19,40 +19,35 @@ curl -X POST https://devportal.api-platform.io/organizations \
 
 ```
 
-Creates a Developer Portal organization and initializes its default portal configuration, default label, default view, default WSO2 provider, and default subscription policies when configured.
+Creates a Developer Portal organization and initializes its default portal configuration, default label, default view, and default subscription plans when configured.
 
 > Payload
 
 ```json
 {
-  "orgName": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string"
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
 ```yaml
-orgName: string
+name: string
 businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
-orgHandle: string
-roleClaimName: string
-groupsClaimName: string
-organizationClaimName: string
-organizationIdentifier: string
-adminRole: string
-subscriberRole: string
-superAdminRole: string
+handle: string
+idpRefId: string
+cpRefId: string
+configuration:
+  devportalMode: DEFAULT
 
 ```
 
@@ -67,7 +62,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OrganizationCreateRequest](schemas.md#schemaorganizationcreaterequest)|true|Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all other fields are read from `spec`.|
+|body|body|[OrganizationCreateRequest](schemas.md#schemaorganizationcreaterequest)|true|Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{handle, name, labels}`) to bootstrap labels and views at creation time — these are not available via the `application/json` content type.|
 
 > Example responses
 
@@ -75,21 +70,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
-  "orgConfiguration": {}
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
@@ -98,18 +89,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -123,9 +120,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -133,9 +130,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -143,9 +140,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "415",
-  "message": "Unsupported Media Type",
-  "description": "Content-Type must be application/json"
+  "status": "error",
+  "code": "UNSUPPORTED_MEDIA_TYPE",
+  "message": "Content-Type must be application/json."
 }
 ```
 
@@ -153,9 +150,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -166,11 +163,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Organization created successfully.|[OrganizationResponse](schemas.md#schemaorganizationresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |415|[Unsupported Media Type](https://tools.ietf.org/html/rfc7231#section-6.5.13)|Unsupported request media type.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-an-organization-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the created organization.|
 
 ## List organizations
 
@@ -203,33 +213,37 @@ This operation requires <strong>Basic Auth</strong> authentication.
 > 200 Response
 
 ```json
-[
-  {
-    "orgID": "string",
-    "orgName": "string",
-    "businessOwner": "string",
-    "businessOwnerContact": "string",
-    "businessOwnerEmail": "user@example.com",
-    "orgHandle": "string",
-    "roleClaimName": "string",
-    "groupsClaimName": "string",
-    "organizationClaimName": "string",
-    "organizationIdentifier": "string",
-    "adminRole": "string",
-    "subscriberRole": "string",
-    "superAdminRole": "string",
-    "orgConfiguration": {}
+{
+  "list": [
+    {
+      "id": "string",
+      "name": "string",
+      "businessOwner": "string",
+      "businessOwnerContact": "string",
+      "businessOwnerEmail": "user@example.com",
+      "handle": "string",
+      "idpRefId": "string",
+      "cpRefId": "string",
+      "configuration": {
+        "devportalMode": "DEFAULT"
+      }
+    }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 > 500 Response
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -246,21 +260,29 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[OrganizationListItemResponse](schemas.md#schemaorganizationlistitemresponse)]|false|none|none|
-|» orgID|string|false|none|none|
-|» orgName|string|false|none|none|
-|» businessOwner|string¦null|false|none|none|
-|» businessOwnerContact|string¦null|false|none|none|
-|» businessOwnerEmail|string(email)¦null|false|none|none|
-|» orgHandle|string|false|none|none|
-|» roleClaimName|string|false|none|none|
-|» groupsClaimName|string|false|none|none|
-|» organizationClaimName|string|false|none|none|
-|» organizationIdentifier|string|false|none|none|
-|» adminRole|string|false|none|none|
-|» subscriberRole|string|false|none|none|
-|» superAdminRole|string¦null|false|none|none|
-|» orgConfiguration|[GenericObject](schemas.md#schemagenericobject)|false|none|none|
+|» list|[[OrganizationResponse](schemas.md#schemaorganizationresponse)]|false|none|none|
+|»» id|string|false|none|none|
+|»» name|string|false|none|none|
+|»» businessOwner|string¦null|false|none|none|
+|»» businessOwnerContact|string¦null|false|none|none|
+|»» businessOwnerEmail|string(email)¦null|false|none|none|
+|»» handle|string|false|none|none|
+|»» idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
+|»» cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
+|»» configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
+|»»» devportalMode|string|false|none|Controls the mode of the developer portal.|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 ## Update an organization
 
@@ -287,36 +309,29 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
 
 ```json
 {
-  "orgName": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "orgConfiguration": {}
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
 ```yaml
-orgName: string
+name: string
 businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
-orgHandle: string
-roleClaimName: string
-groupsClaimName: string
-organizationClaimName: string
-organizationIdentifier: string
-adminRole: string
-subscriberRole: string
-superAdminRole: string
-orgConfiguration: {}
+handle: string
+idpRefId: string
+cpRefId: string
+configuration:
+  devportalMode: DEFAULT
 
 ```
 
@@ -331,7 +346,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OrganizationUpdateRequest](schemas.md#schemaorganizationupdaterequest)|true|Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all other fields are read from `spec`.|
+|body|body|[OrganizationUpdateRequest](schemas.md#schemaorganizationupdaterequest)|true|Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by name) and `views` (upserted by handle, with `labels` replacing the view's label set) — these are not available via the `application/json` content type.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -340,21 +355,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
-  "orgConfiguration": {}
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
@@ -363,18 +374,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -388,9 +405,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -398,9 +415,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -408,9 +425,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -421,10 +438,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Organization DTO returned by create, update, and lookup operations.|[OrganizationResponse](schemas.md#schemaorganizationresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="update-an-organization-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Get an organization
 
@@ -464,21 +488,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
-  "orgConfiguration": {}
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
@@ -486,9 +506,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -496,9 +516,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -549,18 +569,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -574,9 +600,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -584,9 +610,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -600,3 +626,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-an-organization-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|

@@ -45,7 +45,7 @@ const (
 	WebhookListenerPort = "8090"
 
 	// GatewayManagementAPIBasePath is the base path for the management REST API.
-	GatewayManagementAPIBasePath = "/api/management/v0.9"
+	GatewayManagementAPIBasePath = "/api/management/v1"
 )
 
 // AuthUser holds credentials for a test user.

@@ -33,11 +33,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/apikey"
-	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
@@ -54,7 +53,6 @@ import (
 )
 
 func init() {
-	gin.SetMode(gin.TestMode)
 	metrics.Init()
 }
 
@@ -833,11 +831,24 @@ func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	return pending, nil
 }
 
+func (m *MockStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config != nil &&
+			config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
-	connected bool
-	mu        sync.Mutex
-	pushedIDs []string
+	connected     bool
+	mu            sync.Mutex
+	pushedIDs     []string
+	pushedConfigs []models.StoredConfig
 }
 
 func (m *MockControlPlaneClient) Connect() error {
@@ -849,10 +860,13 @@ func (m *MockControlPlaneClient) IsConnected() bool {
 	return m.connected
 }
 
-func (m *MockControlPlaneClient) PushAPIDeployment(apiID string, cfg *models.StoredConfig, deploymentID string) error {
+func (m *MockControlPlaneClient) PushArtifact(apiID string, cfg *models.StoredConfig, deploymentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pushedIDs = append(m.pushedIDs, apiID)
+	if cfg != nil {
+		m.pushedConfigs = append(m.pushedConfigs, *cfg)
+	}
 	return nil
 }
 
@@ -860,6 +874,16 @@ func (m *MockControlPlaneClient) PushCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.pushedIDs)
+}
+
+// LastPushedConfig returns a copy of the most recently pushed config, or false if none.
+func (m *MockControlPlaneClient) LastPushedConfig() (models.StoredConfig, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.pushedConfigs) == 0 {
+		return models.StoredConfig{}, false
+	}
+	return m.pushedConfigs[len(m.pushedConfigs)-1], true
 }
 
 // Secret management methods
@@ -1118,33 +1142,51 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	return server
 }
 
-// createTestContext creates a Gin context for testing
-func createTestContext(method, path string, body []byte) (*gin.Context, *httptest.ResponseRecorder) {
+// createTestContext creates an http.Request and ResponseRecorder for testing
+func createTestContext(method, path string, body []byte) (*httptest.ResponseRecorder, *http.Request) {
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
 	var req *http.Request
 	if body != nil {
 		req = httptest.NewRequest(method, path, bytes.NewReader(body))
 	} else {
 		req = httptest.NewRequest(method, path, nil)
 	}
-	c.Request = req
-	return c, w
+	return w, req
 }
 
-// createTestContextWithHeader creates a Gin context with headers
-func createTestContextWithHeader(method, path string, body []byte, headers map[string]string) (*gin.Context, *httptest.ResponseRecorder) {
-	c, w := createTestContext(method, path, body)
+// createTestContextWithHeader creates a request with headers for testing
+func createTestContextWithHeader(method, path string, body []byte, headers map[string]string) (*httptest.ResponseRecorder, *http.Request) {
+	w, r := createTestContext(method, path, body)
 	for k, v := range headers {
-		c.Request.Header.Set(k, v)
+		r.Header.Set(k, v)
 	}
-	return c, w
+	return w, r
+}
+
+// withAuthContext injects an AuthContext into the request for testing.
+func withAuthContext(r *http.Request, authCtx commonmodels.AuthContext) *http.Request {
+	return r.WithContext(authenticators.WithAuthContext(r.Context(), authCtx))
+}
+
+// withCorrelationID injects a correlation ID into the request context for
+// testing. It sets the header and runs the request through CorrelationIDMiddleware
+// so that middleware.GetCorrelationID(r) returns corrID inside the handler.
+func withCorrelationID(r *http.Request, corrID string) *http.Request {
+	r.Header.Set(middleware.CorrelationIDHeader, corrID)
+	// Run the request through the middleware to populate the context value.
+	var captured *http.Request
+	dummyLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := middleware.CorrelationIDMiddleware(dummyLogger)(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+		captured = req
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), r)
+	return captured
 }
 
 // createTestStoredConfig creates a test stored config
 func createTestStoredConfig(id, name, version, context string) *models.StoredConfig {
 	apiConfig := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1),
 		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: id,
@@ -1188,7 +1230,7 @@ func createLLMTemplateBody(t *testing.T, handle, displayName string) []byte {
 	t.Helper()
 
 	template := api.LLMProviderTemplate{
-		ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -1207,7 +1249,7 @@ func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, co
 	t.Helper()
 
 	apiConfig := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1),
 		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -1243,7 +1285,7 @@ func createTestMCPRequestBody(t *testing.T, handle, displayName, version, contex
 	upstreamURL := "http://backend.example.com"
 
 	mcpConfig := api.MCPProxyConfiguration{
-		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -1274,7 +1316,7 @@ func createTestMCPStoredConfig(t *testing.T, id, handle, displayName, version, c
 		DisplayName: displayName,
 		Version:     version,
 		SourceConfiguration: api.MCPProxyConfiguration{
-			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata: api.Metadata{
 				Name: handle,
@@ -1393,8 +1435,8 @@ func TestListRestAPIs(t *testing.T) {
 	_ = server.db.SaveConfig(cfg1)
 	_ = server.db.SaveConfig(cfg2)
 
-	c, w := createTestContext("GET", "/rest-apis", nil)
-	server.ListRestAPIs(c, api.ListRestAPIsParams{})
+	w, r := createTestContext("GET", "/rest-apis", nil)
+	server.ListRestAPIs(w, r, api.ListRestAPIsParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1416,10 +1458,10 @@ func TestListRestAPIsWithFilters(t *testing.T) {
 	_ = server.store.Add(cfg2)
 
 	// Test with displayName filter
-	c, w := createTestContext("GET", "/rest-apis?displayName=test-api-1", nil)
-	c.Request.URL.RawQuery = "displayName=test-api-1"
+	w, r := createTestContext("GET", "/rest-apis?displayName=test-api-1", nil)
+	r.URL.RawQuery = "displayName=test-api-1"
 	displayName := "0000-test-api-1-0000-000000000000"
-	server.ListRestAPIs(c, api.ListRestAPIsParams{DisplayName: &displayName})
+	server.ListRestAPIs(w, r, api.ListRestAPIsParams{DisplayName: &displayName})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1433,8 +1475,8 @@ func TestListRestAPIsWithFilters(t *testing.T) {
 func TestListRestAPIsEmpty(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/rest-apis", nil)
-	server.ListRestAPIs(c, api.ListRestAPIsParams{})
+	w, r := createTestContext("GET", "/rest-apis", nil)
+	server.ListRestAPIs(w, r, api.ListRestAPIsParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1452,12 +1494,8 @@ func TestGetAPIByNameVersion(t *testing.T) {
 	cfg := createTestStoredConfig("test-id-1", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
-	c, w := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
-	c.Params = gin.Params{
-		{Key: "name", Value: "0000-test-api-0000-000000000000"},
-		{Key: "version", Value: "v1.0.0"},
-	}
-	server.GetAPIByNameVersion(c, "0000-test-api-0000-000000000000", "v1.0.0")
+	w, r := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
+	server.GetAPIByNameVersion(w, r, "0000-test-api-0000-000000000000", "v1.0.0")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1474,8 +1512,8 @@ func TestGetAPIByNameVersion(t *testing.T) {
 func TestGetAPIByNameVersionNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/rest-apis/nonexistent/v1.0.0", nil)
-	server.GetAPIByNameVersion(c, "nonexistent", "v1.0.0")
+	w, r := createTestContext("GET", "/rest-apis/nonexistent/v1.0.0", nil)
+	server.GetAPIByNameVersion(w, r, "nonexistent", "v1.0.0")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
@@ -1494,8 +1532,8 @@ func TestGetRestAPIById(t *testing.T) {
 	cfg.GetMetadata().Name = "0000-test-handle-0000-000000000000"
 	mockDB.SaveConfig(cfg)
 
-	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
-	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
+	w, r := createTestContext("GET", "/rest-apis/test-handle", nil)
+	server.GetRestAPIById(w, r, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1516,8 +1554,8 @@ func TestGetRestAPIById(t *testing.T) {
 func TestGetRestAPIByIdNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/rest-apis/nonexistent", nil)
-	server.GetRestAPIById(c, "nonexistent")
+	w, r := createTestContext("GET", "/rest-apis/nonexistent", nil)
+	server.GetRestAPIById(w, r, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
@@ -1531,8 +1569,8 @@ func TestGetRestAPIByIdNotFound(t *testing.T) {
 func TestGetRestAPIByIdNoDB(t *testing.T) {
 	server := createTestAPIServerWithDB(NewMockStorage())
 
-	c, w := createTestContext("GET", "/rest-apis/test-id", nil)
-	server.GetRestAPIById(c, "0000-test-id-0000-000000000000")
+	w, r := createTestContext("GET", "/rest-apis/test-id", nil)
+	server.GetRestAPIById(w, r, "0000-test-id-0000-000000000000")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -1547,8 +1585,8 @@ func TestGetRestAPIByIdWrongKind(t *testing.T) {
 	cfg.GetMetadata().Name = "0000-test-handle-0000-000000000000"
 	mockDB.SaveConfig(cfg)
 
-	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
-	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
+	w, r := createTestContext("GET", "/rest-apis/test-handle", nil)
+	server.GetRestAPIById(w, r, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -1558,9 +1596,9 @@ func TestSearchDeploymentsWithNilStore(t *testing.T) {
 	server := createTestAPIServer()
 	server.store = nil
 
-	c, w := createTestContext("GET", "/rest-apis?displayName=test", nil)
-	c.Request.URL.RawQuery = "displayName=test"
-	server.SearchDeployments(c, string(api.RestAPIKindRestApi))
+	w, r := createTestContext("GET", "/rest-apis?displayName=test", nil)
+	r.URL.RawQuery = "displayName=test"
+	server.SearchDeployments(w, r, string(api.RestAPIKindRestApi))
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1574,9 +1612,9 @@ func TestSearchDeploymentsWithNilStore(t *testing.T) {
 func TestSearchDeploymentsMCP(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
-	c.Request.URL.RawQuery = "displayName=test"
-	server.SearchDeployments(c, string(api.MCPProxyConfigurationKindMcp))
+	w, r := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
+	r.URL.RawQuery = "displayName=test"
+	server.SearchDeployments(w, r, string(api.MCPProxyConfigurationKindMcp))
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1600,8 +1638,8 @@ func TestGetConfigDump(t *testing.T) {
 		Version: "v1",
 	}
 
-	c, w := createTestContext("GET", "/config_dump", nil)
-	server.GetConfigDump(c)
+	w, r := createTestContext("GET", "/config_dump", nil)
+	server.GetConfigDump(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1617,8 +1655,8 @@ func TestGetConfigDump(t *testing.T) {
 func TestGetXDSSyncStatus(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/xds_sync_status", nil)
-	server.GetXDSSyncStatus(c)
+	w, r := createTestContext("GET", "/xds_sync_status", nil)
+	server.GetXDSSyncStatus(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1642,8 +1680,8 @@ func TestGetXDSSyncStatusWithPolicyVersion(t *testing.T) {
 	runtimeStore.IncrementResourceVersion()
 	runtimeStore.IncrementResourceVersion()
 
-	c, w := createTestContext("GET", "/xds_sync_status", nil)
-	server.GetXDSSyncStatus(c)
+	w, r := createTestContext("GET", "/xds_sync_status", nil)
+	server.GetXDSSyncStatus(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1671,8 +1709,8 @@ func TestGetConfigDumpWithCertificates(t *testing.T) {
 		},
 	}
 
-	c, w := createTestContext("GET", "/config_dump", nil)
-	server.GetConfigDump(c)
+	w, r := createTestContext("GET", "/config_dump", nil)
+	server.GetConfigDump(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -1683,8 +1721,8 @@ func TestGetConfigDumpDBError(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockDB.getErr = errors.New("db error")
 
-	c, w := createTestContext("GET", "/config_dump", nil)
-	server.GetConfigDump(c)
+	w, r := createTestContext("GET", "/config_dump", nil)
+	server.GetConfigDump(w, r)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
@@ -1745,11 +1783,11 @@ func TestCreateRestAPIDBError(t *testing.T) {
 	mockDB.updateErr = errors.New("db write error")
 
 	body := createTestRestAPIRequestBody(t, "test-handle", "test-display-name", "v1.0.0", "/test")
-	c, w := createTestContextWithHeader("POST", "/rest-apis", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 
-	server.CreateRestAPI(c)
+	server.CreateRestAPI(w, r)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
@@ -1784,10 +1822,10 @@ func TestUpdateRestAPINotFound(t *testing.T) {
 			"operations": [{"method": "GET", "path": "/"}]
 		}
 	}`)
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/nonexistent", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/nonexistent", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.UpdateRestAPI(c, "nonexistent")
+	server.UpdateRestAPI(w, r, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -1816,10 +1854,10 @@ func TestDeleteRestAPIWithDBAndEventHub(t *testing.T) {
 		Status:       models.APIKeyStatusActive,
 	}
 
-	c, w := createTestContext("DELETE", "/rest-apis/test-handle", nil)
-	c.Set(middleware.CorrelationIDKey, "corr-id-delete")
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle", nil)
+	r = withCorrelationID(r, "corr-id-delete")
 
-	server.DeleteRestAPI(c, "test-handle")
+	server.DeleteRestAPI(w, r, "test-handle")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -1838,8 +1876,8 @@ func TestDeleteRestAPIWithDBAndEventHub(t *testing.T) {
 func TestDeleteRestAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("DELETE", "/rest-apis/nonexistent", nil)
-	server.DeleteRestAPI(c, "nonexistent")
+	w, r := createTestContext("DELETE", "/rest-apis/nonexistent", nil)
+	server.DeleteRestAPI(w, r, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -1881,12 +1919,12 @@ func TestCreateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	attachTestEventHub(server, mockHub, "test-gateway")
 
 	body := createLLMTemplateBody(t, "openai", "OpenAI Template")
-	c, w := createTestContextWithHeader("POST", "/llm-provider-templates", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/llm-provider-templates", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-create-llm-template")
+	r = withCorrelationID(r, "corr-id-create-llm-template")
 
-	server.CreateLLMProviderTemplate(c)
+	server.CreateLLMProviderTemplate(w, r)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 	require.Len(t, mockDB.templates, 1)
@@ -1918,7 +1956,7 @@ func TestUpdateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "template-update-id",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: "openai",
@@ -1934,12 +1972,12 @@ func TestUpdateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	require.NoError(t, server.store.AddTemplate(template))
 
 	body := createLLMTemplateBody(t, "openai", "Updated OpenAI Template")
-	c, w := createTestContextWithHeader("PUT", "/llm-provider-templates/openai", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/llm-provider-templates/openai", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-update-llm-template")
+	r = withCorrelationID(r, "corr-id-update-llm-template")
 
-	server.UpdateLLMProviderTemplate(c, "openai")
+	server.UpdateLLMProviderTemplate(w, r, "openai")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -1967,7 +2005,7 @@ func TestDeleteLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "template-delete-id",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: "openai",
@@ -1981,10 +2019,10 @@ func TestDeleteLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	}
 	require.NoError(t, mockDB.SaveLLMProviderTemplate(template))
 
-	c, w := createTestContext("DELETE", "/llm-provider-templates/openai", nil)
-	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-template")
+	w, r := createTestContext("DELETE", "/llm-provider-templates/openai", nil)
+	r = withCorrelationID(r, "corr-id-delete-llm-template")
 
-	server.DeleteLLMProviderTemplate(c, "openai")
+	server.DeleteLLMProviderTemplate(w, r, "openai")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -2068,8 +2106,8 @@ func TestListMCPProxies(t *testing.T) {
 	cfg := createTestMCPStoredConfig(t, "0000-mcp-id-0000-000000000000", "test-mcp", "Test MCP", "v1.0.0", "/mcp", models.StateDeployed)
 	require.NoError(t, mockDB.SaveConfig(cfg))
 
-	c, w := createTestContext("GET", "/mcp-proxies", nil)
-	server.ListMCPProxies(c, api.ListMCPProxiesParams{})
+	w, r := createTestContext("GET", "/mcp-proxies", nil)
+	server.ListMCPProxies(w, r, api.ListMCPProxiesParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -2116,12 +2154,12 @@ func TestCreateMCPProxyWithDBAndEventHub(t *testing.T) {
 	attachTestEventHub(server, mockHub, "test-gateway")
 
 	body := createTestMCPRequestBody(t, "test-mcp", "Test MCP", "v1.0.0", "/mcp")
-	c, w := createTestContextWithHeader("POST", "/mcp-proxies", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/mcp-proxies", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-create-mcp")
+	r = withCorrelationID(r, "corr-id-create-mcp")
 
-	server.CreateMCPProxy(c)
+	server.CreateMCPProxy(w, r)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
@@ -2149,10 +2187,10 @@ func TestDeleteMCPProxyWithDBAndEventHub(t *testing.T) {
 	require.NoError(t, mockDB.SaveConfig(cfg))
 	require.NoError(t, server.store.Add(cfg))
 
-	c, w := createTestContext("DELETE", "/mcp-proxies/test-mcp", nil)
-	c.Set(middleware.CorrelationIDKey, "corr-id-delete-mcp")
+	w, r := createTestContext("DELETE", "/mcp-proxies/test-mcp", nil)
+	r = withCorrelationID(r, "corr-id-delete-mcp")
 
-	server.DeleteMCPProxy(c, "test-mcp")
+	server.DeleteMCPProxy(w, r, "test-mcp")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -2175,10 +2213,10 @@ func TestGenerateAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"name": "test-key"}`)
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
+	server.CreateAPIKey(w, r, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -2188,27 +2226,26 @@ func TestGenerateAPIKeyInvalidAuthContext(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"name": "test-key"}`)
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, "invalid-context") // Wrong type
-	server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
+	server.CreateAPIKey(w, r, "0000-test-handle-0000-000000000000")
 
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 // TestGenerateAPIKeyInvalidBody tests CreateAPIKey with invalid body
 func TestGenerateAPIKeyInvalidBody(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", []byte("invalid json {{{"), map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", []byte("invalid json {{{"), map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
+	server.CreateAPIKey(w, r, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -2221,16 +2258,16 @@ func TestCreateAPIKeyWithDBAndEventHub(t *testing.T) {
 	attachTestEventHub(server, mockHub, "test-gateway")
 
 	body := createTestAPIKeyRequestBody(t, "test-key", "Test Key", "external-key-123456789012345678901234567890123456")
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-create-key")
+	r = withCorrelationID(r, "corr-id-create-key")
 
-	server.CreateAPIKey(c, "test-handle")
+	server.CreateAPIKey(w, r, "test-handle")
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -2258,15 +2295,15 @@ func TestCreateAPIKeyDBError(t *testing.T) {
 	mockDB.saveErr = errors.New("db save error")
 
 	body := createTestAPIKeyRequestBody(t, "test-key", "Test Key", "external-key-123456789012345678901234567890123456")
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
 
-	server.CreateAPIKey(c, "test-handle")
+	server.CreateAPIKey(w, r, "test-handle")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
@@ -2279,8 +2316,8 @@ func TestCreateAPIKeyDBError(t *testing.T) {
 func TestRevokeAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
-	server.RevokeAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
+	server.RevokeAPIKey(w, r, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -2297,14 +2334,14 @@ func TestRevokeAPIKeyWithDBAndEventHub(t *testing.T) {
 	require.NoError(t, server.store.StoreAPIKey(storeKey))
 	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
 
-	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-revoke-key")
+	r = withCorrelationID(r, "corr-id-revoke-key")
 
-	server.RevokeAPIKey(c, "test-handle", "test-key")
+	server.RevokeAPIKey(w, r, "test-handle", "test-key")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -2332,13 +2369,13 @@ func TestRevokeAPIKeyDBError(t *testing.T) {
 	require.NoError(t, server.store.StoreAPIKey(storeKey))
 	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
 
-	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
 
-	server.RevokeAPIKey(c, "test-handle", "test-key")
+	server.RevokeAPIKey(w, r, "test-handle", "test-key")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
@@ -2353,10 +2390,10 @@ func TestRegenerateAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{}`)
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys/test-key/regenerate", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys/test-key/regenerate", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.RegenerateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
+	server.RegenerateAPIKey(w, r, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -2365,14 +2402,14 @@ func TestRegenerateAPIKeyNoAuth(t *testing.T) {
 func TestRegenerateAPIKeyInvalidBody(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys/test-key/regenerate", []byte("invalid {{{"), map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys/test-key/regenerate", []byte("invalid {{{"), map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.RegenerateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
+	server.RegenerateAPIKey(w, r, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -2381,8 +2418,8 @@ func TestRegenerateAPIKeyInvalidBody(t *testing.T) {
 func TestListAPIKeysNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/rest-apis/test-handle/api-keys", nil)
-	server.ListAPIKeys(c, "0000-test-handle-0000-000000000000")
+	w, r := createTestContext("GET", "/rest-apis/test-handle/api-keys", nil)
+	server.ListAPIKeys(w, r, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -2390,15 +2427,15 @@ func TestListAPIKeysNoAuth(t *testing.T) {
 // TestExtractAuthenticatedUserSuccess tests successful user extraction
 func TestExtractAuthenticatedUserSuccess(t *testing.T) {
 	server := createTestAPIServer()
-	c, _ := createTestContext("GET", "/test", nil)
+	w, r := createTestContext("GET", "/test", nil)
 
 	authCtx := commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	}
-	c.Set(constants.AuthContextKey, authCtx)
+	r = withAuthContext(r, authCtx)
 
-	user, ok := server.extractAuthenticatedUser(c, "TestOperation", "corr-id")
+	user, ok := server.extractAuthenticatedUser(w, r, "TestOperation", "corr-id")
 
 	assert.True(t, ok)
 	assert.NotNil(t, user)
@@ -2682,9 +2719,9 @@ func TestSearchDeploymentsFilters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, w := createTestContext("GET", "/rest-apis?"+tc.query, nil)
-			c.Request.URL.RawQuery = tc.query
-			server.SearchDeployments(c, string(api.RestAPIKindRestApi))
+			w, r := createTestContext("GET", "/rest-apis?"+tc.query, nil)
+			r.URL.RawQuery = tc.query
+			server.SearchDeployments(w, r, string(api.RestAPIKindRestApi))
 
 			assert.Equal(t, http.StatusOK, w.Code)
 
@@ -2707,8 +2744,8 @@ func TestGetRestAPIByIdWithDeployedAt(t *testing.T) {
 	cfg.DeployedAt = &deployedAt
 	mockDB.SaveConfig(cfg)
 
-	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
-	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
+	w, r := createTestContext("GET", "/rest-apis/test-handle", nil)
+	server.GetRestAPIById(w, r, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -2732,8 +2769,8 @@ func TestGetAPIByNameVersionWithDeployedAt(t *testing.T) {
 	cfg.DeployedAt = &deployedAt
 	_ = server.store.Add(cfg)
 
-	c, w := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
-	server.GetAPIByNameVersion(c, "0000-test-api-0000-000000000000", "v1.0.0")
+	w, r := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
+	server.GetAPIByNameVersion(w, r, "0000-test-api-0000-000000000000", "v1.0.0")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -2847,8 +2884,8 @@ func TestConfigDumpAPIStatusConversion(t *testing.T) {
 			cfg.DesiredState = tc.status
 			_ = server.store.Add(cfg)
 
-			c, w := createTestContext("GET", "/config_dump", nil)
-			server.GetConfigDump(c)
+			w, r := createTestContext("GET", "/config_dump", nil)
+			server.GetConfigDump(w, r)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 		})
@@ -2864,9 +2901,9 @@ func TestSearchDeploymentsAPIKind(t *testing.T) {
 	_ = server.store.Add(cfg1)
 	_ = server.store.Add(cfg2)
 
-	c, w := createTestContext("GET", "/rest-apis?displayName=api-one&version=v1.0.0", nil)
-	c.Request.URL.RawQuery = "displayName=api-one&version=v1.0.0"
-	server.SearchDeployments(c, string(api.RestAPIKindRestApi))
+	w, r := createTestContext("GET", "/rest-apis?displayName=api-one&version=v1.0.0", nil)
+	r.URL.RawQuery = "displayName=api-one&version=v1.0.0"
+	server.SearchDeployments(w, r, string(api.RestAPIKindRestApi))
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -2889,7 +2926,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	providerConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
@@ -2918,8 +2955,8 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 	}
 	require.NoError(t, mockDB.SaveConfig(cfg))
 
-	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
-	server.GetLLMProviderById(c, "test-llm-provider")
+	w, r := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
+	server.GetLLMProviderById(w, r, "test-llm-provider")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -2929,7 +2966,7 @@ func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	providerConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
@@ -2957,8 +2994,8 @@ func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
 	}
 	mockDB.SaveConfig(cfg)
 
-	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
-	server.GetLLMProviderById(c, "test-llm-provider")
+	w, r := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
+	server.GetLLMProviderById(w, r, "test-llm-provider")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -2969,7 +3006,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	proxyConfig := api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
@@ -2996,8 +3033,8 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 	}
 	require.NoError(t, mockDB.SaveConfig(cfg))
 
-	c, w := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
-	server.GetLLMProxyById(c, "test-llm-proxy-handle")
+	w, r := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
+	server.GetLLMProxyById(w, r, "test-llm-proxy-handle")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -3009,7 +3046,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 
 	deployedAt := time.Now()
 	providerConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
@@ -3039,8 +3076,8 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	}
 	require.NoError(t, mockDB.SaveConfig(cfg))
 
-	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
-	server.GetLLMProviderById(c, "test-llm-provider")
+	w, r := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
+	server.GetLLMProviderById(w, r, "test-llm-provider")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -3059,7 +3096,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 
 	deployedAt := time.Now()
 	proxyConfig := api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
@@ -3087,8 +3124,8 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	}
 	require.NoError(t, mockDB.SaveConfig(cfg))
 
-	c, w := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
-	server.GetLLMProxyById(c, "test-llm-proxy-handle")
+	w, r := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
+	server.GetLLMProxyById(w, r, "test-llm-proxy-handle")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -3130,6 +3167,10 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
+	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
+	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-provider-id-0000-000000000000",
@@ -3138,7 +3179,7 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 		DisplayName: "test-llm",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
-			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "test-llm-provider",
@@ -3153,6 +3194,7 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
+		Origin:       models.OriginGatewayAPI,
 		DesiredState: models.StateDeployed,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -3173,10 +3215,10 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	mockDB.SaveAPIKey(apiKey)
 	require.NoError(t, server.store.Add(cfg))
 
-	c, w := createTestContext("DELETE", "/llm-providers/test-llm-provider", nil)
-	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-provider")
+	w, r := createTestContext("DELETE", "/llm-providers/test-llm-provider", nil)
+	r = withCorrelationID(r, "corr-id-delete-llm-provider")
 
-	server.DeleteLLMProvider(c, "test-llm-provider")
+	server.DeleteLLMProvider(w, r, "test-llm-provider")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -3185,6 +3227,14 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
 	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-id-delete-llm-provider", mockHub.publishedEvents[0].event.EventID)
+
+	// The gateway-originated artifact is pushed to the CP as an undeploy (async).
+	require.Eventually(t, func() bool { return mockCP.PushCount() == 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the deleted DP-origin provider to be pushed to the control plane as an undeploy")
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
 
 	_, err := mockDB.GetConfig(cfg.UUID)
 	require.Error(t, err)
@@ -3201,6 +3251,10 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
+	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
+	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-proxy-id-0000-000000000000",
@@ -3209,7 +3263,7 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 		DisplayName: "test-llm-proxy",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProxyConfiguration{
-			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "test-llm-proxy",
@@ -3222,6 +3276,7 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 				},
 			},
 		},
+		Origin:       models.OriginGatewayAPI,
 		DesiredState: models.StateDeployed,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -3229,10 +3284,10 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 	mockDB.SaveConfig(cfg)
 	require.NoError(t, server.store.Add(cfg))
 
-	c, w := createTestContext("DELETE", "/llm-proxies/test-llm-proxy", nil)
-	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-proxy")
+	w, r := createTestContext("DELETE", "/llm-proxies/test-llm-proxy", nil)
+	r = withCorrelationID(r, "corr-id-delete-llm-proxy")
 
-	server.DeleteLLMProxy(c, "test-llm-proxy")
+	server.DeleteLLMProxy(w, r, "test-llm-proxy")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -3241,6 +3296,14 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
 	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-id-delete-llm-proxy", mockHub.publishedEvents[0].event.EventID)
+
+	// The gateway-originated artifact is pushed to the CP as an undeploy (async).
+	require.Eventually(t, func() bool { return mockCP.PushCount() == 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the deleted DP-origin proxy to be pushed to the control plane as an undeploy")
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
 
 	_, err := mockDB.GetConfig(cfg.UUID)
 	require.Error(t, err)
@@ -3267,12 +3330,12 @@ func TestCreateSubscriptionWithDBAndEventHub(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	c, w := createTestContextWithHeader("POST", "/subscriptions", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/subscriptions", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-create-subscription")
+	r = withCorrelationID(r, "corr-id-create-subscription")
 
-	server.CreateSubscription(c)
+	server.CreateSubscription(w, r)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
@@ -3305,12 +3368,12 @@ func TestCreateSubscriptionPlanWithDBAndEventHub(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	c, w := createTestContextWithHeader("POST", "/subscription-plans", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/subscription-plans", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-create-plan")
+	r = withCorrelationID(r, "corr-id-create-plan")
 
-	server.CreateSubscriptionPlan(c)
+	server.CreateSubscriptionPlan(w, r)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
@@ -3357,8 +3420,8 @@ func BenchmarkListRestAPIs(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		c, _ := createTestContext("GET", "/rest-apis", nil)
-		server.ListRestAPIs(c, api.ListRestAPIsParams{})
+		w, r := createTestContext("GET", "/rest-apis", nil)
+		server.ListRestAPIs(w, r, api.ListRestAPIsParams{})
 	}
 }
 
@@ -3418,8 +3481,8 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 	}
 	_ = server.store.Add(cfg)
 
-	c, w := createTestContext("GET", "/config_dump", nil)
-	server.GetConfigDump(c)
+	w, r := createTestContext("GET", "/config_dump", nil)
+	server.GetConfigDump(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -3451,9 +3514,9 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 	// SearchDeployments uses ListMCPProxies() and never sees SourceConfiguration.
 	server.mcpDeploymentService = nil
 
-	c, w := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
-	c.Request.URL.RawQuery = "displayName=test"
-	server.SearchDeployments(c, string(api.MCPProxyConfigurationKindMcp))
+	w, r := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
+	r.URL.RawQuery = "displayName=test"
+	server.SearchDeployments(w, r, string(api.MCPProxyConfigurationKindMcp))
 
 	// Rematerializing MCP list items from SourceConfiguration fails; request errors as a whole.
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -3596,10 +3659,10 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 	}
 
 	body := []byte(`{"name": "test-key"}`)
-	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, authCtx)
+	r = withAuthContext(r, authCtx)
 
 	// Should panic or return error since apiKeyService is nil
 	panicked := false
@@ -3609,7 +3672,7 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 				panicked = true
 			}
 		}()
-		server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
+		server.CreateAPIKey(w, r, "0000-test-handle-0000-000000000000")
 	}()
 	if !panicked {
 		assert.True(t, w.Code >= http.StatusBadRequest)
@@ -3667,8 +3730,8 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 	// Mutate the DB-backed object to something that can't be JSON marshaled.
 	cfg.SourceConfiguration = make(chan int)
 
-	c, w := createTestContext("GET", "/mcp-proxies", nil)
-	server.ListMCPProxies(c, api.ListMCPProxiesParams{})
+	w, r := createTestContext("GET", "/mcp-proxies", nil)
+	server.ListMCPProxies(w, r, api.ListMCPProxiesParams{})
 
 	// ListMCPProxies deterministically returns StatusInternalServerError on unmarshal errors
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -3734,8 +3797,8 @@ func TestDeleteRestAPIDBError(t *testing.T) {
 	mockDB.SaveConfig(cfg)
 	mockDB.deleteErr = errors.New("db delete error")
 
-	c, w := createTestContext("DELETE", "/rest-apis/test-handle", nil)
-	server.DeleteRestAPI(c, "test-handle")
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle", nil)
+	server.DeleteRestAPI(w, r, "test-handle")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
@@ -3764,11 +3827,11 @@ func TestUpdateRestAPIDBError(t *testing.T) {
 	mockDB.updateErr = errors.New("db update error")
 
 	body := createTestRestAPIRequestBody(t, "test-handle", "updated-display-name", "v2.0.0", "/updated")
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 
-	server.UpdateRestAPI(c, "test-handle")
+	server.UpdateRestAPI(w, r, "test-handle")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
@@ -3791,11 +3854,11 @@ func TestUpdateRestAPISyncsDisplayNameAndVersion(t *testing.T) {
 	require.NoError(t, mockDB.SaveConfig(existing))
 
 	body := createTestRestAPIRequestBody(t, "test-handle", "updated-display-name", "v2.0.0", "/updated")
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 
-	server.UpdateRestAPI(c, "test-handle")
+	server.UpdateRestAPI(w, r, "test-handle")
 
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -3806,9 +3869,9 @@ func TestUpdateRestAPISyncsDisplayNameAndVersion(t *testing.T) {
 
 	displayName := "updated-display-name"
 	version := "v2.0.0"
-	c, w = createTestContext("GET", "/rest-apis?displayName=updated-display-name&version=v2.0.0", nil)
-	c.Request.URL.RawQuery = "displayName=updated-display-name&version=v2.0.0"
-	server.ListRestAPIs(c, api.ListRestAPIsParams{
+	w, r = createTestContext("GET", "/rest-apis?displayName=updated-display-name&version=v2.0.0", nil)
+	r.URL.RawQuery = "displayName=updated-display-name&version=v2.0.0"
+	server.ListRestAPIs(w, r, api.ListRestAPIsParams{
 		DisplayName: &displayName,
 		Version:     &version,
 	})
@@ -3865,10 +3928,10 @@ func TestUpdateAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"apiKey": "new-key-value"}`)
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.UpdateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
+	server.UpdateAPIKey(w, r, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -3877,14 +3940,14 @@ func TestUpdateAPIKeyNoAuth(t *testing.T) {
 func TestUpdateAPIKeyInvalidBody(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", []byte("invalid json {{{"), map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", []byte("invalid json {{{"), map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.UpdateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
+	server.UpdateAPIKey(w, r, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -3900,14 +3963,14 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"description": "test"}`)
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.UpdateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
+	server.UpdateAPIKey(w, r, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -3931,16 +3994,16 @@ func TestUpdateAPIKeyWithDBAndEventHub(t *testing.T) {
 	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
 
 	body := createTestAPIKeyRequestBody(t, "test-key", "Updated Key", "external-key-abcdef1234567890abcdef1234567890abcdef")
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-update-key")
+	r = withCorrelationID(r, "corr-id-update-key")
 
-	server.UpdateAPIKey(c, "test-handle", "test-key")
+	server.UpdateAPIKey(w, r, "test-handle", "test-key")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, mockHub.publishedEvents, 1)
@@ -3972,15 +4035,15 @@ func TestUpdateAPIKeyDBError(t *testing.T) {
 	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
 
 	body := createTestAPIKeyRequestBody(t, "test-key", "Updated Key", "external-key-abcdef1234567890abcdef1234567890abcdef")
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
+	w, r := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
 
-	server.UpdateAPIKey(c, "test-handle", "test-key")
+	server.UpdateAPIKey(w, r, "test-handle", "test-key")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
@@ -3994,12 +4057,12 @@ func TestUpdateAPIKeyDBError(t *testing.T) {
 func TestRevokeAPIKeyNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/nonexistent", nil)
-	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/nonexistent", nil)
+	r = withAuthContext(r, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.RevokeAPIKey(c, "0000-test-handle-0000-000000000000", "nonexistent")
+	server.RevokeAPIKey(w, r, "0000-test-handle-0000-000000000000", "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 

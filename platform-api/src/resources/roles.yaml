@@ -22,11 +22,9 @@ roles:
       - ap:api_key:read
       - ap:organization:manage
       - ap:project:manage
-      - ap:git:read
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
       - ap:rest_api:manage
-      - ap:devportal:manage
       - ap:application:manage
       - ap:subscription:manage
       - ap:subscription_plan:manage
@@ -41,21 +39,17 @@ roles:
     scopes:
       - ap:api_key:read
       - ap:organization:read
-      - ap:organization:subscription:read
       - ap:project:read
-      - ap:git:read
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
-      - ap:devportal:manage
       - ap:subscription_plan:manage
       - ap:llm_template:manage
       - ap:rest_api:read
       - ap:rest_api:deployment:read
-      - ap:rest_api:publication:read
       - ap:application:read
       - ap:application:api_key:read
-      - ap:application:associations:read
-      - ap:application:associations:api_key:read
+      - ap:application:association:read
+      - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:llm_provider:read
       - ap:llm_provider:deployment:read
@@ -67,23 +61,18 @@ roles:
       - ap:mcp_proxy:deployment:read
       - ap:websub_api:read
       - ap:websub_api:deployment:read
-      - ap:websub_api:publication:read
       - ap:webbroker_api:read
       - ap:webbroker_api:deployment:read
-      - ap:webbroker_api:publication:read
 
   - name: platform-developer
     scopes:
       - ap:api_key:read
       - ap:organization:read
-      - ap:organization:subscription:read
       - ap:project:manage
-      - ap:git:read
       - ap:gateway:read
-      - ap:gateway:artifacts:read
+      - ap:gateway:artifact:read
       - ap:gateway:manifest:read
       - ap:gateway_custom_policy:read
-      - ap:devportal:read
       - ap:rest_api:manage
       - ap:application:manage
       - ap:subscription:manage
@@ -99,20 +88,17 @@ roles:
     scopes:
       - ap:api_key:read
       - ap:organization:read
-      - ap:organization:subscription:read
       - ap:project:read
       - ap:gateway:read
-      - ap:gateway:artifacts:read
+      - ap:gateway:artifact:read
       - ap:gateway:manifest:read
       - ap:gateway_custom_policy:read
-      - ap:devportal:read
       - ap:rest_api:read
       - ap:rest_api:deployment:read
-      - ap:rest_api:publication:read
       - ap:application:read
       - ap:application:api_key:read
-      - ap:application:associations:read
-      - ap:application:associations:api_key:read
+      - ap:application:association:read
+      - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:subscription_plan:read
       - ap:llm_template:read
@@ -126,7 +112,5 @@ roles:
       - ap:mcp_proxy:deployment:read
       - ap:websub_api:read
       - ap:websub_api:deployment:read
-      - ap:websub_api:publication:read
       - ap:webbroker_api:read
       - ap:webbroker_api:deployment:read
-      - ap:webbroker_api:publication:read

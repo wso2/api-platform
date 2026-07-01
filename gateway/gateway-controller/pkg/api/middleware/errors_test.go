@@ -26,31 +26,22 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
-func init() {
-	gin.SetMode(gin.TestMode)
-}
-
-// TestErrorHandlingMiddleware_NormalRequest tests middleware with normal request (no panic)
 func TestErrorHandlingMiddleware_NormalRequest(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	// Create router with middleware
-	router := gin.New()
-	router.Use(ErrorHandlingMiddleware(logger))
-	router.GET("/test", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "success"})
-	})
+	h := ErrorHandlingMiddleware(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}))
 
-	// Test normal request
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/test", nil)
-	router.ServeHTTP(w, req)
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -60,21 +51,15 @@ func TestErrorHandlingMiddleware_NormalRequest(t *testing.T) {
 	assert.Equal(t, "success", response["status"])
 }
 
-// TestErrorHandlingMiddleware_PanicRecovery tests middleware recovers from panic
 func TestErrorHandlingMiddleware_PanicRecovery(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	// Create router with middleware
-	router := gin.New()
-	router.Use(ErrorHandlingMiddleware(logger))
-	router.GET("/panic", func(c *gin.Context) {
+	h := ErrorHandlingMiddleware(logger)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("something went wrong")
-	})
+	}))
 
-	// Test panic recovery
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/panic", nil)
-	router.ServeHTTP(w, req)
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/panic", nil))
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
@@ -85,23 +70,20 @@ func TestErrorHandlingMiddleware_PanicRecovery(t *testing.T) {
 	assert.Equal(t, "Internal server error", response.Message)
 }
 
-// TestErrorHandlingMiddleware_PanicWithCorrelationID tests panic recovery with correlation ID
 func TestErrorHandlingMiddleware_PanicWithCorrelationID(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	// Create router with correlation middleware first, then error handling
-	router := gin.New()
-	router.Use(CorrelationIDMiddleware(logger))
-	router.Use(ErrorHandlingMiddleware(logger))
-	router.GET("/panic", func(c *gin.Context) {
-		panic("correlation test panic")
-	})
+	// CorrelationID must wrap ErrorHandling so the logger is available in context.
+	h := CorrelationIDMiddleware(logger)(
+		ErrorHandlingMiddleware(logger)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+			panic("correlation test panic")
+		})),
+	)
 
-	// Test panic recovery with correlation ID
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/panic", nil)
 	req.Header.Set("X-Correlation-ID", "test-correlation-123")
-	router.ServeHTTP(w, req)
+	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
@@ -109,50 +91,31 @@ func TestErrorHandlingMiddleware_PanicWithCorrelationID(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Equal(t, "error", response.Status)
-
-	// Verify correlation ID was set in response
 	assert.Equal(t, "test-correlation-123", w.Header().Get("X-Correlation-ID"))
 }
 
-// TestErrorHandlingMiddleware_DifferentPanicTypes tests recovery from different panic types
 func TestErrorHandlingMiddleware_DifferentPanicTypes(t *testing.T) {
 	tests := []struct {
 		name       string
 		panicValue interface{}
 	}{
-		{
-			name:       "string panic",
-			panicValue: "string error",
-		},
-		{
-			name:       "error panic",
-			panicValue: assert.AnError,
-		},
-		{
-			name:       "int panic",
-			panicValue: 123,
-		},
-		{
-			name:       "nil panic",
-			panicValue: nil,
-		},
+		{"string panic", "string error"},
+		{"error panic", assert.AnError},
+		{"int panic", 123},
+		{"nil panic", nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-			router := gin.New()
-			router.Use(ErrorHandlingMiddleware(logger))
-			router.GET("/panic", func(c *gin.Context) {
+			h := ErrorHandlingMiddleware(logger)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 				panic(tt.panicValue)
-			})
+			}))
 
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/panic", nil)
-			router.ServeHTTP(w, req)
+			h.ServeHTTP(w, httptest.NewRequest("GET", "/panic", nil))
 
-			// All panics should result in 500 error
 			assert.Equal(t, http.StatusInternalServerError, w.Code)
 		})
 	}

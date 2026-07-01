@@ -34,7 +34,7 @@ const helpers = {
         return array.filter(item => item && (shouldInclude ? item[property] === value : item[property] !== value));
     },
     contains: (array, value) => array && array.includes(value),
-    getSubIDs: (subAPIs) => JSON.stringify(subAPIs.map(api => api.subID)),
+    getSubIDs: (subAPIs) => JSON.stringify(subAPIs.map(api => api.subId)),
     every: function (array, key, options) {
         if (!Array.isArray(array)) return options.inverse(this);
         return array.every(item => item[key]);
@@ -107,9 +107,8 @@ const helpers = {
 
     // Display / formatting helpers
     isMiddle: (index, length) => index === Math.floor(length / 2),
-    isFederatedAPI: (gatewayVendor) => typeof gatewayVendor === 'string' && constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor),
     maskToken: (token) => (!token || token.length <= 4) ? '****' : '****' + token.slice(-4),
-    isCurrentPlan: (policyName, subs) => Array.isArray(subs) && !!policyName && subs.some(s => s.subscriptionPlanName === policyName),
+    isCurrentPlan: (planName, subs) => Array.isArray(subs) && !!planName && subs.some(s => (s.planName || s.subscriptionPlanName) === planName),
     currentYear: () => new Date().getFullYear(),
     pageHead: function(options) {
         if (this.slots) {

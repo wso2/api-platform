@@ -1,16 +1,15 @@
-// Devportal API URL builder — single place that knows the org-scoped prefix
-// `/o/{orgId}/{base}/{version}`. The base segment and version are injected by
+// Devportal API URL builder. The base segment and version are injected by
 // the server (window.__DEVPORTAL_API__, set in the layout); the fallback keeps
 // pages working if the global is ever missing. Defined synchronously (outside
 // DOMContentLoaded) so it is available before any page script's handlers run.
 (function () {
     var cfg = window.__DEVPORTAL_API__ || { base: 'devportal', version: 'v1' };
     window.devportalApi = {
-        // Org-scoped resource: org('abc', '/subscriptions') => '/o/abc/devportal/v1/subscriptions'
-        org: function (orgId, path) {
-            return '/o/' + encodeURIComponent(orgId) + '/' + cfg.base + '/' + cfg.version + (path || '');
+        // Devportal API resource: org('/subscriptions') => '/devportal/v1/subscriptions'
+        org: function (path) {
+            return '/' + cfg.base + '/' + cfg.version + (path || '');
         },
-        // Root resource: root('/applications') => '/applications'
+        // Root resource: root('/organizations') => '/organizations'
         root: function (path) {
             return path || '/';
         },
@@ -26,21 +25,28 @@
 document.addEventListener("DOMContentLoaded", function () {
     const sidebar = document.getElementById('sidebar');
     const collapseBtn = document.getElementById('collapseBtn');
-    
+
     // Remove reference to sidebarPlaceholder which no longer exists
     const sidebarPlaceholder = document.getElementById('sidebarPlaceholder');
     if (sidebarPlaceholder) {
         sidebarPlaceholder.remove();
     }
-    
+
+    // Restore persisted sidebar state
+    if (localStorage.getItem('sidebar-expanded') === '1') {
+        sidebar.classList.add('expanded');
+        sidebar.classList.remove('force-collapse');
+        collapseBtn.querySelector('.collapse-text').textContent = "Collapse";
+    }
+
     // Track if the mouse has left the sidebar
     let mouseLeftSidebar = false;
-    
+
     // Add mouse enter and leave event listeners
     sidebar.addEventListener('mouseleave', () => {
         mouseLeftSidebar = true;
     });
-    
+
     sidebar.addEventListener('mouseenter', () => {
         // If mouse re-enters and the sidebar was previously force-collapsed
         if (mouseLeftSidebar && sidebar.classList.contains('force-collapse')) {
@@ -48,29 +54,21 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         mouseLeftSidebar = false;
     });
-    
+
     // Toggle between expanded and collapsed state when clicking the collapse button
     collapseBtn.addEventListener('click', () => {
         if (sidebar.classList.contains('expanded')) {
-            // If currently expanded, collapse and add a class to prevent hover expansion
+            // If currently expanded (pinned), collapse and prevent hover expansion
             sidebar.classList.remove('expanded');
-            
-            // Disable hover expansion until mouse re-enters
             sidebar.classList.add('force-collapse');
-            
-            // Update button text and icon
             collapseBtn.querySelector('.collapse-text').textContent = "Expand";
-            collapseBtn.querySelector('i').classList.remove('bi-chevron-left');
-            collapseBtn.querySelector('i').classList.add('bi-chevron-right');
+            localStorage.setItem('sidebar-expanded', '0');
         } else {
-            // If currently collapsed, expand
+            // If currently collapsed, pin it expanded
             sidebar.classList.add('expanded');
             sidebar.classList.remove('force-collapse');
-            
-            // Update button text and icon
             collapseBtn.querySelector('.collapse-text').textContent = "Collapse";
-            collapseBtn.querySelector('i').classList.remove('bi-chevron-right');
-            collapseBtn.querySelector('i').classList.add('bi-chevron-left');
+            localStorage.setItem('sidebar-expanded', '1');
         }
     });
     
@@ -150,16 +148,13 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Update the submenu links with the correct API ID and base path
                 document.getElementById('api-overview').href = `${basePath}/api/${apiId}`;
                 document.getElementById('api-docs').href = `${basePath}/api/${apiId}/docs/specification`;
-                document.getElementById('api-subscriptions').href = `${basePath}/api/${apiId}/subscriptions`;
                 const apiKeysLink = document.getElementById('api-keys-nav');
                 if (apiKeysLink) {
                     apiKeysLink.href = `${basePath}/api/${apiId}/api-keys`;
                 }
 
                 // Set active submenu item
-                if (currentPath.includes('/subscriptions')) {
-                    document.getElementById('api-subscriptions')?.classList.add('active');
-                } else if (currentPath.includes('/api-keys')) {
+                if (currentPath.includes('/api-keys')) {
                     document.getElementById('api-keys-nav')?.classList.add('active');
                 } else if (currentPath.includes('/docs')) {
                     document.getElementById('api-docs')?.classList.add('active');
@@ -319,8 +314,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 let appFromParams = false;
                 
                 // Get application ID from URL parameters if available
-                if (params.has('appID')) {
-                    appId = params.get('appID');
+                if (params.has('appId')) {
+                    appId = params.get('appId');
                     appFromParams = true;
                 }
                 
@@ -484,7 +479,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.root('/applications'), {
+                    const response = await fetch(devportalApi.org('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -492,7 +487,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         body: JSON.stringify({
                             name,
                             description,
-                            type: 'WEB',
                         }),
                     });
 
@@ -779,7 +773,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.root('/applications'), {
+                    const response = await fetch(devportalApi.org('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -787,7 +781,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         body: JSON.stringify({
                             name,
                             description,
-                            type: 'WEB',
                         }),
                     });
 
@@ -936,8 +929,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Copy MCP Server Config JSON to clipboard
-    window.copyServerConfig = async function(apiID) {
-        const preBlock = document.getElementById(`server-config-${apiID}`);
+    window.copyServerConfig = async function(apiId) {
+        const preBlock = document.getElementById(`server-config-${apiId}`);
         const buttonElement = preBlock.nextElementSibling;
         const iconElement = buttonElement.querySelector('i');
 

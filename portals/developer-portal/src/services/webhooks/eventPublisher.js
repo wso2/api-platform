@@ -27,41 +27,43 @@ bus.setMaxListeners(50);
 
 const VALID_EVENT_TYPES = new Set([
     'subscription.created',
+    'subscription.updated',
     'subscription.deleted',
     'subscription.plan_changed',
+    'subscription.token_regenerated',
     'apikey.generated',
     'apikey.regenerated',
-    'apikey.revoked'
-]);
-
-const SECRET_EVENT_TYPES = new Set([
-    'apikey.generated', 'apikey.regenerated',
-    'subscription.created',
+    'apikey.revoked',
+    'apikey.application_updated',
+    'application.created',
+    'application.updated',
+    'application.deleted'
 ]);
 
 /**
  * Publish a domain event inside an existing Sequelize transaction.
  *
- * For SECRET_EVENT_TYPES (apikey.* and subscription.*): pass `opts.plaintextKey` (string).
- * The value is encrypted per-subscriber into DP_EVENT_DELIVERY.ENCRYPTED_FIELDS and
- * is NOT written to DP_EVENT.PAYLOAD.
+ * Pass `opts.secretFields` ({ [fieldName]: plaintextValue }) whenever the event carries
+ * sensitive values. Each field is encrypted per-subscriber (RSA+AES-256-GCM) and stored
+ * as { [fieldName]: envelope } in DP_EVENT_DELIVERY.ENCRYPTED_FIELDS — delivery rows are
+ * created immediately inside the caller's TX so plaintext never leaves this call's stack.
+ * Secret values are NOT written to DP_EVENT.PAYLOAD.
  *
  * @param {string} eventType
- * @param {object} payload          — event data (no plaintext keys here)
+ * @param {object} payload          — event data (no secret values here)
  * @param {object} opts
  * @param {import('sequelize').Transaction} opts.transaction — required; caller owns the TX
  * @param {string} opts.orgId
- * @param {string} [opts.gatewayType]
  * @param {string} [opts.aggregateType]
  * @param {string} opts.aggregateId  — PK of the primary entity (keyId, subId, etc.)
- * @param {string} [opts.plaintextKey] — required for SECRET_EVENT_TYPES; zeroized after use for apikey.* events
+ * @param {Object.<string,string>} [opts.secretFields] — fields to encrypt per-subscriber
  * @returns {Promise<string>} eventId
  */
 async function publish(eventType, payload, opts) {
     if (!VALID_EVENT_TYPES.has(eventType)) {
         throw new Error(`Unknown event type: ${eventType}`);
     }
-    const { transaction, orgId, gatewayType, aggregateType, aggregateId, plaintextKey } = opts;
+    const { transaction, orgId, aggregateType, aggregateId, secretFields } = opts;
     if (!transaction) throw new Error('publish() requires a Sequelize transaction');
     if (!orgId) throw new Error('publish() requires orgId');
     if (!aggregateId) throw new Error('publish() requires aggregateId');
@@ -69,61 +71,63 @@ async function publish(eventType, payload, opts) {
     const event = await eventDao.create({
         eventType,
         orgId,
-        gatewayType: gatewayType || null,
         aggregateType: aggregateType || eventType.split('.')[0],
         aggregateId,
         payload
     }, transaction);
 
-    if (SECRET_EVENT_TYPES.has(eventType) && !plaintextKey) {
-        logger.error('[eventPublisher] key event missing plaintextKey — rejecting', {
-            eventType, orgId, aggregateId
-        });
-        event.STATUS = 'REJECTED';
-        await event.save({ transaction });
-        return event.EVENT_ID;
-    }
-
-    // For key events, encrypt the plaintext per subscriber and write delivery rows now
-    // (inside the same TX) so the plaintext never leaves this call's stack.
-    if (SECRET_EVENT_TYPES.has(eventType) && plaintextKey) {
-        const subscribers = matchSubscribers(eventType, gatewayType || null);
+    // When secretFields is provided, encrypt each field per subscriber and write delivery
+    // rows inside the same TX so plaintext never leaves this call's stack.
+    if (secretFields) {
+        const subscribers = await matchSubscribers(orgId, eventType);
         const perSubscriberEncrypted = {};
 
         for (const sub of subscribers) {
             if (!sub.publicKey) {
-                logger.warn('[eventPublisher] subscriber has no publicKey — key event will be delivered WITHOUT encrypted_key', {
+                logger.warn('Subscriber has no publicKey — secret event will be delivered without encrypted fields', {
                     subscriberId: sub.id, eventType
                 });
                 continue;
             }
-            try {
-                perSubscriberEncrypted[sub.id] = encryptToSubscriber(sub.publicKey, plaintextKey);
-            } catch (err) {
-                logger.error('[eventPublisher] failed to encrypt key for subscriber', {
-                    subscriberId: sub.id, error: err.message
+            const encryptedForSub = {};
+            for (const [fieldName, plaintextValue] of Object.entries(secretFields)) {
+                try {
+                    encryptedForSub[fieldName] = encryptToSubscriber(sub.publicKey, plaintextValue);
+                } catch (err) {
+                    logger.error('Failed to encrypt field for subscriber', {
+                        subscriberId: sub.id, fieldName, error: err.message
+                    });
+                }
+            }
+            if (Object.keys(encryptedForSub).length === Object.keys(secretFields).length) {
+                perSubscriberEncrypted[sub.id] = encryptedForSub;
+            } else if (Object.keys(encryptedForSub).length > 0) {
+                logger.error('Partial encryption for subscriber — skipping delivery', {
+                    subscriberId: sub.id, eventType
                 });
             }
         }
 
-        if (subscribers.length > 0) {
-            await eventDao.createDeliveries(event.EVENT_ID, subscribers, perSubscriberEncrypted, transaction);
-            // Mark as dispatched immediately — deliveries already created.
-            event.STATUS = 'DISPATCHED';
-            await event.save({ transaction });
+        const deliverableSubscribers = subscribers.filter(s => perSubscriberEncrypted[s.id]);
+        if (deliverableSubscribers.length > 0) {
+            await eventDao.createDeliveries(event.uuid, deliverableSubscribers, perSubscriberEncrypted, transaction);
+            event.status = 'DISPATCHED';
+        } else {
+            event.status = 'ALL_DELIVERED';
         }
+        await event.save({ transaction });
 
         bus.emit('key_event_published');
     } else {
         // Non-sensitive events: dispatcher will fan-out and create delivery rows.
         bus.emit('event_published');
     }
-    logger.info('[eventPublisher] publishing event', {
-        eventId: event.EVENT_ID, eventType, orgId, gatewayType, aggregateType, aggregateId,
-        hasPlaintextKey: !!plaintextKey
+    logger.info('Publishing event', {
+        eventId: event.uuid, eventType, orgId, aggregateType, aggregateId,
+        hasSecretFields: !!secretFields
     });
 
-    return event.EVENT_ID;
+    return event.uuid;
 }
 
 /** Subscribe to wake signals from publish(). */
@@ -132,4 +136,4 @@ function onPublished(listener) {
     bus.on('key_event_published', listener);
 }
 
-module.exports = { publish, onPublished };
+module.exports = { publish, onPublished, VALID_EVENT_TYPES };

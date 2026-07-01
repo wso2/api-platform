@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 2
+-- Version: 4
 
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     gateway_id TEXT NOT NULL,
     display_name TEXT NOT NULL,
     version TEXT NOT NULL,
+    data_version TEXT NOT NULL DEFAULT '1.0',
     kind TEXT NOT NULL,
     handle TEXT NOT NULL,
     desired_state TEXT NOT NULL CHECK(desired_state IN ('deployed', 'undeployed')),
@@ -37,6 +38,14 @@ CREATE TABLE IF NOT EXISTS rest_apis (
 );
 
 CREATE TABLE IF NOT EXISTS websub_apis (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS webbroker_apis (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,

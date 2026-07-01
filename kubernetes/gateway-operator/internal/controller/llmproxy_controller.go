@@ -177,7 +177,7 @@ func (a *llmProxyAdapter) Deploy(ctx context.Context, k8sClient client.Client, g
 		specPayload = m
 	}
 
-	body, err := gatewayclient.BuildEnvelopeYAML(apiv1.GroupVersion.String(), "LlmProxy",
+	body, err := gatewayclient.BuildEnvelopeYAML(gatewayclient.ManagementArtifactAPIVersion, "LlmProxy",
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,

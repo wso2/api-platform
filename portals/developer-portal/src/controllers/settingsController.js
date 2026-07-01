@@ -32,7 +32,7 @@ const devPortalService = require('../services/devportalService');
 
 const loadOrgSettingsPage = async (req, res) => {
 
-    let orgID;
+    let orgId;
     const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'configure', 'page.hbs');
     const layoutPath = path.join(require.main.filename, '..', 'pages', 'layout', 'main.hbs');
 
@@ -45,27 +45,23 @@ const loadOrgSettingsPage = async (req, res) => {
     try {
         let orgName = req.params.orgName;
         templateContent.loggedOrg = orgName;
-        orgID = await orgDao.getId(orgName);
-        templateContent.orgID = orgID;
+        orgId = await orgDao.getId(orgName);
+        templateContent.orgId = orgId;
 
         const organizations = await adminService.getAllOrganizations();
         if (organizations.length > 0) {
             templateContent.organizations = organizations;
         }
         templateContent.viewCreate = true;
-        const views = await apiMetadataService.getViewsFromDB(orgID);
+        const views = await apiMetadataService.getViewsFromDB(orgId);
         if (views.length > 0) {
             templateContent.content = true;
             templateContent.views = views;
             templateContent.viewCreate = false;
             templateContent.orgContent = false;
         }
-        const orgLabels = await apiMetadataService.getOrgLabels(orgID);
+        const orgLabels = await apiMetadataService.getOrgLabels(orgId);
         templateContent.orgLabels = orgLabels;
-        const apiProviders = await getAPIProviders(orgID);
-        if (apiProviders.length > 0) {
-            templateContent.apiProviders = apiProviders;
-        }
 
         templateContent.profile = req.user;
         layoutResponse = fs.readFileSync(layoutPath, constants.CHARSET_UTF8);
@@ -79,13 +75,6 @@ const loadOrgSettingsPage = async (req, res) => {
         });
         res.status(500).send('Error loading configuration page');
     }
-}
-
-
-async function getAPIProviders(orgID) {
-
-    const apiProviders = await adminService.getAllProviders(orgID);
-    return apiProviders;
 }
 
 
@@ -121,16 +110,16 @@ const loadPortalPage = async (req, res) => {
 const loadEditOrganizationPage = async (req, res) => {
 
     let templateContent = {};
-    let orgID = "";
+    let orgId = "";
     try {
         const orgName = req.params.orgName;
         if (req.params.orgId !== 'create') {
-            orgID = await orgDao.getId(orgName);
+            orgId = await orgDao.getId(orgName);
 
-            //orgID = req.params.orgId;
-            const organization = await devPortalService.getOrganizationDetails(orgID);
+            //orgId = req.params.orgId;
+            const organization = await devPortalService.getOrganizationDetails(orgId);
             templateContent = {
-                'orgID': orgID,
+                'orgId': orgId,
                 'profile': req.user,
                 'organization': organization,
                 'edit': true

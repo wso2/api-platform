@@ -46,6 +46,10 @@ func (m *mockGatewayRepository) GetByNameAndOrgID(name, orgID string) (*model.Ga
 	return m.getByNameResult, m.getByNameError
 }
 
+func (m *mockGatewayRepository) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error) {
+	return m.getByNameResult, m.getByNameError
+}
+
 func (m *mockGatewayRepository) Create(gateway *model.Gateway) error {
 	m.createdGateway = gateway
 	return m.createError
@@ -91,6 +95,7 @@ func TestRegisterGatewayProperties(t *testing.T) {
 	service := &GatewayService{
 		gatewayRepo: mockGatewayRepo,
 		orgRepo:     mockOrgRepo,
+		auditRepo:   &noopAuditRepo{},
 	}
 
 	response, err := service.RegisterGateway(
@@ -102,6 +107,7 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		true,
 		constants.GatewayFunctionalityTypeRegular,
 		"1.0",
+		"test-user",
 		properties,
 	)
 	if err != nil {
@@ -132,7 +138,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 	baseGateway := &model.Gateway{
 		ID:             gatewayID,
 		OrganizationID: orgID,
-		DisplayName:    "Old Gateway",
+		Handle:    "old-gateway",
 		Description:    "Old description",
 		Properties: map[string]interface{}{
 			"region": "us-east",
@@ -147,10 +153,11 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
+			auditRepo:   &noopAuditRepo{},
 		}
 
 		newDescription := "New description"
-		response, err := service.UpdateGateway(gatewayID, orgID, &newDescription, nil, nil, nil)
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &newDescription, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}
@@ -181,6 +188,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
+			auditRepo:   &noopAuditRepo{},
 		}
 
 		newProperties := map[string]interface{}{
@@ -188,7 +196,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			"tier":   "premium",
 		}
 
-		response, err := service.UpdateGateway(gatewayID, orgID, nil, nil, nil, &newProperties)
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", nil, nil, nil, &newProperties)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}

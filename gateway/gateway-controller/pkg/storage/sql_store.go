@@ -19,6 +19,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -54,14 +55,24 @@ type sqlStore struct {
 	isUniqueViolation func(error) bool
 
 	backendName string
+
+	// ctx is the store lifecycle context passed to every DB call. It is
+	// cancelled by Close(), so in-flight queries are interrupted on shutdown
+	// rather than blocking db.Close(). Request-scoped cancellation would
+	// require threading a context through the Storage interface methods.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string) *sqlStore {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &sqlStore{
 		db:          db,
 		logger:      logger,
 		gatewayId:   gatewayId,
 		backendName: backendName,
+		ctx:         ctx,
+		cancel:      cancel,
 		// Defaults are identity/false; backends can override.
 		rebindQuery:       func(query string) string { return query },
 		isUniqueViolation: func(error) bool { return false },
@@ -76,23 +87,154 @@ func (s *sqlStore) bind(query string) string {
 }
 
 func (s *sqlStore) exec(query string, args ...interface{}) (sql.Result, error) {
-	return s.db.Exec(s.bind(query), args...)
+	return s.db.ExecContext(s.ctx, s.bind(query), args...)
 }
 
 func (s *sqlStore) queryRow(query string, args ...interface{}) *sql.Row {
-	return s.db.QueryRow(s.bind(query), args...)
+	return s.db.QueryRowContext(s.ctx, s.bind(query), args...)
 }
 
 func (s *sqlStore) query(query string, args ...interface{}) (*sql.Rows, error) {
-	return s.db.Query(s.bind(query), args...)
+	return s.db.QueryContext(s.ctx, s.bind(query), args...)
 }
 
 func (s *sqlStore) prepare(query string) (*sql.Stmt, error) {
-	return s.db.Prepare(s.bind(query))
+	return s.db.PrepareContext(s.ctx, s.bind(query))
+}
+
+// ExecQ / QueryRowQ let *sqlStore satisfy rowExecer so the same helpers
+// (e.g. upsert) work both standalone and inside a transaction (*sqlStoreTx).
+func (s *sqlStore) ExecQ(query string, args ...interface{}) (sql.Result, error) {
+	return s.exec(query, args...)
+}
+
+func (s *sqlStore) QueryRowQ(query string, args ...interface{}) *sql.Row {
+	return s.queryRow(query, args...)
+}
+
+// rowExecer is implemented by both *sqlStore and *sqlStoreTx, letting query
+// helpers run either standalone or within a transaction.
+type rowExecer interface {
+	ExecQ(query string, args ...interface{}) (sql.Result, error)
+	QueryRowQ(query string, args ...interface{}) *sql.Row
+}
+
+// upsertSpec describes a portable INSERT-or-UPDATE. All SQL it generates is
+// plain ANSI (INSERT / UPDATE / SELECT with `?` placeholders), so it runs
+// unchanged on SQLite, PostgreSQL and SQL Server — no ON CONFLICT / MERGE /
+// RETURNING. Where the previous ON CONFLICT clauses referenced excluded.<col>
+// (the incoming row), callers pass that value as a bound parameter instead;
+// references to the existing row stay as bare column names.
+type upsertSpec struct {
+	table        string        // target table
+	columns      []string      // INSERT column list
+	insertValues []interface{} // values for the INSERT (len == len(columns))
+	keyColumns   []string      // unique/conflict key columns (UPDATE & SELECT WHERE)
+	keyValues    []interface{} // values for keyColumns
+	setClauses   []string      // UPDATE assignments, e.g. "display_name = ?"
+	setValues    []interface{} // values for the `?` in setClauses (in order)
+	guard        string        // optional extra UPDATE predicate, e.g. "(deployed_at IS NULL OR deployed_at < ?)"
+	guardValues  []interface{} // values for the `?` in guard
+}
+
+// upsert performs a portable insert-or-update. It first runs a guarded UPDATE;
+// if no row matches it checks existence and INSERTs only when absent. This
+// preserves the previous ON CONFLICT ... WHERE <guard> semantics:
+// didWrite is false only when the row already exists and the guard rejected the
+// update (e.g. a newer row is already stored).
+func (s *sqlStore) upsert(e rowExecer, spec upsertSpec) (didWrite bool, err error) {
+	whereSQL := equalityPredicate(spec.keyColumns)
+
+	update := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
+		spec.table, strings.Join(spec.setClauses, ", "), whereSQL)
+	updateArgs := make([]interface{}, 0, len(spec.setValues)+len(spec.keyValues)+len(spec.guardValues))
+	updateArgs = append(updateArgs, spec.setValues...)
+	updateArgs = append(updateArgs, spec.keyValues...)
+	if spec.guard != "" {
+		update += " AND " + spec.guard
+		updateArgs = append(updateArgs, spec.guardValues...)
+	}
+
+	res, err := e.ExecQ(update, updateArgs...)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+
+	// No row updated: either the row is absent, or it exists but the guard
+	// rejected the update. Only INSERT when it is genuinely absent.
+	exists, err := s.rowExists(e, spec.table, whereSQL, spec.keyValues)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil // guard rejected; keep the existing row
+	}
+
+	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		spec.table, strings.Join(spec.columns, ", "), repeatPlaceholders(len(spec.columns)))
+	if _, ierr := e.ExecQ(insert, spec.insertValues...); ierr != nil {
+		if !s.isUniqueViolation(ierr) {
+			return false, ierr
+		}
+		// Lost a race with a concurrent insert, or a different unique
+		// constraint collided. Retry the guarded UPDATE against the key.
+		res2, uerr := e.ExecQ(update, updateArgs...)
+		if uerr != nil {
+			return false, uerr
+		}
+		if n2, _ := res2.RowsAffected(); n2 > 0 {
+			return true, nil
+		}
+		// Key row now exists but the guard rejected it → keep existing.
+		// Otherwise the violation came from another unique constraint → surface it.
+		if again, _ := s.rowExists(e, spec.table, whereSQL, spec.keyValues); again {
+			return false, nil
+		}
+		return false, ierr
+	}
+	return true, nil
+}
+
+// rowExists reports whether a row matching whereSQL (built from key columns)
+// exists, using portable SELECT 1.
+func (s *sqlStore) rowExists(e rowExecer, table, whereSQL string, keyValues []interface{}) (bool, error) {
+	var one int
+	err := e.QueryRowQ(fmt.Sprintf("SELECT 1 FROM %s WHERE %s", table, whereSQL), keyValues...).Scan(&one)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// equalityPredicate joins columns into "c1 = ? AND c2 = ?".
+func equalityPredicate(columns []string) string {
+	parts := make([]string, len(columns))
+	for i, c := range columns {
+		parts[i] = c + " = ?"
+	}
+	return strings.Join(parts, " AND ")
+}
+
+// repeatPlaceholders returns "?, ?, ..." with n placeholders.
+func repeatPlaceholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.Repeat("?, ", n), ", ")
 }
 
 func (s *sqlStore) begin() (*sqlStoreTx, error) {
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(s.ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -105,15 +247,15 @@ type sqlStoreTx struct {
 }
 
 func (t *sqlStoreTx) ExecQ(query string, args ...interface{}) (sql.Result, error) {
-	return t.tx.Exec(t.store.bind(query), args...)
+	return t.tx.ExecContext(t.store.ctx, t.store.bind(query), args...)
 }
 
 func (t *sqlStoreTx) QueryRowQ(query string, args ...interface{}) *sql.Row {
-	return t.tx.QueryRow(t.store.bind(query), args...)
+	return t.tx.QueryRowContext(t.store.ctx, t.store.bind(query), args...)
 }
 
 func (t *sqlStoreTx) QueryQ(query string, args ...interface{}) (*sql.Rows, error) {
-	return t.tx.Query(t.store.bind(query), args...)
+	return t.tx.QueryContext(t.store.ctx, t.store.bind(query), args...)
 }
 
 func (t *sqlStoreTx) Commit() error {
@@ -143,6 +285,8 @@ func kindToResourceTable(kind string) (string, error) {
 		return "webbroker_apis", nil
 	case "LlmProvider":
 		return "llm_providers", nil
+	case "LlmProviderTemplate":
+		return "llm_provider_templates", nil
 	case "LlmProxy":
 		return "llm_proxies", nil
 	case "Mcp":
@@ -180,6 +324,13 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		}
 		cfg.SourceConfiguration = config
 		cfg.Configuration = config
+	case "LlmProviderTemplate":
+		var config api.LLMProviderTemplate
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	case "LlmProvider":
 		var config api.LLMProviderConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
@@ -206,17 +357,27 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 	return nil
 }
 
+// ensureDataVersion derives and sets cfg.DataVersion when it has not already
+// been populated, so every artifact write path records a data_version without
+// each caller having to compute it. See models.ComputeDataVersion.
+func ensureDataVersion(cfg *models.StoredConfig) {
+	if cfg.DataVersion == "" {
+		cfg.DataVersion = models.ComputeDataVersion(cfg.Kind, cfg.GetApiVersion())
+	}
+}
+
 func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if cfg.Handle == "" {
 		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
+	ensureDataVersion(cfg)
 
 	query := `
 		INSERT INTO artifacts (
-			uuid, gateway_id, display_name, version, kind, handle,
+			uuid, gateway_id, display_name, version, data_version, kind, handle,
 			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := s.begin()
@@ -230,7 +391,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		}
 	}()
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -257,11 +418,13 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if cfg.CPArtifactID != "" {
 		cpArtifactID = cfg.CPArtifactID
 	}
-	_, err = stmt.Exec(
+	_, err = stmt.ExecContext(
+		s.ctx,
 		cfg.UUID,
 		s.gatewayId,
 		cfg.DisplayName,
 		cfg.Version,
+		cfg.DataVersion,
 		cfg.Kind,
 		cfg.Handle,
 		cfg.DesiredState,
@@ -324,10 +487,11 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		metrics.StorageErrorsTotal.WithLabelValues("update", "validation_error").Inc()
 		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
+	ensureDataVersion(cfg)
 
 	query := `
 		UPDATE artifacts
-		SET display_name = ?, version = ?, kind = ?, handle = ?,
+		SET display_name = ?, version = ?, data_version = ?, kind = ?, handle = ?,
 			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?, deployed_at = ?,
 			cp_sync_status = ?, cp_sync_info = ?, cp_artifact_id = ?
 		WHERE uuid = ? AND gateway_id = ?
@@ -346,7 +510,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		}
 	}()
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
 		metrics.StorageErrorsTotal.WithLabelValues("update", "prepare_error").Inc()
@@ -374,9 +538,11 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	if cfg.CPArtifactID != "" {
 		updateCPArtifactID = cfg.CPArtifactID
 	}
-	result, err := stmt.Exec(
+	result, err := stmt.ExecContext(
+		s.ctx,
 		cfg.DisplayName,
 		cfg.Version,
+		cfg.DataVersion,
 		cfg.Kind,
 		cfg.Handle,
 		cfg.DesiredState,
@@ -447,29 +613,7 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 	if cfg.Handle == "" {
 		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
-
-	// INSERT ... ON CONFLICT upsert with deployed_at guard.
-	// The WHERE clause ensures we only overwrite when the incoming deployed_at
-	// is strictly newer than the stored value (or the stored value is NULL).
-	query := `
-		INSERT INTO artifacts (
-			uuid, gateway_id, display_name, version, kind, handle,
-			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
-			cp_sync_status, cp_sync_info, cp_artifact_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(gateway_id, uuid) DO UPDATE SET
-			display_name  = excluded.display_name,
-			version       = excluded.version,
-			kind          = excluded.kind,
-			handle        = excluded.handle,
-			desired_state = excluded.desired_state,
-			deployment_id = excluded.deployment_id,
-			origin        = excluded.origin,
-			updated_at    = excluded.updated_at,
-			deployed_at   = excluded.deployed_at
-		WHERE artifacts.deployed_at IS NULL
-		   OR artifacts.deployed_at < excluded.deployed_at
-	`
+	ensureDataVersion(cfg)
 
 	tx, err := s.begin()
 	if err != nil {
@@ -482,13 +626,6 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 			_ = tx.Rollback()
 		}
 	}()
-
-	stmt, err := tx.tx.Prepare(s.bind(query))
-	if err != nil {
-		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
-		return false, fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
 
 	now := time.Now()
 	var deploymentID interface{}
@@ -508,35 +645,42 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 	if cfg.CPArtifactID != "" {
 		upsertCPArtifactID = cfg.CPArtifactID
 	}
-	result, err := stmt.Exec(
-		cfg.UUID,
-		s.gatewayId,
-		cfg.DisplayName,
-		cfg.Version,
-		cfg.Kind,
-		cfg.Handle,
-		cfg.DesiredState,
-		deploymentID,
-		cfg.Origin,
-		now,
-		now,
-		cfg.DeployedAt,
-		upsertCPSyncStatus,
-		upsertCPSyncInfo,
-		upsertCPArtifactID,
-	)
+
+	// Portable insert-or-update guarded by deployed_at: only overwrite when the
+	// incoming deployed_at is strictly newer (or the stored value is NULL).
+	// cp_sync_* and created_at are written on INSERT only — preserved on update.
+	didWrite, err := s.upsert(tx, upsertSpec{
+		table: "artifacts",
+		columns: []string{
+			"uuid", "gateway_id", "display_name", "version", "data_version", "kind", "handle",
+			"desired_state", "deployment_id", "origin", "created_at", "updated_at", "deployed_at",
+			"cp_sync_status", "cp_sync_info", "cp_artifact_id",
+		},
+		insertValues: []interface{}{
+			cfg.UUID, s.gatewayId, cfg.DisplayName, cfg.Version, cfg.DataVersion, cfg.Kind, cfg.Handle,
+			cfg.DesiredState, deploymentID, cfg.Origin, now, now, cfg.DeployedAt,
+			upsertCPSyncStatus, upsertCPSyncInfo, upsertCPArtifactID,
+		},
+		keyColumns: []string{"gateway_id", "uuid"},
+		keyValues:  []interface{}{s.gatewayId, cfg.UUID},
+		setClauses: []string{
+			"display_name = ?", "version = ?", "data_version = ?", "kind = ?", "handle = ?",
+			"desired_state = ?", "deployment_id = ?", "origin = ?",
+			"updated_at = ?", "deployed_at = ?",
+		},
+		setValues: []interface{}{
+			cfg.DisplayName, cfg.Version, cfg.DataVersion, cfg.Kind, cfg.Handle,
+			cfg.DesiredState, deploymentID, cfg.Origin, now, cfg.DeployedAt,
+		},
+		guard:       "(deployed_at IS NULL OR deployed_at < ?)",
+		guardValues: []interface{}{cfg.DeployedAt},
+	})
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
 		return false, fmt.Errorf("failed to upsert artifact: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
-		return false, fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rows == 0 {
+	if !didWrite {
 		// Stale event — existing row has a newer deployed_at. No-op.
 		_ = tx.Rollback()
 		committed = true // prevent double-rollback in defer
@@ -644,7 +788,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 
 	// Step 1: Get artifact base record
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE uuid = ? AND gateway_id = ?
@@ -663,6 +807,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -718,7 +863,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 // GetConfigByKindAndHandle retrieves a deployment configuration by kind and handle (metadata.name)
 func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE kind = ? AND handle = ? AND gateway_id = ?
@@ -737,6 +882,7 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -781,7 +927,7 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 // GetConfigByKindNameAndVersion retrieves a deployment configuration by kind, display name, and version.
 func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE kind = ? AND display_name = ? AND version = ? AND gateway_id = ?
@@ -800,6 +946,7 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -846,7 +993,7 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	// Use UNION ALL across all type tables joined with artifacts
 	query := `
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -855,7 +1002,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, w.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -864,7 +1011,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, lp.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -873,7 +1020,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, lx.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -882,7 +1029,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, m.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 		FROM artifacts a
@@ -908,7 +1055,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	}
 
 	query := fmt.Sprintf(`
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -926,7 +1073,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	return s.scanConfigRows(rows)
 }
 
-// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at, enable_cp_sync, cp_sync_status, cp_sync_info)
+// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, data_version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at, enable_cp_sync, cp_sync_status, cp_sync_info)
 func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 
@@ -945,6 +1092,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 			&cfg.Handle,
 			&cfg.DisplayName,
 			&cfg.Version,
+			&cfg.DataVersion,
 			&configJSON,
 			&cfg.DesiredState,
 			&deploymentID,
@@ -998,7 +1146,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 // so Configuration/SourceConfiguration will be nil.
 func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
 	query := `
-		SELECT uuid, kind, handle, display_name, version, desired_state,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state,
 			deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
@@ -1012,6 +1160,36 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 	}
 	defer rows.Close()
 
+	return scanArtifactMetadataRows(rows)
+}
+
+// GetPendingCPSyncArtifacts returns artifacts-table metadata for all gateway-originated
+// artifacts whose control-plane sync is incomplete (cp_sync_status IN ('pending','failed')).
+func (s *sqlStore) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	query := `
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state,
+			deployment_id, origin, created_at, updated_at, deployed_at,
+			cp_sync_status, cp_sync_info, cp_artifact_id
+		FROM artifacts
+		WHERE gateway_id = ? AND origin = ? AND cp_sync_status IN (?, ?)
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.query(query, s.gatewayId, string(models.OriginGatewayAPI),
+		string(models.CPSyncStatusPending), string(models.CPSyncStatusFailed))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pending CP-sync artifacts: %w", err)
+	}
+	defer rows.Close()
+
+	return scanArtifactMetadataRows(rows)
+}
+
+// scanArtifactMetadataRows scans rows from a query selecting the artifacts-table metadata
+// columns (no resource-table JOIN, so Configuration is left nil): uuid, kind, handle,
+// display_name, version, desired_state, deployment_id, origin, created_at, updated_at,
+// deployed_at, cp_sync_status, cp_sync_info, cp_artifact_id.
+func scanArtifactMetadataRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 	for rows.Next() {
 		var cfg models.StoredConfig
@@ -1027,6 +1205,7 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 			&cfg.Handle,
 			&cfg.DisplayName,
 			&cfg.Version,
+			&cfg.DataVersion,
 			&cfg.DesiredState,
 			&deploymentID,
 			&cfg.Origin,
@@ -1103,7 +1282,7 @@ func (s *sqlStore) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.C
 // bottom-up sync. Returns ErrNotFound if no match.
 func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE gateway_id = ? AND cp_artifact_id = ?
@@ -1122,6 +1301,7 @@ func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredC
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -1167,7 +1347,7 @@ func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredC
 // Used by the bottom-up sync to determine which APIs need to be pushed to the control plane.
 func (s *sqlStore) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	query := `
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 		FROM artifacts a
@@ -1248,13 +1428,13 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON)}
 	}
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(args...)
+	_, err = stmt.ExecContext(s.ctx, args...)
 	if err != nil {
 		return false, fmt.Errorf("failed to insert resource configuration: %w", err)
 	}
@@ -1295,13 +1475,13 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		args = []interface{}{string(configJSON), cfg.UUID, s.gatewayId}
 	}
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(args...)
+	result, err := stmt.ExecContext(s.ctx, args...)
 	if err != nil {
 		return false, fmt.Errorf("failed to update resource configuration: %w", err)
 	}
@@ -1317,9 +1497,9 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	return true, nil
 }
 
-// upsertResourceConfigTx performs INSERT ... ON CONFLICT(gateway_id, uuid)
-// DO UPDATE for the per-resource-type table. Works identically on SQLite
-// (3.24+) and PostgreSQL.
+// upsertResourceConfigTx performs a portable insert-or-update for the
+// per-resource-type table. Uses the shared upsert helper so it runs unchanged
+// on SQLite, PostgreSQL and SQL Server.
 func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig) error {
 	resourceTable, err := kindToResourceTable(cfg.Kind)
 	if err != nil {
@@ -1331,8 +1511,15 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		return fmt.Errorf("failed to marshal configuration: %w", err)
 	}
 
-	var query string
-	var args []interface{}
+	spec := upsertSpec{
+		table:        resourceTable,
+		columns:      []string{"uuid", "gateway_id", "configuration"},
+		insertValues: []interface{}{cfg.UUID, s.gatewayId, string(configJSON)},
+		keyColumns:   []string{"gateway_id", "uuid"},
+		keyValues:    []interface{}{s.gatewayId, cfg.UUID},
+		setClauses:   []string{"configuration = ?"},
+		setValues:    []interface{}{string(configJSON)},
+	}
 
 	if cfg.Kind == "LlmProxy" {
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
@@ -1343,29 +1530,13 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		if err != nil {
 			return fmt.Errorf("failed to resolve provider: %w", err)
 		}
-		query = fmt.Sprintf(`
-			INSERT INTO %s (uuid, gateway_id, configuration, provider_uuid) VALUES (?, ?, ?, ?)
-			ON CONFLICT(gateway_id, uuid) DO UPDATE SET
-				configuration  = excluded.configuration,
-				provider_uuid  = excluded.provider_uuid
-		`, resourceTable)
-		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
-	} else {
-		query = fmt.Sprintf(`
-			INSERT INTO %s (uuid, gateway_id, configuration) VALUES (?, ?, ?)
-			ON CONFLICT(gateway_id, uuid) DO UPDATE SET
-				configuration = excluded.configuration
-		`, resourceTable)
-		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON)}
+		spec.columns = []string{"uuid", "gateway_id", "configuration", "provider_uuid"}
+		spec.insertValues = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
+		spec.setClauses = []string{"configuration = ?", "provider_uuid = ?"}
+		spec.setValues = []interface{}{string(configJSON), providerUUID}
 	}
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
-
-	if _, err = stmt.Exec(args...); err != nil {
+	if _, err := s.upsert(tx, spec); err != nil {
 		return fmt.Errorf("failed to upsert resource configuration: %w", err)
 	}
 
@@ -1377,7 +1548,7 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 func (s *sqlStore) resolveProviderUUID(tx *sqlStoreTx, providerHandle string) (string, error) {
 	var uuid string
 	query := s.bind(`SELECT a.uuid FROM artifacts a WHERE a.handle = ? AND a.gateway_id = ? AND a.kind = 'LlmProvider'`)
-	err := tx.tx.QueryRow(query, providerHandle, s.gatewayId).Scan(&uuid)
+	err := tx.tx.QueryRowContext(s.ctx, query, providerHandle, s.gatewayId).Scan(&uuid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("provider '%s' not found for gateway '%s'", providerHandle, s.gatewayId)
@@ -1387,7 +1558,9 @@ func (s *sqlStore) resolveProviderUUID(tx *sqlStoreTx, providerHandle string) (s
 	return uuid, nil
 }
 
-// SaveLLMProviderTemplate persists a new LLM provider template
+// SaveLLMProviderTemplate persists a new LLM provider template. It writes both the
+// llm_provider_templates row (the configuration) and an artifacts tracking row (for DP->CP
+// sync) in a single transaction.
 func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error {
 	// Serialize configuration to JSON
 	configJSON, err := json.Marshal(template.Configuration)
@@ -1397,35 +1570,84 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 
 	handle := template.GetHandle()
 
-	query := `
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now()
+
+	if err := s.insertTemplateArtifactRow(tx, template.UUID, handle, now); err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
+		}
+		return fmt.Errorf("failed to insert template artifact row: %w", err)
+	}
+
+	templateQuery := `
 		INSERT INTO llm_provider_templates (
 			uuid, gateway_id, handle, configuration, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?)
 	`
-
-	now := time.Now()
-	_, err = s.exec(query,
-		template.UUID,
-		s.gatewayId,
-		handle,
-		string(configJSON),
-		now,
-		now,
-	)
-
-	if err != nil {
-		// Check for unique constraint violation
+	if _, err := tx.ExecQ(templateQuery, template.UUID, s.gatewayId, handle, string(configJSON), now, now); err != nil {
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit template transaction: %w", err)
+	}
+	committed = true
+
 	s.logger.Info("LLM provider template saved",
 		slog.String("uuid", template.UUID),
 		slog.String("handle", handle))
 
 	return nil
+}
+
+// insertTemplateArtifactRow inserts the artifacts-table tracking row for an LLM provider
+// template within the given transaction. Templates are organization-level and always
+// gateway-originated, so the row is marked origin gateway_api with cp_sync_status pending.
+// This makes templates participate in DP->CP sync tracking and the connect/reconnect retry,
+// mirroring how LLM providers and other deployable artifacts are tracked. Templates carry no
+// version, so version is stored empty and display_name mirrors the handle. The template is not
+// a deployable runtime artifact and has no row in any of the type tables joined by
+// GetAllConfigs, so it never enters the runtime/xDS hydration path.
+func (s *sqlStore) insertTemplateArtifactRow(tx *sqlStoreTx, uuid, handle string, now time.Time) error {
+	query := `
+		INSERT INTO artifacts (
+			uuid, gateway_id, display_name, version, kind, handle,
+			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+			cp_sync_status, cp_sync_info, cp_artifact_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := tx.ExecQ(query,
+		uuid,
+		s.gatewayId,
+		handle, // display_name
+		"",     // version (templates are unversioned)
+		string(models.KindLlmProviderTemplate),
+		handle,
+		string(models.StateDeployed),
+		nil, // deployment_id
+		string(models.OriginGatewayAPI),
+		now,
+		now,
+		nil, // deployed_at
+		string(models.CPSyncStatusPending),
+		nil, // cp_sync_info
+		nil, // cp_artifact_id
+	)
+	return err
 }
 
 // UpdateLLMProviderTemplate updates an existing LLM provider template
@@ -1447,35 +1669,63 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 
 	handle := template.GetHandle()
 
-	query := `
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now()
+
+	result, err := tx.ExecQ(`
 		UPDATE llm_provider_templates
 		SET handle = ?, configuration = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
-	`
-
-	result, err := s.exec(query,
-		handle,
-		string(configJSON),
-		time.Now(),
-		template.UUID,
-		s.gatewayId,
-	)
-
+	`, handle, string(configJSON), now, template.UUID, s.gatewayId)
 	if err != nil {
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to update template: %w", err)
 	}
-
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
 	if rows == 0 {
 		return fmt.Errorf("%w: uuid=%s", ErrNotFound, template.UUID)
 	}
+
+	// Reset the tracking row's CP sync state to pending so the change re-syncs to the control
+	// plane (and is retried on reconnect). Insert the row if it is missing, which covers
+	// templates created before artifacts-table tracking existed.
+	artResult, err := tx.ExecQ(`
+		UPDATE artifacts
+		SET display_name = ?, updated_at = ?, cp_sync_status = ?, cp_sync_info = NULL
+		WHERE uuid = ? AND gateway_id = ? AND kind = ?
+	`, handle, now, string(models.CPSyncStatusPending), template.UUID, s.gatewayId, string(models.KindLlmProviderTemplate))
+	if err != nil {
+		return fmt.Errorf("failed to update template artifact row: %w", err)
+	}
+	artRows, err := artResult.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if artRows == 0 {
+		if err := s.insertTemplateArtifactRow(tx, template.UUID, handle, now); err != nil {
+			return fmt.Errorf("failed to insert template artifact row: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit template transaction: %w", err)
+	}
+	committed = true
 
 	s.logger.Info("LLM provider template updated",
 		slog.String("uuid", template.UUID),
@@ -1484,23 +1734,43 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 	return nil
 }
 
-// DeleteLLMProviderTemplate removes an LLM provider template by UUID
+// DeleteLLMProviderTemplate removes an LLM provider template by UUID, deleting both the
+// llm_provider_templates row and its artifacts tracking row in a single transaction.
 func (s *sqlStore) DeleteLLMProviderTemplate(id string) error {
-	query := `DELETE FROM llm_provider_templates WHERE uuid = ? AND gateway_id = ?`
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
 
-	result, err := s.exec(query, id, s.gatewayId)
+	result, err := tx.ExecQ(`DELETE FROM llm_provider_templates WHERE uuid = ? AND gateway_id = ?`, id, s.gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to delete template: %w", err)
 	}
-
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
 	if rows == 0 {
 		return fmt.Errorf("%w: uuid=%s", ErrNotFound, id)
 	}
+
+	// Remove the tracking row too. Best-effort row count: templates created before
+	// artifacts-table tracking existed may not have one, which is not an error.
+	if _, err := tx.ExecQ(`DELETE FROM artifacts WHERE uuid = ? AND gateway_id = ? AND kind = ?`,
+		id, s.gatewayId, string(models.KindLlmProviderTemplate)); err != nil {
+		return fmt.Errorf("failed to delete template artifact row: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit template transaction: %w", err)
+	}
+	committed = true
 
 	s.logger.Info("LLM provider template deleted", slog.String("uuid", id))
 
@@ -1881,41 +2151,42 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 // source is preserved from the existing row when it is already set.
 // external_ref_id falls back to the existing value when the incoming one is NULL.
 func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
-	query := `
-		INSERT INTO api_keys (
-			uuid, gateway_id, name, api_key, masked_api_key, artifact_uuid, status,
-			created_at, created_by, updated_at, expires_at,
-			source, external_ref_id, issuer
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(gateway_id, artifact_uuid, name) DO UPDATE SET
-			uuid            = excluded.uuid,
-			api_key         = excluded.api_key,
-			masked_api_key  = excluded.masked_api_key,
-			status          = excluded.status,
-			updated_at      = excluded.updated_at,
-			expires_at      = excluded.expires_at,
-			source          = CASE WHEN api_keys.source != '' THEN api_keys.source ELSE excluded.source END,
-			external_ref_id = COALESCE(excluded.external_ref_id, api_keys.external_ref_id),
-			issuer          = CASE WHEN api_keys.issuer != '' THEN api_keys.issuer ELSE excluded.issuer END
-		WHERE api_keys.updated_at < excluded.updated_at
-	`
-
-	_, err := s.exec(query,
-		apiKey.UUID,
-		s.gatewayId,
-		apiKey.Name,
-		apiKey.APIKey,
-		apiKey.MaskedAPIKey,
-		apiKey.ArtifactUUID,
-		apiKey.Status,
-		apiKey.CreatedAt,
-		apiKey.CreatedBy,
-		apiKey.UpdatedAt,
-		apiKey.ExpiresAt,
-		apiKey.Source,
-		apiKey.ExternalRefId,
-		apiKey.Issuer,
-	)
+	// Portable upsert keyed on (gateway_id, artifact_uuid, name), guarded so a
+	// racing event that already wrote a newer record is never overwritten.
+	// On update: source/issuer keep the existing value when already set, and
+	// external_ref_id falls back to the existing value when the incoming is NULL.
+	_, err := s.upsert(s, upsertSpec{
+		table: "api_keys",
+		columns: []string{
+			"uuid", "gateway_id", "name", "api_key", "masked_api_key", "artifact_uuid", "status",
+			"created_at", "created_by", "updated_at", "expires_at",
+			"source", "external_ref_id", "issuer",
+		},
+		insertValues: []interface{}{
+			apiKey.UUID, s.gatewayId, apiKey.Name, apiKey.APIKey, apiKey.MaskedAPIKey, apiKey.ArtifactUUID, apiKey.Status,
+			apiKey.CreatedAt, apiKey.CreatedBy, apiKey.UpdatedAt, apiKey.ExpiresAt,
+			apiKey.Source, apiKey.ExternalRefId, apiKey.Issuer,
+		},
+		keyColumns: []string{"gateway_id", "artifact_uuid", "name"},
+		keyValues:  []interface{}{s.gatewayId, apiKey.ArtifactUUID, apiKey.Name},
+		setClauses: []string{
+			"uuid = ?",
+			"api_key = ?",
+			"masked_api_key = ?",
+			"status = ?",
+			"updated_at = ?",
+			"expires_at = ?",
+			"source = CASE WHEN source != '' THEN source ELSE ? END",
+			"external_ref_id = COALESCE(?, external_ref_id)",
+			"issuer = CASE WHEN issuer != '' THEN issuer ELSE ? END",
+		},
+		setValues: []interface{}{
+			apiKey.UUID, apiKey.APIKey, apiKey.MaskedAPIKey, apiKey.Status, apiKey.UpdatedAt, apiKey.ExpiresAt,
+			apiKey.Source, apiKey.ExternalRefId, apiKey.Issuer,
+		},
+		guard:       "updated_at < ?",
+		guardValues: []interface{}{apiKey.UpdatedAt},
+	})
 	if err != nil {
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: API key value already exists", ErrConflict)
@@ -1942,7 +2213,6 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		LEFT JOIN applications app
 		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
 		WHERE ak.uuid = ? AND ak.gateway_id = ?
-		LIMIT 1
 	`
 
 	var apiKey models.APIKey
@@ -2004,7 +2274,6 @@ func (s *sqlStore) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 		       issuer
 		FROM api_keys
 		WHERE uuid = ? AND gateway_id = ?
-		LIMIT 1
 	`
 
 	var apiKey models.APIKey
@@ -2156,7 +2425,6 @@ func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, e
 		       issuer
 		FROM api_keys
 		WHERE artifact_uuid = ? AND name = ? AND gateway_id = ?
-		LIMIT 1
 	`
 
 	var apiKey models.APIKey
@@ -2377,17 +2645,15 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 	}
 	rows.Close()
 
-	if _, err = tx.ExecQ(`
-		INSERT INTO applications (
-			application_uuid, gateway_id, application_id, application_name, application_type, created_at, updated_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(gateway_id, application_uuid) DO UPDATE SET
-			application_id = excluded.application_id,
-			application_name = excluded.application_name,
-			application_type = excluded.application_type,
-			updated_at = excluded.updated_at
-	`, application.ApplicationUUID, s.gatewayId, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now); err != nil {
+	if _, err = s.upsert(tx, upsertSpec{
+		table:        "applications",
+		columns:      []string{"application_uuid", "gateway_id", "application_id", "application_name", "application_type", "created_at", "updated_at"},
+		insertValues: []interface{}{application.ApplicationUUID, s.gatewayId, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now},
+		keyColumns:   []string{"gateway_id", "application_uuid"},
+		keyValues:    []interface{}{s.gatewayId, application.ApplicationUUID},
+		setClauses:   []string{"application_id = ?", "application_name = ?", "application_type = ?", "updated_at = ?"},
+		setValues:    []interface{}{application.ApplicationID, application.ApplicationName, application.ApplicationType, now},
+	}); err != nil {
 		_ = tx.Rollback()
 		return nil, fmt.Errorf("failed to upsert application metadata: %w", err)
 	}
@@ -2457,6 +2723,11 @@ func (s *sqlStore) Close() error {
 		backend = "SQL"
 	}
 	s.logger.Info("Closing storage", slog.String("backend", backend))
+	// Cancel the lifecycle context first so any in-flight queries are
+	// interrupted instead of blocking the underlying db.Close().
+	if s.cancel != nil {
+		s.cancel()
+	}
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("failed to close database: %w", err)
 	}
@@ -3084,15 +3355,34 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 	startTime := time.Now()
 	table := "secrets"
 
-	query := `
-	UPDATE secrets
-	SET display_name = ?, description = ?, ciphertext = ?, updated_at = ?
-	WHERE gateway_id = ? AND handle = ?
-	RETURNING handle, display_name, description, ciphertext, created_at, updated_at
-	`
-
+	// Portable update-then-read (no RETURNING): UPDATE, confirm a row matched,
+	// then SELECT the stored row to read back its timestamps. Both run in one
+	// transaction so the row read back is exactly the one written here, rather
+	// than a value a concurrent writer may have stored between the two statements.
 	now := time.Now().UTC()
-	row := s.queryRow(query,
+
+	tx, err := s.begin()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
+		s.logger.Error("Failed to begin transaction to update secret",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to update secret: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	res, err := tx.ExecQ(`
+		UPDATE secrets
+		SET display_name = ?, description = ?, ciphertext = ?, updated_at = ?
+		WHERE gateway_id = ? AND handle = ?
+	`,
 		secret.DisplayName,
 		secret.Description,
 		secret.Ciphertext,
@@ -3100,9 +3390,21 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 		s.gatewayId,
 		secret.Handle,
 	)
+	if err == nil {
+		var n int64
+		if n, err = res.RowsAffected(); err == nil && n == 0 {
+			err = sql.ErrNoRows
+		}
+	}
 
 	var updated models.Secret
-	err := row.Scan(&updated.Handle, &updated.DisplayName, &updated.Description, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
+	if err == nil {
+		row := tx.QueryRowQ(`
+			SELECT handle, display_name, description, ciphertext, created_at, updated_at
+			FROM secrets WHERE gateway_id = ? AND handle = ?
+		`, s.gatewayId, secret.Handle)
+		err = row.Scan(&updated.Handle, &updated.DisplayName, &updated.Description, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
@@ -3117,6 +3419,17 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 		)
 		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
+
+	if err = tx.Commit(); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
+		s.logger.Error("Failed to commit secret update",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to update secret: %w", err)
+	}
+	committed = true
 
 	metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "success").Inc()
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("update", table).Observe(time.Since(startTime).Seconds())
@@ -3171,7 +3484,7 @@ func (s *sqlStore) DeleteSecret(handle string) error {
 
 // SecretExists checks if a secret with the given handle exists
 func (s *sqlStore) SecretExists(handle string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM secrets WHERE gateway_id = ? AND handle = ?)`
+	query := `SELECT CASE WHEN EXISTS(SELECT 1 FROM secrets WHERE gateway_id = ? AND handle = ?) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END`
 
 	var exists bool
 	err := s.queryRow(query, s.gatewayId, handle).Scan(&exists)

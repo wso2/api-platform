@@ -16,99 +16,237 @@
  * under the License.
  */
 const apiKeyService = require('../services/apiKeyService');
+const applicationDao = require('../dao/applicationDao');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
+const util = require('../utils/util');
+const constants = require('../utils/constants');
 
 function errorStatus(err) {
     return err.status || 500;
 }
 
 /**
- * POST /organizations/:orgId/api-keys/generate
- * Body: { apiId, name, expiresAt?, subscriptionId? }
+ * Normalizes an optional id-like field the same way apiId is handled: absent/empty is
+ * fine (no filter/association), but if present it must be a non-empty string.
+ */
+function normalizeOptionalId(value) {
+    if (value === undefined || value === null || value === '') return { ok: true, value: undefined };
+    if (typeof value !== 'string' || !value.trim()) return { ok: false };
+    return { ok: true, value: value.trim() };
+}
+
+function mapKey(k) {
+    const app = k.dp_api_key_app_mapping?.dp_application;
+    return {
+        keyId: k.uuid,
+        name: k.name,
+        status: k.status,
+        expiresAt: k.expires_at,
+        createdAt: k.created_at,
+        revokedAt: k.revoked_at || undefined,
+        apiId: k.api_uuid,
+        appId: app ? app.uuid : null,
+        appName: app ? app.name : null
+    };
+}
+
+/**
+ * POST /devportal/v1/apis/:apiId/api-keys/generate
+ * Body: { name, expiresAt?, subscriptionId?, appId? }
  */
 async function generateApiKey(req, res) {
-    const { orgId } = req.params;
-    const { apiId, name, expiresAt, subscriptionId } = req.body || {};
+    const orgId = req.orgId;
+    const apiId = req.params.apiId;
+    const { name, expiresAt, subscriptionId, appId } = req.body || {};
 
-    if (!apiId || typeof apiId !== 'string' || !apiId.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'apiId is required' });
+    const appIdResult = normalizeOptionalId(appId);
+    if (!appIdResult.ok) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'appId must be a non-empty string' });
     }
 
     try {
         const result = await apiKeyService.generate({
-            orgId, apiId: apiId.trim(), subscriptionId, name, expiresAt,
+            orgId, apiId: apiId.trim(), subscriptionId, appId: appIdResult.value, name, expiresAt,
             actor: req.user.sub, userToken: req.user.accessToken,
         });
+        logUserAction('API_KEY_GENERATED', req, { orgId, apiId, keyId: result.keyId });
         return res.status(201).json(result);
     } catch (err) {
-        logger.error('[apiKeyController] generate failed', { error: err.message, orgId, apiId });
+        logger.error('Failed to generate API key', { error: err.message, orgId, apiId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
 
 /**
- * GET /organizations/:orgId/api-keys
- * Query: apiId (required), subscriptionId (optional), status (optional)
+ * GET /devportal/v1/apis/:apiId/api-keys
+ * Query: subscriptionId (optional), status (optional), appId (optional)
  */
 async function listApiKeys(req, res) {
-    const { orgId } = req.params;
-    const { apiId, subscriptionId, status } = req.query;
+    const orgId = req.orgId;
+    const apiId = req.params.apiId;
+    const { subscriptionId, status, appId } = req.query;
 
-    if (!apiId || typeof apiId !== 'string' || !apiId.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'apiId is required' });
+    const appIdResult = normalizeOptionalId(appId);
+    if (!appIdResult.ok) {
+        return res.status(400).json({
+            status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
+            errors: [{ field: 'appId', message: 'appId must be a non-empty string' }],
+        });
+    }
+    if (status && !Object.values(constants.API_KEY_STATUS).includes(status)) {
+        return res.status(400).json({
+            status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
+            errors: [{ field: 'status', message: `status must be one of: ${Object.values(constants.API_KEY_STATUS).join(', ')}` }],
+        });
     }
 
     try {
         const keys = await apiKeyService.list(orgId, {
             apiId: apiId.trim(),
             subscriptionId: subscriptionId || undefined,
+            appId: appIdResult.value,
             status: status || undefined
         });
-        return res.status(200).json(keys.map(k => ({
-            keyId: k.KEY_ID,
-            name: k.NAME,
-            status: k.STATUS,
-            expiresAt: k.EXPIRES_AT,
-            createdAt: k.CREATED_AT,
-            revokedAt: k.REVOKED_AT || undefined,
-            apiId: k.API_ID
-        })));
+        const mapped = keys.map(k => mapKey(k));
+        return res.status(200).json(util.toPaginatedList(mapped, req));
     } catch (err) {
-        logger.error('[apiKeyController] list failed', { error: err.message, orgId });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+        logger.error('Failed to list API keys', { error: err.message, orgId });
+        return res.status(errorStatus(err)).json({
+            status: 'error',
+            code: 'INTERNAL_SERVER_ERROR',
+            message: err.message,
+            errors: [],
+        });
     }
 }
 
 /**
- * POST /organizations/:orgId/api-keys/:apiKeyId/regenerate
+ * POST /devportal/v1/apis/:apiId/api-keys/regenerate
+ * Body: { keyId }
  */
 async function regenerateApiKey(req, res) {
-    const { orgId, apiKeyId } = req.params;
+    const orgId = req.orgId;
+    const apiId = req.params.apiId;
+    const { keyId } = req.body || {};
+
+    if (!keyId || typeof keyId !== 'string' || !keyId.trim()) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+    }
 
     try {
         const result = await apiKeyService.regenerate({
-            orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken,
+            orgId, apiId, keyId: keyId.trim(), actor: req.user.sub, userToken: req.user.accessToken,
         });
+        logUserAction('API_KEY_REGENERATED', req, { orgId, apiId, keyId });
         return res.status(200).json(result);
     } catch (err) {
-        logger.error('[apiKeyController] regenerate failed', { error: err.message, orgId, apiKeyId });
+        logger.error('Failed to regenerate API key', { error: err.message, orgId, apiId, keyId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
 
 /**
- * POST /organizations/:orgId/api-keys/:apiKeyId/revoke
+ * POST /devportal/v1/apis/:apiId/api-keys/revoke
+ * Body: { keyId }
  */
 async function revokeApiKey(req, res) {
-    const { orgId, apiKeyId } = req.params;
+    const orgId = req.orgId;
+    const apiId = req.params.apiId;
+    const { keyId } = req.body || {};
+
+    if (!keyId || typeof keyId !== 'string' || !keyId.trim()) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+    }
 
     try {
-        await apiKeyService.revoke({ orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken });
+        await apiKeyService.revoke({ orgId, apiId, keyId: keyId.trim(), actor: req.user.sub, userToken: req.user.accessToken });
+        logUserAction('API_KEY_REVOKED', req, { orgId, apiId, keyId });
         return res.status(204).send();
     } catch (err) {
-        logger.error('[apiKeyController] revoke failed', { error: err.message, orgId, apiKeyId });
+        logger.error('Failed to revoke API key', { error: err.message, orgId, apiId, keyId });
         return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
     }
 }
 
-module.exports = { generateApiKey, listApiKeys, regenerateApiKey, revokeApiKey };
+/**
+ * POST /devportal/v1/apis/:apiId/api-keys/associate
+ * Body: { keyId, appId }
+ */
+async function associateApiKeyApplication(req, res) {
+    const orgId = req.orgId;
+    const apiId = req.params.apiId;
+    const { keyId, appId } = req.body || {};
+
+    if (!keyId || typeof keyId !== 'string' || !keyId.trim()) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+    }
+    if (!appId || typeof appId !== 'string' || !appId.trim()) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'appId is required' });
+    }
+
+    try {
+        const result = await apiKeyService.associateApplication({
+            orgId, apiId, keyId: keyId.trim(), appId: appId.trim(), actor: req.user.sub,
+        });
+        logUserAction('API_KEY_APP_ASSOCIATED', req, { orgId, apiId, keyId, appId });
+        return res.status(200).json(result);
+    } catch (err) {
+        logger.error('Failed to associate application with API key', { error: err.message, orgId, apiId, keyId });
+        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+    }
+}
+
+/**
+ * POST /devportal/v1/apis/:apiId/api-keys/dissociate
+ * Body: { keyId }
+ */
+async function removeApiKeyApplication(req, res) {
+    const orgId = req.orgId;
+    const apiId = req.params.apiId;
+    const { keyId } = req.body || {};
+
+    if (!keyId || typeof keyId !== 'string' || !keyId.trim()) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+    }
+
+    try {
+        await apiKeyService.removeApplicationAssociation({ orgId, apiId, keyId: keyId.trim(), actor: req.user.sub });
+        logUserAction('API_KEY_APP_DISASSOCIATED', req, { orgId, apiId, keyId });
+        return res.status(204).send();
+    } catch (err) {
+        logger.error('Failed to remove application association from API key', { error: err.message, orgId, apiId, keyId });
+        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+    }
+}
+
+/**
+ * GET /devportal/v1/applications/:applicationId/api-keys
+ * Lists all API keys (across every API) currently associated with an app.
+ */
+async function listApplicationApiKeys(req, res) {
+    const orgId = req.orgId;
+    const { applicationId } = req.params;
+
+    try {
+        const app = await applicationDao.get(orgId, applicationId, req.user.sub);
+        if (!app) {
+            return res.status(404).json({ code: '404', message: 'Application not found' });
+        }
+        const keys = await apiKeyService.list(orgId, { appId: applicationId });
+        return res.status(200).json(util.toPaginatedList(keys.map(mapKey), req));
+    } catch (err) {
+        logger.error('Failed to list application API keys', { error: err.message, orgId, applicationId });
+        return res.status(errorStatus(err)).json({
+            status: 'error',
+            code: 'INTERNAL_SERVER_ERROR',
+            message: err.message,
+            errors: [],
+        });
+    }
+}
+
+module.exports = {
+    generateApiKey, listApiKeys, regenerateApiKey, revokeApiKey,
+    associateApiKeyApplication, removeApiKeyApplication, listApplicationApiKeys
+};

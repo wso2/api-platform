@@ -18,94 +18,70 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
-const constants = require('../utils/constants');
 
-const KeyManager = sequelize.define('DP_KEY_MANAGER', {
-    KM_ID: {
-        type: DataTypes.UUID,
+const KeyManager = sequelize.define('dp_key_manager', {
+    uuid: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    org_uuid: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
-    NAME: {
+    name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    TYPE: {
-        type: DataTypes.ENUM,
-        values: [
-            constants.KEY_MANAGER_TYPES.ASGARDEO,
-            constants.KEY_MANAGER_TYPES.WSO2IS,
-            constants.KEY_MANAGER_TYPES.KEYCLOAK,
-            constants.KEY_MANAGER_TYPES.GENERIC_OIDC
-        ],
+    type: {
+        type: DataTypes.STRING(64),
         allowNull: false
     },
-    ENABLED: {
-        type: DataTypes.BOOLEAN,
+    enabled: {
+        type: DataTypes.SMALLINT,
         allowNull: false,
-        defaultValue: true
+        defaultValue: 1
     },
-    TOKEN_ENDPOINT: {
+    token_endpoint: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    CLIENT_REG_ENDPOINT: {
+    created_by: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    ISSUER: {
-        type: DataTypes.STRING,
-        allowNull: true
+    created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
     },
-    JWKS_URL: {
+    updated_by: {
         type: DataTypes.STRING,
-        allowNull: true
-    },
-    ADMIN_CLIENT_ID_ENC: {
-        type: DataTypes.TEXT,
         allowNull: false
     },
-    ADMIN_CLIENT_SECRET_ENC: {
-        type: DataTypes.TEXT,
-        allowNull: false
+    updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
     },
-    SUPPORTED_GRANT_TYPES: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        defaultValue: ['client_credentials']
-    },
-    SUPPORTED_SCOPES: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        defaultValue: ['openid']
-    },
-    ADDITIONAL_PROPERTIES: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        defaultValue: {}
-    }
 }, {
     timestamps: false,
-    tableName: 'DP_KEY_MANAGER',
+    tableName: 'dp_key_managers',
     returning: true,
     indexes: [
         {
-            name: 'UQ_KEY_MANAGER_ORG_NAME',
+            name: 'uq_key_manager_org_name',
             unique: true,
-            fields: ['ORG_ID', 'NAME']
+            fields: ['org_uuid', 'name']
         }
     ]
 });
 
 KeyManager.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'org_uuid'
 });
 Organization.hasMany(KeyManager, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'org_uuid',
     onDelete: 'CASCADE'
 });
 

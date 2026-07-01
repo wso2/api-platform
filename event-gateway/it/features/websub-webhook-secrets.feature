@@ -31,7 +31,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-create-v1-0" },
         "spec": {
@@ -65,7 +65,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-list-v1-0" },
         "spec": {
@@ -95,6 +95,41 @@ Feature: WebSub API Webhook Secret Management
     When I delete the WebSub API "secret-list-v1-0"
     Then the response should be successful
 
+  Scenario: Listing webhook secrets does not expose the secret value in the response
+    Given I authenticate using basic auth as "admin"
+    When I create a WebSub API with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "kind": "WebSubApi",
+        "metadata": { "name": "secret-list-masked-v1-0" },
+        "spec": {
+          "displayName": "secret-list-masked",
+          "version": "v1.0",
+          "context": "/secret-list-masked",
+          "channels": { "events": {} },
+          "deploymentState": "deployed"
+        }
+      }
+      """
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I create a webhook secret with display name "masked-secret" for WebSub API "secret-list-masked-v1-0"
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I list webhook secrets for WebSub API "secret-list-masked-v1-0"
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the response body should contain "masked-secret"
+    And the response body should not contain "whsec_"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the WebSub API "secret-list-masked-v1-0"
+    Then the response should be successful
+
   # ==================== REGENERATE ====================
 
   Scenario: Regenerate a webhook secret returns a new secret value
@@ -102,7 +137,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-regen-v1-0" },
         "spec": {
@@ -139,7 +174,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-del-v1-0" },
         "spec": {
@@ -183,7 +218,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-dup-v1-0" },
         "spec": {
@@ -215,7 +250,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-regen-404-v1-0" },
         "spec": {
@@ -243,7 +278,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-del-404-v1-0" },
         "spec": {
@@ -266,6 +301,169 @@ Feature: WebSub API Webhook Secret Management
     When I delete the WebSub API "secret-del-404-v1-0"
     Then the response should be successful
 
+  # ==================== CROSS-API ISOLATION ====================
+
+  Scenario: Listing secrets of another API does not expose secrets belonging to a different API
+    Given I authenticate using basic auth as "admin"
+    When I create a WebSub API with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "kind": "WebSubApi",
+        "metadata": { "name": "secret-iso-a-v1-0" },
+        "spec": {
+          "displayName": "secret-iso-a",
+          "version": "v1.0",
+          "context": "/secret-iso-a",
+          "channels": { "events": {} },
+          "deploymentState": "deployed"
+        }
+      }
+      """
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I create a WebSub API with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "kind": "WebSubApi",
+        "metadata": { "name": "secret-iso-b-v1-0" },
+        "spec": {
+          "displayName": "secret-iso-b",
+          "version": "v1.0",
+          "context": "/secret-iso-b",
+          "channels": { "events": {} },
+          "deploymentState": "deployed"
+        }
+      }
+      """
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I create a webhook secret with display name "iso-secret-a" for WebSub API "secret-iso-a-v1-0"
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I list webhook secrets for WebSub API "secret-iso-b-v1-0"
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the response body should not contain "iso-secret-a"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the WebSub API "secret-iso-a-v1-0"
+    Then the response should be successful
+    Given I authenticate using basic auth as "admin"
+    When I delete the WebSub API "secret-iso-b-v1-0"
+    Then the response should be successful
+
+  Scenario: Deleting a webhook secret using a different API context returns 404
+    Given I authenticate using basic auth as "admin"
+    When I create a WebSub API with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "kind": "WebSubApi",
+        "metadata": { "name": "secret-del-iso-a-v1-0" },
+        "spec": {
+          "displayName": "secret-del-iso-a",
+          "version": "v1.0",
+          "context": "/secret-del-iso-a",
+          "channels": { "events": {} },
+          "deploymentState": "deployed"
+        }
+      }
+      """
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I create a WebSub API with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "kind": "WebSubApi",
+        "metadata": { "name": "secret-del-iso-b-v1-0" },
+        "spec": {
+          "displayName": "secret-del-iso-b",
+          "version": "v1.0",
+          "context": "/secret-del-iso-b",
+          "channels": { "events": {} },
+          "deploymentState": "deployed"
+        }
+      }
+      """
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I create a webhook secret with display name "del-iso-secret" for WebSub API "secret-del-iso-a-v1-0"
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I delete webhook secret "del-iso-secret" from WebSub API "secret-del-iso-b-v1-0"
+    Then the response status code should be 404
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the WebSub API "secret-del-iso-a-v1-0"
+    Then the response should be successful
+    Given I authenticate using basic auth as "admin"
+    When I delete the WebSub API "secret-del-iso-b-v1-0"
+    Then the response should be successful
+
+  Scenario: Regenerating a webhook secret using a different API context returns 404
+    Given I authenticate using basic auth as "admin"
+    When I create a WebSub API with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "kind": "WebSubApi",
+        "metadata": { "name": "secret-regen-iso-a-v1-0" },
+        "spec": {
+          "displayName": "secret-regen-iso-a",
+          "version": "v1.0",
+          "context": "/secret-regen-iso-a",
+          "channels": { "events": {} },
+          "deploymentState": "deployed"
+        }
+      }
+      """
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I create a WebSub API with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "kind": "WebSubApi",
+        "metadata": { "name": "secret-regen-iso-b-v1-0" },
+        "spec": {
+          "displayName": "secret-regen-iso-b",
+          "version": "v1.0",
+          "context": "/secret-regen-iso-b",
+          "channels": { "events": {} },
+          "deploymentState": "deployed"
+        }
+      }
+      """
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I create a webhook secret with display name "regen-iso-secret" for WebSub API "secret-regen-iso-a-v1-0"
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I regenerate webhook secret "regen-iso-secret" for WebSub API "secret-regen-iso-b-v1-0"
+    Then the response status code should be 404
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the WebSub API "secret-regen-iso-a-v1-0"
+    Then the response should be successful
+    Given I authenticate using basic auth as "admin"
+    When I delete the WebSub API "secret-regen-iso-b-v1-0"
+    Then the response should be successful
+
   # ==================== HMAC POLICY E2E ====================
 
   Scenario: Publishing with a valid HMAC signature passes the websub-hmac-auth policy
@@ -273,7 +471,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-valid-v1-0" },
         "spec": {
@@ -320,7 +518,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-reject-v1-0" },
         "spec": {
@@ -367,7 +565,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-regen-v1-0" },
         "spec": {
@@ -421,7 +619,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-deleted-v1-0" },
         "spec": {

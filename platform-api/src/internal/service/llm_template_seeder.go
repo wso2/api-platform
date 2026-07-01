@@ -19,6 +19,7 @@ package service
 
 import (
 	"fmt"
+	"platform-api/src/internal/constants"
 
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -54,9 +55,15 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to count existing templates: %w", err)
 	}
-	existing, err := s.repo.List(orgUUID, totalCount, 0)
-	if err != nil {
-		return fmt.Errorf("failed to list existing templates: %w", err)
+	// Only list when rows exist: a zero limit produces an empty page on
+	// Postgres/SQLite (LIMIT 0) but is rejected by SQL Server's OFFSET/FETCH
+	// ("the number of rows provided for a FETCH clause must be greater than zero").
+	var existing []*model.LLMProviderTemplate
+	if totalCount > 0 {
+		existing, err = s.repo.List(orgUUID, totalCount, 0)
+		if err != nil {
+			return fmt.Errorf("failed to list existing templates: %w", err)
+		}
 	}
 	existingByID := make(map[string]struct{}, len(existing))
 	existingByHandle := make(map[string]*model.LLMProviderTemplate, len(existing))
@@ -77,6 +84,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			if current != nil {
 				current.Name = tpl.Name
 				current.Description = tpl.Description
+				current.ManagedBy = tpl.ManagedBy
 				current.Metadata = tpl.Metadata
 				current.PromptTokens = tpl.PromptTokens
 				current.CompletionTokens = tpl.CompletionTokens
@@ -85,6 +93,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 				current.RequestModel = tpl.RequestModel
 				current.ResponseModel = tpl.ResponseModel
 				current.ResourceMappings = tpl.ResourceMappings
+				current.Origin = constants.OriginCP
 
 				if err := s.repo.Update(current); err != nil {
 					return fmt.Errorf("failed to sync template %s from defaults: %w", tpl.ID, err)
@@ -96,8 +105,11 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 		toCreate := &model.LLMProviderTemplate{
 			OrganizationUUID: orgUUID,
 			ID:               tpl.ID,
+			GroupID:          tpl.GroupID,
+			Version:          tpl.Version,
 			Name:             tpl.Name,
 			Description:      tpl.Description,
+			ManagedBy:        tpl.ManagedBy,
 			CreatedBy:        tpl.CreatedBy,
 			Metadata:         tpl.Metadata,
 			PromptTokens:     tpl.PromptTokens,
@@ -107,6 +119,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			RequestModel:     tpl.RequestModel,
 			ResponseModel:    tpl.ResponseModel,
 			ResourceMappings: tpl.ResourceMappings,
+			Origin:           constants.OriginCP,
 		}
 		if err := s.repo.Create(toCreate); err != nil {
 			// Be tolerant to concurrent startup / repeated seeding.

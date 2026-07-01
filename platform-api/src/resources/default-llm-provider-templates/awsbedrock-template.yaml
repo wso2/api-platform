@@ -16,12 +16,12 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: LlmProviderTemplate
 metadata:
   name: awsbedrock
 spec:
   displayName: AWS Bedrock
+  managedBy: wso2
+  version: v1.0
   metadata:
     logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/icon.png
     openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/openapi.yaml

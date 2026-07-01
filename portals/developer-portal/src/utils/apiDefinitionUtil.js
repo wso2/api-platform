@@ -81,12 +81,12 @@ const apiDefinitionHasApiKeySecurity = (apiDefinition) => {
 /**
  * Whether an API uses API Key security, driven by its API definition's security schemes.
  *
- * @param {object} metaData - Metadata in APIM DTO shape; requires apiInfo to be present
+ * @param {object} metaData - Metadata in APIM DTO shape
  * @param {string|object|null} apiDefinition - Optional raw API definition to inspect for apiKey security
  * @returns {boolean}
  */
 function apiUsesApiKeySecurity(metaData, apiDefinition = null) {
-    if (!metaData?.apiInfo) {
+    if (!metaData) {
         return false;
     }
 

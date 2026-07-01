@@ -165,7 +165,7 @@ identityProvider:
   userInfoURL: "https://<your-idp>/oauth2/userinfo"
   jwksURL: "https://<your-idp>/oauth2/jwks"
   clientId: "<your-client-id>"
-  callbackURL: "http://localhost:3000/<orgHandle>/callback"
+  callbackURL: "http://localhost:3000/<handle>/callback"
 ```
 
 For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
@@ -227,14 +227,14 @@ Get a Bearer token first, then pass it via `DEVPORTAL_TOKEN`:
 
 **npm start (HTTP):**
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 DEVPORTAL_URL=http://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
 ```
 
 **Docker Compose (HTTPS):**
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 DEVPORTAL_URL=https://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
 ```
@@ -316,9 +316,7 @@ spec:
   displayName: Ping API
   version: v1.0
   description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
-  provider: WSO2
   status: PUBLISHED
-  gatewayType: wso2/api-platform
   referenceID: ping-api-v1.0
 
   tags:
@@ -328,7 +326,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
   visibility: PUBLIC
   visibleGroups: []
@@ -425,15 +423,15 @@ paths:
 
 ```bash
 # Get a Bearer token
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
 # Get the default org UUID
 ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
-  https://localhost:3000/organizations | jq -r '.[0].orgID')
+  https://localhost:3000/organizations | jq -r '.[0].id')
 
 # Create the API
-curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \
+curl -sk -X POST "https://localhost:3000/devportal/v1/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml;type=application/yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"

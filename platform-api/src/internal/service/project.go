@@ -28,29 +28,42 @@ import (
 	"time"
 )
 
+// ProjectDeletionGuard is implemented by plugins that need to block project
+// deletion when plugin-managed resources still exist under the project.
+type ProjectDeletionGuard interface {
+	CheckProjectDeletion(orgID, projectID string) error
+}
+
 type ProjectService struct {
-	projectRepo  repository.ProjectRepository
-	orgRepo      repository.OrganizationRepository
-	apiRepo      repository.APIRepository
-	mcpProxyRepo repository.MCPProxyRepository
-	websubAPIRepo repository.WebSubAPIRepository
-	slogger      *slog.Logger
+	projectRepo    repository.ProjectRepository
+	orgRepo        repository.OrganizationRepository
+	apiRepo        repository.APIRepository
+	mcpProxyRepo   repository.MCPProxyRepository
+	deletionGuards []ProjectDeletionGuard
+	auditRepo      repository.AuditRepository
+	slogger        *slog.Logger
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
-	websubAPIRepo repository.WebSubAPIRepository, slogger *slog.Logger) *ProjectService {
+	auditRepo repository.AuditRepository, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
 		projectRepo:  projectRepo,
 		orgRepo:      orgRepo,
 		apiRepo:      apiRepo,
 		mcpProxyRepo: mcpProxyRepo,
-		websubAPIRepo: websubAPIRepo,
+		auditRepo:    auditRepo,
 		slogger:      slogger,
 	}
 }
 
-func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizationID string) (*api.Project, error) {
+// RegisterDeletionGuard adds a guard that is consulted during DeleteProject.
+// Plugins call this to block deletion when they own resources under the project.
+func (s *ProjectService) RegisterDeletionGuard(guard ProjectDeletionGuard) {
+	s.deletionGuards = append(s.deletionGuards, guard)
+}
+
+func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error) {
 	// Validate project name
 	if req.Name == "" {
 		return nil, constants.ErrInvalidProjectName
@@ -108,10 +121,23 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	}
 
 	projectModel := s.apiToModel(project)
+	projectModel.CreatedBy = actor
+	projectModel.UpdatedBy = actor
+
+	handle, err := utils.GenerateHandle(req.Name, func(h string) bool {
+		existing, _ := s.projectRepo.GetProjectByHandleAndOrgID(h, organizationID)
+		return existing != nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate project handle: %w", err)
+	}
+	projectModel.Handle = handle
+
 	err = s.projectRepo.CreateProject(projectModel)
 	if err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("CREATE", projectModel.ID, "project", organizationID, actor)
 
 	return project, nil
 }
@@ -160,7 +186,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 	return projects, nil
 }
 
-func (s *ProjectService) UpdateProject(projectId string, req *api.UpdateProjectRequest, orgId string) (*api.Project, error) {
+func (s *ProjectService) UpdateProject(projectId string, req *api.UpdateProjectRequest, orgId, actor string) (*api.Project, error) {
 	// Get existing project
 	project, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
@@ -192,17 +218,19 @@ func (s *ProjectService) UpdateProject(projectId string, req *api.UpdateProjectR
 		project.Description = *req.Description
 	}
 	project.UpdatedAt = time.Now()
+	project.UpdatedBy = actor
 
 	err = s.projectRepo.UpdateProject(project)
 	if err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("UPDATE", projectId, "project", orgId, actor)
 
 	updatedProject := s.modelToAPI(project)
 	return updatedProject, nil
 }
 
-func (s *ProjectService) DeleteProject(projectId, orgId string) error {
+func (s *ProjectService) DeleteProject(projectId, orgId, actor string) error {
 	// Check if project exists
 	project, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
@@ -241,16 +269,17 @@ func (s *ProjectService) DeleteProject(projectId, orgId string) error {
 		return constants.ErrProjectHasAssociatedMCPProxies
 	}
 
-	// check if there are any WebSub APIs associated with the project
-	websubAPICount, err := s.websubAPIRepo.CountByProject(orgId, projectId)
-	if err != nil {
-		return err
-	}
-	if websubAPICount > 0 {
-		return constants.ErrProjectHasAssociatedWebSubAPIs
+	for _, guard := range s.deletionGuards {
+		if err := guard.CheckProjectDeletion(orgId, projectId); err != nil {
+			return err
+		}
 	}
 
-	return s.projectRepo.DeleteProject(projectId)
+	if err := s.projectRepo.DeleteProject(projectId); err != nil {
+		return err
+	}
+	_ = s.auditRepo.Record("DELETE", projectId, "project", orgId, actor)
+	return nil
 }
 
 // Mapping functions

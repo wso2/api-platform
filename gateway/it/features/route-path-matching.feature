@@ -28,7 +28,7 @@ Feature: Route Path Matching
   Scenario: Wildcard path /* matches requests with a subpath
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-wildcard-api
@@ -58,7 +58,7 @@ Feature: Route Path Matching
   Scenario: Wildcard path /* enforces HTTP method
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-wildcard-method-api
@@ -88,7 +88,7 @@ Feature: Route Path Matching
   Scenario: Root path / matches request with trailing slash
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-root-api
@@ -115,7 +115,7 @@ Feature: Route Path Matching
   Scenario: Root path / matches request without trailing slash
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-root-noslash-api
@@ -142,7 +142,7 @@ Feature: Route Path Matching
   Scenario: Wildcard /* does not match a sibling context prefix
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-wildcard-boundary-api
@@ -178,7 +178,7 @@ Feature: Route Path Matching
   Scenario: Exact path matches both with and without trailing slash
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-exact-slash-api
@@ -208,7 +208,7 @@ Feature: Route Path Matching
   Scenario: Exact path preserves trailing slash to upstream
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-exact-upstream-slash-api
@@ -246,7 +246,7 @@ Feature: Route Path Matching
     # so each assertion pins the upstream request.
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: route-wildcard-prefix-api

@@ -101,8 +101,13 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			log.Fatalf("Pre-flight check failed: %v", err)
 		}
 
+		composeFile := os.Getenv("IT_COMPOSE_FILE")
+		if composeFile == "" {
+			composeFile = "../docker-compose.dev.yaml"
+		}
+
 		var err error
-		composeManager, err = NewComposeManager("../docker-compose.dev.yaml")
+		composeManager, err = NewComposeManager(composeFile)
 		if err != nil {
 			log.Fatalf("Failed to create compose manager: %v", err)
 		}

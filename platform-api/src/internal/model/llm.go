@@ -58,6 +58,26 @@ type LLMPolicy struct {
 	Paths   []LLMPolicyPath `json:"paths" db:"-"`
 }
 
+type GlobalPolicy struct {
+	Name               string                 `json:"name" db:"-"`
+	Version            string                 `json:"version" db:"-"`
+	ExecutionCondition string                 `json:"executionCondition,omitempty" db:"-"`
+	Params             map[string]interface{} `json:"params,omitempty" db:"-"`
+}
+
+type OperationPolicyPath struct {
+	Path    string                 `json:"path" db:"-"`
+	Methods []string               `json:"methods" db:"-"`
+	Params  map[string]interface{} `json:"params" db:"-"`
+}
+
+type OperationPolicy struct {
+	Name               string                `json:"name" db:"-"`
+	Version            string                `json:"version" db:"-"`
+	ExecutionCondition string                `json:"executionCondition,omitempty" db:"-"`
+	Paths              []OperationPolicyPath `json:"paths" db:"-"`
+}
+
 type RateLimitingLimitConfig struct {
 	Request *RequestRateLimit `json:"request,omitempty" db:"-"`
 	Token   *TokenRateLimit   `json:"token,omitempty" db:"-"`
@@ -142,9 +162,15 @@ type LLMProviderTemplate struct {
 	UUID             string                       `json:"uuid" db:"uuid"`
 	OrganizationUUID string                       `json:"organizationId" db:"organization_uuid"`
 	ID               string                       `json:"id" db:"handle"`
+	GroupID          string                       `json:"groupId,omitempty" db:"group_id"`
 	Name             string                       `json:"name" db:"name"`
 	Description      string                       `json:"description,omitempty" db:"description"`
+	ManagedBy        string                       `json:"managedBy,omitempty" db:"managed_by"`
 	CreatedBy        string                       `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string                       `json:"updatedBy,omitempty" db:"updated_by"`
+	Version  		 string 					  `json:"version" db:"version"`
+	IsLatest 		 bool    					  `json:"isLatest" db:"is_latest"`
+	Enabled 		 bool 						  `json:"enabled" db:"enabled"`
 	Metadata         *LLMProviderTemplateMetadata `json:"metadata,omitempty" db:"-"`
 	PromptTokens     *ExtractionIdentifier        `json:"promptTokens,omitempty" db:"-"`
 	CompletionTokens *ExtractionIdentifier        `json:"completionTokens,omitempty" db:"-"`
@@ -153,8 +179,10 @@ type LLMProviderTemplate struct {
 	RequestModel     *ExtractionIdentifier        `json:"requestModel,omitempty" db:"-"`
 	ResponseModel    *ExtractionIdentifier        `json:"responseModel,omitempty" db:"-"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" db:"-"`
-	CreatedAt        time.Time                    `json:"createdAt" db:"created_at"`
-	UpdatedAt        time.Time                    `json:"updatedAt" db:"updated_at"`
+	OpenAPISpec      string                               `json:"openapi,omitempty" db:"openapi_spec"`
+	Origin           string                               `json:"origin,omitempty" db:"origin"`
+	CreatedAt        time.Time                            `json:"createdAt" db:"created_at"`
+	UpdatedAt        time.Time                            `json:"updatedAt" db:"updated_at"`
 }
 
 // LLMProvider represents an LLM provider entity
@@ -165,27 +193,30 @@ type LLMProvider struct {
 	Name             string             `json:"name" db:"name"`
 	Description      string             `json:"description,omitempty" db:"description"`
 	CreatedBy        string             `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string             `json:"updatedBy,omitempty" db:"updated_by"`
 	Version          string             `json:"version" db:"version"`
 	TemplateUUID     string             `json:"templateUuid" db:"template_uuid"`
 	OpenAPISpec      string             `json:"openapi,omitempty" db:"openapi_spec"`
 	ModelProviders   []LLMModelProvider `json:"modelProviders,omitempty" db:"-"`
-	Status           string             `json:"status" db:"status"`
 	CreatedAt        time.Time          `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProviderConfig  `json:"configuration" db:"configuration"`
+	Origin           string             `json:"origin,omitempty" db:"origin"`
 }
 
 type LLMProviderConfig struct {
-	Name          string                 `json:"name,omitempty" db:"-"`
-	Version       string                 `json:"version,omitempty" db:"-"`
-	Context       *string                `json:"context,omitempty" db:"-"`
-	VHost         *string                `json:"vhost,omitempty" db:"-"`
-	Template      string                 `json:"template,omitempty" db:"-"`
-	Upstream      *UpstreamConfig        `json:"upstream,omitempty" db:"-"`
-	AccessControl *LLMAccessControl      `json:"accessControl,omitempty" db:"-"`
-	RateLimiting  *LLMRateLimitingConfig `json:"rateLimiting,omitempty" db:"-"`
-	Policies      []LLMPolicy            `json:"policies,omitempty" db:"-"`
-	Security      *SecurityConfig        `json:"security,omitempty" db:"-"`
+	Name              string                 `json:"name,omitempty" db:"-"`
+	Version           string                 `json:"version,omitempty" db:"-"`
+	Context           *string                `json:"context,omitempty" db:"-"`
+	VHost             *string                `json:"vhost,omitempty" db:"-"`
+	Template          string                 `json:"template,omitempty" db:"-"`
+	Upstream          *UpstreamConfig        `json:"upstream,omitempty" db:"-"`
+	AccessControl     *LLMAccessControl      `json:"accessControl,omitempty" db:"-"`
+	RateLimiting      *LLMRateLimitingConfig `json:"rateLimiting,omitempty" db:"-"`
+	GlobalPolicies    []GlobalPolicy         `json:"globalPolicies,omitempty" db:"-"`
+	OperationPolicies []OperationPolicy      `json:"operationPolicies,omitempty" db:"-"`
+	Policies          []LLMPolicy            `json:"policies,omitempty" db:"-"`
+	Security          *SecurityConfig        `json:"security,omitempty" db:"-"`
 }
 
 // LLMProxy represents an LLM proxy entity
@@ -197,24 +228,27 @@ type LLMProxy struct {
 	ProjectUUID      string         `json:"projectId" db:"project_uuid"`
 	Description      string         `json:"description,omitempty" db:"description"`
 	CreatedBy        string         `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string         `json:"updatedBy,omitempty" db:"updated_by"`
 	Version          string         `json:"version" db:"version"`
 	ProviderUUID     string         `json:"providerUuid" db:"provider_uuid"`
 	OpenAPISpec      string         `json:"openapi,omitempty" db:"openapi_spec"`
-	Status           string         `json:"status" db:"status"`
 	CreatedAt        time.Time      `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time      `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProxyConfig `json:"configuration" db:"configuration"`
+	Origin           string         `json:"origin,omitempty" db:"origin"`
 }
 
 type LLMProxyConfig struct {
-	Name         string          `json:"name,omitempty" db:"-"`
-	Version      string          `json:"version,omitempty" db:"-"`
-	Context      *string         `json:"context,omitempty" db:"-"`
-	Vhost        *string         `json:"vhost,omitempty" db:"-"`
-	Provider     string          `json:"provider,omitempty" db:"-"`
-	UpstreamAuth *UpstreamAuth   `json:"upstreamAuth,omitempty" db:"-"`
-	Policies     []LLMPolicy     `json:"policies,omitempty" db:"-"`
-	Security     *SecurityConfig `json:"security,omitempty" db:"-"`
+	Name              string            `json:"name,omitempty" db:"-"`
+	Version           string            `json:"version,omitempty" db:"-"`
+	Context           *string           `json:"context,omitempty" db:"-"`
+	Vhost             *string           `json:"vhost,omitempty" db:"-"`
+	Provider          string            `json:"provider,omitempty" db:"-"`
+	UpstreamAuth      *UpstreamAuth     `json:"upstreamAuth,omitempty" db:"-"`
+	GlobalPolicies    []GlobalPolicy    `json:"globalPolicies,omitempty" db:"-"`
+	OperationPolicies []OperationPolicy `json:"operationPolicies,omitempty" db:"-"`
+	Policies          []LLMPolicy       `json:"policies,omitempty" db:"-"`
+	Security          *SecurityConfig   `json:"security,omitempty" db:"-"`
 }
 
 type SecurityConfig struct {

@@ -19,9 +19,11 @@ package service
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"platform-api/src/api"
@@ -38,7 +40,8 @@ const (
 )
 
 type LLMProviderTemplateService struct {
-	repo repository.LLMProviderTemplateRepository
+	repo      repository.LLMProviderTemplateRepository
+	auditRepo repository.AuditRepository
 }
 
 type LLMProviderService struct {
@@ -49,7 +52,9 @@ type LLMProviderService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	secretService        *SecretService
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
 type LLMProxyService struct {
@@ -60,10 +65,11 @@ type LLMProxyService struct {
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
-func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository) *LLMProviderTemplateService {
-	return &LLMProviderTemplateService{repo: repo}
+func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository) *LLMProviderTemplateService {
+	return &LLMProviderTemplateService{repo: repo, auditRepo: auditRepo}
 }
 
 func NewLLMProviderService(
@@ -75,6 +81,7 @@ func NewLLMProviderService(
 	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
+	auditRepo repository.AuditRepository,
 ) *LLMProviderService {
 	return &LLMProviderService{
 		repo:                 repo,
@@ -85,7 +92,14 @@ func NewLLMProviderService(
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
+}
+
+// SetSecretService injects the SecretService for placeholder validation.
+// Called after both services are constructed to avoid circular dependency.
+func (s *LLMProviderService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
 }
 
 func NewLLMProxyService(
@@ -96,6 +110,7 @@ func NewLLMProxyService(
 	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
+	auditRepo repository.AuditRepository,
 ) *LLMProxyService {
 	return &LLMProxyService{
 		repo:                 repo,
@@ -105,6 +120,7 @@ func NewLLMProxyService(
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
 }
 
@@ -112,11 +128,28 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" {
+	if req.Name == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
-	exists, err := s.repo.Exists(req.Id, orgUUID)
+	baseHandle, err := utils.GenerateHandle(req.Name, nil)
+	if err != nil || baseHandle == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	version := "v1.0"
+	if v := req.Version; v != "" {
+		normalized, ok := normalizeTemplateVersion(v)
+		if !ok || normalized != version {
+			return nil, constants.ErrInvalidInput
+		}
+	}
+	handle := makeTemplateHandle(baseHandle, version)
+
+	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
+		return nil, constants.ErrLLMProviderTemplateManagedByReserved
+	}
+
+	exists, err := s.repo.Exists(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check template exists: %w", err)
 	}
@@ -126,10 +159,14 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
-		ID:               req.Id,
+		ID:               handle,
+		GroupID:          baseHandle,
+		Version:          version,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		ManagedBy:        defaultTemplateManagedBy(req.ManagedBy),
 		CreatedBy:        createdBy,
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -137,6 +174,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+		Origin:           constants.OriginCP,
 	}
 	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
 	if err != nil {
@@ -151,15 +189,23 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		return nil, fmt.Errorf("failed to create template: %w", err)
 	}
 
+	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_provider_template", orgUUID, createdBy)
+
 	return mapTemplateModelToAPI(m), nil
 }
 
-func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
-	items, err := s.repo.List(orgUUID, limit, offset)
+func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, allVersions bool) (*api.LLMProviderTemplateListResponse, error) {
+	listFn := s.repo.List
+	countFn := s.repo.Count
+	if allVersions {
+		listFn = s.repo.ListAllVersions
+		countFn = s.repo.CountAllVersions
+	}
+	items, err := listFn(orgUUID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
 	}
-	totalCount, err := s.repo.Count(orgUUID)
+	totalCount, err := countFn(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count templates: %w", err)
 	}
@@ -173,18 +219,7 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*a
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
 	for _, t := range items {
-		id := t.ID
-		name := t.Name
-		desc := utils.StringPtrIfNotEmpty(t.Description)
-		createdBy := utils.StringPtrIfNotEmpty(t.CreatedBy)
-		resp.List = append(resp.List, api.LLMProviderTemplateListItem{
-			Id:          &id,
-			Name:        &name,
-			Description: desc,
-			CreatedBy:   createdBy,
-			CreatedAt:   utils.TimePtr(t.CreatedAt),
-			UpdatedAt:   utils.TimePtr(t.UpdatedAt),
-		})
+		resp.List = append(resp.List, templateListItem(t))
 	}
 	return resp, nil
 }
@@ -203,7 +238,7 @@ func (s *LLMProviderTemplateService) Get(orgUUID, handle string) (*api.LLMProvid
 	return mapTemplateModelToAPI(m), nil
 }
 
-func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -213,12 +248,47 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 	if req.Name == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
+		return nil, constants.ErrLLMProviderTemplateManagedByReserved
+	}
+
+	existing, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template: %w", err)
+	}
+	if existing == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	if existing.ManagedBy == "wso2" {
+		return nil, constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
+	// In-place update never changes the version; a new version is created via
+	// POST /llm-provider-templates/{id}/versions. Reject a request that tries to change it
+	// rather than silently ignoring the supplied value.
+	if req.Version != "" && req.Version != existing.Version {
+		return nil, fmt.Errorf("%w: template version cannot be changed via update; use the versions endpoint", constants.ErrInvalidInput)
+	}
+
+	managedBy := existing.ManagedBy
+	if req.ManagedBy != nil {
+		managedBy = defaultTemplateManagedBy(req.ManagedBy)
+	}
+	openapiSpec := existing.OpenAPISpec
+	if req.Openapi != nil {
+		openapiSpec = utils.ValueOrEmpty(req.Openapi)
+	}
 
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		UpdatedBy:        updatedBy,
+		ManagedBy:        managedBy,
+		OpenAPISpec:      openapiSpec,
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -240,6 +310,16 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
 
+	base, baseErr := s.repo.GetGroupID(handle, orgUUID)
+	if baseErr != nil {
+		return nil, fmt.Errorf("failed to resolve template family: %w", baseErr)
+	}
+	if base != "" {
+		if err := s.repo.RenameFamily(base, orgUUID, req.Name); err != nil {
+			return nil, fmt.Errorf("failed to propagate template name: %w", err)
+		}
+	}
+
 	updated, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch updated template: %w", err)
@@ -247,18 +327,263 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 	if updated == nil {
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
+
+	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider_template", orgUUID, updatedBy)
+
 	return mapTemplateModelToAPI(updated), nil
 }
 
-func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
+var templateVersionPattern = regexp.MustCompile(`^[vV]\d+\.\d+$`)
+
+func normalizeTemplateVersion(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if !templateVersionPattern.MatchString(v) {
+		return "", false
+	}
+	return "v" + strings.TrimPrefix(strings.TrimPrefix(v, "v"), "V"), true
+}
+func makeTemplateHandle(baseHandle, version string) string {
+	return baseHandle + "-" + strings.ReplaceAll(strings.ToLower(strings.TrimSpace(version)), ".", "-")
+}
+
+func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
+	if handle == "" || req == nil {
+		return nil, constants.ErrInvalidInput
+	}
+	if req.Name == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	version, ok := normalizeTemplateVersion(req.Version)
+	if !ok {
+		return nil, constants.ErrInvalidInput
+	}
+
+	managedBy := defaultTemplateManagedBy(req.ManagedBy)
+	if managedBy == constants.PolicyManagedByWSO2 {
+		managedBy = constants.PolicyManagedByCustomer
+	}
+
+	baseHandle, err := s.repo.GetGroupID(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template family: %w", err)
+	}
+	if baseHandle == "" {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+
+	m := &model.LLMProviderTemplate{
+		OrganizationUUID: orgUUID,
+		ID:               makeTemplateHandle(baseHandle, version),
+		GroupID:          baseHandle,
+		Name:             req.Name,
+		Description:      utils.ValueOrEmpty(req.Description),
+		ManagedBy:        managedBy,
+		CreatedBy:        createdBy,
+		Version:          version,
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		Metadata:         mapTemplateMetadataAPI(req.Metadata),
+		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
+		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
+		TotalTokens:      mapExtractionIdentifierAPI(req.TotalTokens),
+		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
+		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
+		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+		Origin:           constants.OriginCP,
+	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
+
+	if err := s.repo.CreateNewVersion(m); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, constants.ErrLLMProviderTemplateNotFound
+		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
+			return nil, constants.ErrLLMProviderTemplateVersionExists
+		default:
+			return nil, fmt.Errorf("failed to create new template version: %w", err)
+		}
+	}
+
+	return mapTemplateModelToAPI(m), nil
+}
+
+func (s *LLMProviderTemplateService) ListVersions(orgUUID, handle string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
+	if handle == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	total, err := s.repo.CountVersions(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count template versions: %w", err)
+	}
+	if total == 0 {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	items, err := s.repo.ListVersions(handle, orgUUID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list template versions: %w", err)
+	}
+	resp := &api.LLMProviderTemplateListResponse{
+		Count: len(items),
+		Pagination: api.Pagination{
+			Limit:  limit,
+			Offset: offset,
+			Total:  total,
+		},
+	}
+	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
+	for _, t := range items {
+		resp.List = append(resp.List, templateListItem(t))
+	}
+	return resp, nil
+}
+
+func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string) (*api.LLMProviderTemplate, error) {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return nil, constants.ErrInvalidInput
+	}
+	v = normalized
+	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template version: %w", err)
+	}
+	if m == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	return mapTemplateModelToAPI(m), nil
+}
+
+// SetVersionEnabled enables or disables a specific version of a template.
+// Disabling is blocked when any provider was created from this specific version.
+func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version string, enabled bool) (*api.LLMProviderTemplate, error) {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return nil, constants.ErrInvalidInput
+	}
+	v = normalized
+	if !enabled {
+		inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check template version usage: %w", err)
+		}
+		if inUse > 0 {
+			return nil, constants.ErrLLMProviderTemplateInUse
+		}
+	}
+	// Read-only versions (built-in 'wso2'-managed or DP-imported) cannot be toggled, matching
+	// the guard applied by Update/Delete/DeleteVersion.
+	target, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template version: %w", err)
+	}
+	if target == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	if target.ManagedBy == "wso2" {
+		return nil, constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(target.Origin); err != nil {
+		return nil, err
+	}
+	if err := s.repo.SetEnabled(handle, orgUUID, v, enabled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrLLMProviderTemplateNotFound
+		}
+		return nil, fmt.Errorf("failed to set template version enabled: %w", err)
+	}
+	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload template version: %w", err)
+	}
+	if m == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	return mapTemplateModelToAPI(m), nil
+}
+
+func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
+	}
+	tpl, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve template: %w", err)
+	}
+	if tpl == nil {
+		return constants.ErrLLMProviderTemplateNotFound
+	}
+	if tpl.ManagedBy == "wso2" {
+		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(tpl.Origin); err != nil {
+		return err
+	}
+	// Block deletion while any provider (built from any version) still depends on it.
+	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, "")
+	if err != nil {
+		return fmt.Errorf("failed to check template usage: %w", err)
+	}
+	if inUse > 0 {
+		return constants.ErrLLMProviderTemplateInUse
 	}
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrLLMProviderTemplateNotFound
 		}
 		return fmt.Errorf("failed to delete template: %w", err)
+	}
+	// Family-level delete: log the stable handle rather than a single version's UUID.
+	_ = s.auditRepo.Record("DELETE", handle, "llm_provider_template", orgUUID, deletedBy)
+	return nil
+}
+
+func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version string) error {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return constants.ErrInvalidInput
+	}
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return constants.ErrInvalidInput
+	}
+	v = normalized
+	target, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return fmt.Errorf("failed to resolve template version: %w", err)
+	}
+	if target == nil {
+		return constants.ErrLLMProviderTemplateNotFound
+	}
+	if target.ManagedBy == "wso2" {
+		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(target.Origin); err != nil {
+		return err
+	}
+	// Block deletion while any provider built from this specific version still depends on it.
+	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+	if err != nil {
+		return fmt.Errorf("failed to check template version usage: %w", err)
+	}
+	if inUse > 0 {
+		return constants.ErrLLMProviderTemplateInUse
+	}
+	if err := s.repo.DeleteVersion(handle, orgUUID, v); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return constants.ErrLLMProviderTemplateNotFound
+		}
+		return fmt.Errorf("failed to delete template version: %w", err)
 	}
 	return nil
 }
@@ -317,12 +642,31 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, constants.ErrLLMProviderExists
 	}
 
+	// Validate {{ secret "..." }} placeholders in the upstream config
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	providerCount, err := s.repo.Count(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count providers: %w", err)
 	}
 	if err := validateLLMResourceLimit(providerCount, constants.MaxLLMProvidersPerOrganization, constants.ErrLLMProviderLimitReached); err != nil {
 		return nil, err
+	}
+	if !tpl.Enabled {
+		return nil, constants.ErrInvalidInput
+	}
+
+	openapiSpec := utils.ValueOrEmpty(req.Openapi)
+	if openapiSpec == "" {
+		openapiSpec = tpl.OpenAPISpec
 	}
 
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
@@ -334,19 +678,22 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
-		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		OpenAPISpec:      openapiSpec,
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProviderConfig{
-			Context:       &contextValue,
-			VHost:         req.Vhost,
-			Upstream:      mapUpstreamAPIToModel(req.Upstream),
-			AccessControl: mapAccessControlAPI(&req.AccessControl),
-			RateLimiting:  mapRateLimitingAPIToModel(req.RateLimiting),
-			Policies:      mapPoliciesAPIToModel(req.Policies),
-			Security:      mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			VHost:             req.Vhost,
+			Upstream:          mapUpstreamAPIToModel(req.Upstream),
+			AccessControl:     mapAccessControlAPI(&req.AccessControl),
+			RateLimiting:      mapRateLimitingAPIToModel(req.RateLimiting),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
+		Origin: constants.OriginCP,
 	}
+	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -362,6 +709,9 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if created == nil {
 		return nil, constants.ErrLLMProviderNotFound
 	}
+
+	_ = s.auditRepo.Record("CREATE", created.UUID, "llm_provider", orgUUID, createdBy)
+
 	return mapProviderModelToAPI(created, tpl.ID), nil
 }
 
@@ -401,7 +751,6 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
 		version := p.Version
 		template := utils.StringPtrIfNotEmpty(tplHandle)
-		status := api.LLMProviderListItemStatus(p.Status)
 		resp.List = append(resp.List, api.LLMProviderListItem{
 			Id:          &id,
 			Name:        &name,
@@ -409,7 +758,7 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 			CreatedBy:   createdBy,
 			Version:     &version,
 			Template:    template,
-			Status:      &status,
+			ReadOnly:    utils.BoolPtr(p.Origin == constants.OriginDP),
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -442,7 +791,7 @@ func (s *LLMProviderService) Get(orgUUID, handle string) (*api.LLMProvider, erro
 	return mapProviderModelToAPI(m, tplHandle), nil
 }
 
-func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider) (*api.LLMProvider, error) {
+func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -456,6 +805,10 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider
 	}
 	if existing == nil {
 		return nil, constants.ErrLLMProviderNotFound
+	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
 	}
 	if req.Name == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
@@ -479,27 +832,41 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
 
+	// Validate {{ secret "..." }} placeholders in the upstream config
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		UpdatedBy:        updatedBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProviderConfig{
-			Context:       &contextValue,
-			VHost:         req.Vhost,
-			Upstream:      mapUpstreamAPIToModel(req.Upstream),
-			AccessControl: mapAccessControlAPI(&req.AccessControl),
-			RateLimiting:  mapRateLimitingAPIToModel(req.RateLimiting),
-			Policies:      mapPoliciesAPIToModel(req.Policies),
-			Security:      mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			VHost:             req.Vhost,
+			Upstream:          mapUpstreamAPIToModel(req.Upstream),
+			AccessControl:     mapAccessControlAPI(&req.AccessControl),
+			RateLimiting:      mapRateLimitingAPIToModel(req.RateLimiting),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 	}
+	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
 	// Preserve stored upstream auth credential only when auth object is provided with an empty value.
 	// If auth object is omitted, treat it as explicit removal and clear stored auth.
@@ -519,10 +886,13 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider
 	if updated == nil {
 		return nil, constants.ErrLLMProviderNotFound
 	}
+
+	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider", orgUUID, updatedBy)
+
 	return mapProviderModelToAPI(updated, tpl.ID), nil
 }
 
-func (s *LLMProviderService) Delete(orgUUID, handle string) error {
+func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
@@ -534,6 +904,11 @@ func (s *LLMProviderService) Delete(orgUUID, handle string) error {
 	}
 	if provider == nil {
 		return constants.ErrLLMProviderNotFound
+	}
+
+	// DP-originated artifacts may only be deleted once undeployed on all gateways.
+	if err := ensureOriginDeletable(s.deploymentRepo, provider.Origin, provider.UUID, orgUUID); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -556,6 +931,8 @@ func (s *LLMProviderService) Delete(orgUUID, handle string) error {
 		}
 		return fmt.Errorf("failed to delete provider: %w", err)
 	}
+
+	_ = s.auditRepo.Record("DELETE", provider.UUID, "llm_provider", orgUUID, deletedBy)
 
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
@@ -628,16 +1005,19 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProxyConfig{
-			Context:      &contextValue,
-			Vhost:        req.Vhost,
-			Provider:     req.Provider.Id,
-			UpstreamAuth: mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			Policies:     mapPoliciesAPIToModel(req.Policies),
-			Security:     mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			Vhost:             req.Vhost,
+			Provider:          req.Provider.Id,
+			UpstreamAuth:      mapUpstreamAuthAPIToModel(req.Provider.Auth),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
+		Origin: constants.OriginCP,
 	}
+	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -646,6 +1026,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
 
+	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_proxy", orgUUID, createdBy)
 	created, err := s.repo.GetByID(req.Id, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch created proxy: %w", err)
@@ -708,7 +1089,6 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 		version := p.Version
 		projectID := p.ProjectUUID
 		provider := p.Configuration.Provider
-		status := api.LLMProxyListItemStatus(p.Status)
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
 			Name:        &name,
@@ -718,7 +1098,7 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 			Version:     &version,
 			ProjectId:   &projectID,
 			Provider:    &provider,
-			Status:      &status,
+			ReadOnly:    utils.BoolPtr(p.Origin == constants.OriginDP),
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -771,7 +1151,6 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		version := p.Version
 		projectID := p.ProjectUUID
 		provider := p.Configuration.Provider
-		status := api.LLMProxyListItemStatus(p.Status)
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
 			Name:        &name,
@@ -781,7 +1160,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			Version:     &version,
 			ProjectId:   &projectID,
 			Provider:    &provider,
-			Status:      &status,
+			ReadOnly:    utils.BoolPtr(p.Origin == constants.OriginDP),
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -803,7 +1182,7 @@ func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 	return mapProxyModelToAPI(m), nil
 }
 
-func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*api.LLMProxy, error) {
+func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -821,6 +1200,10 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*ap
 	if existing == nil {
 		return nil, constants.ErrLLMProxyNotFound
 	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
 
 	// Validate provider exists
 	prov, err := s.providerRepo.GetByID(req.Provider.Id, orgUUID)
@@ -837,19 +1220,22 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*ap
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		UpdatedBy:        updatedBy,
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProxyConfig{
-			Context:      &contextValue,
-			Vhost:        req.Vhost,
-			Provider:     req.Provider.Id,
-			UpstreamAuth: mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			Policies:     mapPoliciesAPIToModel(req.Policies),
-			Security:     mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			Vhost:             req.Vhost,
+			Provider:          req.Provider.Id,
+			UpstreamAuth:      mapUpstreamAuthAPIToModel(req.Provider.Auth),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 	}
+	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
 	// Preserve stored upstream auth credential when not supplied in update payload
 	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
@@ -867,10 +1253,11 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*ap
 	if updated == nil {
 		return nil, constants.ErrLLMProxyNotFound
 	}
+	_ = s.auditRepo.Record("UPDATE", existing.UUID, "llm_proxy", orgUUID, updatedBy)
 	return mapProxyModelToAPI(updated), nil
 }
 
-func (s *LLMProxyService) Delete(orgUUID, handle string) error {
+func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
@@ -882,6 +1269,11 @@ func (s *LLMProxyService) Delete(orgUUID, handle string) error {
 	}
 	if proxy == nil {
 		return constants.ErrLLMProxyNotFound
+	}
+
+	// DP-originated artifacts may only be deleted once undeployed on all gateways.
+	if err := ensureOriginDeletable(s.deploymentRepo, proxy.Origin, proxy.UUID, orgUUID); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -905,6 +1297,7 @@ func (s *LLMProxyService) Delete(orgUUID, handle string) error {
 		return fmt.Errorf("failed to delete proxy: %w", err)
 	}
 
+	_ = s.auditRepo.Record("DELETE", proxy.UUID, "llm_proxy", orgUUID, deletedBy)
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -1031,6 +1424,241 @@ func mapPoliciesAPIToModel(in *[]api.LLMPolicy) []model.LLMPolicy {
 		out = append(out, model.LLMPolicy{Name: p.Name, Version: p.Version, Paths: paths})
 	}
 	return out
+}
+
+// mapGlobalPoliciesAPIToLLMPolicies flattens global (api-level) policies into the legacy
+// model.LLMPolicy shape used by liftLLMPolicies. Global policies carry their params at the
+// policy level (no path); the CP->DP forward conversion emits api-key-auth security and
+// api-level (global) rate limits here. They are wrapped into a synthetic "/*" path so the
+// shared lift logic — which reads params off paths and treats "/*" as the global scope —
+// reconstructs them uniformly.
+func mapGlobalPoliciesAPIToLLMPolicies(in *[]api.Policy) []model.LLMPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.LLMPolicy, 0, len(*in))
+	for _, p := range *in {
+		var params map[string]interface{}
+		if p.Params != nil {
+			params = *p.Params
+		}
+		out = append(out, model.LLMPolicy{
+			Name:    p.Name,
+			Version: p.Version,
+			Paths:   []model.LLMPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: params}},
+		})
+	}
+	return out
+}
+
+// mapOperationPoliciesAPIToLLMPolicies flattens operation policies into the legacy
+// model.LLMPolicy shape used by liftLLMPolicies. The CP->DP forward conversion promotes
+// the resource-scoped rate-limit policies it assembles into operationPolicies (see
+// generateLLMProviderDeploymentYAML), so on DP->CP import they are read back from there.
+func mapOperationPoliciesAPIToLLMPolicies(in *[]api.OperationPolicy) []model.LLMPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.LLMPolicy, 0, len(*in))
+	for _, p := range *in {
+		paths := make([]model.LLMPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			methods := make([]string, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				methods = append(methods, string(m))
+			}
+			paths = append(paths, model.LLMPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
+		}
+		out = append(out, model.LLMPolicy{Name: p.Name, Version: p.Version, Paths: paths})
+	}
+	return out
+}
+
+func mapGlobalPoliciesAPIToModel(in *[]api.Policy) []model.GlobalPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.GlobalPolicy, 0, len(*in))
+	for _, p := range *in {
+		ec := ""
+		if p.ExecutionCondition != nil {
+			ec = *p.ExecutionCondition
+		}
+		var params map[string]interface{}
+		if p.Params != nil {
+			params = *p.Params
+		}
+		out = append(out, model.GlobalPolicy{Name: p.Name, Version: p.Version, ExecutionCondition: ec, Params: params})
+	}
+	return out
+}
+
+func mapOperationPoliciesAPIToModel(in *[]api.OperationPolicy) []model.OperationPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.OperationPolicy, 0, len(*in))
+	for _, p := range *in {
+		ec := ""
+		if p.ExecutionCondition != nil {
+			ec = *p.ExecutionCondition
+		}
+		paths := make([]model.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			methods := make([]string, 0, len(pp.Methods))
+			for _, mm := range pp.Methods {
+				methods = append(methods, string(mm))
+			}
+			paths = append(paths, model.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
+		}
+		out = append(out, model.OperationPolicy{Name: p.Name, Version: p.Version, ExecutionCondition: ec, Paths: paths})
+	}
+	return out
+}
+
+func mapGlobalPoliciesModelToAPI(in []model.GlobalPolicy) *[]api.Policy {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.Policy, 0, len(in))
+	for _, p := range in {
+		entry := api.Policy{Name: p.Name, Version: p.Version}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		if p.Params != nil {
+			params := p.Params
+			entry.Params = &params
+		}
+		out = append(out, entry)
+	}
+	return &out
+}
+
+func mapOperationPoliciesModelToAPI(in []model.OperationPolicy) *[]api.OperationPolicy {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.OperationPolicy, 0, len(in))
+	for _, p := range in {
+		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, mm := range pp.Methods {
+				methods = append(methods, api.OperationPolicyPathMethods(mm))
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
+		}
+		entry := api.OperationPolicy{Name: p.Name, Version: p.Version, Paths: paths}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		out = append(out, entry)
+	}
+	return &out
+}
+
+// migrateLegacyProviderPoliciesInPlace folds any legacy `policies` entries into
+// globalPolicies / operationPolicies, then clears `policies`.
+// Rules:
+//   - a path entry with path == "/*" AND methods == ["*"] → GlobalPolicy (deduped by name)
+//   - any other path entry                                → OperationPolicy path (merged by name)
+//
+// Empty or nil Policies → no-op.
+func migrateLegacyProviderPoliciesInPlace(cfg *model.LLMProviderConfig) {
+	migrateLegacyPolicies(&cfg.GlobalPolicies, &cfg.OperationPolicies, cfg.Policies)
+	cfg.Policies = nil
+}
+
+// migrateLegacyProxyPoliciesInPlace is the proxy-config counterpart.
+func migrateLegacyProxyPoliciesInPlace(cfg *model.LLMProxyConfig) {
+	migrateLegacyPolicies(&cfg.GlobalPolicies, &cfg.OperationPolicies, cfg.Policies)
+	cfg.Policies = nil
+}
+
+// migrateLegacyPolicies is the shared migration kernel.
+func migrateLegacyPolicies(globalPolicies *[]model.GlobalPolicy, operationPolicies *[]model.OperationPolicy, legacyPolicies []model.LLMPolicy) {
+	for _, p := range legacyPolicies {
+		for _, pe := range p.Paths {
+			if pe.Path == "/*" && isWildcardOnlyMethods(pe.Methods) {
+				if !hasGlobalPolicyByName(*globalPolicies, p.Name) {
+					*globalPolicies = append(*globalPolicies, model.GlobalPolicy{
+						Name:    p.Name,
+						Version: p.Version,
+						Params:  pe.Params,
+					})
+				}
+			} else {
+				appendLegacyOperationPath(operationPolicies, p.Name, p.Version, model.OperationPolicyPath{
+					Path:    pe.Path,
+					Methods: pe.Methods,
+					Params:  pe.Params,
+				})
+			}
+		}
+	}
+}
+
+// isWildcardOnlyMethods reports whether methods is exactly ["*"].
+func isWildcardOnlyMethods(methods []string) bool {
+	return len(methods) == 1 && methods[0] == "*"
+}
+
+// hasGlobalPolicyByName reports whether a GlobalPolicy with the given name already exists.
+func hasGlobalPolicyByName(policies []model.GlobalPolicy, name string) bool {
+	for _, p := range policies {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// appendLegacyOperationPath merges a path entry into an existing OperationPolicy of the same
+// name+version, or appends a new OperationPolicy if none exists.
+func appendLegacyOperationPath(policies *[]model.OperationPolicy, name, version string, path model.OperationPolicyPath) {
+	for i := range *policies {
+		if (*policies)[i].Name == name && (*policies)[i].Version == version {
+			(*policies)[i].Paths = append((*policies)[i].Paths, path)
+			return
+		}
+	}
+	*policies = append(*policies, model.OperationPolicy{
+		Name:    name,
+		Version: version,
+		Paths:   []model.OperationPolicyPath{path},
+	})
+}
+
+// splitLegacyPoliciesForRead converts a stored legacy policies list into the two
+// canonical lists for read responses, using the same rule as the save-time migration:
+//   - path "/*" + methods ["*"] → GlobalPolicy (shared api-level bucket)
+//   - any other path            → OperationPolicy (per-path bucket)
+//
+// Called only when both new lists are empty and the legacy list is non-empty.
+func splitLegacyPoliciesForRead(legacy []model.LLMPolicy) ([]model.GlobalPolicy, []model.OperationPolicy) {
+	var global []model.GlobalPolicy
+	var operation []model.OperationPolicy
+	for _, p := range legacy {
+		for _, pe := range p.Paths {
+			if pe.Path == "/*" && isWildcardOnlyMethods(pe.Methods) {
+				if !hasGlobalPolicyByName(global, p.Name) {
+					global = append(global, model.GlobalPolicy{
+						Name:    p.Name,
+						Version: p.Version,
+						Params:  pe.Params,
+					})
+				}
+			} else {
+				appendLegacyOperationPath(&operation, p.Name, p.Version, model.OperationPolicyPath{
+					Path:    pe.Path,
+					Methods: pe.Methods,
+					Params:  pe.Params,
+				})
+			}
+		}
+	}
+	return global, operation
 }
 
 func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
@@ -1317,15 +1945,51 @@ func mapResourceWiseRateLimitingAPIToModel(in *api.ResourceWiseRateLimitingConfi
 	}
 }
 
+func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListItem {
+	id := t.ID
+	name := t.Name
+	version := t.Version
+	isLatest := t.IsLatest
+	enabled := t.Enabled
+	var logoURL string
+	if t.Metadata != nil {
+		logoURL = t.Metadata.LogoURL
+	}
+	return api.LLMProviderTemplateListItem{
+		Id:          &id,
+		GroupId:     utils.StringPtrIfNotEmpty(t.GroupID),
+		Name:        &name,
+		Description: utils.StringPtrIfNotEmpty(t.Description),
+		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
+		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
+		Version:     &version,
+		IsLatest:    &isLatest,
+		Enabled:     &enabled,
+		LogoUrl:     utils.StringPtrIfNotEmpty(logoURL),
+		ReadOnly:    utils.BoolPtr(t.Origin == constants.OriginDP),
+		CreatedAt:   utils.TimePtr(t.CreatedAt),
+		UpdatedAt:   utils.TimePtr(t.UpdatedAt),
+	}
+}
+
 func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplate {
 	if m == nil {
 		return nil
 	}
+	isLatest := m.IsLatest
+	enabled := m.Enabled
 	return &api.LLMProviderTemplate{
 		Id:               m.ID,
+		GroupId:          utils.StringPtrIfNotEmpty(m.GroupID),
 		Name:             m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
+		ManagedBy:        utils.StringPtrIfNotEmpty(m.ManagedBy),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
+		UpdatedBy:        utils.StringPtrIfNotEmpty(m.UpdatedBy),
+		Version:          m.Version,
+		IsLatest:         &isLatest,
+		Enabled:          &enabled,
+		Openapi:          utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Metadata:         mapTemplateMetadataModelToAPI(m.Metadata),
 		PromptTokens:     mapExtractionIdentifierModelToAPI(m.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierModelToAPI(m.CompletionTokens),
@@ -1334,6 +1998,7 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		RequestModel:     mapExtractionIdentifierModelToAPI(m.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(m.ResponseModel),
 		ResourceMappings: mapTemplateResourceMappingsModelToAPI(m.ResourceMappings),
+		ReadOnly:         utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:        utils.TimePtr(m.CreatedAt),
 		UpdatedAt:        utils.TimePtr(m.UpdatedAt),
 	}
@@ -1420,6 +2085,17 @@ func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceM
 	}
 }
 
+// defaultTemplateManagedBy normalizes the managedBy label supplied on a custom
+// template. An empty value defaults to "customer"; built-in templates are seeded
+// with "wso2" by the template seeder/loader.
+func defaultTemplateManagedBy(in *string) string {
+	v := strings.TrimSpace(utils.ValueOrEmpty(in))
+	if v == "" {
+		return "customer"
+	}
+	return v
+}
+
 func mapTemplateMetadataAPI(in *api.LLMProviderTemplateMetadata) *model.LLMProviderTemplateMetadata {
 	if in == nil {
 		return nil
@@ -1502,10 +2178,21 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		ac.Exceptions = &exc
 	}
 
-	policies := mapPoliciesModelToAPI(m.Configuration.Policies)
-	if policies == nil {
-		empty := []api.LLMPolicy{}
-		policies = &empty
+	globalPolicyCfg := m.Configuration.GlobalPolicies
+	operationPolicyCfg := m.Configuration.OperationPolicies
+	// For legacy rows stored before v1alpha2 migration: split policies on read.
+	if len(globalPolicyCfg) == 0 && len(operationPolicyCfg) == 0 && len(m.Configuration.Policies) > 0 {
+		globalPolicyCfg, operationPolicyCfg = splitLegacyPoliciesForRead(m.Configuration.Policies)
+	}
+	globalPolicies := mapGlobalPoliciesModelToAPI(globalPolicyCfg)
+	if globalPolicies == nil {
+		empty := []api.Policy{}
+		globalPolicies = &empty
+	}
+	operationPolicies := mapOperationPoliciesModelToAPI(operationPolicyCfg)
+	if operationPolicies == nil {
+		empty := []api.OperationPolicy{}
+		operationPolicies = &empty
 	}
 
 	modelProviders := mapModelProvidersModelToAPI(m.ModelProviders)
@@ -1515,23 +2202,26 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 	}
 
 	out := &api.LLMProvider{
-		Id:             m.ID,
-		Name:           m.Name,
-		Description:    utils.StringPtrIfNotEmpty(m.Description),
-		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
-		Version:        m.Version,
-		Context:        ctx,
-		Vhost:          m.Configuration.VHost,
-		Template:       templateHandle,
-		Openapi:        utils.StringPtrIfNotEmpty(m.OpenAPISpec),
-		ModelProviders: modelProviders,
-		RateLimiting:   mapRateLimitingModelToAPI(m.Configuration.RateLimiting),
-		Upstream:       upstream,
-		AccessControl:  ac,
-		Policies:       policies,
-		Security:       mapSecurityModelToAPI(m.Configuration.Security),
-		CreatedAt:      utils.TimePtr(m.CreatedAt),
-		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
+		Id:                m.ID,
+		Name:              m.Name,
+		Description:       utils.StringPtrIfNotEmpty(m.Description),
+		CreatedBy:         utils.StringPtrIfNotEmpty(m.CreatedBy),
+		Version:           m.Version,
+		Context:           ctx,
+		Vhost:             m.Configuration.VHost,
+		Template:          templateHandle,
+		Openapi:           utils.StringPtrIfNotEmpty(m.OpenAPISpec),
+		ModelProviders:    modelProviders,
+		RateLimiting:      mapRateLimitingModelToAPI(m.Configuration.RateLimiting),
+		Upstream:          upstream,
+		AccessControl:     ac,
+		GlobalPolicies:    globalPolicies,
+		OperationPolicies: operationPolicies,
+		Policies:          nil,
+		Security:          mapSecurityModelToAPI(m.Configuration.Security),
+		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
+		CreatedAt:         utils.TimePtr(m.CreatedAt),
+		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
 	return out
 }
@@ -1820,10 +2510,21 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		v := *m.Configuration.Vhost
 		vhostValue = &v
 	}
-	policies := mapPoliciesModelToAPI(m.Configuration.Policies)
-	if policies == nil {
-		empty := []api.LLMPolicy{}
-		policies = &empty
+	globalPolicyCfgProxy := m.Configuration.GlobalPolicies
+	operationPolicyCfgProxy := m.Configuration.OperationPolicies
+	// For legacy rows stored before v1alpha2 migration: split policies on read.
+	if len(globalPolicyCfgProxy) == 0 && len(operationPolicyCfgProxy) == 0 && len(m.Configuration.Policies) > 0 {
+		globalPolicyCfgProxy, operationPolicyCfgProxy = splitLegacyPoliciesForRead(m.Configuration.Policies)
+	}
+	globalPoliciesProxy := mapGlobalPoliciesModelToAPI(globalPolicyCfgProxy)
+	if globalPoliciesProxy == nil {
+		empty := []api.Policy{}
+		globalPoliciesProxy = &empty
+	}
+	operationPoliciesProxy := mapOperationPoliciesModelToAPI(operationPolicyCfgProxy)
+	if operationPoliciesProxy == nil {
+		empty := []api.OperationPolicy{}
+		operationPoliciesProxy = &empty
 	}
 	createdAt := utils.TimePtr(m.CreatedAt)
 	updatedAt := utils.TimePtr(m.UpdatedAt)
@@ -1842,6 +2543,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		},
 		Openapi:   utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Security:  mapSecurityModelToAPI(m.Configuration.Security),
+		ReadOnly:  utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}
@@ -1857,25 +2559,9 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 			Value:  nil, // Redact auth credential value
 		}
 	}
-	if len(m.Configuration.Policies) > 0 {
-		policyList := make([]api.LLMPolicy, 0, len(m.Configuration.Policies))
-		for _, p := range m.Configuration.Policies {
-			paths := make([]api.LLMPolicyPath, 0, len(p.Paths))
-			for _, pp := range p.Paths {
-				methods := make([]api.LLMPolicyPathMethods, 0, len(pp.Methods))
-				for _, m := range pp.Methods {
-					methods = append(methods, api.LLMPolicyPathMethods(m))
-				}
-				paths = append(paths, api.LLMPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
-			}
-			policyList = append(policyList, api.LLMPolicy{Name: p.Name, Version: p.Version, Paths: paths})
-		}
-		out.Policies = &policyList
-	}
-	if out.Policies == nil {
-		empty := []api.LLMPolicy{}
-		out.Policies = &empty
-	}
+	out.GlobalPolicies = globalPoliciesProxy
+	out.OperationPolicies = operationPoliciesProxy
+	out.Policies = nil
 	return out
 }
 
@@ -1909,4 +2595,14 @@ func mapSecurityModelToAPI(in *model.SecurityConfig) *api.SecurityConfig {
 		out.ApiKey = &api.APIKeySecurity{Enabled: in.APIKey.Enabled, Key: utils.StringPtrIfNotEmpty(in.APIKey.Key), In: inLoc}
 	}
 	return out
+}
+
+// marshalUpstreamForValidation serialises the upstream config to JSON so
+// ValidateSecretRefs can scan it for {{ secret "..." }} placeholders.
+func marshalUpstreamForValidation(upstream interface{}) (string, error) {
+	b, err := json.Marshal(upstream)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

@@ -20,8 +20,12 @@ package model
 import "time"
 
 // SubscriptionPlanCreatedEvent represents the payload for a subscriptionPlan.created event.
+//
+// StopOnQuotaReach is sent as a boolean to match the gateway-controller's payload
+// contract; the platform-api stores it as a SMALLINT (0/1) and converts at this boundary.
 type SubscriptionPlanCreatedEvent struct {
 	PlanId             string     `json:"planId"`
+	Handle             string     `json:"handle"`
 	PlanName           string     `json:"planName"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
@@ -32,8 +36,12 @@ type SubscriptionPlanCreatedEvent struct {
 }
 
 // SubscriptionPlanUpdatedEvent represents the payload for a subscriptionPlan.updated event.
+//
+// StopOnQuotaReach is sent as a boolean to match the gateway-controller's payload
+// contract; the platform-api stores it as a SMALLINT (0/1) and converts at this boundary.
 type SubscriptionPlanUpdatedEvent struct {
 	PlanId             string     `json:"planId"`
+	Handle             string     `json:"handle"`
 	PlanName           string     `json:"planName"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
@@ -46,5 +54,6 @@ type SubscriptionPlanUpdatedEvent struct {
 // SubscriptionPlanDeletedEvent represents the payload for a subscriptionPlan.deleted event.
 type SubscriptionPlanDeletedEvent struct {
 	PlanId   string `json:"planId"`
+	Handle   string `json:"handle"`
 	PlanName string `json:"planName"`
 }

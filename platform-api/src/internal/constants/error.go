@@ -101,43 +101,20 @@ var (
 )
 
 var (
-	ErrApiPortalSync       = errors.New("failed to synchronize with dev portal")
 	ErrArtifactNotFound    = errors.New("artifact not found")
 	ErrArtifactExists      = errors.New("artifact already exists")
 	ErrArtifactInvalidKind = errors.New("invalid artifact kind")
+	// ErrArtifactReadOnly is returned when a mutating control-plane operation is
+	// attempted on a data-plane-originated (origin=DP) artifact. Such artifacts are
+	// read-only in the control plane; only documentation/OpenAPI updates are allowed.
+	ErrArtifactReadOnly = errors.New("artifact is read-only: it originated from a data-plane gateway")
+	// ErrArtifactDeployed is returned when a DP-originated artifact is deleted from the
+	// control plane while still deployed on one or more gateways. It can only be deleted
+	// once it is undeployed on all gateways it was deployed to.
+	ErrArtifactDeployed = errors.New("artifact is still deployed on a gateway and cannot be deleted")
 )
 
 var (
-	ErrDevPortalNotFound                = errors.New("devportal not found")
-	ErrDevPortalAlreadyExist            = errors.New("devportal already exists in organization")
-	ErrDevPortalNameRequired            = errors.New("devportal name is required")
-	ErrDevPortalIdentifierRequired      = errors.New("devportal identifier is required")
-	ErrDevPortalAPIUrlRequired          = errors.New("devportal API URL is required")
-	ErrDevPortalHostnameRequired        = errors.New("devportal hostname is required")
-	ErrDevPortalAPIKeyRequired          = errors.New("devportal API key is required")
-	ErrDevPortalHeaderKeyNameRequired   = errors.New("header key name is required for header transmission mode")
-	ErrDevPortalIdentifierExists        = errors.New("devportal identifier already exists in organization")
-	ErrDevPortalHostnameExists          = errors.New("devportal hostname already exists in organization")
-	ErrDevPortalAPIUrlExists            = errors.New("devportal API URL already exists in organization")
-	ErrDevPortalDefaultAlreadyExists    = errors.New("default devportal already exists for organization")
-	ErrDevPortalCannotDeleteDefault     = errors.New("cannot delete default devportal")
-	ErrDevPortalCannotDeactivateDefault = errors.New("cannot deactivate default devportal")
-	ErrDevPortalBackendUnreachable      = errors.New("devportal backend is unreachable")
-	ErrDevPortalSyncFailed              = errors.New("failed to sync organization to devportal")
-	ErrDevPortalAuthenticationFailed    = errors.New("devportal authentication failed")
-	ErrDevPortalForbidden               = errors.New("devportal access forbidden")
-	ErrDevPortalConnectivityFailed      = errors.New("devportal connectivity check failed")
-	ErrDevPortalInvalidVisibility       = errors.New("devportal visibility must be 'public' or 'private'")
-	ErrDevPortalOrganizationConflict    = errors.New("organization conflict in devportal: an organization with the same organization ID exists but differs from the one being synced")
-
-	// API Publication errors
-	ErrAPIPublicationNotFound = errors.New("api publication not found")
-	ErrAPIAlreadyPublished    = errors.New("api is already published to devportal")
-
-	// API Publication Compensation errors
-	ErrAPIPublicationSaveFailed = errors.New("api publication database save failed after devportal success")
-	ErrAPIPublicationSplitBrain = errors.New("critical split-brain: api published to devportal but local operations failed and compensation failed")
-
 	// API Project Import errors
 	ErrAPIProjectNotFound   = errors.New("api project not found")
 	ErrMalformedAPIProject  = errors.New("malformed api project")
@@ -150,6 +127,10 @@ var (
 var (
 	ErrLLMProviderTemplateExists   = errors.New("llm provider template already exists")
 	ErrLLMProviderTemplateNotFound = errors.New("llm provider template not found")
+	ErrLLMProviderTemplateVersionExists = errors.New("llm provider template version already exists")
+	ErrLLMProviderTemplateInUse    = errors.New("llm provider template is in use by one or more providers")
+	ErrLLMProviderTemplateReadOnly          = errors.New("built-in llm provider template is read-only")
+	ErrLLMProviderTemplateManagedByReserved = errors.New("'wso2' is reserved and cannot be used as managedBy on custom templates")
 	ErrLLMProviderExists           = errors.New("llm provider already exists")
 	ErrLLMProviderNotFound         = errors.New("llm provider not found")
 	ErrLLMProviderLimitReached     = errors.New("llm provider limit reached for organization")
@@ -172,10 +153,18 @@ var (
 )
 
 var (
+	ErrHmacSecretNotFound             = errors.New("hmac secret not found")
+	ErrHmacSecretAlreadyExists        = errors.New("hmac secret with this name already exists")
+	ErrHmacSecretEncryptionKeyMissing = errors.New("hmac secret encryption key is not configured")
+	ErrHmacSecretInvalidValue         = errors.New("secret value must be at least 32 characters")
+)
+
+var (
 	ErrWebBrokerAPIExists                = errors.New("webbroker api already exists")
 	ErrWebBrokerAPINotFound              = errors.New("webbroker api not found")
 	ErrWebBrokerAPILimitReached          = errors.New("webbroker api limit reached for organization")
 	ErrProjectHasAssociatedWebBrokerAPIs = errors.New("project has associated WebBroker APIs")
+	ErrDevPortalNotFound                 = errors.New("dev portal not found")
 )
 
 var (
@@ -207,10 +196,19 @@ var (
 	ErrSubscriptionPlanNotFound           = errors.New("subscription plan not found")
 	ErrSubscriptionPlanNotFoundOrInactive = errors.New("subscription plan not found or not active")
 	ErrSubscriptionPlanAlreadyExists      = errors.New("subscription plan with this name already exists for the organization")
+	ErrInvalidThrottleLimitUnit           = errors.New("invalid throttle limit unit: must be one of SECOND, MINUTE, HOUR, DAY, MONTH, YEAR")
 )
 
 var (
 	// Gateway Internal API errors
 	ErrMissingAPIKey   = errors.New("API key is required")
 	ErrInvalidAPIToken = errors.New("invalid API token")
+)
+
+var (
+	ErrSecretAlreadyExists = errors.New("secret already exists for this organization and handle")
+	ErrSecretNotFound      = errors.New("secret not found")
+	ErrSecretInUse         = errors.New("secret is referenced by one or more resources")
+	ErrSecretRefMissing    = errors.New("one or more referenced secrets do not exist")
+	ErrInvalidSecretType   = errors.New("invalid secret type: must be GENERIC or CERTIFICATE")
 )

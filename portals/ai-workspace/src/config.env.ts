@@ -54,19 +54,22 @@ export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_HANDLE_CLAIM
 export const DEFAULT_ORG_REGION = getEnvOrDefault('VITE_DEFAULT_ORG_REGION', 'us');
 
 // Scopes to request at login — derived from openapi.yaml x-required-scopes (ap: prefix).
+// offline_access is required so the IDP issues a refresh token; without it the
+// BFF cannot silently renew the access token and the user is logged out as soon
+// as it expires. Keep it if you override this scope list.
 export const OIDC_SCOPE = getEnvOrDefault(
   'VITE_OIDC_SCOPE',
-  'openid profile email' +
-  ' ap:organization:read ap:organization:manage ap:organization:subscription:read' +
+  'openid profile email offline_access' +
+  ' ap:organization:read ap:organization:manage' +
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
   ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +
   ' ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage' +
-  ' ap:application:associations:read ap:application:associations:create ap:application:associations:delete ap:application:associations:manage ap:application:associations:api_key:read' +
+  ' ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read' +
   ' ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage' +
   ' ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage' +
   ' ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage' +
-  ' ap:gateway:artifacts:read ap:gateway:manifest:read' +
-  ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import' +
+  ' ap:gateway:artifact:read ap:gateway:manifest:read' +
+  ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage' +
   ' ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage' +
   ' ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore' +
   ' ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage' +
@@ -91,7 +94,7 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update' +
   ' ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore' +
   ' ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete' +
-  ' ap:git:read'
+  ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage'
 );
 
 // OIDC redirect URIs — app-specific, not IDP-specific.
@@ -129,11 +132,20 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
   'eyJhcHAiOiI5Mjo1NjYiLCJ2ZXIiOiIyLjEiLCJvcmciOiI2Mjg6NDE3IiwicHViIjp0cnVlLCJpYXQiOjE3Njk5MDQwMDB9.gxcZJ7eybasZ5JY_JJj2ARuTiWZNnYIeAtL8oQbhfxk'
 );
 
-// Platform Gateway Version
-export const PLATFORM_GATEWAY_VERSION = getEnvOrDefault(
-  'VITE_PLATFORM_GATEWAY_VERSION',
-  'v1.0.0'
+export interface GatewayVersionEntry {
+  version: string;
+  latestVersion?: string;
+  channel: 'STS' | 'LTS';
+}
+
+export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
+  'VITE_PLATFORM_GATEWAY_VERSIONS',
+  [
+    { version: '1.1', latestVersion: 'v1.1.0', channel: 'LTS' },
+    { version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+  ]
 );
+
 
 // Policy Hub web URL
 export const POLICY_HUB_WEB_URL = getEnvOrDefault(
@@ -141,13 +153,16 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
   'https://wso2.com/api-platform/policy-hub/'
 );
 
-// Platform API base URL. Defaults to a relative path routed through the dev-server / nginx
-// proxy (/api-proxy → https://localhost:9243, secure:false) so the browser only ever talks to
-// the app origin and never sees the platform-api self-signed cert. Override with an absolute URL
-// only if calling the platform API directly.
+// Platform API base URL. Defaults to a relative path routed same-origin through the
+// BFF reverse proxy (/api/proxy/* → Platform API) so the browser only ever talks to
+// the app origin, never holds a token, and never sees the platform-api self-signed cert.
+// Overrides should normally point at another BFF proxy base. Pointing this at the
+// Platform API directly bypasses the BFF session: the browser holds no token in this
+// BFF-only auth flow, so a direct override also requires a separate authentication
+// path to attach credentials to those calls.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
-  '/api-proxy/api/v1'
+  '/api/proxy/api/v0.9'
 );
 
 // Control-plane host shown in gateway setup instructions (host:port).
@@ -159,13 +174,19 @@ export const CONTROLPLANE_HOST = getEnvOrDefault(
 
 export const PORTAL_API_BASE_URL = getEnvOrDefault(
   'VITE_PORTAL_API_BASE_URL',
-  '/api-proxy/api/portal/v1'
+  '/api/proxy/api/portal/v0.9'
 );
+
+// CSRF header sent on all BFF requests. Cross-site attackers cannot set a custom
+// header (CORS is closed), so its presence proves the request is same-origin.
+// Must match the BFF's CSRF_HEADER config (default: X-Requested-By).
+export const CSRF_HEADER = getEnvOrDefault('VITE_CSRF_HEADER', 'X-Requested-By');
+export const CSRF_VALUE = 'ai-workspace';
 
 // JWT claim names for user display — configure to match your IDP's token structure.
 // Common alternatives: 'name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
 export const OIDC_USERNAME_CLAIM = getEnvOrDefault('VITE_OIDC_USERNAME_CLAIM', 'given_name');
 export const OIDC_EMAIL_CLAIM = getEnvOrDefault('VITE_OIDC_EMAIL_CLAIM', 'email');
 
-// Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v1/auth/login.
+// Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v0.9/auth/login.
 export const AUTH_MODE = getEnvOrDefault('VITE_AUTH_MODE', 'basic') as 'oidc' | 'basic';

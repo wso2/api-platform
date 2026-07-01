@@ -265,6 +265,44 @@ clean-db: ## Remove local dev SQLite database files
 	rm -f gateway-controller/data/gateway.db gateway-controller/data/gateway.db-shm gateway-controller/data/gateway.db-wal
 	@echo "Cleaned local dev database files"
 
+# Docker Compose Targets (PostgreSQL storage overlay)
+COMPOSE_POSTGRES := docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml
+
+.PHONY: up-postgres
+up-postgres: ## Start the gateway stack with PostgreSQL storage (overlay)
+	$(COMPOSE_POSTGRES) up -d
+
+.PHONY: logs-postgres
+logs-postgres: ## Tail gateway-controller logs (PostgreSQL stack)
+	$(COMPOSE_POSTGRES) logs -f gateway-controller
+
+.PHONY: down-postgres
+down-postgres: ## Stop the PostgreSQL gateway stack (keeps volumes)
+	$(COMPOSE_POSTGRES) down
+
+.PHONY: down-postgres-clean
+down-postgres-clean: ## Stop the PostgreSQL gateway stack and remove volumes
+	$(COMPOSE_POSTGRES) down -v
+
+# Docker Compose Targets (SQL Server storage overlay)
+COMPOSE_SQLSERVER := docker compose -f docker-compose.yaml -f docker-compose.sqlserver.yaml
+
+.PHONY: up-sqlserver
+up-sqlserver: ## Start the gateway stack with SQL Server storage (overlay)
+	$(COMPOSE_SQLSERVER) up -d
+
+.PHONY: logs-sqlserver
+logs-sqlserver: ## Tail gateway-controller logs (SQL Server stack)
+	$(COMPOSE_SQLSERVER) logs -f gateway-controller
+
+.PHONY: down-sqlserver
+down-sqlserver: ## Stop the SQL Server gateway stack (keeps volumes)
+	$(COMPOSE_SQLSERVER) down
+
+.PHONY: down-sqlserver-clean
+down-sqlserver-clean: ## Stop the SQL Server gateway stack and remove volumes
+	$(COMPOSE_SQLSERVER) down -v
+
 .PHONY: clean
 clean: clean-dist ## Clean all build artifacts
 	@rm -rf target/build

@@ -28,14 +28,18 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -940,85 +944,276 @@ func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error 
 	return nil
 }
 
-// APIDeploymentPush represents the request body for pushing API deployment details to the control plane
-type APIDeploymentPush struct {
-	ID                string     `json:"id" yaml:"id"`
-	Configuration     any        `json:"configuration" yaml:"configuration"`
-	Status            string     `json:"status" yaml:"status"`
-	CreatedAt         time.Time  `json:"createdAt" yaml:"createdAt"`
-	UpdatedAt         time.Time  `json:"updatedAt" yaml:"updatedAt"`
-	DeployedAt        *time.Time `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-	ProjectIdentifier string     `json:"projectIdentifier" yaml:"projectIdentifier"`
+// gatewayArtifactsZipEntry is the file name, inside the multipart "artifacts" zip, that holds
+// the JSON array of ImportArtifactRequest. The control plane reads this exact name.
+const gatewayArtifactsZipEntry = "artifacts.json"
+
+// ImportArtifactRequest is a single entry in the artifacts.json file inside the zip pushed to
+// the control plane's bulk /artifacts/import-gateway-artifacts endpoint. Configuration is the
+// gateway artifact custom resource exactly as deployed to the gateway (apiVersion/kind/metadata/
+// spec); the artifact type is identified by configuration.kind.
+type ImportArtifactRequest struct {
+	DPID          string                 `json:"dpid"`
+	Configuration map[string]interface{} `json:"configuration"`
+	Status        string                 `json:"status"`
+	CreatedAt     time.Time              `json:"createdAt"`
+	UpdatedAt     time.Time              `json:"updatedAt"`
+	DeployedAt    *time.Time             `json:"deployedAt,omitempty"`
 }
 
-// PushAPIDeployment sends API deployment details to the control plane via a REST call
-func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
-	// Construct the deployment URL
-	deployURL := s.getBaseURL() + "/apis/" + apiID + "/gateway-deployments"
-	if deploymentID != "" {
-		deployURL += "?deploymentId=" + deploymentID
-	}
+// ImportArtifactsResponse is the control plane's reply to the bulk DP->CP push: per-artifact
+// results keyed by the artifact's data-plane UUID (dpid), plus aggregate counts.
+type ImportArtifactsResponse struct {
+	Total     int                               `json:"total"`
+	Success   int                               `json:"success"`
+	Failed    int                               `json:"failed"`
+	Artifacts map[string]ImportArtifactResponse `json:"artifacts"`
+}
 
-	// Create request body
-	requestBody := APIDeploymentPush{
-		ID:                apiConfig.UUID,
-		Configuration:     apiConfig.Configuration,
-		Status:            string(apiConfig.DesiredState),
-		CreatedAt:         apiConfig.CreatedAt,
-		UpdatedAt:         apiConfig.UpdatedAt,
-		DeployedAt:        apiConfig.DeployedAt,
-		ProjectIdentifier: "default", // Set a default value or fetch from config if needed
-	}
+// ImportArtifactResponse is a single per-artifact result within the control plane's reply to a
+// DP->CP push. ID is the control-plane artifact UUID (the CP mints its own; it does not reuse
+// the gateway's), which the gateway records as the artifact's cp_artifact_id. Error is the
+// failure reason (empty on success) the gateway uses to set cp_sync_status.
+type ImportArtifactResponse struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Error  string `json:"error"`
+}
 
-	// Marshal request body to JSON
-	jsonData, err := json.Marshal(requestBody)
+// artifactPushOrder is the dependency order in which artifacts are pushed to (and created in)
+// the control plane: a kind must come after the kinds it references — LLM providers reference
+// templates, and LLM proxies reference providers. Mirrors the control plane's create ordering.
+// Unknown kinds sort last (stable), which is safe as they have no cross-kind dependencies.
+var artifactPushOrder = map[string]int{
+	models.KindLlmProviderTemplate: 0,
+	models.KindLlmProvider:         1,
+	models.KindLlmProxy:            2,
+	models.KindMcp:                 3,
+	models.KindRestApi:             4,
+	models.KindWebSubApi:           5,
+	models.KindWebBrokerApi:        6,
+}
+
+// artifactPushRank returns the push-order rank for a kind; unknown kinds sort last.
+func artifactPushRank(kind string) int {
+	if r, ok := artifactPushOrder[kind]; ok {
+		return r
+	}
+	return len(artifactPushOrder)
+}
+
+// isOrgLevelKind reports whether the artifact kind is organization-level and thus
+// does not belong to a project (the control plane ignores the project for these).
+func isOrgLevelKind(kind string) bool {
+	return kind == models.KindLlmProvider || kind == models.KindLlmProviderTemplate
+}
+
+// structToMap converts the typed artifact configuration into a generic map by
+// round-tripping through JSON, so the CR can be transmitted (and have its metadata
+// labels augmented) without depending on each kind's concrete type.
+func structToMap(v any) (map[string]interface{}, error) {
+	b, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request body: %w", err)
+		return nil, err
 	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		m = map[string]interface{}{}
+	}
+	return m, nil
+}
 
-	// Create POST request
-	req, err := http.NewRequest("POST", deployURL, bytes.NewBuffer(jsonData))
+// hasProjectMetadata reports whether the configuration carries a project on its
+// metadata via the project-id annotation or the label as a fallback. The project is never defaulted;
+// project-scoped artifacts must declare it explicitly in the CR.
+func hasProjectMetadata(cfg map[string]interface{}) bool {
+	md, _ := cfg["metadata"].(map[string]interface{})
+	if md == nil {
+		return false
+	}
+	anns, _ := md["annotations"].(map[string]interface{})
+	if anns != nil {
+		if v, _ := anns[commonconstants.AnnotationProjectID].(string); v != "" {
+			return true
+		}
+	}
+	labels, _ := md["labels"].(map[string]interface{})
+	if labels != nil {
+		if v, _ := labels[commonconstants.DeprecatedLabelProjectID].(string); v != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// PushArtifact pushes a single gateway-created/updated artifact to the control plane via the
+// bulk endpoint (a batch of one) and returns the control-plane artifact UUID. It returns an
+// error when the artifact could not be imported, so the caller records the sync failure.
+func (s *APIUtilsService) PushArtifact(artifactID string, artifact *models.StoredConfig, deploymentID string) (string, error) {
+	resp, err := s.PushArtifacts([]*models.StoredConfig{artifact})
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return "", err
+	}
+	item, ok := resp.Artifacts[artifact.UUID]
+	if !ok {
+		return "", fmt.Errorf("control plane returned no result for artifact %s", artifact.UUID)
+	}
+	if item.Error != "" {
+		return "", fmt.Errorf("artifact import for %s failed: %s", artifact.UUID, item.Error)
+	}
+	return item.ID, nil
+}
+
+// PushArtifacts pushes a batch of gateway-created/updated artifacts to the control plane via the
+// bulk /artifacts/import-gateway-artifacts endpoint. The artifacts are ordered by dependency
+// (templates → providers → proxies → mcp → rest → ...), serialized as a JSON array into the
+// artifacts.json file of a zip, and posted as multipart/form-data ("artifacts" zip + "total").
+// The returned response maps each artifact's dpid to its per-artifact result (Error set on
+// failure) with aggregate counts. Artifacts that cannot be built locally (e.g. a project-scoped
+// kind missing its project) are reported as failures without being sent; the rest are still
+// pushed (continue-on-error).
+func (s *APIUtilsService) PushArtifacts(artifacts []*models.StoredConfig) (*ImportArtifactsResponse, error) {
+	result := &ImportArtifactsResponse{
+		Total:     len(artifacts),
+		Artifacts: make(map[string]ImportArtifactResponse, len(artifacts)),
+	}
+	if len(artifacts) == 0 {
+		return result, nil
 	}
 
-	// Add headers
-	req.Header.Set("Content-Type", "application/json")
+	// Order by dependency (stable) so the control plane can create them in a single pass.
+	ordered := make([]*models.StoredConfig, len(artifacts))
+	copy(ordered, artifacts)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return artifactPushRank(ordered[i].Kind) < artifactPushRank(ordered[j].Kind)
+	})
+
+	requests := make([]ImportArtifactRequest, 0, len(ordered))
+	for _, artifact := range ordered {
+		req, buildErr := s.buildImportArtifactRequest(artifact)
+		if buildErr != nil {
+			s.logger.Error("Skipping artifact in DP->CP push",
+				slog.String("artifact_id", artifact.UUID), slog.String("kind", artifact.Kind),
+				slog.Any("error", buildErr))
+			result.Artifacts[artifact.UUID] = ImportArtifactResponse{Error: buildErr.Error()}
+			result.Failed++
+			continue
+		}
+		requests = append(requests, req)
+	}
+	if len(requests) == 0 {
+		return result, nil // nothing valid to send
+	}
+
+	// Serialize the ordered list into artifacts.json inside a zip.
+	listJSON, err := json.Marshal(requests)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal artifacts list: %w", err)
+	}
+	zipBuf := &bytes.Buffer{}
+	zw := zip.NewWriter(zipBuf)
+	entry, err := zw.Create(gatewayArtifactsZipEntry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zip entry: %w", err)
+	}
+	if _, err := entry.Write(listJSON); err != nil {
+		return nil, fmt.Errorf("failed to write zip entry: %w", err)
+	}
+	if err := zw.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finalize zip: %w", err)
+	}
+
+	// Build the multipart body: "artifacts" (the zip) + "total".
+	body := &bytes.Buffer{}
+	mp := multipart.NewWriter(body)
+	part, err := mp.CreateFormFile("artifacts", "artifacts.zip")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multipart file: %w", err)
+	}
+	if _, err := io.Copy(part, zipBuf); err != nil {
+		return nil, fmt.Errorf("failed to write zip to multipart form: %w", err)
+	}
+	if err := mp.WriteField("total", strconv.Itoa(len(requests))); err != nil {
+		return nil, fmt.Errorf("failed to write total field: %w", err)
+	}
+	if err := mp.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finalize multipart form: %w", err)
+	}
+
+	importURL := s.getBaseURL() + "/artifacts/import-gateway-artifacts"
+	req, err := http.NewRequest("POST", importURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", mp.FormDataContentType())
 	req.Header.Add("api-key", s.config.Token)
 
-	s.logger.Info("Pushing API deployment to control plane",
-		slog.String("api_id", apiID),
-		slog.String("url", deployURL),
-		slog.String("deployment_id", deploymentID))
+	s.logger.Info("Pushing artifacts to control plane",
+		slog.String("url", importURL), slog.Int("count", len(requests)))
 
-	// Make the request
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send deployment notification: %w", err)
+		return nil, fmt.Errorf("failed to send artifact import request: %w", err)
 	}
 	defer resp.Body.Close()
-
-	// Read response body for error details
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-
-	// Check response status
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		s.logger.Error("API deployment push failed",
-			slog.String("api_id", apiID),
-			slog.Int("status_code", resp.StatusCode),
-			slog.String("response", string(bodyBytes)))
-		return fmt.Errorf("deployment push for api %s failed with status %d", apiID, resp.StatusCode)
+		return nil, fmt.Errorf("artifact import failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	s.logger.Info("Successfully pushed API deployment to control plane",
-		slog.String("api_id", apiID),
-		slog.Int("status_code", resp.StatusCode),
-		slog.String("response", string(bodyBytes)))
+	var cpResp ImportArtifactsResponse
+	if err := json.Unmarshal(bodyBytes, &cpResp); err != nil {
+		return nil, fmt.Errorf("failed to parse artifact import response: %w", err)
+	}
+	// Merge the control plane's per-artifact results into the local result (which already holds
+	// any build-time failures), recomputing success/failed across both.
+	for dpid, item := range cpResp.Artifacts {
+		result.Artifacts[dpid] = item
+		if item.Error == "" {
+			result.Success++
+		} else {
+			result.Failed++
+		}
+	}
 
-	return nil
+	s.logger.Info("Pushed artifacts to control plane",
+		slog.Int("total", result.Total), slog.Int("success", result.Success), slog.Int("failed", result.Failed))
+	return result, nil
+}
+
+// buildImportArtifactRequest converts a stored config into the import request entry sent to the
+// control plane. It returns an error for a project-scoped artifact that is missing its project
+// annotation (the project is never defaulted), so such an artifact is reported as a failure
+// rather than being sent. Timestamps are normalized to UTC: the CP uses deployedAt for its
+// last-in-wins working-copy decision across gateways.
+func (s *APIUtilsService) buildImportArtifactRequest(artifact *models.StoredConfig) (ImportArtifactRequest, error) {
+	configuration, err := structToMap(artifact.SourceConfiguration)
+	if err != nil {
+		return ImportArtifactRequest{}, fmt.Errorf("failed to encode artifact configuration: %w", err)
+	}
+	if !isOrgLevelKind(artifact.Kind) && !hasProjectMetadata(configuration) {
+		return ImportArtifactRequest{}, fmt.Errorf("cannot push artifact %s (kind %s) to the control plane: a project is required as the %q metadata annotation",
+			artifact.UUID, artifact.Kind, commonconstants.AnnotationProjectID)
+	}
+	var deployedAt *time.Time
+	if artifact.DeployedAt != nil {
+		utc := artifact.DeployedAt.UTC()
+		deployedAt = &utc
+	}
+	return ImportArtifactRequest{
+		DPID:          artifact.UUID,
+		Configuration: configuration,
+		Status:        string(artifact.DesiredState),
+		CreatedAt:     artifact.CreatedAt.UTC(),
+		UpdatedAt:     artifact.UpdatedAt.UTC(),
+		DeployedAt:    deployedAt,
+	}, nil
 }
 
 func MapToStruct(data map[string]interface{}, out interface{}) error {
@@ -1034,6 +1229,70 @@ func MapToStruct(data map[string]interface{}, out interface{}) error {
 	}
 
 	return nil
+}
+
+// platformHmacSecretInfo is the per-secret DTO returned by the internal HMAC endpoint.
+type platformHmacSecretInfo struct {
+	Name   string `json:"name"`
+	Secret string `json:"secret"`
+}
+
+// platformHmacSecretsResponse is the response body from GET /websub-apis/:id/secrets.
+type platformHmacSecretsResponse struct {
+	ArtifactID string                   `json:"artifactId"`
+	Secrets    []platformHmacSecretInfo `json:"secrets"`
+}
+
+// HmacSecretInfo is the public view of a platform-managed HMAC secret.
+type HmacSecretInfo struct {
+	Name      string
+	Plaintext string
+}
+
+// FetchWebSubAPIHmacSecrets fetches the plaintext HMAC secrets for a WebSub API artifact
+// from the platform-API internal endpoint.
+func (s *APIUtilsService) FetchWebSubAPIHmacSecrets(artifactID string) ([]HmacSecretInfo, error) {
+	secretsURL := s.getBaseURL() + "/websub-apis/" + artifactID + "/secrets"
+
+	s.logger.Debug("Fetching WebSub API HMAC secrets",
+		slog.String("artifact_id", artifactID),
+		slog.String("url", secretsURL),
+	)
+
+	req, err := http.NewRequest("GET", secretsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HMAC secrets request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch HMAC secrets: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HMAC secrets request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var response platformHmacSecretsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode HMAC secrets response: %w", err)
+	}
+
+	secrets := make([]HmacSecretInfo, 0, len(response.Secrets))
+	for _, s := range response.Secrets {
+		secrets = append(secrets, HmacSecretInfo{Name: s.Name, Plaintext: s.Secret})
+	}
+
+	s.logger.Debug("Successfully fetched WebSub API HMAC secrets",
+		slog.String("artifact_id", artifactID),
+		slog.Int("count", len(secrets)),
+	)
+
+	return secrets, nil
 }
 
 // CheckArtifactsExist checks which artifact UUIDs still exist on the platform.
@@ -1105,4 +1364,110 @@ func (s *APIUtilsService) CheckArtifactsExist(artifactIDs []string) ([]string, e
 	)
 
 	return existingIDs, nil
+}
+
+// PlatformSecretMeta holds the metadata returned by GET /api/internal/v1/secrets.
+// Value is non-nil only when the request included ?includeValues=true (startup bulk fetch).
+type PlatformSecretMeta struct {
+	ID          string  `json:"uuid"`
+	Handle      string  `json:"handle"`
+	DisplayName string  `json:"name"`
+	Hash        string  `json:"hash"`
+	Status      string  `json:"status"`
+	Value       *string `json:"value,omitempty"`
+}
+
+type platformSecretsListResponse struct {
+	List  []PlatformSecretMeta `json:"list"`
+	Count int                  `json:"count"`
+}
+
+type platformSecretValueResponse struct {
+	Value string `json:"value"`
+}
+
+// FetchPlatformSecrets retrieves secrets from the Platform API internal endpoint.
+// If updatedAfter is non-nil, only secrets modified after that time are returned.
+// If includeValues is true, decrypted plaintext values are included in the response
+// (used on startup for a single bulk fetch instead of N per-secret round trips).
+func (s *APIUtilsService) FetchPlatformSecrets(updatedAfter *time.Time, includeValues bool) ([]PlatformSecretMeta, error) {
+	secretsURL := s.getBaseURL() + "/secrets"
+
+	params := url.Values{}
+	if updatedAfter != nil {
+		params.Set("updatedAfter", updatedAfter.UTC().Format(time.RFC3339))
+	}
+	if includeValues {
+		params.Set("includeValues", "true")
+	}
+	if len(params) > 0 {
+		secretsURL += "?" + params.Encode()
+	}
+
+	s.logger.Info("Fetching platform secrets",
+		slog.String("url", secretsURL),
+		slog.Bool("includeValues", includeValues),
+	)
+
+	req, err := http.NewRequest(http.MethodGet, secretsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create secrets request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch platform secrets: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("platform secrets request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var listResp platformSecretsListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode platform secrets response: %w", err)
+	}
+
+	return listResp.List, nil
+}
+
+// FetchPlatformSecretValue fetches the decrypted plaintext value of a secret from the
+// Platform API internal endpoint GET /internal/v1/secrets/:handle/value.
+// The Gateway authenticates using the same api-key header used for all Platform API calls.
+func (s *APIUtilsService) FetchPlatformSecretValue(secretHandle string) (string, error) {
+	valueURL := s.getBaseURL() + "/secrets/" + secretHandle + "/value"
+
+	s.logger.Debug("Fetching platform secret value",
+		slog.String("secret_handle", secretHandle),
+		slog.String("url", valueURL),
+	)
+
+	req, err := http.NewRequest(http.MethodGet, valueURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create secret value request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch platform secret value: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("platform secret value request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var valueResp platformSecretValueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&valueResp); err != nil {
+		return "", fmt.Errorf("failed to decode platform secret value response: %w", err)
+	}
+
+	return valueResp.Value, nil
 }

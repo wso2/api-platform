@@ -7,3 +7,5 @@ generate:
   strict-server: false
 output-options:
   yaml-tags: true
+  # Generate every schema under components.schemas, not only those reachable from an operation.
+  skip-prune: true

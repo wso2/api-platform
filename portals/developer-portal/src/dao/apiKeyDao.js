@@ -17,42 +17,79 @@
  */
 const { Op } = require('sequelize');
 const APIKey = require('../models/apiKey');
+const APIKeyAppMapping = require('../models/apiKeyAppMapping');
 const { APIMetadata } = require('../models/apiMetadata');
+const { Application } = require('../models/application');
+const constants = require('../utils/constants');
 
-async function create({ apiId, subscriptionId, orgId, name, expiresAt, createdBy }, transaction) {
-    return APIKey.create(
-        { API_ID: apiId, SUBSCRIPTION_ID: subscriptionId || null, ORG_ID: orgId,
-          NAME: name, EXPIRES_AT: expiresAt || null, CREATED_BY: createdBy, STATUS: 'ACTIVE' },
+const API_METADATA_INCLUDE = {
+    model: APIMetadata,
+    attributes: ['uuid', 'name', 'version', 'handle', 'ref_id']
+};
+
+function appMappingInclude(required = false, appId = null) {
+    const opts = {
+        model: APIKeyAppMapping,
+        required,
+        include: [{ model: Application, attributes: ['uuid', 'name'] }],
+    };
+    if (appId) opts.where = { app_uuid: appId };
+    return opts;
+}
+
+async function create({ apiId, subscriptionId, appId, orgId, name, expiresAt, createdBy }, transaction) {
+    const key = await APIKey.create(
+        { api_uuid: apiId, subscription_uuid: subscriptionId || null, org_uuid: orgId,
+          name: name, expires_at: expiresAt || null, created_by: createdBy, updated_by: createdBy, status: constants.API_KEY_STATUS.ACTIVE },
         { transaction }
     );
+    if (appId) {
+        await APIKeyAppMapping.create({ key_uuid: key.uuid, app_uuid: appId, created_by: createdBy }, { transaction });
+    }
+    return key;
 }
 
 async function get(orgId, keyId, transaction) {
     return APIKey.findOne({
-        where: { KEY_ID: keyId, ORG_ID: orgId },
-        include: [{ model: APIMetadata, attributes: ['API_ID', 'GATEWAY_TYPE', 'API_NAME'] }],
+        where: { uuid: keyId, org_uuid: orgId },
+        include: [API_METADATA_INCLUDE, appMappingInclude()],
         transaction
     });
 }
 
-async function list(orgId, { apiId, subscriptionId, status } = {}) {
-    const where = { ORG_ID: orgId };
-    if (apiId) where.API_ID = apiId;
-    if (subscriptionId) where.SUBSCRIPTION_ID = subscriptionId;
-    if (status) where.STATUS = status;
+async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {}, transaction) {
+    const where = { org_uuid: orgId };
+    if (apiId) where.api_uuid = apiId;
+    if (subscriptionId) where.subscription_uuid = subscriptionId;
+    if (status) where.status = status;
     return APIKey.findAll({
         where,
-        order: [['CREATED_AT', 'DESC']],
-        include: [{ model: APIMetadata, attributes: ['API_ID', 'GATEWAY_TYPE', 'API_NAME'] }]
+        order: [['created_at', 'DESC']],
+        include: [API_METADATA_INCLUDE, appMappingInclude(!!appId, appId)],
+        ...(limit && { limit }),
+        transaction
     });
 }
 
-async function revoke(orgId, keyId, transaction) {
+async function revoke(orgId, keyId, updatedBy, transaction) {
     const [count] = await APIKey.update(
-        { STATUS: 'REVOKED', REVOKED_AT: new Date() },
-        { where: { KEY_ID: keyId, ORG_ID: orgId, STATUS: 'ACTIVE' }, transaction }
+        { status: constants.API_KEY_STATUS.REVOKED, revoked_at: new Date(), revoked_by: updatedBy, updated_by: updatedBy },
+        { where: { uuid: keyId, org_uuid: orgId, status: constants.API_KEY_STATUS.ACTIVE }, transaction }
     );
     return count > 0;
 }
 
-module.exports = { create, get, list, revoke };
+async function setApplication(orgId, keyId, appId, updatedBy, transaction, { activeOnly = false } = {}) {
+    const where = { uuid: keyId, org_uuid: orgId };
+    if (activeOnly) where.status = constants.API_KEY_STATUS.ACTIVE;
+    const key = await APIKey.findOne({ where, transaction, lock: transaction ? true : false });
+    if (!key) return false;
+    if (appId) {
+        await APIKeyAppMapping.upsert({ key_uuid: keyId, app_uuid: appId, created_by: updatedBy }, { transaction });
+    } else {
+        await APIKeyAppMapping.destroy({ where: { key_uuid: keyId }, transaction });
+    }
+    return true;
+}
+
+module.exports = { create, get, list, revoke, setApplication };

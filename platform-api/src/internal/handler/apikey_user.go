@@ -22,11 +22,12 @@ import (
 	"net/http"
 	"strings"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // APIKeyUserHandler handles listing API keys for a user across artifact types.
@@ -43,34 +44,34 @@ func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, slogger 
 	}
 }
 
-// ListUserAPIKeys handles GET /api/v1/me/api-keys
-func (h *APIKeyUserHandler) ListUserAPIKeys(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+// ListUserAPIKeys handles GET /api/v0.9/me/api-keys
+func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	callerUserID := c.GetHeader("x-user-id")
+	callerUserID := r.Header.Get("x-user-id")
 
 	var types []string
-	if typeParam := c.Query("type"); typeParam != "" {
+	if typeParam := r.URL.Query().Get("type"); typeParam != "" {
 		types = strings.Split(typeParam, ",")
 	}
 
-	response, err := h.apiKeyUserService.ListAPIKeysByUser(c.Request.Context(), orgID, callerUserID, types)
+	response, err := h.apiKeyUserService.ListAPIKeysByUser(r.Context(), orgID, callerUserID, types)
 	if err != nil {
 		h.slogger.Error("Failed to list API keys for user", "orgId", orgID, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to list API keys"))
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // RegisterRoutes registers the user API key routes.
-func (h *APIKeyUserHandler) RegisterRoutes(r *gin.Engine) {
-	r.GET("/api/v1/me/api-keys", h.ListUserAPIKeys)
+func (h *APIKeyUserHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+constants.APIBasePath+"/me/api-keys", h.ListUserAPIKeys)
 }

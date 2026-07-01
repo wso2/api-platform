@@ -138,6 +138,7 @@ func getFeaturePaths() []string {
 		"features/subscription-validation.feature",
 		"features/subscription-analytics.feature",
 		"features/llm-cost-based-ratelimit.feature",
+		"features/llm-provider-wide-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
 		"features/secrets.feature",

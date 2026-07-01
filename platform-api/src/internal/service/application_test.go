@@ -183,7 +183,7 @@ func (m *mockApplicationRepository) GetAssociationTargetByIDOrHandleAndKind(arti
 	if artifact == nil {
 		return nil, nil
 	}
-	if artifact.Kind != kind {
+	if artifact.Type != kind {
 		return nil, nil
 	}
 	return artifact, nil
@@ -276,7 +276,7 @@ func TestListMappedAPIKeys_ReturnsUnifiedMappingsWithMetadata(t *testing.T) {
 				Name:           "my-key",
 				ArtifactID:     "artifact-1",
 				ArtifactHandle: "orders-api",
-				ArtifactKind:   "RestApi",
+				ArtifactType:   "RestApi",
 				Status:         "ACTIVE",
 				CreatedBy:      "user-1",
 				CreatedAt:      createdAt,
@@ -288,7 +288,7 @@ func TestListMappedAPIKeys_ReturnsUnifiedMappingsWithMetadata(t *testing.T) {
 				Name:           "other-key",
 				ArtifactID:     "artifact-2",
 				ArtifactHandle: "payments-api",
-				ArtifactKind:   "RestApi",
+				ArtifactType:   "RestApi",
 				Status:         "ACTIVE",
 				CreatedBy:      "user-2",
 				CreatedAt:      createdAt,
@@ -339,9 +339,9 @@ func TestListMappedAPIKeys_AppliesPagination(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
 		mappedKeys: []*model.ApplicationAPIKey{
-			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "api-1", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
-			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "api-2", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
-			{ID: "key-3", APIKeyUUID: "uuid-3", Name: "key-3", ArtifactID: "artifact-3", ArtifactHandle: "api-3", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "api-1", ArtifactType: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "api-2", ArtifactType: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-3", APIKeyUUID: "uuid-3", Name: "key-3", ArtifactID: "artifact-3", ArtifactHandle: "api-3", ArtifactType: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
 		},
 	}
 
@@ -379,8 +379,8 @@ func TestListMappedAPIKeys_LimitOneReturnsFirstPage(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
 		mappedKeys: []*model.ApplicationAPIKey{
-			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "api-1", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
-			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "api-2", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "api-1", ArtifactType: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "api-2", ArtifactType: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
 		},
 	}
 
@@ -418,14 +418,14 @@ func TestListMappedAPIKeysForAssociation_FiltersToAssociation(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1", ProjectUUID: "project-1"},
 		artifactsByLookup: map[string]*model.Artifact{
-			"provider-1": {UUID: "artifact-1", Handle: "provider-1", Kind: constants.LLMProvider, OrganizationUUID: "org-1"},
+			"provider-1": {UUID: "artifact-1", Handle: "provider-1", Type: constants.LLMProvider, OrganizationUUID: "org-1"},
 		},
 		mappedAssociations: []*model.ApplicationAssociationTarget{
-			{TargetUUID: "artifact-1", TargetHandle: "provider-1", Kind: constants.LLMProvider},
+			{TargetUUID: "artifact-1", TargetHandle: "provider-1", Type: constants.LLMProvider},
 		},
 		mappedKeys: []*model.ApplicationAPIKey{
-			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "provider-1", ArtifactKind: constants.LLMProvider, CreatedAt: createdAt, UpdatedAt: updatedAt},
-			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "proxy-1", ArtifactKind: constants.LLMProxy, CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "provider-1", ArtifactType: constants.LLMProvider, CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "proxy-1", ArtifactType: constants.LLMProxy, CreatedAt: createdAt, UpdatedAt: updatedAt},
 		},
 	}
 
@@ -460,7 +460,7 @@ func TestListMappedAPIKeysForAssociation_ErrorsWhenAssociationMissing(t *testing
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1", ProjectUUID: "project-1"},
 		artifactsByLookup: map[string]*model.Artifact{
-			"provider-1": {UUID: "artifact-1", Handle: "provider-1", Kind: constants.LLMProvider, OrganizationUUID: "org-1"},
+			"provider-1": {UUID: "artifact-1", Handle: "provider-1", Type: constants.LLMProvider, OrganizationUUID: "org-1"},
 		},
 		mappedAssociations: []*model.ApplicationAssociationTarget{},
 	}
@@ -645,13 +645,13 @@ func TestAddApplicationAssociations_AssociatesProviderAndProxy(t *testing.T) {
 			"provider-1": {
 				UUID:             "artifact-provider-1",
 				Handle:           "provider-1",
-				Kind:             constants.LLMProvider,
+				Type:             constants.LLMProvider,
 				OrganizationUUID: "org-1",
 			},
 			"proxy-1": {
 				UUID:             "artifact-proxy-1",
 				Handle:           "proxy-1",
-				Kind:             constants.LLMProxy,
+				Type:             constants.LLMProxy,
 				OrganizationUUID: "org-1",
 			},
 		},
@@ -685,7 +685,7 @@ func TestAddApplicationAssociations_RejectsCrossProjectProxy(t *testing.T) {
 			"proxy-1": {
 				UUID:             "artifact-proxy-1",
 				Handle:           "proxy-1",
-				Kind:             constants.LLMProxy,
+				Type:             constants.LLMProxy,
 				OrganizationUUID: "org-1",
 			},
 		},
@@ -707,13 +707,12 @@ func TestAddApplicationAssociations_RejectsCrossProjectProxy(t *testing.T) {
 
 func TestListApplicationAssociations_AppliesPagination(t *testing.T) {
 	createdAt := time.Now().Add(-time.Hour)
-	updatedAt := time.Now()
 
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
 		mappedAssociations: []*model.ApplicationAssociationTarget{
-			{TargetUUID: "artifact-1", TargetHandle: "provider-1", TargetName: "Provider 1", TargetVersion: "v1", Kind: constants.LLMProvider, CreatedAt: createdAt, UpdatedAt: updatedAt},
-			{TargetUUID: "artifact-2", TargetHandle: "proxy-1", TargetName: "Proxy 1", TargetVersion: "v1", Kind: constants.LLMProxy, CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{TargetUUID: "artifact-1", TargetHandle: "provider-1", TargetName: "Provider 1", TargetVersion: "v1", Type: constants.LLMProvider, CreatedAt: createdAt},
+			{TargetUUID: "artifact-2", TargetHandle: "proxy-1", TargetName: "Proxy 1", TargetVersion: "v1", Type: constants.LLMProxy, CreatedAt: createdAt},
 		},
 	}
 
@@ -738,7 +737,7 @@ func TestRemoveApplicationAssociation_RemovesByResolvedTarget(t *testing.T) {
 			"proxy-1": {
 				UUID:             "artifact-proxy-1",
 				Handle:           "proxy-1",
-				Kind:             constants.LLMProxy,
+				Type:             constants.LLMProxy,
 				OrganizationUUID: "org-1",
 			},
 		},
@@ -805,7 +804,7 @@ func TestCreateApplication_RequiresProjectID(t *testing.T) {
 	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
 		Name: "Sample App",
 		Type: api.ApplicationType("genai"),
-	}, orgID)
+	}, orgID, "")
 	if !errors.Is(err, constants.ErrProjectNotFound) {
 		t.Fatalf("expected ErrProjectNotFound, got %v", err)
 	}
@@ -837,7 +836,7 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 		Name:      "Sample App",
 		ProjectId: projectUUID,
 		Type:      api.ApplicationType("genai"),
-	}, orgID)
+	}, orgID, "")
 	if !errors.Is(err, constants.ErrProjectNotFound) {
 		t.Fatalf("expected ErrProjectNotFound, got %v", err)
 	}

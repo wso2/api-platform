@@ -37,26 +37,26 @@ async function runBatch() {
     if (events.length === 0) return;
 
     for (const event of events) {
-        const subscribers = matchSubscribers(event.EVENT_TYPE, event.GATEWAY_TYPE);
-        if (subscribers.length === 0) {
-            // No matching subscribers — mark as delivered immediately.
-            await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { EVENT_ID: event.EVENT_ID } });
-            continue;
-        }
         try {
-            await eventDao.createDeliveries(event.EVENT_ID, subscribers, null, null);
+            const subscribers = await matchSubscribers(event.org_uuid, event.type);
+            if (subscribers.length === 0) {
+                // No matching subscribers — mark as delivered immediately.
+                await DPEvent.update({ status: 'ALL_DELIVERED' }, { where: { uuid: event.uuid } });
+                continue;
+            }
+            await eventDao.createDeliveries(event.uuid, subscribers, null, null);
         } catch (err) {
-            logger.error('[dispatcher] failed to create deliveries for event', {
-                eventId: event.EVENT_ID, error: err.message
+            logger.error('Failed to create deliveries for event', {
+                eventId: event.uuid, error: err.message
             });
             try {
-                await DPEvent.update({ STATUS: 'PENDING' }, { where: { EVENT_ID: event.EVENT_ID } });
-                logger.info('[dispatcher] restored event eligibility after delivery creation failure', {
-                    eventId: event.EVENT_ID
+                await DPEvent.update({ status: 'PENDING' }, { where: { uuid: event.uuid } });
+                logger.info('Restored event eligibility after delivery creation failure', {
+                    eventId: event.uuid
                 });
             } catch (restoreErr) {
-                logger.error('[dispatcher] failed to restore event eligibility', {
-                    eventId: event.EVENT_ID, error: restoreErr.message
+                logger.error('Failed to restore event eligibility', {
+                    eventId: event.uuid, error: restoreErr.message
                 });
             }
         }
@@ -74,7 +74,7 @@ function start() {
         try {
             await runBatch();
         } catch (err) {
-            logger.error('[dispatcher] batch error', { error: err.message || String(err) });
+            logger.error('Batch error', { error: err.message || String(err) });
         }
     }
 
@@ -82,7 +82,7 @@ function start() {
     // Also run immediately on event_published signals (no-op if nothing pending).
     onPublished(tick);
 
-    logger.info('[dispatcher] started', { pollIntervalMs: pollMs });
+    logger.info('Dispatcher started', { pollIntervalMs: pollMs });
 }
 
 function stop() {

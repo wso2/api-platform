@@ -29,6 +29,7 @@ export interface Gateway {
   isCritical: boolean;
   functionalityType: string;
   isActive: boolean;
+  version?: string;
   createdAt?: string;
   updatedAt?: string;
   properties?: Record<string, string>;
@@ -64,6 +65,7 @@ export interface RegisterGatewayRequest {
   vhost: string;
   functionalityType: string;
   description?: string;
+  version?: string;
   sandboxVhost?: string;
   environment?: string;
 }

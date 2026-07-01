@@ -19,30 +19,45 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
-	"time"
 )
 
 type ArtifactRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
-func NewArtifactRepo(db *database.DB) *ArtifactRepo {
-	return &ArtifactRepo{db: db}
+// NewArtifactRepo creates an ArtifactRepo. When reg is provided it is used for
+// dynamic UNION queries and kind validation; when omitted the core-only default
+// registry (rest_apis, llm_providers, llm_proxies, mcp_proxies) is used.
+func NewArtifactRepo(db *database.DB, reg ...*ArtifactTableRegistry) *ArtifactRepo {
+	r := NewArtifactTableRegistry()
+	if len(reg) > 0 && reg[0] != nil {
+		r = reg[0]
+	}
+	return &ArtifactRepo{db: db, reg: r}
 }
 
 func (r *ArtifactRepo) Create(tx *sql.Tx, artifact *model.Artifact) error {
-	now := time.Now().UTC()
+	if !r.reg.IsValidKindAlias(artifact.Type) {
+		return fmt.Errorf("invalid artifact type: %q", artifact.Type)
+	}
 	query := `
-		INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO artifacts (uuid, type, organization_uuid)
+		VALUES (?, ?, ?)
 	`
-	_, err := tx.Exec(r.db.Rebind(query), artifact.UUID, artifact.Handle, artifact.Name, artifact.Version, artifact.Kind, artifact.OrganizationUUID, now, now)
+	_, err := tx.Exec(r.db.Rebind(query), artifact.UUID, artifact.Type, artifact.OrganizationUUID)
 	return err
+}
+
+// Update is a no-op: artifact rows no longer store mutable fields (name/version moved to type-specific tables).
+func (r *ArtifactRepo) Update(_ *sql.Tx, _ *model.Artifact) error {
+	return nil
 }
 
 func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
@@ -61,33 +76,106 @@ func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
 	return nil
 }
 
-func (r *ArtifactRepo) Update(tx *sql.Tx, artifact *model.Artifact) error {
-	query := `
-		UPDATE artifacts SET name = ?, version = ?, updated_at = ?
-		WHERE uuid = ? AND organization_uuid = ?
-	`
-	_, err := tx.Exec(r.db.Rebind(query), artifact.Name, artifact.Version, artifact.UpdatedAt, artifact.UUID, artifact.OrganizationUUID)
-	return err
-}
-
+// Exists checks whether an artifact with the given type+handle exists for the org.
+// Since handle moved to the type-specific tables, we query them directly.
 func (r *ArtifactRepo) Exists(kind, handle, orgUUID string) (bool, error) {
-	query := `SELECT COUNT(*) FROM artifacts WHERE kind = ? AND handle = ? AND organization_uuid = ?`
+	entry, ok := r.reg.TableByKindKey(kind)
+	if !ok {
+		return false, nil
+	}
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE handle = ? AND organization_uuid = ?`, entry.Table)
 	var count int
-	err := r.db.QueryRow(r.db.Rebind(query), kind, handle, orgUUID).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
 	return count > 0, nil
 }
 
-func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {
-	artifact := &model.Artifact{}
-	query := `SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at FROM artifacts WHERE handle = ? AND organization_uuid = ?`
-	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(
-		&artifact.UUID, &artifact.Handle, &artifact.Name, &artifact.Version,
-		&artifact.Kind, &artifact.OrganizationUUID, &artifact.CreatedAt, &artifact.UpdatedAt)
+// GetAPIMetadataByHandle retrieves minimal API metadata by handle across all registered artifact tables.
+func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error) {
+	entries := r.reg.Entries()
+	parts := make([]string, len(entries))
+	args := make([]interface{}, 0, len(entries)*2)
+	for i, e := range entries {
+		parts[i] = fmt.Sprintf(
+			"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid FROM %s WHERE handle = ? AND organization_uuid = ?",
+			e.KindAlias, e.Table,
+		)
+		args = append(args, handle, orgUUID)
+	}
+	query := "SELECT uuid, handle, display_name, version, type, organization_uuid FROM (\n\t\t\t" +
+		strings.Join(parts, "\n\t\t\tUNION ALL\n\t\t\t") +
+		"\n\t\t) combined"
+
+	metadata := &model.APIMetadata{}
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(
+		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Version, &metadata.Kind, &metadata.OrganizationID,
+	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return metadata, nil
+}
+
+// GetByHandle finds an artifact by handle across all registered artifact tables.
+// Returns the artifact with its supplemental fields derived from the matching table.
+func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {
+	entries := r.reg.Entries()
+	parts := make([]string, len(entries))
+	args := make([]interface{}, 0, len(entries)*2)
+	for i, e := range entries {
+		parts[i] = fmt.Sprintf(
+			"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid, origin FROM %s WHERE handle = ? AND organization_uuid = ?",
+			e.KindAlias, e.Table,
+		)
+		args = append(args, handle, orgUUID)
+	}
+	query := "SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (\n\t\t\t" +
+		strings.Join(parts, "\n\t\t\tUNION ALL\n\t\t\t") +
+		"\n\t\t) combined ORDER BY (SELECT NULL) " + r.db.FetchFirstClause(1)
+
+	artifact := &model.Artifact{}
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(
+		&artifact.UUID, &artifact.Handle, &artifact.Name, &artifact.Version,
+		&artifact.Type, &artifact.OrganizationUUID, &artifact.Origin,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return artifact, nil
+}
+
+// GetByUUID finds an artifact by UUID across all registered artifact tables.
+// Returns the artifact with its supplemental fields derived from the matching table.
+func (r *ArtifactRepo) GetByUUID(uuid, orgUUID string) (*model.Artifact, error) {
+	entries := r.reg.Entries()
+	parts := make([]string, len(entries))
+	args := make([]interface{}, 0, len(entries)*2)
+	for i, e := range entries {
+		parts[i] = fmt.Sprintf(
+			"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid, origin FROM %s WHERE uuid = ? AND organization_uuid = ?",
+			e.KindAlias, e.Table,
+		)
+		args = append(args, uuid, orgUUID)
+	}
+	query := "SELECT uuid, handle, display_name, version, type, organization_uuid, origin FROM (\n\t\t\t" +
+		strings.Join(parts, "\n\t\t\tUNION ALL\n\t\t\t") +
+		"\n\t\t) combined ORDER BY (SELECT NULL)" + r.db.FetchFirstClause(1)
+
+	artifact := &model.Artifact{}
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(
+		&artifact.UUID, &artifact.Handle, &artifact.Name, &artifact.Version,
+		&artifact.Type, &artifact.OrganizationUUID, &artifact.Origin,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
@@ -97,7 +185,7 @@ func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, err
 
 func (r *ArtifactRepo) CountByKindAndOrg(kind, orgUUID string) (int, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM artifacts WHERE kind = ? AND organization_uuid = ?`
+	query := `SELECT COUNT(*) FROM artifacts WHERE type = ? AND organization_uuid = ?`
 	err := r.db.QueryRow(r.db.Rebind(query), kind, orgUUID).Scan(&count)
 	if err != nil {
 		return 0, err
@@ -111,7 +199,6 @@ func (r *ArtifactRepo) ExistsByUUIDs(uuids []string, orgUUID string) ([]string, 
 		return nil, nil
 	}
 
-	// Build placeholders for IN clause
 	placeholders := make([]string, len(uuids))
 	args := make([]interface{}, 0, len(uuids)+1)
 	for i, uuid := range uuids {

@@ -9,7 +9,6 @@ spec:
   displayName: Swagger Petstore
   version: 1.0.7
   description: This is a sample server Petstore server.
-  provider: WSO2
   status: PUBLISHED
   # referenceID: <uuid-from-cp>
 
@@ -19,10 +18,9 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
-  visibility: PUBLIC
-  visibleGroups: []
+  agentVisibility: VISIBLE
 
   businessInformation:
     businessOwner: API Team

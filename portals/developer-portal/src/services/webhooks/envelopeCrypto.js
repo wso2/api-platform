@@ -72,7 +72,10 @@ function decryptFromEnvelope(privateKeyPem, envelope) {
 
     const decipher = crypto.createDecipheriv('aes-256-gcm', aesKey, Buffer.from(envelope.iv, 'base64'));
     decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
-    return decipher.update(Buffer.from(envelope.ciphertext, 'base64')) + decipher.final('utf8');
+    return Buffer.concat([
+        decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+        decipher.final()
+    ]).toString('utf8');
 }
 
 module.exports = { encryptToSubscriber, decryptFromEnvelope };

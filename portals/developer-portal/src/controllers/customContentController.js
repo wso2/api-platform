@@ -26,7 +26,7 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
 
-const loadCustomContent = async (req, res) => {
+const loadCustomContent = async (req, res, next) => {
 
     let html = "";
     const { orgName, viewName } = req.params;
@@ -82,8 +82,8 @@ const loadCustomContent = async (req, res) => {
                 throw new Error(`Content page not found at ${resolvedPagePath}`);
             }
             const orgDetails = await orgDao.get(orgName);
-            const orgId = orgDetails.ORG_ID;
-            devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+            const orgId = orgDetails.uuid;
+            devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
             let markDownFiles = await orgDao.getContent({
                 orgId: orgId,
                 fileType: 'markDown',
@@ -91,8 +91,8 @@ const loadCustomContent = async (req, res) => {
             });
             if (markDownFiles.length > 0) {
                 markDownFiles.forEach((item) => {
-                    const tempKey = item.FILE_NAME.split('.md')[0];
-                    content[tempKey] = markdown.parse(item.FILE_CONTENT.toString(constants.CHARSET_UTF8));
+                    const tempKey = item.file_name.split('.md')[0];
+                    content[tempKey] = markdown.parse(item.file_content.toString(constants.CHARSET_UTF8));
                 });
             }
             content[constants.BASE_URL_NAME] = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
@@ -108,19 +108,14 @@ const loadCustomContent = async (req, res) => {
             }
             html = await renderTemplateFromAPI(content, orgId, orgName, filePath, viewName);
         } catch (error) {
-            const templateContent = {
-                devportalMode: devportalMode,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-                profile: req.isAuthenticated() ? req.user : null,
-            }
-            logger.error('Error while loading custom content', { 
+            logger.error('Error while loading custom content', {
                 orgName,
-                error: error.message, 
+                error: error.message,
                 stack: error.stack,
                 filePath: req.params.filePath,
             });
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
     }
     res.send(html);

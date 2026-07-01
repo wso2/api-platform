@@ -1,0 +1,12 @@
+,,,,,,,,,,,,,,,,,,
+Scenario Name,Concurrent Users,Throughput (Requests/sec),Average Response Time (ms),# Samples,Error Count,Error %,Average Users in the System,Standard Deviation of Response Time (ms),Minimum Response Time (ms),Maximum Response Time (ms),75th Percentile of Response Time (ms),90th Percentile of Response Time (ms),95th Percentile of Response Time (ms),98th Percentile of Response Time (ms),99th Percentile of Response Time (ms),99.9th Percentile of Response Time (ms),Received (KB/sec),Sent (KB/sec)
+API with 8 routes,100,9795.19,10.08,8221898,0,0,98,7.56,0,56,10,22,30,34,37,43,1607.14,2267.05
+API with 8 routes,500,9273.67,53.76,7784921,0,0,498,14.9,2,134,65,74,78,83,87,96,1525.45,2146.35
+API with 8 routes,800,9055.49,88.17,7601697,0,0,798,16.29,1,192,97,105,112,124,136,155,1493.43,2095.85
+API with 8 routes,1000,9107.1,109.62,7645393,0,0,998,18.17,1,249,116,136,147,158,166,186,1502.24,2107.8
+,,,,,,,,,,,,,,,,,,
+Scenario Name,Concurrent Users,Throughput (Requests/sec),Average Response Time (ms),# Samples,Error Count,Error %,Average Users in the System,Standard Deviation of Response Time (ms),Minimum Response Time (ms),Maximum Response Time (ms),75th Percentile of Response Time (ms),90th Percentile of Response Time (ms),95th Percentile of Response Time (ms),98th Percentile of Response Time (ms),99th Percentile of Response Time (ms),99.9th Percentile of Response Time (ms),Received (KB/sec),Sent (KB/sec)
+API with 8 routes + Mediation policy,100,8411.27,11.76,7060903,0,0,98,8.16,1,58,13,26,31,37,40,47,1618.29,1915.95
+API with 8 routes + Mediation policy,500,7956.58,62.68,6679203,0,0,498,16.23,3,171,75,83,88,94,98,115,1534,1812.37
+API with 8 routes + Mediation policy,800,7809.48,102.26,6555630,0,0,798,22.03,4,272,112,131,145,161,170,193,1508.15,1778.87
+API with 8 routes + Mediation policy,1000,7847.94,127.24,6588123,0,0,998,24.94,10,292,144,164,175,186,193,215,1516,1787.63

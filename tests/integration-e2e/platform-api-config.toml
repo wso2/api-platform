@@ -1,0 +1,22 @@
+# platform-api configuration for the combined e2e stack.
+# Database settings come from environment variables (see docker-compose.yaml);
+# this file supplies file-based auth so the scenario can log in (admin/admin).
+
+[auth.jwt]
+enabled    = true
+issuer     = "platform-api"
+secret_key = "e2e-integration-secret-key-0123456789"
+
+[auth.file_based]
+enabled = true
+
+[auth.file_based.organization]
+id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
+name   = "AP Organization"
+handle = "ap-org"
+
+# Default login: admin / admin (bcrypt hash of "admin", reused from the shipped sample config).
+[[auth.file_based.users]]
+username      = "admin"
+password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
+scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"

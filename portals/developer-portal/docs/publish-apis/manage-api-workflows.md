@@ -8,13 +8,13 @@ This page covers the admin API endpoints for managing workflows programmatically
 
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
-> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 >   -d "username=admin&password=admin" | jq -r .token)
 > ```
 
 ## Create a Workflow
 
-API flow requests are JSON. The `apiFlowDefinition` field contains the Arazzo content as an inline object.
+API workflow requests are JSON. The `apiWorkflowDefinition` field contains the Arazzo content as an inline object.
 
 ```json
 // workflow.json
@@ -25,7 +25,7 @@ API flow requests are JSON. The `apiFlowDefinition` field contains the Arazzo co
   "agentPrompt": "Use this workflow when a user wants to place a new order. It covers product lookup, cart creation, and order submission.",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {
+  "apiWorkflowDefinition": {
     "arazzo": "1.0.0",
     "info": {
       "title": "Place an Order",
@@ -71,7 +71,7 @@ API flow requests are JSON. The `apiFlowDefinition` field contains the Arazzo co
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow.json
@@ -85,20 +85,20 @@ curl -X POST \
 | `agentPrompt` | Natural language guidance for AI agents on when/how to use this workflow |
 | `agentVisibility` | `VISIBLE` — included in `llms.txt`/`api-workflows.md`; `HIDDEN` — excluded from agent surfaces |
 | `contentType` | `ARAZZO` for Arazzo workflows; `MD` for Markdown-based workflows |
-| `apiFlowDefinition` | Inline Arazzo specification object (when `contentType` is `ARAZZO`) |
+| `apiWorkflowDefinition` | Inline Arazzo specification object (when `contentType` is `ARAZZO`) |
 | `markdownContent` | Markdown string (when `contentType` is `MD`) |
 
 ## List Workflows
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows \
+curl http://localhost:3000/devportal/v1/views/{viewName}/api-workflows \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Workflow
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -115,7 +115,7 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{ap
 
 ```bash
 curl -X PUT \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow-update.json
@@ -125,7 +125,7 @@ curl -X PUT \
 
 ```bash
 curl -X DELETE \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -149,7 +149,7 @@ The portal can generate a suggested agent prompt for a workflow using AI:
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt" \
+  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/generate-prompt" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @generate-prompt.json

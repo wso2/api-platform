@@ -16,23 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const constants = require('../utils/constants');
 
 class APIDTO {
     constructor(api) {
-        this.apiID = api.API_ID;
-        this.apiReferenceID = api.REFERENCE_ID;
-        this.apiHandle = api.API_HANDLE;
-        this.provider = api.PROVIDER;
+        this.id = api.uuid;
+        this.refId = api.ref_id;
+        this.handle = api.handle;
         this.dataSource = api.DATA_SOURCE;
-        this.apiInfo = new APIInfo(api);
+        Object.assign(this, new APIInfo(api));
         this.endPoints = new Endpoints(api);
-        
-        if (api.DP_SUBSCRIPTION_POLICies) {
-            this.subscriptionPolicies = api.DP_SUBSCRIPTION_POLICies.map(policy => new APISubscriptionPolicy(policy));
+
+        if (api.dp_subscription_plans) {
+            this.subscriptionPlans = api.dp_subscription_plans.map(plan => new APISubscriptionPlan(plan));
         }
-        if (api.DP_APPLICATIONs) {
-            this.policyID = api.DP_APPLICATIONs[0].DP_API_SUBSCRIPTION.dataValues.POLICY_ID;
-        }
+
     }
 
     setResponseData(data) {
@@ -46,71 +44,63 @@ class APIDTO {
 
 class APIInfo {
     constructor(apiInfo) {
-        this.apiName = apiInfo.API_NAME;
-        this.apiTitle = apiInfo.METADATA_SEARCH?.apiInfo?.apiTitle || null;
-        this.remotes = apiInfo.METADATA_SEARCH?.apiInfo?.remotes || [];
-        this.apiVersion = apiInfo.API_VERSION;
-        this.apiDescription = apiInfo.API_DESCRIPTION;
-        this.apiType = apiInfo.API_TYPE;
-        this.apiStatus = apiInfo.STATUS;
-        this.visibility = apiInfo.VISIBILITY;
-        this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
-        this.gatewayVendor = apiInfo.METADATA_SEARCH?.apiInfo?.gatewayVendor || 'wso2';
-        this.gatewayType = apiInfo.GATEWAY_TYPE || null;
+        this.name = apiInfo.name;
+        this.apiTitle = apiInfo.metadata_search?.apiTitle || null;
+        this.remotes = apiInfo.metadata_search?.remotes || [];
+        this.version = apiInfo.version;
+        this.description = apiInfo.description;
+        this.type = apiInfo.type;
+        this.status = apiInfo.status;
+        this.agentVisibility = apiInfo.agent_visibility || 'VISIBLE';
         if (apiInfo.addedLabels) {
             this.addedLabels = apiInfo.addedLabels;
         }
         if (apiInfo.removedLabels) {
             this.removedLabels = apiInfo.removedLabels;
         }
-        if (apiInfo.VISIBLE_GROUPS) {
-            this.visibleGroups = apiInfo.VISIBLE_GROUPS.split(" ");
-        }
-        if (apiInfo.BUSINESS_OWNER || apiInfo.TECHNICAL_OWNER) {
+        if (apiInfo.business_owner || apiInfo.technical_owner) {
             this.owners = new Owner(apiInfo);
         }
-        if (apiInfo.DP_API_IMAGEDATA) {
-            this.apiImageMetadata = getAPIImages(apiInfo.DP_API_IMAGEDATA);
-            if (apiInfo.DP_API_IMAGEDATA) {
-                this.apiImageMetadata = getAPIImages(apiInfo.DP_API_IMAGEDATA);
-            }
-            if (apiInfo.TAGS) {
-                this.tags = apiInfo.TAGS.split(" ");
-            }
-            if (apiInfo.DP_LABELs) {
-                this.labels = apiInfo.DP_LABELs.map(label => label.dataValues ? label.dataValues.NAME : label);
-            }
+        if (apiInfo.dp_api_contents) {
+            const images = apiInfo.dp_api_contents.filter(content => content.type === constants.DOC_TYPES.IMAGES);
+            this.apiImageMetadata = getAPIImages(images);
+        }
+        if (apiInfo.dp_tags) {
+            this.tags = apiInfo.dp_tags.map(tag => tag.dataValues ? tag.dataValues.name : tag);
+        }
+        if (apiInfo.dp_labels) {
+            this.labels = apiInfo.dp_labels.map(label => label.dataValues ? label.dataValues.name : label);
         }
     }
 }
 
-class APISubscriptionPolicy {
-    constructor(apiSubscriptionPolicy) {
-        this.policyName = apiSubscriptionPolicy.POLICY_NAME;
-        this.displayName = apiSubscriptionPolicy.DISPLAY_NAME;
-        this.requestCount = apiSubscriptionPolicy.REQUEST_COUNT;
-        this.policyID = apiSubscriptionPolicy.POLICY_ID;
-        this.description = apiSubscriptionPolicy.DESCRIPTION;
+class APISubscriptionPlan {
+    constructor(apiSubscriptionPlan) {
+        this.handle = apiSubscriptionPlan.handle;
+        this.name = apiSubscriptionPlan.name;
+        this.requestCount = apiSubscriptionPlan.request_count;
+        this.id = apiSubscriptionPlan.uuid;
+        this.description = apiSubscriptionPlan.description;
     }
 }
 
 class Owner {
     constructor(api) {
-        this.technicalOwner = api.TECHNICAL_OWNER;
-        this.businessOwner = api.BUSINESS_OWNER;
-        if (api.BUSINESS_OWNER_EMAIL) {
-            this.businessOwnerEmail = api.BUSINESS_OWNER_EMAIL;
+        this.technicalOwner = api.technical_owner;
+        this.businessOwner = api.business_owner;
+        if (api.business_owner_email) {
+            this.businessOwnerEmail = api.business_owner_email;
         }
-        if (api.TECHNICAL_OWNER_EMAIL) {
-            this.technicalOwnerEmail = api.TECHNICAL_OWNER_EMAIL;
+        if (api.technical_owner_email) {
+            this.technicalOwnerEmail = api.technical_owner_email;
         }
     }
 }
 
 class Endpoints {
     constructor(api) {
-        this.sandboxURL = api.SANDBOX_URL;
-        this.productionURL = api.PRODUCTION_URL;
+        this.sandboxURL = api.sandbox_url;
+        this.productionURL = api.production_url;
     }
 }
 
@@ -123,7 +113,7 @@ class APIImages {
 const getAPIImages = (apiImages) => {
     let images = {}
     apiImages.forEach(element => {
-        images[element.IMAGE_TAG] = element.IMAGE_NAME;
+        images[element.lookup_key] = element.file_name;
     });
     return new APIImages(images);
 }

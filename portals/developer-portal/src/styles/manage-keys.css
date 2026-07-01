@@ -494,6 +494,18 @@
     margin: 0 0 0.75rem;
 }
 
+.keys-section .mk-add-clientid-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 420px;
+}
+
+.keys-section .mk-add-clientid-row .mk-input {
+    flex: 1;
+}
+
 /* ── Error container ── */
 .keys-section .mk-error {
     padding: 0.75rem 1.25rem;

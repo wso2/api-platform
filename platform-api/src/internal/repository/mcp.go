@@ -68,26 +68,33 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 	// Insert into artifacts table first using artifactRepo
 	if err := r.artifactRepo.Create(tx, &model.Artifact{
 		UUID:             p.UUID,
-		Handle:           p.Handle,
-		Name:             p.Name,
-		Version:          p.Version,
-		Kind:             constants.MCPProxy,
+		Type:             constants.MCPProxy,
 		OrganizationUUID: p.OrganizationUUID,
 	}); err != nil {
 		return fmt.Errorf("failed to create artifact: %w", err)
 	}
 
+	origin := p.Origin
+	if origin == "" {
+		origin = constants.OriginCP
+	}
+
 	// Insert into mcp_proxies table
 	query := `
 		INSERT INTO mcp_proxies (
-			uuid, project_uuid, description, created_by, status, configuration
+			uuid, handle, display_name, version, project_uuid, description, created_by, configuration, origin, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		p.UUID, p.ProjectUUID, p.Description, p.CreatedBy, p.Status, configurationJSON,
+		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
+		p.OrganizationUUID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create MCP proxy: %w", err)
+	}
+
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, p.UUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -100,26 +107,27 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.status, p.configuration
-		FROM artifacts a
-		JOIN mcp_proxies p ON a.uuid = p.uuid
-		WHERE a.handle = ? AND a.organization_uuid = ? AND a.kind = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.MCPProxy)
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, configuration
+		FROM mcp_proxies
+		WHERE handle = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
 
 	var p model.MCPProxy
-	var configurationJSON sql.NullString
+	var createdBy sql.NullString
+	var configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.Status, &configurationJSON,
+		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
 
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 		} else if config != nil {
@@ -134,26 +142,27 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.status, p.configuration
-		FROM artifacts a
-		JOIN mcp_proxies p ON a.uuid = p.uuid
-		WHERE a.uuid = ? AND a.organization_uuid = ? AND a.kind = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID, constants.MCPProxy)
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, configuration
+		FROM mcp_proxies
+		WHERE uuid = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
 
 	var p model.MCPProxy
-	var configurationJSON sql.NullString
+	var createdBy sql.NullString
+	var configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.Status, &configurationJSON,
+		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
 
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 		} else if config != nil {
@@ -166,16 +175,16 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 
 // List retrieves all MCP proxies for an organization
 func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.status, p.configuration
-		FROM artifacts a
-		JOIN mcp_proxies p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.kind = ?
-		ORDER BY a.created_at DESC
-		`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.MCPProxy)
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, configuration
+		FROM mcp_proxies
+		WHERE organization_uuid = ?
+		ORDER BY created_at DESC
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -184,15 +193,17 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.Status, &configurationJSON,
+			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		p.CreatedBy = createdBy.String
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 			} else if config != nil {
@@ -213,14 +224,13 @@ func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
 func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error) {
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.status, p.configuration
-		FROM artifacts a
-		JOIN mcp_proxies p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
-		ORDER BY a.created_at DESC
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, configuration
+		FROM mcp_proxies
+		WHERE organization_uuid = ? AND project_uuid = ?
+		ORDER BY created_at DESC
 		`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.MCPProxy, projectUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, projectUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -229,15 +239,17 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.Status, &configurationJSON,
+			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		p.CreatedBy = createdBy.String
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 			} else if config != nil {
@@ -253,10 +265,9 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 func (r *MCPProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
 	var count int
 	query := `
-		SELECT COUNT(*) FROM artifacts a
-		JOIN mcp_proxies p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.MCPProxy, projectUUID).Scan(&count); err != nil {
+		SELECT COUNT(*) FROM mcp_proxies
+		WHERE organization_uuid = ? AND project_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -281,9 +292,9 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	// Get the proxy UUID from handle
 	var proxyUUID string
 	query := `
-		SELECT uuid FROM artifacts
-		WHERE handle = ? AND organization_uuid = ? AND kind = ?`
-	err = tx.QueryRow(r.db.Rebind(query), p.Handle, p.OrganizationUUID, constants.MCPProxy).Scan(&proxyUUID)
+		SELECT uuid FROM mcp_proxies
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), p.Handle, p.OrganizationUUID).Scan(&proxyUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -291,24 +302,13 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 		return err
 	}
 
-	// Update artifacts table
-	if err := r.artifactRepo.Update(tx, &model.Artifact{
-		UUID:             proxyUUID,
-		Name:             p.Name,
-		Version:          p.Version,
-		OrganizationUUID: p.OrganizationUUID,
-		UpdatedAt:        now,
-	}); err != nil {
-		return fmt.Errorf("failed to update artifact: %w", err)
-	}
-
-	// Update mcp_proxies table
+	// Update mcp_proxies table (name/version/updated_at now live here)
 	query = `
 		UPDATE mcp_proxies
-		SET description = ?, configuration = ?, status = ?
+		SET display_name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		p.Description, configurationJSON, p.Status,
+		p.Name, p.Version, p.Description, configurationJSON, p.UpdatedBy, now,
 		proxyUUID,
 	)
 	if err != nil {
@@ -321,6 +321,11 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
+
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, proxyUUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -338,9 +343,9 @@ func (r *MCPProxyRepo) Delete(handle, orgUUID string) error {
 	// Get the proxy UUID from handle
 	var proxyUUID string
 	query := `
-		SELECT uuid FROM artifacts
-		WHERE handle = ? AND organization_uuid = ? AND kind = ?`
-	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.MCPProxy).Scan(&proxyUUID)
+		SELECT uuid FROM mcp_proxies
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&proxyUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -369,22 +374,16 @@ func (r *MCPProxyRepo) Exists(handle, orgUUID string) (bool, error) {
 	return r.artifactRepo.Exists(constants.MCPProxy, handle, orgUUID)
 }
 
-// serializeMCPProxyConfiguration serializes the MCP proxy configuration to JSON string
-func serializeMCPProxyConfiguration(config model.MCPProxyConfiguration) (string, error) {
-	configJSON, err := json.Marshal(config)
-	if err != nil {
-		return "", err
-	}
-	return string(configJSON), nil
+func serializeMCPProxyConfiguration(config model.MCPProxyConfiguration) ([]byte, error) {
+	return json.Marshal(config)
 }
 
-// deserializeMCPProxyConfiguration deserializes the JSON string to MCP proxy configuration
-func deserializeMCPProxyConfiguration(configJSON sql.NullString) (*model.MCPProxyConfiguration, error) {
-	if !configJSON.Valid || configJSON.String == "" {
+func deserializeMCPProxyConfiguration(configJSON []byte) (*model.MCPProxyConfiguration, error) {
+	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
 	var config model.MCPProxyConfiguration
-	if err := json.Unmarshal([]byte(configJSON.String), &config); err != nil {
+	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil

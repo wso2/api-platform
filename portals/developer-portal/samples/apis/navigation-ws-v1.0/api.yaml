@@ -9,7 +9,6 @@ spec:
   displayName: Navigation API
   version: v1.0
   description: Real-time vehicle navigation and live route tracking over WebSocket. Send an origin and destination; receive turn-by-turn updates as the route is calculated and re-routed.
-  provider: WSO2
   status: PUBLISHED
 
   tags:
@@ -21,12 +20,11 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Silver
 
-  visibility: PUBLIC
-  visibleGroups: []
+  agentVisibility: VISIBLE
 
   businessInformation:
     businessOwner: Platform Owner

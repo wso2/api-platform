@@ -31,7 +31,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,8 +69,8 @@ MIIDkzCCAnugAwIBAgIUI92o4hdPPhGB4BFivBQnTe/RRjMwDQYJKoZIhvcNAQEL
 BQAwWTELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAkNBMQswCQYDVQQHDAJTRjENMAsG
 A1UECgwEVGVzdDELMAkGA1UECwwCSVQxFDASBgNVBAMMC2V4YW1wbGUuY29tMB4X
 DTI2MDIwNjA5MzIwNloXDTI3MDIwNjA5MzIwNlowWTELMAkGA1UEBhMCVVMxCzAJ
-BgNVBAgMAkNBMQswCQYDVQQHDAJTRjENMAsGA1UECgwEVGVzdDELMAkGA1UECwwC
-SVQxFDASBgNVBAMMC2V4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
+BgNVBAgMAkNBMQswCQYDVQQHDAJTRjENMAsG
+A1UECgwEVGVzdDELMAkGA1UECwwCSVQxFDASBgNVBAMMC2V4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
 MIIBCgKCAQEAiMGvSiOweFnDEfeyspV9BK/d/QXXGPey91qjtP3QkToIEbQQngM1
 L8omo4dVoyqivbr5ngAGg1dSmwYC2EudyDg7fvERydIhjhCxLG6aN8Zn41AxmNzj
 X0cZjM/o/38PI5QSYaC18J5cvz4er9ZtEiRGa0Jm5O22O7BlcOGDxy1FCENmsLvs
@@ -198,8 +197,24 @@ MIIEowIBAAKCAQEA...
 // ============ ListCertificates Tests ============
 // These tests don't need snapshot manager mocking
 
+// newCertListHandler wraps ListCertificates with CorrelationIDMiddleware for testing.
+func newCertListHandler(server *APIServer) http.Handler {
+	return middleware.CorrelationIDMiddleware(server.logger)(http.HandlerFunc(server.ListCertificates))
+}
+
+// newUploadCertHandler wraps UploadCertificate with CorrelationIDMiddleware for testing.
+func newUploadCertHandler(server *APIServer) http.Handler {
+	return middleware.CorrelationIDMiddleware(server.logger)(http.HandlerFunc(server.UploadCertificate))
+}
+
+// newDeleteCertHandler wraps DeleteCertificate with CorrelationIDMiddleware for testing.
+func newDeleteCertHandler(server *APIServer, certID string) http.Handler {
+	return middleware.CorrelationIDMiddleware(server.logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.DeleteCertificate(w, r, certID)
+	}))
+}
+
 func TestListCertificates_Success(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 
 	// Pre-populate with certificates
@@ -226,14 +241,11 @@ func TestListCertificates_Success(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.GET("/certificates", server.ListCertificates)
-
+	handler := newCertListHandler(server)
 	req := httptest.NewRequest(http.MethodGet, "/certificates", nil)
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -247,21 +259,17 @@ func TestListCertificates_Success(t *testing.T) {
 }
 
 func TestListCertificates_EmptyList(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	mockDB.certs = []*models.StoredCertificate{}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.GET("/certificates", server.ListCertificates)
-
+	handler := newCertListHandler(server)
 	req := httptest.NewRequest(http.MethodGet, "/certificates", nil)
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -274,21 +282,17 @@ func TestListCertificates_EmptyList(t *testing.T) {
 }
 
 func TestListCertificates_DatabaseError(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	mockDB.getErr = errors.New("database error")
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.GET("/certificates", server.ListCertificates)
-
+	handler := newCertListHandler(server)
 	req := httptest.NewRequest(http.MethodGet, "/certificates", nil)
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
@@ -299,7 +303,6 @@ func TestListCertificates_DatabaseError(t *testing.T) {
 }
 
 func TestListCertificates_CalculatesTotalBytes(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 
 	cert1 := &models.StoredCertificate{
@@ -321,14 +324,11 @@ func TestListCertificates_CalculatesTotalBytes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.GET("/certificates", server.ListCertificates)
-
+	handler := newCertListHandler(server)
 	req := httptest.NewRequest(http.MethodGet, "/certificates", nil)
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -343,20 +343,17 @@ func TestListCertificates_CalculatesTotalBytes(t *testing.T) {
 // These test various error conditions without needing full snapshot manager
 
 func TestUploadCertificate_InvalidRequestBody(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.POST("/certificates", server.UploadCertificate)
+	handler := newUploadCertHandler(server)
 
 	req := httptest.NewRequest(http.MethodPost, "/certificates", bytes.NewReader([]byte("invalid json")))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -367,14 +364,11 @@ func TestUploadCertificate_InvalidRequestBody(t *testing.T) {
 }
 
 func TestUploadCertificate_MissingRequiredFields(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.POST("/certificates", server.UploadCertificate)
+	handler := newUploadCertHandler(server)
 
 	tests := []struct {
 		name    string
@@ -401,7 +395,7 @@ func TestUploadCertificate_MissingRequiredFields(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
-			router.ServeHTTP(w, req)
+			handler.ServeHTTP(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
@@ -409,14 +403,11 @@ func TestUploadCertificate_MissingRequiredFields(t *testing.T) {
 }
 
 func TestUploadCertificate_InvalidPEMFormat(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.POST("/certificates", server.UploadCertificate)
+	handler := newUploadCertHandler(server)
 
 	reqBody := UploadCertificateRequest{
 		Name:        "test-cert",
@@ -428,7 +419,7 @@ func TestUploadCertificate_InvalidPEMFormat(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -439,15 +430,12 @@ func TestUploadCertificate_InvalidPEMFormat(t *testing.T) {
 }
 
 func TestUploadCertificate_DatabaseSaveError(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	mockDB.saveErr = errors.New("database error")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.POST("/certificates", server.UploadCertificate)
+	handler := newUploadCertHandler(server)
 
 	reqBody := UploadCertificateRequest{
 		Name:        "test-cert",
@@ -459,7 +447,7 @@ func TestUploadCertificate_DatabaseSaveError(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
@@ -470,21 +458,16 @@ func TestUploadCertificate_DatabaseSaveError(t *testing.T) {
 }
 
 func TestDeleteCertificate_EmptyID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.DELETE("/certificates", func(c *gin.Context) {
-		server.DeleteCertificate(c, "")
-	})
+	handler := newDeleteCertHandler(server, "")
 
 	req := httptest.NewRequest(http.MethodDelete, "/certificates", nil)
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -519,14 +502,11 @@ func TestUploadCertificate_LargeCertificate(t *testing.T) {
 
 // TestUploadCertificate_EmptyPEMBlock tests certificate with empty PEM block
 func TestUploadCertificate_EmptyPEMBlock(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.POST("/certificates", server.UploadCertificate)
+	handler := newUploadCertHandler(server)
 
 	reqBody := UploadCertificateRequest{
 		Name:        "empty-cert",
@@ -538,7 +518,7 @@ func TestUploadCertificate_EmptyPEMBlock(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -549,14 +529,11 @@ func TestUploadCertificate_EmptyPEMBlock(t *testing.T) {
 
 // TestUploadCertificate_MalformedPEMHeaders tests malformed PEM headers
 func TestUploadCertificate_MalformedPEMHeaders(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.POST("/certificates", server.UploadCertificate)
+	handler := newUploadCertHandler(server)
 
 	tests := []struct {
 		name string
@@ -588,7 +565,7 @@ func TestUploadCertificate_MalformedPEMHeaders(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
-			router.ServeHTTP(w, req)
+			handler.ServeHTTP(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
@@ -658,7 +635,6 @@ func TestSaveCertificate_SpecialCharactersInName(t *testing.T) {
 
 // TestListCertificates_LargeResultSet tests listing many certificates
 func TestListCertificates_LargeResultSet(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 
 	// Add 100 certificates
@@ -678,14 +654,11 @@ func TestListCertificates_LargeResultSet(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.GET("/certificates", server.ListCertificates)
-
+	handler := newCertListHandler(server)
 	req := httptest.NewRequest(http.MethodGet, "/certificates", nil)
 	w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -721,16 +694,10 @@ func TestDeleteCertificate_SpecialCharactersInID(t *testing.T) {
 
 	// Verify empty ID handling
 	t.Run("Empty ID", func(t *testing.T) {
-		gin.SetMode(gin.TestMode)
-		router := gin.New()
-		router.Use(middleware.CorrelationIDMiddleware(server.logger))
-		router.DELETE("/certificates", func(c *gin.Context) {
-			server.DeleteCertificate(c, "")
-		})
-
+		handler := newDeleteCertHandler(server, "")
 		req := httptest.NewRequest(http.MethodDelete, "/certificates", nil)
 		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		handler.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
@@ -828,7 +795,6 @@ func TestExtractCertificateMetadata_EdgeCases(t *testing.T) {
 
 // TestListCertificates_ConcurrentAccess tests concurrent listing (thread safety)
 func TestListCertificates_ConcurrentAccess(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	mockDB := NewMockStorage()
 
 	// Add some certificates
@@ -846,9 +812,7 @@ func TestListCertificates_ConcurrentAccess(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := &APIServer{db: mockDB, logger: logger}
 
-	router := gin.New()
-	router.Use(middleware.CorrelationIDMiddleware(server.logger))
-	router.GET("/certificates", server.ListCertificates)
+	handler := newCertListHandler(server)
 
 	// Launch concurrent requests
 	var wg sync.WaitGroup
@@ -858,7 +822,7 @@ func TestListCertificates_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			req := httptest.NewRequest(http.MethodGet, "/certificates", nil)
 			w := httptest.NewRecorder()
-			router.ServeHTTP(w, req)
+			handler.ServeHTTP(w, req)
 			assert.Equal(t, http.StatusOK, w.Code)
 		}()
 	}

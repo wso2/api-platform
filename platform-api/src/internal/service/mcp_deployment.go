@@ -63,14 +63,14 @@ func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRe
 }
 
 // DeployMCPProxyByHandle creates a new immutable deployment artifact using MCP proxy handle
-func (s *MCPDeploymentService) DeployMCPProxyByHandle(proxyHandle string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) DeployMCPProxyByHandle(proxyHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.deployMCPProxy(proxyUUID, req, orgUUID)
+	return s.deployMCPProxy(proxyUUID, req, orgUUID, createdBy)
 }
 
 // RestoreMCPDeploymentByHandle restores a previous deployment using MCP proxy handle
@@ -139,7 +139,7 @@ func (s *MCPDeploymentService) GetDeploymentsByHandle(proxyHandle, gatewayID, st
 }
 
 // deployMCPProxy deploys an MCP proxy to a gateway
-func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployRequest, orgId string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployRequest, orgId, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -167,6 +167,12 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	}
 	if mcpProxy == nil {
 		return nil, constants.ErrMCPProxyNotFound
+	}
+
+	// DP-originated artifacts are read-only in the control plane and cannot be
+	// (re)deployed from the CP.
+	if err := ensureOriginMutable(mcpProxy.Origin); err != nil {
+		return nil, err
 	}
 
 	// Generate deployment ID
@@ -247,6 +253,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
+		CreatedBy:        createdBy,
 	}
 
 	// Use CreateDeploymentWithLimitEnforcement - handles count, cleanup, insert, and status update atomically
@@ -301,6 +308,12 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 
 // UndeployMCPProxyDeployment undeploys an MCP proxy from a gateway
 func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane; their deployment
+	// lifecycle is owned by the data-plane gateway, so undeploy cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
+		return nil, err
+	}
+
 	// Verify MCP proxy exists
 	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
@@ -396,6 +409,12 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 
 // restoreMCPProxyDeployment restores a previously undeployed MCP proxy deployment
 func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane; their deployment
+	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
+		return nil, err
+	}
+
 	// Verify target deployment exists and belongs to the API
 	targetDeployment, err := s.deploymentRepo.GetWithContent(*deploymentId, proxyUUID, orgId)
 	if err != nil {

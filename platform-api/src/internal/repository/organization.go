@@ -42,7 +42,7 @@ func (r *OrganizationRepo) CreateOrganization(org *model.Organization) error {
 	org.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+		INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
@@ -53,7 +53,7 @@ func (r *OrganizationRepo) CreateOrganization(org *model.Organization) error {
 func (r *OrganizationRepo) GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
-		SELECT uuid, handle, name, region, created_at, updated_at
+		SELECT uuid, handle, display_name, region, created_at, updated_at
 		FROM organizations
 		WHERE uuid = ? OR handle = ?
 	`
@@ -72,7 +72,7 @@ func (r *OrganizationRepo) GetOrganizationByIdOrHandle(id, handle string) (*mode
 func (r *OrganizationRepo) GetOrganizationByUUID(orgId string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
-		SELECT uuid, handle, name, region, created_at, updated_at
+		SELECT uuid, handle, display_name, region, created_at, updated_at
 		FROM organizations
 		WHERE uuid = ?
 	`
@@ -91,7 +91,7 @@ func (r *OrganizationRepo) GetOrganizationByUUID(orgId string) (*model.Organizat
 func (r *OrganizationRepo) GetOrganizationByHandle(handle string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
-		SELECT uuid, handle, name, region, created_at, updated_at
+		SELECT uuid, handle, display_name, region, created_at, updated_at
 		FROM organizations
 		WHERE handle = ?
 	`
@@ -111,7 +111,7 @@ func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 	org.UpdatedAt = time.Now()
 	query := `
 		UPDATE organizations
-		SET handle = ?, name = ?, region = ?, updated_at = ?
+		SET handle = ?, display_name = ?, region = ?, updated_at = ?
 		WHERE uuid = ?
 	`
 	_, err := r.db.Exec(r.db.Rebind(query), org.Handle, org.Name, org.Region, org.UpdatedAt, org.ID)
@@ -125,13 +125,13 @@ func (r *OrganizationRepo) DeleteOrganization(orgId string) error {
 }
 
 func (r *OrganizationRepo) ListOrganizations(limit, offset int) ([]*model.Organization, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, handle, name, region, created_at, updated_at
+		SELECT uuid, handle, display_name, region, created_at, updated_at
 		FROM organizations
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`
-	rows, err := r.db.Query(r.db.Rebind(query), limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), pageArgs...)
 	if err != nil {
 		return nil, err
 	}

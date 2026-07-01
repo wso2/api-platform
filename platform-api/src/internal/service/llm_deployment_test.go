@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"platform-api/src/internal/model"
+	"gopkg.in/yaml.v3"
 )
 
 func TestMapModelAuthToAPI_NormalizesApiKeyType(t *testing.T) {
@@ -65,24 +66,26 @@ func TestGenerateYAML_ConsumerRequestLimit(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if !strings.Contains(yaml, "advanced-ratelimit") {
+	if !strings.Contains(yamlStr, "advanced-ratelimit") {
 		t.Error("expected advanced-ratelimit policy in generated YAML")
 	}
 	// Consumer-scoped: key extraction must include x-wso2-application-id
-	if !strings.Contains(yaml, "x-wso2-application-id") {
+	if !strings.Contains(yamlStr, "x-wso2-application-id") {
 		t.Error("expected x-wso2-application-id in key extraction for consumer request limit")
 	}
 	// Should NOT have a backend (non-consumer) advanced-ratelimit entry
-	if strings.Count(yaml, "advanced-ratelimit") > 1 {
+	if strings.Count(yamlStr, "advanced-ratelimit") > 1 {
 		t.Error("expected only one advanced-ratelimit policy (consumer), got more than one")
 	}
 
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_ConsumerTokenLimit verifies that a consumer token limit
@@ -101,19 +104,21 @@ func TestGenerateYAML_ConsumerTokenLimit(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if !strings.Contains(yaml, "consumerBased: true") {
+	if !strings.Contains(yamlStr, "consumerBased: true") {
 		t.Error("expected consumerBased: true in generated YAML")
 	}
-	if !strings.Contains(yaml, "token-based-ratelimit") {
+	if !strings.Contains(yamlStr, "token-based-ratelimit") {
 		t.Error("expected token-based-ratelimit policy in generated YAML")
 	}
 
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_ConsumerCostLimit verifies that a consumer cost limit
@@ -131,19 +136,21 @@ func TestGenerateYAML_ConsumerCostLimit(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if !strings.Contains(yaml, "consumerBased: true") {
+	if !strings.Contains(yamlStr, "consumerBased: true") {
 		t.Error("expected consumerBased: true in generated YAML")
 	}
-	if !strings.Contains(yaml, "llm-cost-based-ratelimit") {
+	if !strings.Contains(yamlStr, "llm-cost-based-ratelimit") {
 		t.Error("expected llm-cost-based-ratelimit policy in generated YAML")
 	}
 
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_BothBackendAndConsumerLimits verifies that when both a backend
@@ -172,21 +179,23 @@ func TestGenerateYAML_BothBackendAndConsumerLimits(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
 	// Should have two token-based-ratelimit policies
-	if strings.Count(yaml, "token-based-ratelimit") < 2 {
-		t.Errorf("expected two token-based-ratelimit entries, got:\n%s", yaml)
+	if strings.Count(yamlStr, "token-based-ratelimit") < 2 {
+		t.Errorf("expected two token-based-ratelimit entries, got:\n%s", yamlStr)
 	}
 	// One must be consumer-based
-	if !strings.Contains(yaml, "consumerBased: true") {
+	if !strings.Contains(yamlStr, "consumerBased: true") {
 		t.Error("expected consumerBased: true in generated YAML")
 	}
 
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // ---------------------------------------------------------------------------
@@ -204,17 +213,19 @@ func TestGenerateYAML_BackendOnlyTokenLimit(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "token-based-ratelimit") {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if !strings.Contains(yamlStr, "token-based-ratelimit") {
 		t.Error("expected token-based-ratelimit in generated YAML")
 	}
-	if strings.Contains(yaml, "consumerBased") {
+	if strings.Contains(yamlStr, "consumerBased") {
 		t.Error("expected no consumerBased for backend-only limit")
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_BackendOnlyRequestLimit verifies that a backend-only request limit
@@ -229,23 +240,25 @@ func TestGenerateYAML_BackendOnlyRequestLimit(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "advanced-ratelimit") {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if !strings.Contains(yamlStr, "advanced-ratelimit") {
 		t.Error("expected advanced-ratelimit in generated YAML")
 	}
-	if strings.Contains(yaml, "x-wso2-application-id") {
+	if strings.Contains(yamlStr, "x-wso2-application-id") {
 		t.Error("expected no x-wso2-application-id for backend-only request limit")
 	}
-	if !strings.Contains(yaml, "request-limit") {
+	if !strings.Contains(yamlStr, "request-limit") {
 		t.Error("expected quota name 'request-limit' in generated YAML")
 	}
-	if strings.Contains(yaml, "consumer-request-limit") {
+	if strings.Contains(yamlStr, "consumer-request-limit") {
 		t.Error("expected no 'consumer-request-limit' for backend-only request limit")
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_BackendOnlyCostLimit verifies that a backend-only cost limit
@@ -258,20 +271,22 @@ func TestGenerateYAML_BackendOnlyCostLimit(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "llm-cost-based-ratelimit") {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if !strings.Contains(yamlStr, "llm-cost-based-ratelimit") {
 		t.Error("expected llm-cost-based-ratelimit in generated YAML")
 	}
-	if strings.Contains(yaml, "consumerBased") {
+	if strings.Contains(yamlStr, "consumerBased") {
 		t.Error("expected no consumerBased for backend-only cost limit")
 	}
-	if strings.Count(yaml, "llm-cost") < 2 {
+	if strings.Count(yamlStr, "llm-cost") < 2 {
 		t.Error("expected llm-cost policy alongside llm-cost-based-ratelimit")
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 func TestGenerateYAML_BackendResourceWiseDefaultCostLimit(t *testing.T) {
@@ -284,20 +299,22 @@ func TestGenerateYAML_BackendResourceWiseDefaultCostLimit(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "llm-cost-based-ratelimit") {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if !strings.Contains(yamlStr, "llm-cost-based-ratelimit") {
 		t.Error("expected llm-cost-based-ratelimit in generated YAML")
 	}
-	if !strings.Contains(yaml, "budgetLimits") {
+	if !strings.Contains(yamlStr, "budgetLimits") {
 		t.Error("expected budgetLimits in generated YAML")
 	}
-	if strings.Contains(yaml, "consumerBased") {
+	if strings.Contains(yamlStr, "consumerBased") {
 		t.Error("expected no consumerBased for backend-only cost limit")
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 func TestGenerateYAML_BackendPerResourceCostLimit(t *testing.T) {
@@ -316,23 +333,25 @@ func TestGenerateYAML_BackendPerResourceCostLimit(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "llm-cost-based-ratelimit") {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if !strings.Contains(yamlStr, "llm-cost-based-ratelimit") {
 		t.Error("expected llm-cost-based-ratelimit in generated YAML")
 	}
-	if !strings.Contains(yaml, "budgetLimits") {
+	if !strings.Contains(yamlStr, "budgetLimits") {
 		t.Error("expected budgetLimits in generated YAML")
 	}
-	if !strings.Contains(yaml, "/v1/messages") {
+	if !strings.Contains(yamlStr, "/v1/messages") {
 		t.Error("expected resource path /v1/messages in generated YAML")
 	}
-	if strings.Contains(yaml, "consumerBased") {
+	if strings.Contains(yamlStr, "consumerBased") {
 		t.Error("expected no consumerBased for backend-only cost limit")
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // ---------------------------------------------------------------------------
@@ -356,20 +375,22 @@ func TestGenerateYAML_BothBackendAndConsumerRequestLimits(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.Count(yaml, "advanced-ratelimit") < 2 {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if strings.Count(yamlStr, "advanced-ratelimit") < 2 {
 		t.Error("expected two advanced-ratelimit policies (one backend, one consumer)")
 	}
-	if !strings.Contains(yaml, "consumer-request-limit") {
+	if !strings.Contains(yamlStr, "consumer-request-limit") {
 		t.Error("expected 'consumer-request-limit' quota name for consumer policy")
 	}
-	if !strings.Contains(yaml, "x-wso2-application-id") {
+	if !strings.Contains(yamlStr, "x-wso2-application-id") {
 		t.Error("expected x-wso2-application-id in consumer policy key extraction")
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_BothBackendAndConsumerCostLimits verifies that backend and consumer
@@ -388,21 +409,23 @@ func TestGenerateYAML_BothBackendAndConsumerCostLimits(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.Count(yaml, "llm-cost-based-ratelimit") < 2 {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if strings.Count(yamlStr, "llm-cost-based-ratelimit") < 2 {
 		t.Error("expected two llm-cost-based-ratelimit policies (backend + consumer)")
 	}
-	if !strings.Contains(yaml, "consumerBased: true") {
+	if !strings.Contains(yamlStr, "consumerBased: true") {
 		t.Error("expected consumerBased: true on consumer cost policy")
 	}
 	// llm-cost must appear exactly once — hasPolicy check prevents duplication
-	if strings.Count(yaml, "name: llm-cost\n") != 1 {
-		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yaml)
+	if strings.Count(yamlStr, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yamlStr)
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // ---------------------------------------------------------------------------
@@ -421,17 +444,19 @@ func TestGenerateYAML_DisabledLimitIsSkipped(t *testing.T) {
 			},
 		},
 	}
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.Contains(yaml, "token-based-ratelimit") {
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if strings.Contains(yamlStr, "token-based-ratelimit") {
 		t.Error("expected no token-based-ratelimit for disabled token limit")
 	}
-	if strings.Contains(yaml, "llm-cost-based-ratelimit") {
+	if strings.Contains(yamlStr, "llm-cost-based-ratelimit") {
 		t.Error("expected no llm-cost-based-ratelimit for disabled cost limit")
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_AllThreeConsumerLimits verifies the full UI scenario from the
@@ -463,10 +488,12 @@ func TestGenerateYAML_AllThreeConsumerLimits(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
 	checks := []string{
 		"advanced-ratelimit",
@@ -475,12 +502,12 @@ func TestGenerateYAML_AllThreeConsumerLimits(t *testing.T) {
 		"consumerBased: true",
 	}
 	for _, want := range checks {
-		if !strings.Contains(yaml, want) {
+		if !strings.Contains(yamlStr, want) {
 			t.Errorf("expected %q in generated YAML", want)
 		}
 	}
 
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // ---------------------------------------------------------------------------
@@ -516,15 +543,17 @@ func TestGenerateYAML_LLMCostNotDuplicatedWithProviderCostLimit(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if strings.Count(yaml, "name: llm-cost\n") != 1 {
-		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yaml)
+	if strings.Count(yamlStr, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yamlStr)
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_LLMCostNotDuplicatedWithConsumerCostLimit verifies the same
@@ -538,15 +567,17 @@ func TestGenerateYAML_LLMCostNotDuplicatedWithConsumerCostLimit(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if strings.Count(yaml, "name: llm-cost\n") != 1 {
-		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yaml)
+	if strings.Count(yamlStr, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yamlStr)
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_LLMCostNotDuplicatedWithBothProviderAndConsumerCostLimits verifies
@@ -566,33 +597,43 @@ func TestGenerateYAML_LLMCostNotDuplicatedWithBothProviderAndConsumerCostLimits(
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(rl), "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if strings.Count(yaml, "name: llm-cost\n") != 1 {
-		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yaml)
+	if strings.Count(yamlStr, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yamlStr)
 	}
-	if strings.Count(yaml, "llm-cost-based-ratelimit") < 2 {
-		t.Errorf("expected two llm-cost-based-ratelimit policies (backend + consumer), got:\n%s", yaml)
+	if strings.Count(yamlStr, "llm-cost-based-ratelimit") < 2 {
+		t.Errorf("expected two llm-cost-based-ratelimit policies (backend + consumer), got:\n%s", yamlStr)
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_LLMCostKeptWhenNoCostRLConfigured verifies that when no cost-based
 // rate limit is configured, the llm-cost policy from Configuration.Policies is still
 // included in the output (it should only be skipped if already added by the RL block).
 func TestGenerateYAML_LLMCostKeptWhenNoCostRLConfigured(t *testing.T) {
-	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(nil), "anthropic")
+	p := providerWithConsumerLimits(nil)
+	p.Configuration.Policies = []model.LLMPolicy{
+		{Name: "llm-cost", Version: "v1", Paths: []model.LLMPolicyPath{
+			{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}},
+		}},
+	}
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(p, "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if strings.Count(yaml, "name: llm-cost\n") != 1 {
-		t.Errorf("expected exactly one llm-cost policy when no RL is configured, got:\n%s", yaml)
+	if strings.Count(yamlStr, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy when no RL is configured, got:\n%s", yamlStr)
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_OtherCustomPoliciesNotDeduplicated verifies that the llm-cost
@@ -613,13 +654,15 @@ func TestGenerateYAML_OtherCustomPoliciesNotDeduplicated(t *testing.T) {
 		},
 	}
 
-	yaml, err := generateLLMProviderDeploymentYAML(p, "anthropic")
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(p, "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
 
-	if strings.Count(yaml, "name: my-guardrail") < 2 {
-		t.Errorf("expected both my-guardrail entries to be present, got:\n%s", yaml)
+	if strings.Count(yamlStr, "name: my-guardrail") < 2 {
+		t.Errorf("expected both my-guardrail entries to be present, got:\n%s", yamlStr)
 	}
-	t.Logf("Generated YAML:\n%s", yaml)
+	t.Logf("Generated YAML:\n%s", yamlStr)
 }

@@ -1,41 +1,52 @@
-<section class="api-banner-section">
-  <div class="container-fluid">
-    <div class="api-banner-content align-items-center ">
-      <div class="col-12 col-md-7">
-        <div class="api-title">
-          <span class="badge api-badge-custom1">{{apiMetadata.apiInfo.apiCategory}}</span>
-          <h4>{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName}}</h4>
-          <p class="api-version"> {{apiMetadata.apiInfo.apiVersion}}</p>
-        </div>
-        <p class="api-description">{{apiMetadata.apiInfo.apiDescription}}</p>
-        <div class="api-tags">
-          {{#apiMetadata.apiInfo.tags}}
-          <span class="badge api-badge-custom2">{{this}}</span>
-          {{/apiMetadata.apiInfo.tags}}
-        </div>
-        <div class="api-details-btn">
-          {{#if apiMetadata.apiReferenceID}}
-          <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
-          {{else}}
-          {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
-          <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
-          {{/unless}}
-          {{/if}}
-          {{#in apiMetadata.apiInfo.apiType values="REST,WS,GraphQL,MCP,WEBSUB"}}
-          <a type="button" class="common-btn-outlined"
-            href="{{baseUrl}}/mcp/{{apiMetadata.apiHandle}}/docs/specification">Documentation</a>
-          {{else}}
-          <a type="button" class="common-btn-outlined" href="{{{schemaUrl}}}" download>Download</a>
-          {{/in}}
-        </div>
-      </div>
-      <div class="col-12 col-md-5 text-md-right api-banner-icon">
-        {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
-        <img class="img-thumbnail api-image" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="API Image" />
-        {{else}}
-        <div class="img-thumbnail api-image image-icon d-flex justify-content-center align-items-center">{{firstTwoLetters (or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName)}}</div>
+<div class="aov-hero">
+  <div class="aov-hero-top">
+    <div class="aov-hero-thumb">
+      {{#if apiMetadata.apiImageMetadata.api-icon}}
+      <img class="aov-api-img" src="{{apiMetadata.apiImageMetadata.api-icon}}" alt="{{apiMetadata.name}}" />
+      {{else}}
+      <div class="aov-api-avatar">{{firstTwoLetters (or apiMetadata.apiTitle apiMetadata.name)}}</div>
+      {{/if}}
+    </div>
+    <div class="aov-hero-title-row">
+      <h1 class="aov-hero-name">{{or apiMetadata.apiTitle apiMetadata.name}}</h1>
+      <div class="aov-hero-badges">
+        {{#if apiMetadata.version}}
+        <span class="dp-badge dp-badge--version">{{apiMetadata.version}}</span>
+        {{/if}}
+        <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>
+        {{#if (eq apiMetadata.status "DEPRECATED")}}
+        <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
         {{/if}}
       </div>
     </div>
   </div>
-</section>
+  <div class="aov-hero-body">
+    {{#if apiMetadata.description}}
+    <p class="aov-hero-desc">{{apiMetadata.description}}</p>
+    {{/if}}
+    {{#if apiMetadata.tags}}
+    <div class="dp-tags">
+      {{#apiMetadata.tags}}
+      <span class="dp-tag dp-tag--white">{{this}}</span>
+      {{/apiMetadata.tags}}
+    </div>
+    {{/if}}
+    <div class="aov-hero-actions">
+      {{#if subscriptionPlans.length}}
+        {{#unless subscriptions.length}}
+      <a class="dp-btn dp-btn--primary" href="#subscriptionPlans">
+        <i class="bi bi-bookmark-plus"></i> Subscribe
+      </a>
+        {{/unless}}
+      {{/if}}
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.handle}}/docs/specification">
+        <i class="bi bi-book"></i> Documentation
+      </a>
+      {{#if showApiKeysNav}}
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.handle}}/api-keys">
+        <i class="bi bi-key"></i> API Keys
+      </a>
+      {{/if}}
+    </div>
+  </div>
+</div>

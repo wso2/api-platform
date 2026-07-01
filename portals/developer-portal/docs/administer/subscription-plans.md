@@ -1,6 +1,6 @@
 # Subscription Plans
 
-A subscription plan (also called a subscription policy) is a named usage tier that controls how much of an API a developer can consume. You attach one or more plans to each API you publish, and developers choose a plan when subscribing.
+A subscription plan (also called a subscription plan) is a named usage tier that controls how much of an API a developer can consume. You attach one or more plans to each API you publish, and developers choose a plan when subscribing.
 
 Plans can enforce:
 - Request rate limits (`requestcount`)
@@ -8,7 +8,7 @@ Plans can enforce:
 
 ## Default Plans
 
-When `generateDefaultSubPolicies: true` is set in `config.yaml` (the default), the portal automatically creates four standard plans for every new organization:
+When `generateDefaultSubPlans: true` is set in `config.yaml` (the default), the portal automatically creates four standard plans for every new organization:
 
 | Plan | Description |
 |---|---|
@@ -23,16 +23,16 @@ You can create additional custom plans alongside these defaults.
 
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
-> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 >   -d "username=admin&password=admin" | jq -r .token)
 > ```
 
-Use the `SubscriptionPolicy` manifest format:
+Use the `SubscriptionPlan` manifest format:
 
 ```yaml
 # plan.yaml
 apiVersion: devportal.api-platform.wso2.com/v1
-kind: SubscriptionPolicy
+kind: SubscriptionPlan
 
 metadata:
   name: Enterprise
@@ -45,14 +45,14 @@ spec:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies \
+curl -X POST http://localhost:3000/devportal/v1/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
-  -F "subscriptionPolicy=@plan.yaml"
+  -F "subscriptionPlan=@plan.yaml"
 ```
 
 | Field | Required | Description |
 |---|---|---|
-| `metadata.name` | Yes | Unique policy identifier (used in API `subscriptionPolicies` lists) |
+| `metadata.name` | Yes | Unique plan identifier (used in API `subscriptionPlans` lists) |
 | `spec.displayName` | Yes | Human-friendly name shown to developers in the portal |
 | `spec.type` | Yes | `requestcount` (rate-limited) or `eventcount` |
 | `spec.requestCount` | No | Maximum requests allowed. Use `-1` for unlimited |
@@ -60,12 +60,12 @@ curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies 
 
 ### Bulk Create
 
-To create multiple plans in one request, use the `SubscriptionPolicyList` kind:
+To create multiple plans in one request, use the `SubscriptionPlanList` kind:
 
 ```yaml
 # plans.yaml
 apiVersion: devportal.api-platform.wso2.com/v1
-kind: SubscriptionPolicyList
+kind: SubscriptionPlanList
 
 items:
   - metadata:
@@ -88,21 +88,21 @@ items:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies \
+curl -X POST http://localhost:3000/devportal/v1/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
-  -F "subscriptionPolicy=@plans.yaml"
+  -F "subscriptionPlan=@plans.yaml"
 ```
 
 ## List Subscription Plans
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/devportal/v1/subscription-plans -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Subscription Plan
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies/{policyIdOrName} \
+curl http://localhost:3000/devportal/v1/subscription-plans/{planIdOrName} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -111,7 +111,7 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies/{policyI
 ```yaml
 # plan-update.yaml
 apiVersion: devportal.api-platform.wso2.com/v1
-kind: SubscriptionPolicy
+kind: SubscriptionPlan
 
 metadata:
   name: Enterprise
@@ -124,15 +124,15 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies \
+curl -X PUT http://localhost:3000/devportal/v1/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
-  -F "subscriptionPolicy=@plan-update.yaml"
+  -F "subscriptionPlan=@plan-update.yaml"
 ```
 
 ## Delete a Subscription Plan
 
 ```bash
-curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies/{policyName}" \
+curl -X DELETE "http://localhost:3000/devportal/v1/subscription-plans/{planName}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -142,5 +142,5 @@ curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/subscription-polici
 
 ## Attaching Plans to APIs
 
-When you [publish an API](../publish-apis/publishing-apis.md), specify which subscription plans are available for it in the `spec.subscriptionPolicies` list. Developers see these plans when they subscribe. If no plans are specified, the API is accessible without a subscription plan.
+When you [publish an API](../publish-apis/publishing-apis.md), specify which subscription plans are available for it in the `spec.subscriptionPlans` list. Developers see these plans when they subscribe. If no plans are specified, the API is accessible without a subscription plan.
 

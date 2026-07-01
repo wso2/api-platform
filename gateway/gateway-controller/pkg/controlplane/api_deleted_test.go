@@ -90,7 +90,7 @@ func newMockStorageForDeletion() *mockStorageForDeletion {
 		secrets:        make(map[string]*models.Secret),
 		webhookSecrets: make(map[string]*models.WebhookSecret),
 		subscriptions:  make(map[string]*models.Subscription),
-		apiKeysByUUID: make(map[string]*models.APIKey),
+		apiKeysByUUID:  make(map[string]*models.APIKey),
 	}
 }
 
@@ -635,6 +635,17 @@ func (m *mockStorageForDeletion) GetPendingBottomUpAPIs() ([]*models.StoredConfi
 	return pending, nil
 }
 
+func (m *mockStorageForDeletion) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it
@@ -647,7 +658,7 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 		Origin:       models.OriginGatewayAPI,
 		Kind:         "API",
 		Configuration: api.RestAPI{
-			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name: apiID,

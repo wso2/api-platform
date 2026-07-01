@@ -1,5 +1,7 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $service := $controller.service -}}
+{{- $nodePorts := default (dict) $service.nodePorts -}}
+{{- $isNodePortCapable := or (eq $service.type "NodePort") (eq $service.type "LoadBalancer") -}}
 {{- if $controller.deployment.enabled }}
 apiVersion: v1
 kind: Service
@@ -7,13 +9,34 @@ metadata:
   name: {{ include "gateway-operator.fullname" . }}-controller
   labels:
     {{- include "gateway-operator.componentLabels" (list . "controller" $service.labels) | nindent 4 }}
-  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $service.annotations) }}
-  {{- if $annotations }}
+  {{- with (include "gateway-operator.annotations" (list . $service.annotations)) }}
   annotations:
-    {{- toYaml $annotations | nindent 4 }}
+    {{- . | nindent 4 }}
   {{- end }}
 spec:
   type: {{ $service.type }}
+  {{- with $service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  {{- if and $service.externalTrafficPolicy $isNodePortCapable }}
+  externalTrafficPolicy: {{ $service.externalTrafficPolicy }}
+  {{- end }}
+  {{- if eq $service.type "LoadBalancer" }}
+  {{- with $service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- with $service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  {{- with $service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ . }}
+  {{- end }}
+  {{- with $service.ipFamilies }}
+  ipFamilies:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 4 }}
   ports:
@@ -21,22 +44,37 @@ spec:
       port: {{ $service.ports.rest }}
       targetPort: rest
       protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.rest }}
+      nodePort: {{ $nodePorts.rest }}
+      {{- end }}
     - name: xds
       port: {{ $service.ports.xds }}
       targetPort: xds
       protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.xds }}
+      nodePort: {{ $nodePorts.xds }}
+      {{- end }}
     - name: policy
       port: {{ $service.ports.policy }}
       targetPort: policy
       protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.policy }}
+      nodePort: {{ $nodePorts.policy }}
+      {{- end }}
     {{- if $service.expose.admin }}
     - name: admin
       port: {{ $service.ports.admin }}
       targetPort: admin
       protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.admin }}
+      nodePort: {{ $nodePorts.admin }}
+      {{- end }}
     {{- end }}
     - name: metrics
       port: {{ $service.ports.metrics }}
       targetPort: metrics
       protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.metrics }}
+      nodePort: {{ $nodePorts.metrics }}
+      {{- end }}
 {{- end }}

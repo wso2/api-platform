@@ -119,17 +119,24 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     [user]
   );
 
+  // Read the live token off the auth user; react-oidc-context silently renews it,
+  // so this never returns a stale snapshot.
+  const getAccessToken = useCallback(
+    async (): Promise<string | null> => auth.user?.access_token ?? null,
+    [auth]
+  );
+
   const value = useMemo(
     () => ({
       isAuthenticated: auth.isAuthenticated,
       isLoading: auth.isLoading,
       user,
-      accessToken: auth.user?.access_token ?? null,
+      getAccessToken,
       hasPermission,
       login,
       logout,
     }),
-    [auth.isAuthenticated, auth.isLoading, auth.user?.access_token, user, hasPermission, login, logout]
+    [auth.isAuthenticated, auth.isLoading, user, getAccessToken, hasPermission, login, logout]
   );
 
   return <AppAuthContext.Provider value={value}>{children}</AppAuthContext.Provider>;

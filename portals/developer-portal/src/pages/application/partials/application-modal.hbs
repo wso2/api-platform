@@ -10,7 +10,7 @@
                     <select class="form-select bg-white text-dark" onchange="addAPISubscription(this)" id="apiSelect">
                         <option value="" disabled selected>Select an API</option>
                         {{#each nonSubAPIs}}
-                        <option value="{{apiID}}" data-apiRefID= "{{apiReferenceID}}" data-policies='{{{json this.subscriptionPolicyDetails}}}'>
+                        <option value="{{apiId}}" data-apiRefId= "{{apiReferenceId}}" data-plans='{{{json this.subscriptionPlanDetails}}}'>
                             {{apiInfo.apiName}} - {{apiInfo.apiVersion}}</option>
                         {{/each}}
                     </select>
@@ -20,7 +20,7 @@
                     </select>
                     <div class="pt-5">
                         <a class="common-btn-white" type="button" onclick="closeModal('appModal-{{applicationMetadata.id}}')">Cancel</a>
-                        <a class="common-btn-primary" type="button" onclick="subscribe('{{orgID}}','{{applicationMetadata.id}}', '', '', '')">Save</a>
+                        <a class="common-btn-primary" type="button" onclick="subscribe('{{orgId}}','{{applicationMetadata.id}}', '', '', '')">Save</a>
                     </div>
                 </div>
             </div>

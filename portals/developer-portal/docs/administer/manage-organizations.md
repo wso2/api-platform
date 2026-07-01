@@ -16,13 +16,8 @@ metadata:
 
 spec:
   displayName: Acme Corp
-  organizationIdentifier: ACME   # value of the org claim for this org's users
-  roleClaimName: roles
-  groupsClaimName: groups
-  organizationClaimName: organization
-  adminRole: admin
-  subscriberRole: subscriber
-  superAdminRole: superAdmin
+  idpRefId: ACME                 # value of the org claim for this org's users
+  cpRefId: cp-ref-acme            # optional Control Plane reference ID
   businessOwner: Platform Team
   businessOwnerContact: "+1-202-555-0147"
   businessOwnerEmail: platform-team@acme.com
@@ -32,8 +27,8 @@ spec:
       displayName: Default
 
   views:
-    - name: default
-      displayName: Default View
+    - handle: default
+      name: Default View
       labels:
         - default
 ```
@@ -48,18 +43,13 @@ curl -X POST http://localhost:3000/organizations \
 |---|---|---|
 | `metadata.name` | Yes | URL-safe org handle used in all portal URLs (becomes `orgHandle`) |
 | `spec.displayName` | Yes | Human-friendly organization name shown in the portal UI |
-| `spec.organizationIdentifier` | Yes | Expected value of the org claim for users in this organization |
-| `spec.roleClaimName` | Yes | Name of the JWT claim that carries user roles |
-| `spec.groupsClaimName` | Yes | Name of the JWT claim that carries user groups |
-| `spec.organizationClaimName` | Yes | Name of the JWT claim that identifies the user's organization |
-| `spec.adminRole` | Yes | Claim value that grants portal admin rights |
-| `spec.subscriberRole` | Yes | Claim value that grants developer/subscriber access |
-| `spec.superAdminRole` | Yes | Claim value that grants super-admin access across organizations |
+| `spec.idpRefId` | Yes | The org claim value asserted by your Identity Provider at SSO login. The portal matches an authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match, or login fails for that org's users. |
+| `spec.cpRefId` | No | Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication. |
 | `spec.businessOwner` | No | Contact name for the organization owner |
 | `spec.businessOwnerContact` | No | Business owner's phone or contact string |
 | `spec.businessOwnerEmail` | No | Business owner's email address |
-| `spec.labels` | No | Labels to create for this org. Defaults to a single `default` label if omitted |
-| `spec.views` | No | Views to create for this org. Defaults to a single `default` view if omitted |
+| `spec.labels` | No | Labels to create for this org (array of `{name, displayName}`). Defaults to a single `default` label if omitted |
+| `spec.views` | No | Views to create for this org (array of `{handle, name, labels}`). Defaults to a single `default` view if omitted |
 
 After creation, the organization is accessible at `/<orgHandle>/views/<viewName>` once a view is created for it.
 
@@ -108,7 +98,7 @@ For local development and first-time setup, the portal ships with a built-in use
 ### How it works
 
 1. The user submits the login form.
-2. The Developer Portal forwards the credentials to the Platform API (`POST /api/portal/v1/auth/login`).
+2. The Developer Portal forwards the credentials to the Platform API (`POST /api/portal/v0.9/auth/login`).
 3. The Platform API verifies the bcrypt-hashed password and returns a signed JWT containing `dp:*` scopes.
 4. The Developer Portal stores the JWT in the server-side session and uses the scopes for all subsequent authorization checks.
 
@@ -164,7 +154,7 @@ AUTH_JWT_SECRET_KEY=<random-64-char-string>
 For scripts and CLI tools, get a Bearer token directly from the Platform API and pass it on each request — no session cookie required:
 
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3000/organizations

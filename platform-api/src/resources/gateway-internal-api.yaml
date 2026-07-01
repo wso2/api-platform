@@ -120,88 +120,6 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create API package"
 
-  /apis/{apiId}/gateway-deployments:
-    post:
-      summary: Create API and Deployment entities for a API deployment in the gateway
-      description: |
-        Creates API and a revision deployment entities on the platform api when an API is deployed in the gateway.
-      operationId: CreateGatewayAPIDeployment
-      tags:
-        - Gateway Internal APIs
-      parameters:
-        - $ref: '#/components/parameters/apiID'
-        - $ref: '#/components/parameters/revisionId-Q'
-      requestBody:
-        description: Deployed API details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/APIDeploymentNotification'
-      responses:
-        '201':
-          description: API deployment created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "API deployment created successfully"
-        '400':
-          description: Bad request - Invalid API ID
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: 400
-                message: "Bad Request"
-                description: "API ID is required"
-        '401':
-          description: Unauthorized - Invalid or missing API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                missing_api_key:
-                  summary: Missing API key
-                  value:
-                    code: 401
-                    message: "Unauthorized"
-                    description: "API key is required. Provide 'api-key' header."
-                invalid_api_key:
-                  summary: Invalid API key
-                  value:
-                    code: 401
-                    message: "Unauthorized"
-                    description: "Invalid or expired API key"
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: 404
-                message: "Not Found"
-                description: "API not found"
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                get_api_failed:
-                  summary: Failed to retrieve API
-                  value:
-                    code: 500
-                    message: "Internal Server Error"
-                    description: "Failed to get API"
-  
   /llm-providers/{providerId}:
     get:
       summary: Get specific LLM Provider by ID
@@ -778,6 +696,57 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create WebSub API package"
 
+  /websub-apis/{apiId}/secrets:
+    get:
+      summary: Get HMAC secrets for a WebSub API
+      description: |
+        Returns all active HMAC secrets (with plaintext values) for the specified WebSub API.
+        This endpoint is exclusively for gateway-controller to load secrets into the envoy secret store.
+        The plaintext values are decrypted server-side and must only be used internally by the gateway.
+      operationId: getWebSubAPIHmacSecrets
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the WebSub API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved HMAC secrets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayHmacSecretsResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: HMAC secret management is not configured on this server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   # ==========================================
   # Gateway Deployment Sync Endpoints
   # ==========================================
@@ -1280,6 +1249,81 @@ paths:
                 message: "Internal Server Error"
                 description: "Failed to check artifact existence"
 
+  /artifacts/import-gateway-artifacts:
+    post:
+      summary: Import (push) gateway-created artifacts to the control plane
+      description: |
+        Generic bulk DP->CP push endpoint. A gateway pushes a list of artifacts it
+        created/updated (REST API, LLM Provider, LLM Provider Template, LLM Proxy, MCP Proxy,
+        ...). The control plane creates or updates each and marks it read-only with origin
+        "gateway_api". Each artifact's kind is identified by configuration.kind and routed to
+        the matching importer. Project is required for project-scoped kinds (RestApi, LlmProxy,
+        Mcp) — supplied via the "gateway.api-platform.wso2.com/project-id" metadata annotation —
+        and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate). The
+        project is never defaulted.
+        Processing is continue-on-error: each artifact's outcome is recorded against its dpid
+        and a failure on one artifact does not abort the rest. Artifact-level failures — an
+        unsupported kind, a project-scoped push with no project, a project that does not exist
+        in the organization, or a handle already used by a different kind — are reported per
+        dpid (with an `error` message) inside a 200 response, not as a non-2xx status. Only a
+        malformed request (invalid multipart form or zip, empty or oversized upload) or an
+        unauthenticated caller returns a non-2xx status.
+      operationId: importGatewayArtifacts
+      tags:
+        - Gateway Internal APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - artifacts
+                - total
+              properties:
+                artifacts:
+                  type: string
+                  format: binary
+                  description: >-
+                    A zip archive containing a single `artifacts.json` file: a JSON array of
+                    ImportGatewayArtifactRequest objects. The gateway orders the artifacts by
+                    dependency (LLMProviderTemplate, LLMProvider, LLMProxy, MCPProxy, RestApi, ...)
+                    before zipping.
+                total:
+                  type: integer
+                  description: Total number of artifacts in the zip (advisory; used for a sanity check).
+                  example: 3
+      responses:
+        '200':
+          description: >-
+            Batch processed. Each artifact's result is returned keyed by its dpid, with
+            total/success/failed counts. Per-artifact failures are reported here (with an
+            `error` message), not as a non-2xx status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportGatewayArtifactsResponse'
+        '400':
+          description: >-
+            Bad request - malformed request (invalid multipart form or zip, or an empty/oversized
+            upload). Per-artifact failures are not reported here; they appear in the 200 response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1516,159 +1560,188 @@ components:
     # API Deployment Notification Schemas
     # ==========================================
 
-    APIDeploymentNotification:
-      title: API deployment object
+    ImportGatewayArtifactRequest:
+      title: Gateway artifact import request
+      description: Generic DP->CP push body for any artifact kind.
+      type: object
       required:
-        - id
+        - dpid
         - configuration
         - status
-        - createdAt
-        - updatedAt
-        - projectIdentifier
-      type: object
       properties:
-        id:
+        dpid:
           type: string
-          description: Unique identifier for the api artifact
-          readOnly: true
+          description: >-
+            Data-plane (gateway) artifact UUID. The control plane does NOT reuse it as the
+            CP artifact UUID — it mints its own and returns it in the response. It is the key
+            under which this artifact's result is returned in the bulk response; artifacts are
+            matched in the CP by handle.
+          format: uuid
           example: 01234567-0123-0123-0123-012345678901
         configuration:
-          $ref: '#/components/schemas/APIConfiguration'
+          $ref: '#/components/schemas/ArtifactImportConfig'
         status:
           type: string
+          description: Artifact status on the gateway.
           enum:
             - pending
             - deployed
             - failed
+            - undeployed
           example: deployed
         createdAt:
           type: string
           format: date-time
-          description: Timestamp when API was created
-          example: "2025-10-14T10:30:00Z"
+          example: "2026-06-15T10:30:00Z"
         updatedAt:
           type: string
           format: date-time
-          description: Timestamp when API was last updated
-          example: "2025-10-14T10:30:00Z"
+          example: "2026-06-15T10:30:00Z"
         deployedAt:
           type: string
           format: date-time
-          description: Timestamp when API was deployed to the gateway
-          example: "2025-10-14T10:45:00Z"
-        deployedVersion:
-          type: number
-          description: Version of the API that was deployed
-          example: 51
-        projectIdentifier:
-          type: string
-          description: Project identifier associated with the API
-          example: weather-project
+          example: "2026-06-15T10:45:00Z"
+        properties:
+          type: object
+          additionalProperties: true
+          description: Open-ended bag for future extensions.
 
-    APIConfiguration:
+    ArtifactImportConfig:
       type: object
+      description: |
+        The gateway artifact custom resource (CR) exactly as deployed to the gateway,
+        in the standard k8s shape (apiVersion / kind / metadata / spec). `kind` is the
+        discriminator that selects the artifact type; `spec` conforms to that kind's
+        schema as defined by the gateway management API:
+          - RestApi              -> RestAPI.spec (APIConfigData)
+          - LlmProvider          -> LLMProviderConfiguration.spec (LLMProviderConfigData)
+          - LlmProviderTemplate  -> LLMProviderTemplate.spec (LLMProviderTemplateData)
+          - LlmProxy             -> LLMProxyConfiguration.spec (LLMProxyConfigData)
+          - Mcp                  -> MCPProxyConfiguration.spec (MCPProxyConfigData)
+        The set of kinds is extensible: new artifact kinds register a handler in the
+        control plane without changing this contract.
       required:
-        - version
+        - apiVersion
         - kind
+        - metadata
         - spec
       properties:
-        version:
+        apiVersion:
           type: string
-          description: API specification version
-          example: api-platform.wso2.com/v1
-          enum:
-            - api-platform.wso2.com/v1
+          description: Artifact spec version (e.g. gateway.api-platform.wso2.com/v1alpha1).
+          example: gateway.api-platform.wso2.com/v1alpha1
         kind:
           type: string
-          description: API type
-          example: http/rest
+          description: Artifact kind discriminator; routes to the matching importer. Open to future kinds.
           enum:
-            - http/rest
+            - RestApi
+            - LlmProvider
+            - LlmProviderTemplate
+            - LlmProxy
+            - Mcp
+          example: RestApi
+        metadata:
+          $ref: '#/components/schemas/ArtifactImportMetadata'
         spec:
-          $ref: '#/components/schemas/APIConfigData'
+          type: object
+          additionalProperties: true
+          description: The kind-specific artifact spec, matching the gateway CR schema for `kind`.
 
-    APIConfigData:
+    ArtifactImportMetadata:
       type: object
       required:
         - name
-        - version
-        - context
-        - upstreams
-        - operations
       properties:
         name:
           type: string
-          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-          minLength: 1
-          maxLength: 100
-          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          description: URL-safe artifact identifier (handle).
           example: weather-api
-        version:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Kubernetes-style labels for organizing/selecting artifacts.
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Kubernetes-style annotations. The project is conveyed here via the
+            "gateway.api-platform.wso2.com/project-id" annotation. Required for project-scoped
+            kinds (RestApi, LlmProxy, Mcp); ignored for organization-level kinds (LlmProvider,
+            LlmProviderTemplate).
+          example:
+            gateway.api-platform.wso2.com/project-id: weather-project
+
+    ImportGatewayArtifactsResponse:
+      type: object
+      required:
+        - total
+        - success
+        - failed
+        - artifacts
+      properties:
+        total:
+          type: integer
+          description: Total number of artifacts in the request.
+          example: 3
+        success:
+          type: integer
+          description: Number of artifacts imported successfully.
+          example: 2
+        failed:
+          type: integer
+          description: Number of artifacts that failed to import.
+          example: 1
+        artifacts:
+          type: object
+          description: Per-artifact result keyed by the artifact's data-plane UUID (dpid).
+          additionalProperties:
+            $ref: '#/components/schemas/ImportGatewayArtifactResponse'
+          example:
+            01234567-0123-0123-0123-012345678901:
+              id: 89abcdef-89ab-89ab-89ab-89abcdef0123
+              status: deployed
+              origin: gateway_api
+            fedcba98-7654-3210-fedc-ba9876543210:
+              status: failed
+              origin: gateway_api
+              error: "project \"weather-project\" does not exist in org"
+
+    ImportGatewayArtifactResponse:
+      type: object
+      properties:
+        id:
           type: string
-          description: Semantic version of the API
-          pattern: '^v\d+\.\d+$'
+          description: >-
+            Control-plane artifact UUID, minted by the CP (it does not reuse the data-plane
+            UUID) and reused on subsequent pushes matched by handle. The gateway records
+            this as the artifact's cp_artifact_id. Empty when the artifact failed to import.
+          format: uuid
+          example: 01234567-0123-0123-0123-012345678901
+        status:
+          type: string
+          example: deployed
+        origin:
+          type: string
+          description: Always "gateway_api" for imported artifacts.
+          example: gateway_api
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deployedAt:
+          type: string
+          format: date-time
+        deployedVersion:
+          type: string
           example: v1.0
-        context:
+        error:
           type: string
-          description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
-          minLength: 1
-          maxLength: 200
-          example: /weather
-        projectName:
-          type: string
-          description: Project name associated with the API
-          minLength: 1
-          maxLength: 100
-          pattern: '^[a-zA-Z0-9\-_]+$'
-          example: weather-project
-        upstreams:
-          type: array
-          description: List of backend service URLs
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/Upstream'
-        operations:
-          type: array
-          description: List of HTTP operations/routes
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/Operation'
-
-    Upstream:
-      type: object
-      required:
-        - url
-      properties:
-        url:
-          type: string
-          format: uri
-          description: Backend service URL (may include path prefix like /api/v2)
-          example: https://api.weather.com/api/v2
-
-    Operation:
-      type: object
-      required:
-        - method
-        - path
-      properties:
-        method:
-          type: string
-          description: HTTP method
-          enum:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - PATCH
-            - HEAD
-            - OPTIONS
-          example: GET
-        path:
-          type: string
-          description: Route path with optional {param} placeholders
-          pattern: '^\/.*$'
-          example: /{country_code}/{city}
+          description: Failure reason when this artifact could not be imported; absent on success.
+          example: "project \"weather-project\" does not exist in org"
 
     InternalAPIKeyItem:
       type: object
@@ -1756,6 +1829,39 @@ components:
           nullable: true
           description: Issuer of the API key, if applicable
           example: "api-platform-devportal"
+
+    GatewayHmacSecretInfo:
+      type: object
+      description: A single HMAC secret entry returned to the gateway-controller. Contains the plaintext value.
+      required:
+        - name
+        - secret
+      properties:
+        name:
+          type: string
+          description: URL-safe slug identifying the secret.
+          example: github-webhook
+        secret:
+          type: string
+          description: Plaintext HMAC secret value for use in signature verification.
+          example: whsec_a3f2c1e4b5d6789012345678901234567890abcdef1234567890abcdef12345678
+
+    GatewayHmacSecretsResponse:
+      type: object
+      description: Response for GET /websub-apis/{apiId}/secrets
+      required:
+        - artifactId
+        - secrets
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          description: UUID of the WebSub API artifact.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayHmacSecretInfo'
 
     ErrorResponse:
       type: object

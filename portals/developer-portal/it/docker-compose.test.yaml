@@ -36,7 +36,7 @@ services:
       # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
       DP_ADVANCED_HTTP: "true"
       DP_BASEURL: "http://devportal:3000"
-      DP_GENERATEDEFAULTSUBPOLICIES: "true"
+      DP_GENERATEDEFAULTSUBPLANS: "true"
       DP_ADVANCED_APIKEY_ENABLED: "true"
       DP_ADVANCED_APIKEY_KEYVALUE: "devportal-it-test-key"
       DP_LOGGING_CONSOLEONLY: "true"

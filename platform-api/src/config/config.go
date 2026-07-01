@@ -71,8 +71,9 @@ type FileBased struct {
 
 // Server holds the configuration parameters for the application.
 type Server struct {
-	LogLevel string `koanf:"log_level"`
-	Port     string `koanf:"port"`
+	LogLevel  string `koanf:"log_level"`
+	LogFormat string `koanf:"log_format"`
+	Port      string `koanf:"port"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
@@ -88,8 +89,7 @@ type Server struct {
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
 
-	EnableScopeValidation      bool `koanf:"enable_scope_validation"`
-	OrgCreationRequiresAuth    bool `koanf:"org_creation_requires_auth"`
+	EnableScopeValidation bool `koanf:"enable_scope_validation"`
 }
 
 // Auth groups all authentication-related configuration.
@@ -162,6 +162,7 @@ type WebSocket struct {
 
 // Database holds database-specific configuration.
 type Database struct {
+	// Driver supports: sqlite3, postgres/postgresql/pgx, sqlserver/mssql.
 	Driver string `koanf:"driver"`
 	// Path is the file path for SQLite databases.
 	Path            string `koanf:"path"`
@@ -175,8 +176,9 @@ type Database struct {
 	MaxIdleConns    int    `koanf:"max_idle_conns"`
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
 
-	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
+	EncryptionKey                  string `koanf:"encryption_key"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
+	SecretEncryptionKey string `koanf:"secret_encryption_key"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.
@@ -240,8 +242,6 @@ func GetConfig() *Server {
 // LoadConfig loads configuration with priority: env vars > config file > defaults.
 // configPath may be empty — when omitted only env vars and defaults are used.
 func LoadConfig(configPath string) (*Server, error) {
-	applyLegacyEnvAliases()
-
 	cfg := defaultConfig()
 	k := koanf.New(".")
 
@@ -294,6 +294,9 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
 		return nil, err
 	}
+	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
+		return nil, err
+	}
 
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
 		if !demoMode() {
@@ -309,6 +312,29 @@ func LoadConfig(configPath string) (*Server, error) {
 		cfg.Auth.JWT.SecretKey = key
 		slog.Warn("JWT_SIGNING_SECRET not set — generated an ephemeral demo key (restart will invalidate all sessions)",
 			slog.String("JWT_SIGNING_SECRET", key))
+	}
+
+	// SecretEncryptionKey is optional when the shared DATABASE_ENCRYPTION_KEY is configured;
+	// server.go resolves the final key via: SecretEncryptionKey → EncryptionKey → JWT secret.
+	// Only fail (or warn in demo mode) when no key source is available at all.
+	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
+		// APIP_DEMO_MODE defaults to enabled when unset; only an explicit
+		// "false"/"0" opts out and requires a configured encryption key.
+		demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+		if demoMode == "false" || demoMode == "0" {
+			return nil, fmt.Errorf("no encryption key configured for secrets management. " +
+				"Set PLATFORM_SECRET_ENCRYPTION_KEY (secret-specific) or DATABASE_ENCRYPTION_KEY (shared). " +
+				"Generate one with: openssl rand -hex 32. " +
+				"To allow an ephemeral key in a single-node dev environment, set APIP_DEMO_MODE=true")
+		}
+		key, err := generateRandomSecret()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate secret encryption key: %w", err)
+		}
+		cfg.Database.SecretEncryptionKey = key
+		slog.Warn("APIP_DEMO_MODE: no encryption key configured for secrets — using an ephemeral random key. " +
+			"Encrypted secrets will be unreadable after restart and WILL NOT be shared across replicas. " +
+			"Set PLATFORM_SECRET_ENCRYPTION_KEY or DATABASE_ENCRYPTION_KEY for any persistent or multi-replica deployment.")
 	}
 
 	return cfg, nil
@@ -340,62 +366,110 @@ func demoMode() bool {
 func envToKoanfKey(s string) string {
 	switch s {
 	// Server-level
-	case "log_level": return "log_level"
-	case "port":      return "port"
-	case "db_schema_path":                return "db_schema_path"
-	case "openapi_spec_path":             return "openapi_spec_path"
-	case "llm_template_definitions_path": return "llm_template_definitions_path"
-	case "enable_scope_validation":       return "enable_scope_validation"
-	case "org_creation_requires_auth":    return "org_creation_requires_auth"
+	case "log_level":
+		return "log_level"
+	case "log_format":
+		return "log_format"
+	case "port":
+		return "port"
+	case "db_schema_path":
+		return "db_schema_path"
+	case "openapi_spec_path":
+		return "openapi_spec_path"
+	case "llm_template_definitions_path":
+		return "llm_template_definitions_path"
+	case "enable_scope_validation":
+		return "enable_scope_validation"
 
 	// Database
-	case "database_driver":              return "database.driver"
-	case "database_db_path":             return "database.path"
-	case "database_host":                return "database.host"
-	case "database_port":                return "database.port"
-	case "database_name":                return "database.name"
-	case "database_user":                return "database.user"
-	case "database_password":            return "database.password"
-	case "database_ssl_mode":            return "database.ssl_mode"
-	case "database_max_open_conns":      return "database.max_open_conns"
-	case "database_max_idle_conns":      return "database.max_idle_conns"
-	case "database_conn_max_lifetime":   return "database.conn_max_lifetime"
-	case "database_execute_schema_ddl":  return "database.execute_schema_ddl"
-	case "database_subscription_token_encryption_key": return "database.subscription_token_encryption_key"
+	case "database_driver":
+		return "database.driver"
+	case "database_db_path":
+		return "database.path"
+	case "database_host":
+		return "database.host"
+	case "database_port":
+		return "database.port"
+	case "database_name":
+		return "database.name"
+	case "database_user":
+		return "database.user"
+	case "database_password":
+		return "database.password"
+	case "database_ssl_mode":
+		return "database.ssl_mode"
+	case "database_max_open_conns":
+		return "database.max_open_conns"
+	case "database_max_idle_conns":
+		return "database.max_idle_conns"
+	case "database_conn_max_lifetime":
+		return "database.conn_max_lifetime"
+	case "database_encryption_key":
+		return "database.encryption_key"
+	case "database_subscription_token_encryption_key":
+		return "database.subscription_token_encryption_key"
+	case "platform_secret_encryption_key":
+		return "database.secret_encryption_key"
 
 	// Auth
-	case "auth_skip_paths": return "auth.skip_paths"
+	case "auth_skip_paths":
+		return "auth.skip_paths"
 
 	// Auth JWT
-	case "auth_jwt_enabled":         return "auth.jwt.enabled"
-	case "auth_jwt_secret_key":      return "auth.jwt.secret_key"
-	case "auth_jwt_issuer":          return "auth.jwt.issuer"
-	case "auth_jwt_skip_validation": return "auth.jwt.skip_validation"
+	case "auth_jwt_enabled":
+		return "auth.jwt.enabled"
+	case "auth_jwt_secret_key":
+		return "auth.jwt.secret_key"
+	case "auth_jwt_issuer":
+		return "auth.jwt.issuer"
+	case "auth_jwt_skip_validation":
+		return "auth.jwt.skip_validation"
 
 	// Auth IDP
-	case "auth_idp_enabled":                  return "auth.idp.enabled"
-	case "auth_idp_name":                     return "auth.idp.name"
-	case "auth_idp_jwks_url":                 return "auth.idp.jwks_url"
-	case "auth_idp_issuer":                   return "auth.idp.issuer"
-	case "auth_idp_audience":                 return "auth.idp.audience"
-	case "auth_idp_validation_mode":                         return "auth.idp.validation_mode"
-	case "auth_idp_role_mappings_file":                      return "auth.idp.role_mappings_file"
-	case "auth_idp_claim_mappings_organization_claim_name":  return "auth.idp.claim_mappings.organization_claim_name"
-	case "auth_idp_claim_mappings_org_name_claim_name":      return "auth.idp.claim_mappings.org_name_claim_name"
-	case "auth_idp_claim_mappings_org_handle_claim_name":    return "auth.idp.claim_mappings.org_handle_claim_name"
-	case "auth_idp_claim_mappings_user_id_claim_name":       return "auth.idp.claim_mappings.user_id_claim_name"
-	case "auth_idp_claim_mappings_username_claim_name":      return "auth.idp.claim_mappings.username_claim_name"
-	case "auth_idp_claim_mappings_email_claim_name":         return "auth.idp.claim_mappings.email_claim_name"
-	case "auth_idp_claim_mappings_scope_claim_name":         return "auth.idp.claim_mappings.scope_claim_name"
-	case "auth_idp_claim_mappings_roles_claim_path":         return "auth.idp.claim_mappings.roles_claim_path"
+	case "auth_idp_enabled":
+		return "auth.idp.enabled"
+	case "auth_idp_name":
+		return "auth.idp.name"
+	case "auth_idp_jwks_url":
+		return "auth.idp.jwks_url"
+	case "auth_idp_issuer":
+		return "auth.idp.issuer"
+	case "auth_idp_audience":
+		return "auth.idp.audience"
+	case "auth_idp_validation_mode":
+		return "auth.idp.validation_mode"
+	case "auth_idp_role_mappings_file":
+		return "auth.idp.role_mappings_file"
+	case "auth_idp_claim_mappings_organization_claim_name":
+		return "auth.idp.claim_mappings.organization_claim_name"
+	case "auth_idp_claim_mappings_org_name_claim_name":
+		return "auth.idp.claim_mappings.org_name_claim_name"
+	case "auth_idp_claim_mappings_org_handle_claim_name":
+		return "auth.idp.claim_mappings.org_handle_claim_name"
+	case "auth_idp_claim_mappings_user_id_claim_name":
+		return "auth.idp.claim_mappings.user_id_claim_name"
+	case "auth_idp_claim_mappings_username_claim_name":
+		return "auth.idp.claim_mappings.username_claim_name"
+	case "auth_idp_claim_mappings_email_claim_name":
+		return "auth.idp.claim_mappings.email_claim_name"
+	case "auth_idp_claim_mappings_scope_claim_name":
+		return "auth.idp.claim_mappings.scope_claim_name"
+	case "auth_idp_claim_mappings_roles_claim_path":
+		return "auth.idp.claim_mappings.roles_claim_path"
 
 	// Auth FileBased
-	case "auth_file_based_enabled":              return "auth.file_based.enabled"
-	case "auth_file_based_organization_id":      return "auth.file_based.organization.id"
-	case "auth_file_based_organization_name":    return "auth.file_based.organization.name"
-	case "auth_file_based_organization_handle":  return "auth.file_based.organization.handle"
-	case "auth_file_based_organization_region":  return "auth.file_based.organization.region"
-	case "auth_file_based_users":                return "auth.file_based.users"
+	case "auth_file_based_enabled":
+		return "auth.file_based.enabled"
+	case "auth_file_based_organization_id":
+		return "auth.file_based.organization.id"
+	case "auth_file_based_organization_name":
+		return "auth.file_based.organization.name"
+	case "auth_file_based_organization_handle":
+		return "auth.file_based.organization.handle"
+	case "auth_file_based_organization_region":
+		return "auth.file_based.organization.region"
+	case "auth_file_based_users":
+		return "auth.file_based.users"
 
 	// WebSocket — accept both legacy WEBSOCKET_WS_* and clean WEBSOCKET_*
 	case "websocket_ws_max_connections", "websocket_max_connections":
@@ -412,42 +486,68 @@ func envToKoanfKey(s string) string {
 		return "websocket.metrics_log_interval"
 
 	// Default DevPortal
-	case "default_devportal_enabled":                  return "default_devportal.enabled"
-	case "default_devportal_name":                     return "default_devportal.name"
-	case "default_devportal_identifier":               return "default_devportal.identifier"
-	case "default_devportal_api_url":                  return "default_devportal.api_url"
-	case "default_devportal_hostname":                 return "default_devportal.hostname"
-	case "default_devportal_api_key":                  return "default_devportal.api_key"
-	case "default_devportal_header_key_name":          return "default_devportal.header_key_name"
-	case "default_devportal_timeout":                  return "default_devportal.timeout"
-	case "default_devportal_role_claim_name":          return "default_devportal.role_claim_name"
-	case "default_devportal_groups_claim_name":        return "default_devportal.groups_claim_name"
-	case "default_devportal_organization_claim_name":  return "default_devportal.organization_claim_name"
-	case "default_devportal_admin_role":               return "default_devportal.admin_role"
-	case "default_devportal_subscriber_role":          return "default_devportal.subscriber_role"
-	case "default_devportal_super_admin_role":         return "default_devportal.super_admin_role"
+	case "default_devportal_enabled":
+		return "default_devportal.enabled"
+	case "default_devportal_name":
+		return "default_devportal.name"
+	case "default_devportal_identifier":
+		return "default_devportal.identifier"
+	case "default_devportal_api_url":
+		return "default_devportal.api_url"
+	case "default_devportal_hostname":
+		return "default_devportal.hostname"
+	case "default_devportal_api_key":
+		return "default_devportal.api_key"
+	case "default_devportal_header_key_name":
+		return "default_devportal.header_key_name"
+	case "default_devportal_timeout":
+		return "default_devportal.timeout"
+	case "default_devportal_role_claim_name":
+		return "default_devportal.role_claim_name"
+	case "default_devportal_groups_claim_name":
+		return "default_devportal.groups_claim_name"
+	case "default_devportal_organization_claim_name":
+		return "default_devportal.organization_claim_name"
+	case "default_devportal_admin_role":
+		return "default_devportal.admin_role"
+	case "default_devportal_subscriber_role":
+		return "default_devportal.subscriber_role"
+	case "default_devportal_super_admin_role":
+		return "default_devportal.super_admin_role"
 
 	// Deployments
-	case "deployments_max_per_api_gateway":          return "deployments.max_per_api_gateway"
-	case "deployments_transitional_status_enabled":  return "deployments.transitional_status_enabled"
-	case "deployments_timeout_enabled":              return "deployments.timeout_enabled"
-	case "deployments_timeout_interval":             return "deployments.timeout_interval"
-	case "deployments_timeout_duration":             return "deployments.timeout_duration"
+	case "deployments_max_per_api_gateway":
+		return "deployments.max_per_api_gateway"
+	case "deployments_transitional_status_enabled":
+		return "deployments.transitional_status_enabled"
+	case "deployments_timeout_enabled":
+		return "deployments.timeout_enabled"
+	case "deployments_timeout_interval":
+		return "deployments.timeout_interval"
+	case "deployments_timeout_duration":
+		return "deployments.timeout_duration"
 
 	// TLS
-	case "tls_cert_dir": return "tls.cert_dir"
+	case "tls_cert_dir":
+		return "tls.cert_dir"
 
 	// API Key
-	case "api_key_hashing_algorithms": return "api_key.hashing_algorithms"
+	case "api_key_hashing_algorithms":
+		return "api_key.hashing_algorithms"
 
 	// Gateway
-	case "gateway_enable_version_verification":            return "gateway.enable_version_verification"
-	case "gateway_enable_functionality_type_verification": return "gateway.enable_functionality_type_verification"
+	case "gateway_enable_version_verification":
+		return "gateway.enable_version_verification"
+	case "gateway_enable_functionality_type_verification":
+		return "gateway.enable_functionality_type_verification"
 
 	// EventHub
-	case "event_hub_poll_interval":    return "event_hub.poll_interval"
-	case "event_hub_cleanup_interval": return "event_hub.cleanup_interval"
-	case "event_hub_retention_period": return "event_hub.retention_period"
+	case "event_hub_poll_interval":
+		return "event_hub.poll_interval"
+	case "event_hub_cleanup_interval":
+		return "event_hub.cleanup_interval"
+	case "event_hub_retention_period":
+		return "event_hub.retention_period"
 
 	default:
 		return ""
@@ -497,6 +597,27 @@ func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
 	}
 	if cfg.HeaderKeyName == "" {
 		return fmt.Errorf("default DevPortal header_key_name is not configured")
+	}
+	return nil
+}
+
+// validateAuthModeExclusivity enforces that IDP (JWKS) auth is not enabled
+// alongside the local auth modes. When an IDP is configured every token must be
+// validated against its JWKS; leaving local HMAC auth on would let the server
+// silently validate (file-based) or accept (local JWT) tokens with the local
+// secret instead, shadowing the IDP. So enabling the IDP requires consciously
+// turning the local modes off.
+func validateAuthModeExclusivity(auth *Auth) error {
+	if !auth.IDP.Enabled {
+		return nil
+	}
+	if auth.JWT.Enabled {
+		return fmt.Errorf("auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive: " +
+			"set auth.jwt.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
+	}
+	if auth.FileBased.Enabled {
+		return fmt.Errorf("auth.idp.enabled=true and auth.file_based.enabled=true are mutually exclusive: " +
+			"set auth.file_based.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
 	}
 	return nil
 }

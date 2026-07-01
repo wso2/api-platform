@@ -48,15 +48,19 @@ func hashSubscriptionToken(token string) string {
 	return HashSubscriptionToken(token)
 }
 
-// getSubscriptionTokenEncryptionKey returns the 32-byte key for token encryption, or nil if not configured.
+// getSubscriptionTokenEncryptionKey returns the 32-byte key for subscription token encryption.
+// Precedence: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → AUTH_JWT_SECRET_KEY.
 func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
 	keyStr := cfg.Database.SubscriptionTokenEncryptionKey
 	if keyStr == "" {
+		keyStr = cfg.Database.EncryptionKey
+	}
+	if keyStr == "" {
 		keyStr = cfg.Auth.JWT.SecretKey
 	}
 	if keyStr == "" {
-		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY or AUTH_JWT_SECRET_KEY")
+		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY, DATABASE_ENCRYPTION_KEY, or AUTH_JWT_SECRET_KEY")
 	}
 	return utils.DeriveEncryptionKey(keyStr)
 }
@@ -109,13 +113,14 @@ func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
 	sub.UpdatedAt = now
 
 	query := `
-		INSERT INTO subscriptions (uuid, api_uuid, subscriber_id, application_id, subscription_token, subscription_token_hash, subscription_plan_uuid,
-			organization_uuid, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_token_hash, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
-		sub.UUID, sub.APIUUID, sub.SubscriberID, sub.ApplicationID, encryptedToken, hashedToken,
+		sub.UUID, sub.ArtifactUUID, sub.SubscriberID, sub.ApplicationID, encryptedToken, hashedToken,
 		sub.SubscriptionPlanID, sub.OrganizationUUID, string(sub.Status),
+		sub.CreatedBy, sub.UpdatedBy,
 		sub.CreatedAt, sub.UpdatedAt,
 	)
 	if err != nil {
@@ -133,8 +138,8 @@ func isSubscriptionUniqueViolation(err error) bool {
 		return false
 	}
 	s := err.Error()
-	// SQLite: UNIQUE constraint failed on subscriptions (e.g. duplicate (api_uuid, subscriber_id, organization_uuid)
-	// or (api_uuid, subscription_token_hash); see schema.sqlite.sql / schema.postgres.sql).
+	// SQLite: UNIQUE constraint failed on subscriptions (e.g. duplicate (artifact_uuid, subscriber_id, organization_uuid)
+	// or (artifact_uuid, subscription_token_hash); see schema.sqlite.sql / schema.postgres.sql).
 	if strings.Contains(s, "UNIQUE constraint failed") && strings.Contains(s, "subscriptions") {
 		return true
 	}
@@ -154,16 +159,18 @@ func isSubscriptionUniqueViolation(err error) bool {
 // Decrypts subscription_token for API response.
 func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subscription, error) {
 	query := `
-		SELECT uuid, api_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
-			organization_uuid, status, created_at, updated_at
+		SELECT uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at
 		FROM subscriptions
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	sub := &model.Subscription{}
 	var storedToken string
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), subscriptionID, orgUUID).Scan(
-		&sub.UUID, &sub.APIUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
+		&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
 		&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
+		&createdBy, &updatedBy,
 		&sub.CreatedAt, &sub.UpdatedAt,
 	)
 	if err != nil {
@@ -172,6 +179,8 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 		}
 		return nil, err
 	}
+	sub.CreatedBy = createdBy.String
+	sub.UpdatedBy = updatedBy.String
 	sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
 	return sub, nil
 }
@@ -180,14 +189,14 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 // Decrypts subscription_token for each row.
 func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, error) {
 	query := `
-		SELECT uuid, api_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
-			organization_uuid, status, created_at, updated_at
+		SELECT uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at
 		FROM subscriptions
 		WHERE organization_uuid = ?
 	`
 	args := []interface{}{orgUUID}
 	if apiUUID != nil && *apiUUID != "" {
-		query += ` AND api_uuid = ?`
+		query += ` AND artifact_uuid = ?`
 		args = append(args, *apiUUID)
 	}
 	if subscriberID != nil && *subscriberID != "" {
@@ -202,8 +211,9 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 		query += ` AND status = ?`
 		args = append(args, *status)
 	}
-	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	args = append(args, limit, offset)
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query += ` ORDER BY created_at DESC ` + pageClause
+	args = append(args, pageArgs...)
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -215,33 +225,58 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 	for rows.Next() {
 		sub := &model.Subscription{}
 		var storedToken string
+		var createdBy, updatedBy sql.NullString
 		if err := rows.Scan(
-			&sub.UUID, &sub.APIUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
+			&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
 			&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
-			&sub.CreatedAt, &sub.UpdatedAt,
+			&createdBy, &updatedBy, &sub.CreatedAt, &sub.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		sub.CreatedBy = createdBy.String
+		sub.UpdatedBy = updatedBy.String
 		sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
 		list = append(list, sub)
 	}
 	return list, rows.Err()
 }
 
+// decryptionKeyCandidates returns all derived keys to try during decryption, in precedence order.
+// Tokens may have been encrypted with any of the three key sources across different deployments,
+// so decryption must attempt all of them: SubscriptionTokenEncryptionKey → EncryptionKey → SecretKey.
+func decryptionKeyCandidates() [][]byte {
+	cfg := config.GetConfig()
+	sources := []string{
+		cfg.Database.SubscriptionTokenEncryptionKey,
+		cfg.Database.EncryptionKey,
+		cfg.Auth.JWT.SecretKey,
+	}
+	seen := map[string]bool{}
+	var keys [][]byte
+	for _, s := range sources {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		if k, err := utils.DeriveEncryptionKey(s); err == nil {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
 // decryptSubscriptionToken decrypts stored token for API response.
+// Tries all key candidates in precedence order to handle tokens encrypted under a previous key source.
 func (r *SubscriptionRepo) decryptSubscriptionToken(stored string) string {
 	if stored == "" {
 		return ""
 	}
-	key, err := getSubscriptionTokenEncryptionKey()
-	if err != nil {
-		return ""
+	for _, key := range decryptionKeyCandidates() {
+		if plain, err := utils.DecryptSubscriptionToken(key, stored); err == nil {
+			return plain
+		}
 	}
-	plain, err := utils.DecryptSubscriptionToken(key, stored)
-	if err != nil {
-		return ""
-	}
-	return plain
+	return ""
 }
 
 // CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
@@ -249,7 +284,7 @@ func (r *SubscriptionRepo) CountByFilters(orgUUID string, apiUUID *string, subsc
 	query := `SELECT COUNT(*) FROM subscriptions WHERE organization_uuid = ?`
 	args := []interface{}{orgUUID}
 	if apiUUID != nil && *apiUUID != "" {
-		query += ` AND api_uuid = ?`
+		query += ` AND artifact_uuid = ?`
 		args = append(args, *apiUUID)
 	}
 	if subscriberID != nil && *subscriberID != "" {
@@ -277,11 +312,11 @@ func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
 	sub.UpdatedAt = time.Now()
 	query := `
 		UPDATE subscriptions
-		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_at = ?
+		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
-		sub.SubscriptionPlanID, sub.ApplicationID, string(sub.Status), sub.UpdatedAt,
+		sub.SubscriptionPlanID, sub.ApplicationID, string(sub.Status), sub.UpdatedBy, sub.UpdatedAt,
 		sub.UUID, sub.OrganizationUUID,
 	)
 	if err != nil {
@@ -312,10 +347,10 @@ func (r *SubscriptionRepo) Delete(subscriptionID, orgUUID string) error {
 func (r *SubscriptionRepo) ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID string) (bool, error) {
 	query := `
 		SELECT 1 FROM subscriptions
-		WHERE api_uuid = ? AND organization_uuid = ?
+		WHERE artifact_uuid = ? AND organization_uuid = ?
 		  AND subscriber_id = ?
-		LIMIT 1
-	`
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
 	var exists int
 	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID, subscriberID).Scan(&exists)
 	if err == sql.ErrNoRows {

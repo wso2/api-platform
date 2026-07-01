@@ -16,21 +16,22 @@
  * under the License.
  */
 // Devportal API base segment and version — single source of truth for the
-// org-scoped invocation prefix `/o/{orgId}/devportal/v1`. Change these two to
-// bump the base segment (e.g. devportalv2) or version (e.g. v2) everywhere.
+// invocation prefix `/devportal/v1`. Change these two to bump the base segment
+// (e.g. devportalv2) or version (e.g. v2) everywhere.
 const DEVPORTAL_BASE_SEGMENT = 'devportal';
 const DEVPORTAL_VERSION = 'v1';
-// Express route prefix for org-scoped routes, e.g. '/o/:orgId/devportal/v1'
-const DEVPORTAL_ORG_PREFIX = `/o/:orgId/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
-// Builder for a concrete org path used in server-side URL generation,
-// e.g. devportalOrgPath('abc') => '/o/abc/devportal/v1'
-const devportalOrgPath = (orgId) => `/o/${orgId}/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// Express route prefix for devportal routes, e.g. '/devportal/v1'
+const DEVPORTAL_BASE_PATH = `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// Builder for the devportal base path used in server-side URL generation.
+// The orgId argument is accepted for backward-compatibility but not used —
+// org context is resolved from the token/session, not the URL.
+const devportalOrgPath = (_orgId) => `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
 
 module.exports = {
     DEVPORTAL_API: {
         BASE_SEGMENT: DEVPORTAL_BASE_SEGMENT,
         VERSION: DEVPORTAL_VERSION,
-        ORG_PREFIX: DEVPORTAL_ORG_PREFIX,
+        BASE_PATH: DEVPORTAL_BASE_PATH,
         orgPath: devportalOrgPath,
     },
     IMAGE: 'image',
@@ -39,25 +40,41 @@ module.exports = {
     CHARSET_UTF8: 'utf-8',
     FILE_NAME_PARAM: '&fileName=',
     API_ICON: 'api-icon',
-    API_TEMPLATE_FILE_NAME: '/content?type=IMAGE&fileName=',
-    API_TYPE_QUERY: '/content?type=',
+    API_TEMPLATE_FILE_NAME: '/assets?type=IMAGE&fileName=',
+    API_TYPE_QUERY: '/assets?type=',
     BASE_URL: 'https://localhost:',
     BASE_URL_NAME: 'baseUrl',
-    ORG_ID: 'orgID',
-    ORG_IDENTIFIER: 'organizationIdentifier',
+    ORG_ID: 'orgId',
+    ORG_IDENTIFIER: 'idpRefId',
     ORG_HANDLE: 'orgHandle',
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
-    EXCHANGE_TOKEN: 'exchangeToken',
     USER_ID: 'sub',
+    SYSTEM_ACTOR: 'system',
     BASIC_HEADER: 'basicAuthHeader',
-    API_VISIBILITY: {
-        PUBLIC: 'PUBLIC',
-        PRIVATE: 'PRIVATE'
-    },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
-        UNPUBLISHED: "CREATED"
+        DEPRECATED: "DEPRECATED"
+    },
+    API_WORKFLOW_STATUS: {
+        DRAFT: "DRAFT",
+        PUBLISHED: "PUBLISHED",
+    },
+    API_WORKFLOW_CONTENT_TYPE: {
+        ARAZZO: "ARAZZO",
+        MD: "MD",
+    },
+    AGENT_VISIBILITY: {
+        VISIBLE: "VISIBLE",
+        HIDDEN: "HIDDEN",
+    },
+    SUBSCRIPTION_STATUS: {
+        ACTIVE: "ACTIVE",
+        INACTIVE: "INACTIVE",
+    },
+    API_KEY_STATUS: {
+        ACTIVE: "ACTIVE",
+        REVOKED: "REVOKED",
     },
     API_TYPE: {
         REST: "REST",
@@ -69,8 +86,8 @@ module.exports = {
     },
     DEVPORTAL_MODE: {
         DEFAULT: "DEFAULT",
-        MCP_ONLY: "MCPSERVERSONLY",
-        API_PROXIES: "APISONLY",
+        MCP_SERVERS_ONLY: "MCP_SERVERS_ONLY",
+        APIS_ONLY: "APIS_ONLY",
     },
     DOC_TYPES: {
         DOC_ID: 'DOC_',
@@ -135,12 +152,6 @@ module.exports = {
         RESIDENT_KEY_MANAGER: 'Resident Key Manager',
         APP_DEV_STS_KEY_MANAGER: '_appdev_sts_key_manager_',
     },
-    KEY_MANAGER_TYPES: {
-        ASGARDEO: 'ASGARDEO',
-        WSO2IS: 'WSO2IS',
-        KEYCLOAK: 'KEYCLOAK',
-        GENERIC_OIDC: 'GENERIC_OIDC',
-    },
     TOKEN_TYPES: {
         API_KEY: 'API_KEY',
         OAUTH: 'OAUTH',
@@ -158,7 +169,7 @@ module.exports = {
         API_FILE_PATH: '/apis/',
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
-        DEVPORTAL_CONFIGURE: ['/*/configure', '/*/views/*/configure'],
+        DEVPORTAL_CONFIGURE: ['/*/settings', '/*/views/*/settings'],
         DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         DEVPORTAL_API_LISTING: '/*/apis',
         DEVPORTAL_TECHNICAL_PAGES: ['*/application'],
@@ -205,34 +216,39 @@ module.exports = {
     },
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
-            "policyName": "Bronze",
+            "handle": "Bronze",
             "description": "Allows 1000 requests per minute",
             "requestCount": 1000,
-            "displayName": "Bronze",
+            "name": "Bronze",
+            "type": "requestcount",
         },
         {
-            "policyName": "Gold",
+            "handle": "Gold",
             "description": "Allows 5000 requests per minute",
-            "displayName": "Gold",
+            "name": "Gold",
             "requestCount": 5000,
+            "type": "requestcount",
         },
         {
-            "policyName": "Silver",
+            "handle": "Silver",
             "description": "Allows 2000 requests per minute",
-            "displayName": "Silver",
+            "name": "Silver",
             "requestCount": 2000,
+            "type": "requestcount",
         },
         {
-            "policyName": "Unlimited",
+            "handle": "Unlimited",
             "description": "Allows unlimited requests",
-            "displayName": "Unlimited",
-            "requestCount": "Unlimited",
+            "name": "Unlimited",
+            "requestCount": -1,
+            "type": "requestcount",
         },
         {
-            "policyName": "AsyncUnlimited",
+            "handle": "AsyncUnlimited",
             "description": "Allows unlimited requests for Async APIs",
-            "displayName": "AsyncUnlimited",
-            "requestCount": "Unlimited",
+            "name": "AsyncUnlimited",
+            "requestCount": -1,
+            "type": "requestcount",
         }
     ],
     ERROR_MESSAGE: {
@@ -261,10 +277,6 @@ module.exports = {
         API_NOT_IN_ORG: "API does not belong to given organization",
         UNAUTHENTICATED: "Unauthorized access, please log in again",
         FORBIDDEN: "You do not have permission to access this resource",
-        PROVIDER_CREATE_ERROR: "Error while creating provider",
-        PROVIDER_UPDATE_ERROR: "Error while updating provider",
-        PROVIDER_DELETE_ERROR: "Error while deleting provider",
-        PROVIDER_FETCH_ERROR: "Error while fetching providers",
         LABEL_DELETE_ERROR: "Error while deleting label",
         LABEL_RETRIEVE_ERROR: "Error while deleting label",
         LABEL_CREATE_ERROR: "Error while creating labels",
@@ -273,8 +285,8 @@ module.exports = {
         VIEW_UPDATE_ERROR: "Error while updating view",
         VIEW_DELETE_ERROR: "Error while deleting view",
         VIEW_RETRIEVE_ERROR: "Error while fetching view",
-        SUBSCRIPTION_POLICY_CREATE_ERROR: "Error while creating subscription policy",
-        SUBSCRIPTION_POLICY_NOT_FOUND: "Subscription policy not found",
+        SUBSCRIPTION_PLAN_CREATE_ERROR: "Error while creating subscription plan",
+        SUBSCRIPTION_PLAN_NOT_FOUND: "Subscription plan not found",
         APPLICATION_CREATE_ERROR: "Error while creating application",
         APPLICATION_UPDATE_ERROR: "Error while updating application",
         APPLICATION_DELETE_ERROR: "Error while deleting application",
@@ -290,12 +302,21 @@ module.exports = {
         KEY_MANAGER_DELETE_ERROR: "Error while deleting key manager",
         KEY_MANAGER_RETRIEVE_ERROR: "Error while retrieving key manager",
         KEY_MANAGER_NOT_FOUND: "Key manager not found",
-        KEY_MANAGER_ENCRYPTION_ERROR: "Key manager encryption key not configured",
+        WEBHOOK_SUBSCRIBER_CREATE_ERROR: "Error while creating webhook subscriber",
+        WEBHOOK_SUBSCRIBER_UPDATE_ERROR: "Error while updating webhook subscriber",
+        WEBHOOK_SUBSCRIBER_DELETE_ERROR: "Error while deleting webhook subscriber",
+        WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR: "Error while retrieving webhook subscriber",
+        WEBHOOK_SUBSCRIBER_NOT_FOUND: "Webhook subscriber not found",
         ERR_SUB_EXIST: "ERR_SUB_EXIST",
         ERR_KEY_EXIST: "ERR_KEY_EXIST",
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",
         API_NOT_FOUND: "Requested API not found",
+        API_WORKFLOW_CREATE_ERROR: "Error while creating API workflow",
+        API_WORKFLOW_UPDATE_ERROR: "Error while updating API workflow",
+        API_WORKFLOW_DELETE_ERROR: "Error while deleting API workflow",
+        API_WORKFLOW_RETRIEVE_ERROR: "Error while fetching API workflow",
+        API_WORKFLOW_NOT_FOUND: "API workflow not found",
         COMMON_AUTH_ERROR_MESSAGE: "User is not authenticated to perform this request",
         COMMON_ERROR_MESSAGE: "Oops! Something went wrong",
         COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE: "Requested page not found!"
@@ -316,7 +337,5 @@ module.exports = {
         'api-landing-md',
         'llms-txt',
     ],
-    FEDERATED_GATEWAY_VENDORS: ['aws'],
     DEFAULT_PROFILE_IMAGE_URL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
-    WSO2_DEFAULT_URL: 'https://localhost:9443',
 }

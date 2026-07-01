@@ -20,12 +20,30 @@ cd platform-api/src
 go run ./cmd/main.go
 ```
 
+### Database Configuration
+
+Platform API supports `sqlite3` (default), `postgres`, and `sqlserver`.
+
+```bash
+# SQL Server example
+export DATABASE_DRIVER=sqlserver
+export DATABASE_HOST=sqlserver.example.internal
+export DATABASE_PORT=1433
+export DATABASE_NAME=platform_api
+export DATABASE_USER=sa
+export DATABASE_PASSWORD='<strong-password>'
+export DATABASE_SSL_MODE=disable
+
+cd platform-api/src
+go run ./cmd/main.go
+```
+
 ### Step-by-Step Workflow
 
 **1. Register an Organization**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/organizations \
+curl -k -X POST https://localhost:9243/api/v0.9/organizations \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{"id":"<org-uuid>","handle":"acme","name":"ACME Corporation","region":"us-east-1"}'
@@ -34,7 +52,7 @@ curl -k -X POST https://localhost:9243/api/v1/organizations \
 **2. Create a Project**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/projects \
+curl -k -X POST https://localhost:9243/api/v0.9/projects \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
@@ -45,7 +63,7 @@ curl -k -X POST https://localhost:9243/api/v1/projects \
 **3. Create a Gateway**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>' \
@@ -71,7 +89,7 @@ Response includes the gateway UUID:
 **4. Generate Gateway Token**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways/<gateway-uuid>/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/<gateway-uuid>/tokens \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>'
 ```
@@ -88,7 +106,7 @@ Response includes the gateway authentication token:
 
 **List Gateway Tokens:**
 ```bash
-curl -k https://localhost:9243/api/v1/gateways/<gateway-uuid>/tokens \
+curl -k https://localhost:9243/api/v0.9/gateways/<gateway-uuid>/tokens \
   -H 'Authorization: Bearer <your-token>'
 ```
 
@@ -116,7 +134,7 @@ Keep this connection open to receive real-time deployment events.
 **6. Create an API**
 
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
+curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
@@ -138,7 +156,7 @@ curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
 **7. Deploy API to Gateway**
 
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/rest-apis/weather-api/deployments' \
+curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis/weather-api/deployments' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>' \
@@ -188,6 +206,11 @@ AUTH_IDP_ENABLED=false (default)  →  Local JWT mode  (HMAC signature verificat
 AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
+> **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
+> production-grade startup checks. With demo mode off, the server will not fall back to an
+> ephemeral secret encryption key (set `PLATFORM_SECRET_ENCRYPTION_KEY` or
+> `DATABASE_ENCRYPTION_KEY`) and warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
+
 ---
 
 #### Local JWT Mode (default)
@@ -236,7 +259,7 @@ Tokens are validated against any standards-compliant identity provider (Thunder,
 | `AUTH_IDP_NAME` | _(empty)_ | Optional label shown in startup logs (e.g. `thunder`, `asgardeo`) |
 | `AUTH_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
 | `AUTH_IDP_ISSUER` | _(required)_ | Accepted JWT issuer |
-| `AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audiences (comma-separated). Entries ending with `*` are treated as prefix matches |
+| `AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audience. When set, the token's `aud` claim must contain this value; empty skips the check |
 | `AUTH_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
 | `AUTH_IDP_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
 | `AUTH_IDP_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |

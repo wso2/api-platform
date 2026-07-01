@@ -16,12 +16,12 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: LlmProviderTemplate
 metadata:
   name: azureai-foundry
 spec:
   displayName: Azure AI Foundry
+  managedBy: wso2
+  version: v1.0
   metadata:
     auth:
       type: apiKey

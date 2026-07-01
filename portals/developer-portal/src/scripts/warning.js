@@ -128,15 +128,6 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
                 executeRevokeApiKey();
             }
         };
-    } else if (param1 === 'DeleteProvider') {
-        modalTitle.innerText = 'Delete Provider?';
-        modalMessage.innerText = 'Are you sure you want to delete this Provider? This action cannot be undone.';
-        modalFunction.innerText = 'Delete';
-        modalFunction.onclick = function() {
-            if (typeof deleteProvider === 'function') {
-                deleteProvider(sanitizedParam2, sanitizedParam3);
-            }
-        };
     } else if (param1 === 'DeleteView') {
         modalTitle.innerText = 'Delete View?';
         modalMessage.innerText = 'Are you sure you want to delete this view? This action cannot be undone.';
@@ -153,7 +144,7 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
             sanitizedParam7 +
             '" plan. Switching to "' +
             sanitizedParam5 +
-            '" will delete your existing subscription and generate a new token. Do you want to proceed?';
+            '" will update your subscription immediately. Your existing token will remain valid.';
         modalFunction.innerText = 'Confirm';
         modalFunction.onclick = function() {
             if (typeof runPendingPlanSwitch === 'function') {
@@ -182,7 +173,7 @@ async function deleteApplication() {
                 '<span style="font-size: 0.875rem;"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>&nbsp;Deleting...</span>';
             trashButton.disabled = true;
         }
-        const response = await fetch(devportalApi.root(`/applications/${applicationId}`), {
+        const response = await fetch(devportalApi.org(`/applications/${applicationId}`), {
             method: 'DELETE',
         });
         if (response.ok) {

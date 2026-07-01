@@ -4,13 +4,13 @@
 
 <a id="opIdcreateSubscription"></a>
 
-`POST /o/{orgId}/devportal/v1/subscriptions`
+`POST /devportal/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
+curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -25,7 +25,8 @@ Creates a subscription for an API. The API must exist in the Developer Portal an
 
 ```json
 {
-  "apiId": "api-7f4c2a6b"
+  "apiId": "api-7f4c2a6b",
+  "subscriptionPlanId": "plan-7f4c2a6b"
 }
 ```
 
@@ -41,7 +42,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `apiId` is the Developer Portal API ID.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -51,38 +51,21 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "subscriptionId": "sub-12345",
   "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
-  }
-]
-```
+> 400 Response
 
 ```json
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
+  "description": "apiId is required"
 }
 ```
 
@@ -91,8 +74,18 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+```
+
+> 409 Response
+
+```json
+{
+  "code": "409",
+  "message": "Conflict",
+  "description": "A subscription for this API already exists"
 }
 ```
 
@@ -100,9 +93,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -111,23 +104,28 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="create-a-subscription-responseschema">Response Schema</h3>
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the created subscription.|
 
 ## List subscriptions
 
 <a id="opIdlistSubscriptions"></a>
 
-`GET /o/{orgId}/devportal/v1/subscriptions`
+`GET /devportal/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
+curl -X GET https://devportal.api-platform.io/devportal/v1/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -148,7 +146,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |apiId|query|string|false|Optional Developer Portal API ID used to filter results.|
-|orgId|path|string|true|none|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
 
@@ -156,43 +155,22 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "count": 1,
   "list": [
     {
       "subscriptionId": "sub-12345",
       "apiId": "api-7f4c2a6b",
+      "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
       "subscriptionPlanName": "Gold",
-      "gatewayType": "wso2/api-platform",
       "status": "ACTIVE",
-      "createdBy": "alice@example.com"
+      "createdBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z"
     }
-  ]
-}
-```
-
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
   }
-]
-```
-
-```json
-{
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
 }
 ```
 
@@ -201,8 +179,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "message": "Not Found",
+  "description": "API not found"
 }
 ```
 
@@ -210,9 +188,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -221,8 +199,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription DTOs.|Inline|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Returned when `apiId` is provided but does not match an existing API.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-subscriptions-responseschema">Response Schema</h3>
@@ -231,16 +208,18 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» count|integer|false|none|none|
 |» list|[[SubscriptionResponse](schemas.md#schemasubscriptionresponse)]|false|none|[Subscription payload.]|
 |»» subscriptionId|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID.|
-|»» subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
+|»» subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |»» subscriptionPlanName|string|false|none|none|
-|»» gatewayType|string|false|none|none|
 |»» status|string|false|none|none|
 |»» createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
 |»» createdAt|string(date-time)|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
 
 #### Enumerated Values
 
@@ -253,13 +232,13 @@ Status Code **200**
 
 <a id="opIdgetSubscription"></a>
 
-`GET /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`GET /devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -279,7 +258,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subId|path|string|true|none|
 
 > Example responses
@@ -290,9 +268,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "subscriptionId": "sub-12345",
   "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
@@ -304,8 +281,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -313,9 +290,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -324,20 +301,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Update a subscription
 
 <a id="opIdupdateSubscription"></a>
 
-`PUT /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`PUT /devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -368,7 +345,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[SubscriptionUpdateRequest](schemas.md#schemasubscriptionupdaterequest)|true|Subscription status update payload.|
-|orgId|path|string|true|none|
 |subId|path|string|true|none|
 
 > Example responses
@@ -379,38 +355,21 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "subscriptionId": "sub-12345",
   "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
-  }
-]
-```
+> 400 Response
 
 ```json
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
+  "description": "apiId is required"
 }
 ```
 
@@ -419,8 +378,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -428,9 +387,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -439,23 +398,21 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="update-a-subscription-responseschema">Response Schema</h3>
 
 ## Delete a subscription
 
 <a id="opIddeleteSubscription"></a>
 
-`DELETE /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`DELETE /devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -475,7 +432,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |subId|path|string|true|none|
 
 > Example responses
@@ -493,8 +449,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -502,9 +458,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -513,5 +469,179 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Change subscription plan
+
+<a id="opIdchangePlan"></a>
+
+`POST /devportal/v1/subscriptions/{subId}/change-plan`
+
+> Code samples
+
+```shell
+
+curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions/{subId}/change-plan \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
+
+```
+
+Changes the subscription plan in-place. The subscription UUID and token remain unchanged; only the plan is updated. A `subscription.plan_changed` webhook event is published to the organization's configured webhook subscribers.
+
+> Payload
+
+```json
+{
+  "planId": "pol-9a3d1f7e"
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="change-subscription-plan-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[SubscriptionChangePlanRequest](schemas.md#schemasubscriptionchangeplanrequest)|true|Subscription plan change payload. `planId` is the Developer Portal subscription plan ID.|
+|subId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "subscriptionId": "sub-12345",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
+  "subscriptionPlanName": "Gold",
+  "status": "ACTIVE",
+  "createdBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z"
+}
+```
+
+> 400 Response
+
+```json
+{
+  "code": "400",
+  "message": "Bad Request",
+  "description": "apiId is required"
+}
+```
+
+> 404 Response
+
+```json
+{
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="change-subscription-plan-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Regenerate subscription token
+
+<a id="opIdregenerateSubscriptionToken"></a>
+
+`POST /devportal/v1/subscriptions/{subId}/regenerate-token`
+
+> Code samples
+
+```shell
+
+curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions/{subId}/regenerate-token \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Regenerates the subscription token, immediately invalidating the old one. A `subscription.token_regenerated` webhook event is published to the organization's configured webhook subscribers so they can update the token at the gateway. The new plaintext token is returned in the response.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="regenerate-subscription-token-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|subId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "subscriptionId": "sub-12345",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
+  "subscriptionPlanName": "Gold",
+  "status": "ACTIVE",
+  "createdBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z"
+}
+```
+
+> 404 Response
+
+```json
+{
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="regenerate-subscription-token-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|

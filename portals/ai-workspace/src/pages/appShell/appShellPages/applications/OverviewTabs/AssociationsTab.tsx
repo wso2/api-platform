@@ -17,9 +17,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import {
-  Alert,
   Avatar,
   Box,
   Button,
@@ -34,43 +33,18 @@ import {
   DialogTitle,
   Drawer,
   IconButton,
-  ListingTable,
-  Skeleton,
   Stack,
-  TablePagination,
-  TextField,
-  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {
-  ChevronDown,
-  ChevronRight,
-  Inbox,
-  Key,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from '@wso2/oxygen-ui-icons-react';
-import { useApplicationAssociations } from '../../../../../contexts/ApplicationAssociationsContext';
-import { useAppShell } from '../../../../../contexts/AppShellContext';
-import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
-import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import { X } from '@wso2/oxygen-ui-icons-react';
+import { useParams } from 'react-router-dom';
+import { applicationApis } from '../../../../../apis/applicationApis';
 import {
   getLLMProviders,
   getLLMProviderAPIKeys,
 } from '../../../../../apis/llmProviderApis';
-import { getOrgProxies, getProxies } from '../../../../../apis/proxyApis';
 import { getLLMProxyAPIKeys } from '../../../../../apis/llmProxiesApis';
-import { getProviderTemplateDisplayName } from '../../../../../utils/providerTemplateDisplay';
-import type {
-  ApplicationAssociation,
-  LLMProvider,
-  MappedAPIKey,
-  Proxy,
-  UserAPIKey,
-} from '../../../../../utils/types';
-
+import { getOrgProxies, getProxies } from '../../../../../apis/proxyApis';
 import AnthropicLogo from '../../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../../assets/brands/AWSBedrock.webp';
 import AzureLogo from '../../../../../assets/brands/Azure.png';
@@ -78,6 +52,29 @@ import GoogleVertexLogo from '../../../../../assets/brands/GoogleVertex.png';
 import GoogleGeminiLogo from '../../../../../assets/brands/googlegemini.png';
 import MistralAILogo from '../../../../../assets/brands/mistralai.png';
 import OpenAILogo from '../../../../../assets/brands/openAI.png';
+import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import { useApplicationAssociations } from '../../../../../contexts/ApplicationAssociationsContext';
+import { useAppShell } from '../../../../../contexts/AppShellContext';
+import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
+import { getProviderTemplateDisplayName } from '../../../../../utils/providerTemplateDisplay';
+import type {
+  Application,
+  ApplicationAssociation,
+  LLMProvider,
+  MappedAPIKey,
+  Proxy,
+  UserAPIKey,
+} from '../../../../../utils/types';
+import AssociationSelectionDrawer, {
+  SelectableKeyList,
+} from './AssociationSelectionDrawer';
+import AssociationsTable from './AssociationsTable';
+import {
+  dedupeMappedKeys,
+  getInitials,
+  getVisibleKeys,
+  resolveMappedKeyId,
+} from './associationsTabUtils';
 
 const TEMPLATE_LOGO_MAP: Record<string, string> = {
   openai: OpenAILogo,
@@ -90,124 +87,6 @@ const TEMPLATE_LOGO_MAP: Record<string, string> = {
   gemini: GoogleGeminiLogo,
   mistralai: MistralAILogo,
   mistral: MistralAILogo,
-};
-
-function getTemplateLogo(template?: string): string | undefined {
-  return TEMPLATE_LOGO_MAP[(template ?? '').trim().toLowerCase()];
-}
-
-function getInitials(name: string): string {
-  const words = name.trim().split(/\s+/);
-  if (words.length === 0) return '';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return `${words[0][0]}${words[1][0]}`.toUpperCase();
-}
-
-function getErrorDescription(error: unknown, fallback: string): string {
-  return (
-    (error as any)?.response?.data?.description ||
-    (error as any)?.response?.data?.message ||
-    (error instanceof Error ? error.message : null) ||
-    fallback
-  );
-}
-
-function formatDate(value?: string): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function getKeyStatusColor(
-  status?: string
-): 'success' | 'warning' | 'error' | 'default' {
-  const s = (status ?? '').toLowerCase();
-  if (s === 'active') return 'success';
-  if (s === 'pending') return 'warning';
-  if (s === 'inactive' || s === 'expired' || s === 'revoked') return 'error';
-  return 'default';
-}
-
-function dedupeMappedKeys(keys: MappedAPIKey[]): MappedAPIKey[] {
-  const seen = new Set<string>();
-  return keys.filter((key) => {
-    const keyId = key.keyId || '';
-    if (!keyId || seen.has(keyId)) return false;
-    seen.add(keyId);
-    return true;
-  });
-}
-
-function resolveMappedKeyId(key: MappedAPIKey): string {
-  const candidate = key as MappedAPIKey & { mappedKeyId?: string };
-  return candidate.mappedKeyId || key.keyId;
-}
-
-function resolveEntityId(key: MappedAPIKey): string | undefined {
-  const candidate = key as MappedAPIKey & {
-    entityID?: string;
-    entityId?: string;
-  };
-  return (
-    candidate.entityID || candidate.entityId || candidate.associatedEntity?.id
-  );
-}
-
-const ROWS_PER_PAGE_OPTIONS = [5, 10, 25];
-
-type DrawerEntity = {
-  id: string;
-  name: string;
-  description?: string;
-};
-
-type SelectionDrawerItemMeta = {
-  chip?: ReactNode;
-  emptyKeysText: string;
-};
-
-type SelectableKeyListProps = {
-  keys: UserAPIKey[];
-  selectedKeyNames: Set<string>;
-  lockedKeyNames?: Set<string>;
-  keyStatusByName?: Map<string, string | undefined>;
-  emptyText: string;
-  onToggleKey: (keyName: string) => void;
-};
-
-type AssociationSelectionDrawerProps<T extends DrawerEntity> = {
-  open: boolean;
-  title: string;
-  description: string;
-  searchPlaceholder: string;
-  searchValue: string;
-  onSearchChange: (value: string) => void;
-  onClose: () => void;
-  isSubmitting: boolean;
-  isLoading: boolean;
-  loadError: string | null;
-  items: T[];
-  emptyStateText: string;
-  emptySearchText: string;
-  linkedIds: Set<string>;
-  selectedIds: Set<string>;
-  expandedLinkedIds: Set<string>;
-  entityKeysMap: Map<string, UserAPIKey[]>;
-  mappedKeysMap: Map<string, MappedAPIKey[]>;
-  loadingMappedKeyIds: Set<string>;
-  loadingEntityKeyIds: Set<string>;
-  selectedKeyNamesMap: Map<string, Set<string>>;
-  onItemClick: (item: T) => Promise<void> | void;
-  onToggleKey: (entityId: string, keyName: string) => void;
-  getItemMeta: (item: T) => SelectionDrawerItemMeta;
-  addButtonLabel: string;
-  isAddDisabled: boolean;
-  onAdd: () => Promise<void> | void;
 };
 
 type LoadEntityKeysArgs = {
@@ -224,8 +103,32 @@ type LoadEntityKeysArgs = {
     items?: UserAPIKey[];
   }>;
   preselectLatest?: boolean;
+  unavailableKeyNames?: Set<string>;
   setSelectedKeyNamesMap?: Dispatch<SetStateAction<Map<string, Set<string>>>>;
 };
+
+function getTemplateLogo(template?: string): string | undefined {
+  return TEMPLATE_LOGO_MAP[(template ?? '').trim().toLowerCase()];
+}
+
+function getErrorDescription(error: unknown, fallback: string): string {
+  return (
+    (error as any)?.response?.data?.description ||
+    (error as any)?.response?.data?.message ||
+    (error instanceof Error ? error.message : null) ||
+    fallback
+  );
+}
+
+function resolveEntityId(key: MappedAPIKey): string | undefined {
+  const candidate = key as MappedAPIKey & {
+    entityID?: string;
+    entityId?: string;
+  };
+  return (
+    candidate.entityID || candidate.entityId || candidate.associatedEntity?.id
+  );
+}
 
 function getLatestActiveKey(keys: UserAPIKey[]): UserAPIKey | null {
   return keys.reduce<UserAPIKey | null>((latest, key) => {
@@ -235,6 +138,18 @@ function getLatestActiveKey(keys: UserAPIKey[]): UserAPIKey | null {
       ? key
       : latest;
   }, null);
+}
+
+function getLatestSelectableKey(
+  keys: UserAPIKey[],
+  unavailableKeyNames: Set<string>
+): UserAPIKey | null {
+  return getLatestActiveKey(
+    keys.filter((key) => {
+      const keyName = key.name ?? '';
+      return Boolean(keyName) && !unavailableKeyNames.has(keyName);
+    })
+  );
 }
 
 function toggleSetValue<T>(source: Set<T>, value: T): Set<T> {
@@ -272,6 +187,36 @@ function toggleMapSelectionValue(
   return updateMapSelection(source, entityId, toggleSetValue(current, keyName));
 }
 
+function pruneUnavailableSelectionMap(
+  source: Map<string, Set<string>>,
+  unavailableKeyNames: Set<string>
+): Map<string, Set<string>> {
+  const next = new Map<string, Set<string>>();
+
+  source.forEach((keyNames, entityId) => {
+    const filteredKeyNames = new Set(
+      Array.from(keyNames).filter((keyName) => !unavailableKeyNames.has(keyName))
+    );
+
+    if (filteredKeyNames.size > 0) {
+      next.set(entityId, filteredKeyNames);
+    }
+  });
+
+  return next;
+}
+
+function formatReservedKeyMessage(owners: Set<string>): string {
+  const ownerNames = Array.from(owners).filter(Boolean);
+  if (ownerNames.length === 0) {
+    return 'This API key is already used in another application.';
+  }
+  if (ownerNames.length === 1) {
+    return `Already used in application ${ownerNames[0]}.`;
+  }
+  return `Already used in ${ownerNames.length} other applications.`;
+}
+
 function filterItemsByQuery<T>(
   items: T[],
   query: string,
@@ -292,7 +237,8 @@ function filterItemsByQuery<T>(
 function buildLinkedKeyPayload(
   selectedKeyNamesMap: Map<string, Set<string>>,
   linkedIds: Set<string>,
-  apiKeysMap: Map<string, MappedAPIKey[]>
+  apiKeysMap: Map<string, MappedAPIKey[]>,
+  unavailableKeyNames: Set<string>
 ) {
   return Array.from(selectedKeyNamesMap.entries())
     .filter(([entityId]) => linkedIds.has(entityId))
@@ -301,7 +247,10 @@ function buildLinkedKeyPayload(
         (apiKeysMap.get(entityId) ?? []).map((key) => key.keyId)
       );
       return Array.from(keyNames)
-        .filter((keyName) => !mappedKeyIds.has(keyName))
+        .filter(
+          (keyName) =>
+            !mappedKeyIds.has(keyName) && !unavailableKeyNames.has(keyName)
+        )
         .map((keyName) => ({
           keyId: keyName,
           associatedEntity: { id: entityId },
@@ -337,26 +286,39 @@ function buildAddButtonLabel({
   return defaultLabel;
 }
 
-function getVisibleKeys(
-  entityKeys: UserAPIKey[],
-  mappedKeys: MappedAPIKey[],
-  includeMappedOnlyKeys: boolean
-): UserAPIKey[] {
-  if (!includeMappedOnlyKeys) return entityKeys;
+function buildDisabledKeyStateByEntity(
+  entityKeysMap: Map<string, UserAPIKey[]>,
+  unavailableKeyNames: Set<string>,
+  reservedKeyOwners: Map<string, Set<string>>
+): {
+  disabledKeyNamesByEntity: Map<string, Set<string>>;
+  disabledReasonsByEntity: Map<string, Map<string, string>>;
+} {
+  const disabledKeyNamesByEntity = new Map<string, Set<string>>();
+  const disabledReasonsByEntity = new Map<string, Map<string, string>>();
 
-  const mappedOnlyKeys: UserAPIKey[] = mappedKeys
-    .filter(
-      (mappedKey) =>
-        !entityKeys.some(
-          (entityKey) => (entityKey.name ?? '') === mappedKey.keyId
-        )
-    )
-    .map((mappedKey) => ({
-      name: mappedKey.keyId,
-      status: mappedKey.status,
-    }));
+  entityKeysMap.forEach((keys, entityId) => {
+    const disabledKeyNames = new Set<string>();
+    const disabledReasons = new Map<string, string>();
 
-  return [...entityKeys, ...mappedOnlyKeys];
+    keys.forEach((key) => {
+      const keyName = key.name ?? '';
+      if (!keyName || !unavailableKeyNames.has(keyName)) {
+        return;
+      }
+
+      disabledKeyNames.add(keyName);
+      disabledReasons.set(
+        keyName,
+        formatReservedKeyMessage(reservedKeyOwners.get(keyName) ?? new Set())
+      );
+    });
+
+    disabledKeyNamesByEntity.set(entityId, disabledKeyNames);
+    disabledReasonsByEntity.set(entityId, disabledReasons);
+  });
+
+  return { disabledKeyNamesByEntity, disabledReasonsByEntity };
 }
 
 async function loadEntityKeys({
@@ -368,11 +330,15 @@ async function loadEntityKeys({
   setKeysMap,
   fetchKeys,
   preselectLatest = false,
+  unavailableKeyNames = new Set<string>(),
   setSelectedKeyNamesMap,
 }: LoadEntityKeysArgs): Promise<void> {
   if (keysMap.has(entityId)) {
     if (preselectLatest && setSelectedKeyNamesMap) {
-      const latestKey = getLatestActiveKey(keysMap.get(entityId) ?? []);
+      const latestKey = getLatestSelectableKey(
+        keysMap.get(entityId) ?? [],
+        unavailableKeyNames
+      );
       setSelectedKeyNamesMap((prev) =>
         updateMapSelection(
           prev,
@@ -393,7 +359,7 @@ async function loadEntityKeys({
     const activeKeys = (response.items ?? []).filter(
       (key) => key.status === 'active'
     );
-    const latestKey = getLatestActiveKey(activeKeys);
+    const latestKey = getLatestSelectableKey(activeKeys, unavailableKeyNames);
 
     setKeysMap((prev) => new Map(prev).set(entityId, activeKeys));
     if (preselectLatest && setSelectedKeyNamesMap) {
@@ -417,388 +383,8 @@ async function loadEntityKeys({
   }
 }
 
-function SelectableKeyList({
-  keys,
-  selectedKeyNames,
-  lockedKeyNames = new Set<string>(),
-  keyStatusByName = new Map(),
-  emptyText,
-  onToggleKey,
-}: SelectableKeyListProps) {
-  if (keys.length === 0) {
-    return (
-      <Typography variant="caption" color="text.secondary">
-        {emptyText}
-      </Typography>
-    );
-  }
-
-  return (
-    <Stack spacing={0.25}>
-      {keys.map((key) => {
-        const keyName = key.name ?? '';
-        const isLocked = lockedKeyNames.has(keyName);
-        const isSelected = selectedKeyNames.has(keyName);
-        const keyStatus = keyStatusByName.get(keyName);
-
-        return (
-          <Box
-            key={keyName}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              py: 0.75,
-              px: 0.5,
-              borderRadius: 1,
-              cursor: isLocked ? 'default' : 'pointer',
-              '&:hover': isLocked ? undefined : { bgcolor: 'action.hover' },
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (isLocked) return;
-              onToggleKey(keyName);
-            }}
-          >
-            <Checkbox
-              checked={isSelected}
-              disabled={isLocked}
-              size="small"
-              tabIndex={-1}
-              disableRipple
-              sx={{ p: 0 }}
-            />
-            <Key size={14} />
-            <Typography
-              variant="caption"
-              fontWeight={500}
-              noWrap
-              sx={{ flex: 1 }}
-            >
-              {key.name || '—'}
-            </Typography>
-            {keyStatus && (
-              <Chip
-                label={keyStatus}
-                size="small"
-                variant="outlined"
-                color={getKeyStatusColor(keyStatus)}
-                sx={{ flexShrink: 0 }}
-              />
-            )}
-            {key.artifactType && (
-              <Chip
-                label={key.artifactType}
-                size="small"
-                variant="outlined"
-                color="primary"
-                sx={{ flexShrink: 0 }}
-              />
-            )}
-          </Box>
-        );
-      })}
-    </Stack>
-  );
-}
-
-function AssociationSelectionDrawer<T extends DrawerEntity>({
-  open,
-  title,
-  description,
-  searchPlaceholder,
-  searchValue,
-  onSearchChange,
-  onClose,
-  isSubmitting,
-  isLoading,
-  loadError,
-  items,
-  emptyStateText,
-  emptySearchText,
-  linkedIds,
-  selectedIds,
-  expandedLinkedIds,
-  entityKeysMap,
-  mappedKeysMap,
-  loadingMappedKeyIds,
-  loadingEntityKeyIds,
-  selectedKeyNamesMap,
-  onItemClick,
-  onToggleKey,
-  getItemMeta,
-  addButtonLabel,
-  isAddDisabled,
-  onAdd,
-}: AssociationSelectionDrawerProps<T>) {
-  return (
-    <Drawer
-      anchor="right"
-      open={open}
-      onClose={onClose}
-      sx={{
-        '& .MuiDrawer-paper': {
-          width: { xs: '100%', sm: 520 },
-          maxWidth: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-        },
-      }}
-    >
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          p: 2,
-          borderBottom: 1,
-          borderColor: 'divider',
-          flexShrink: 0,
-        }}
-      >
-        <Stack spacing={0.25}>
-          <Typography variant="h6">{title}</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {description}
-          </Typography>
-        </Stack>
-        <IconButton onClick={onClose} disabled={isSubmitting} size="small">
-          <X size={20} />
-        </IconButton>
-      </Box>
-
-      <Box sx={{ p: 2, flexShrink: 0, pb: 0 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder={searchPlaceholder}
-          value={searchValue}
-          onChange={(event) => onSearchChange(event.target.value)}
-          slotProps={{ input: { startAdornment: <Search size={18} /> } }}
-        />
-      </Box>
-
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-        {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress />
-          </Box>
-        ) : loadError ? (
-          <Alert severity="error">{loadError}</Alert>
-        ) : items.length === 0 ? (
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ textAlign: 'center', py: 4 }}
-          >
-            {searchValue.trim() ? emptySearchText : emptyStateText}
-          </Typography>
-        ) : (
-          <Stack spacing={1.5}>
-            {items.map((item) => {
-              const isAlreadyLinked = linkedIds.has(item.id);
-              const isSelected = selectedIds.has(item.id);
-              const isExpanded = isAlreadyLinked
-                ? expandedLinkedIds.has(item.id)
-                : isSelected;
-              const itemKeys = entityKeysMap.get(item.id) ?? [];
-              const mappedKeys = mappedKeysMap.get(item.id) ?? [];
-              const isLoadingMappedKeys = loadingMappedKeyIds.has(item.id);
-              const isLoadingItemKeys = loadingEntityKeyIds.has(item.id);
-              const selectedKeys =
-                selectedKeyNamesMap.get(item.id) ?? new Set<string>();
-              const mappedKeyStatusMap = new Map(
-                mappedKeys.map((key) => [key.keyId, key.status])
-              );
-              const lockedKeyNames = new Set(
-                Array.from(mappedKeyStatusMap.keys()).filter(Boolean)
-              );
-              const visibleKeys = getVisibleKeys(
-                itemKeys,
-                mappedKeys,
-                isAlreadyLinked
-              );
-              const isKeysLoading = isAlreadyLinked
-                ? isLoadingMappedKeys || isLoadingItemKeys
-                : isLoadingItemKeys;
-              const mergedSelectedKeys = isAlreadyLinked
-                ? new Set([
-                    ...Array.from(selectedKeys),
-                    ...Array.from(lockedKeyNames),
-                  ])
-                : selectedKeys;
-              const itemMeta = getItemMeta(item);
-
-              return (
-                <Card
-                  key={item.id}
-                  sx={{
-                    border: 2,
-                    borderColor: isExpanded ? 'primary.main' : 'divider',
-                    transition: 'border-color 0.15s',
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      p: 1.5,
-                      gap: 1.5,
-                      cursor: 'pointer',
-                      '&:hover': { bgcolor: 'action.hover' },
-                    }}
-                    onClick={() => void onItemClick(item)}
-                  >
-                    <Checkbox
-                      checked={isSelected || isAlreadyLinked}
-                      disabled={isAlreadyLinked}
-                      size="small"
-                      tabIndex={-1}
-                      disableRipple
-                      sx={{ p: 0, flexShrink: 0 }}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={() => void onItemClick(item)}
-                    />
-                    <Avatar
-                      sx={{
-                        width: 36,
-                        height: 36,
-                        flexShrink: 0,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        bgcolor: 'primary.light',
-                        color: 'primary.contrastText',
-                      }}
-                    >
-                      {getInitials(item.name)}
-                    </Avatar>
-                    <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                        flexWrap="wrap"
-                      >
-                        <Tooltip title={item.name.length > 20 ? item.name : ''}>
-                          <Typography variant="body2" fontWeight={600} noWrap>
-                            {item.name.length > 30
-                              ? `${item.name.slice(0, 30)}...`
-                              : item.name}
-                          </Typography>
-                        </Tooltip>
-                        {itemMeta.chip}
-                      </Stack>
-                      <Tooltip
-                        title={
-                          (item.description || '—').length > 20
-                            ? item.description || '—'
-                            : ''
-                        }
-                      >
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {item.description || '—'}
-                        </Typography>
-                      </Tooltip>
-                    </Stack>
-                    {isExpanded ? (
-                      <ChevronDown size={16} />
-                    ) : (
-                      <ChevronRight size={16} />
-                    )}
-                  </Box>
-
-                  {isExpanded && (
-                    <Box
-                      sx={{
-                        borderTop: 1,
-                        borderColor: 'divider',
-                        px: 1.5,
-                        pt: 1,
-                        pb: 1.5,
-                      }}
-                    >
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: 'block', mb: 1, fontWeight: 600 }}
-                      >
-                        API Keys
-                      </Typography>
-                      {isKeysLoading ? (
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            py: 0.5,
-                          }}
-                        >
-                          <CircularProgress size={14} />
-                          <Typography variant="caption" color="text.secondary">
-                            Loading keys...
-                          </Typography>
-                        </Box>
-                      ) : (
-                        <SelectableKeyList
-                          keys={visibleKeys}
-                          selectedKeyNames={mergedSelectedKeys}
-                          lockedKeyNames={lockedKeyNames}
-                          keyStatusByName={mappedKeyStatusMap}
-                          emptyText={itemMeta.emptyKeysText}
-                          onToggleKey={(keyName) =>
-                            onToggleKey(item.id, keyName)
-                          }
-                        />
-                      )}
-                    </Box>
-                  )}
-                </Card>
-              );
-            })}
-          </Stack>
-        )}
-      </Box>
-
-      <Box
-        sx={{
-          p: 2,
-          borderTop: 1,
-          borderColor: 'divider',
-          display: 'flex',
-          gap: 1,
-          flexShrink: 0,
-        }}
-      >
-        <Button
-          variant="outlined"
-          color="secondary"
-          onClick={onClose}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          onClick={() => void onAdd()}
-          disabled={isAddDisabled}
-        >
-          {addButtonLabel}
-        </Button>
-      </Box>
-    </Drawer>
-  );
-}
-
 export default function AssociationsTab() {
+  const { applicationId = '' } = useParams<{ applicationId: string }>();
   const {
     associations,
     isLoading,
@@ -814,39 +400,18 @@ export default function AssociationsTab() {
   const showSnackbar = useAIWorkspaceSnackbar();
   const apimBaseUrl = PLATFORM_API_BASE_URL;
 
-  // ── Derived associations ──────────────────────────────────────────────────
-  const providerAssociations = useMemo(
-    () => associations.filter((a) => a.kind === 'LlmProvider'),
-    [associations]
-  );
-  const proxyAssociations = useMemo(
-    () => associations.filter((a) => a.kind === 'LlmProxy'),
-    [associations]
-  );
-  const allAssociations = useMemo(() => {
-    const seen = new Set<string>();
-    return [...providerAssociations, ...proxyAssociations].filter((a) => {
-      if (seen.has(a.id)) return false;
-      seen.add(a.id);
-      return true;
-    });
-  }, [providerAssociations, proxyAssociations]);
+  const [reservedKeyOwners, setReservedKeyOwners] = useState<
+    Map<string, Set<string>>
+  >(new Map());
+  const [isReservedKeysLoading, setIsReservedKeysLoading] = useState(false);
+  const [reservedKeysLoadError, setReservedKeysLoadError] = useState<
+    string | null
+  >(null);
 
-  const linkedProviderIds = useMemo(
-    () => new Set(providerAssociations.map((a) => a.id)),
-    [providerAssociations]
-  );
-  const linkedProxyIds = useMemo(
-    () => new Set(proxyAssociations.map((a) => a.id)),
-    [proxyAssociations]
-  );
-
-  // ── Search & pagination ───────────────────────────────────────────────────
   const [searchValue, setSearchValue] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // ── Table expand + mapped keys ────────────────────────────────────────────
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [apiKeysMap, setApiKeysMap] = useState<Map<string, MappedAPIKey[]>>(
     new Map()
@@ -854,7 +419,6 @@ export default function AssociationsTab() {
   const [loadingKeyIds, setLoadingKeyIds] = useState<Set<string>>(new Set());
   const [removingKeyIds, setRemovingKeyIds] = useState<Set<string>>(new Set());
 
-  // ── Available keys per entity ─────────────────────────────────────────────
   const [providerKeysMap, setProviderKeysMap] = useState<
     Map<string, UserAPIKey[]>
   >(new Map());
@@ -868,7 +432,6 @@ export default function AssociationsTab() {
     new Set()
   );
 
-  // ── Provider drawer ───────────────────────────────────────────────────────
   const [providerDrawerOpen, setProviderDrawerOpen] = useState(false);
   const [orgProviders, setOrgProviders] = useState<LLMProvider[]>([]);
   const [isProviderDrawerLoading, setIsProviderDrawerLoading] = useState(false);
@@ -886,7 +449,6 @@ export default function AssociationsTab() {
     Set<string>
   >(new Set());
 
-  // ── Proxy drawer ──────────────────────────────────────────────────────────
   const [proxyDrawerOpen, setProxyDrawerOpen] = useState(false);
   const [orgProxies, setOrgProxies] = useState<Proxy[]>([]);
   const [isProxyDrawerLoading, setIsProxyDrawerLoading] = useState(false);
@@ -905,18 +467,162 @@ export default function AssociationsTab() {
     Set<string>
   >(new Set());
 
-  // ── Delete ────────────────────────────────────────────────────────────────
   const [deleteTarget, setDeleteTarget] =
     useState<ApplicationAssociation | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
 
-  // ── Manage keys drawer ────────────────────────────────────────────────────
   const [manageKeysDrawerTarget, setManageKeysDrawerTarget] =
     useState<ApplicationAssociation | null>(null);
   const [selectedManageKeyNames, setSelectedManageKeyNames] = useState<
     Set<string>
   >(new Set());
   const [isAddingManagedKeys, setIsAddingManagedKeys] = useState(false);
+
+  const providerAssociations = useMemo(
+    () => associations.filter((association) => association.kind === 'LlmProvider'),
+    [associations]
+  );
+  const proxyAssociations = useMemo(
+    () => associations.filter((association) => association.kind === 'LlmProxy'),
+    [associations]
+  );
+  const allAssociations = useMemo(() => {
+    const seen = new Set<string>();
+    return [...providerAssociations, ...proxyAssociations].filter(
+      (association) => {
+        if (seen.has(association.id)) return false;
+        seen.add(association.id);
+        return true;
+      }
+    );
+  }, [providerAssociations, proxyAssociations]);
+
+  const linkedProviderIds = useMemo(
+    () => new Set(providerAssociations.map((association) => association.id)),
+    [providerAssociations]
+  );
+  const linkedProxyIds = useMemo(
+    () => new Set(proxyAssociations.map((association) => association.id)),
+    [proxyAssociations]
+  );
+  const unavailableKeyNames = useMemo(
+    () => new Set(reservedKeyOwners.keys()),
+    [reservedKeyOwners]
+  );
+  const selectionBlockedMessage = isReservedKeysLoading
+    ? 'Checking whether these API keys are already used in another application.'
+    : reservedKeysLoadError;
+
+  useEffect(() => {
+    if (!applicationId || !currentOrganization?.uuid) {
+      setReservedKeyOwners(new Map());
+      setReservedKeysLoadError(null);
+      setIsReservedKeysLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadReservedKeys = async () => {
+      try {
+        setIsReservedKeysLoading(true);
+        setReservedKeysLoadError(null);
+
+        const allApplications: Application[] = [];
+        const pageSize = 1000;
+        let offset = 0;
+        let hasMoreApplications = true;
+
+        while (hasMoreApplications) {
+          const applicationsResponse = await applicationApis.getApplications(
+            currentOrganization.uuid,
+            apimBaseUrl,
+            {
+              projectId: currentProject?.id || undefined,
+              limit: pageSize,
+              offset,
+            }
+          );
+
+          allApplications.push(...(applicationsResponse.list ?? []));
+
+          const loadedCount =
+            applicationsResponse.pagination.offset +
+            applicationsResponse.list.length;
+          hasMoreApplications = loadedCount < applicationsResponse.pagination.total;
+          offset = loadedCount;
+        }
+
+        const otherApplications = allApplications.filter(
+          (application) => application.id && application.id !== applicationId
+        );
+        const keyResponses = await Promise.allSettled(
+          otherApplications.map(async (application) => ({
+            application,
+            keysResponse: await applicationApis.getApplicationAPIKeys(
+              application.id,
+              currentOrganization.uuid,
+              apimBaseUrl
+            ),
+          }))
+        );
+
+        if (!isMounted) return;
+
+        const nextReservedKeyOwners = new Map<string, Set<string>>();
+
+        keyResponses.forEach((result) => {
+          if (result.status !== 'fulfilled') {
+            return;
+          }
+
+          const ownerName =
+            result.value.application.name || result.value.application.id;
+
+          (result.value.keysResponse.list ?? []).forEach((key) => {
+            if (!key.keyId) return;
+
+            const owners = nextReservedKeyOwners.get(key.keyId) ?? new Set();
+            owners.add(ownerName);
+            nextReservedKeyOwners.set(key.keyId, owners);
+          });
+        });
+
+        setReservedKeyOwners(nextReservedKeyOwners);
+
+        if (keyResponses.some((result) => result.status === 'rejected')) {
+          setReservedKeysLoadError(
+            'Could not verify API key usage across all other applications.'
+          );
+          return;
+        }
+
+        setReservedKeysLoadError(null);
+      } catch {
+        if (!isMounted) return;
+
+        setReservedKeyOwners(new Map());
+        setReservedKeysLoadError(
+          'Could not load other applications to validate API key availability.'
+        );
+      } finally {
+        if (isMounted) {
+          setIsReservedKeysLoading(false);
+        }
+      }
+    };
+
+    void loadReservedKeys();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    applicationId,
+    apimBaseUrl,
+    currentOrganization?.uuid,
+    currentProject?.id,
+  ]);
 
   const loadProviderKeys = useCallback(
     async (providerId: string, orgUuid: string, preselectLatest = false) => {
@@ -929,10 +635,11 @@ export default function AssociationsTab() {
         setKeysMap: setProviderKeysMap,
         fetchKeys: getLLMProviderAPIKeys,
         preselectLatest,
+        unavailableKeyNames,
         setSelectedKeyNamesMap: setSelectedProviderKeyNamesMap,
       });
     },
-    [loadingProviderKeyIds, providerKeysMap]
+    [loadingProviderKeyIds, providerKeysMap, unavailableKeyNames]
   );
 
   const loadProxyKeys = useCallback(
@@ -946,49 +653,34 @@ export default function AssociationsTab() {
         setKeysMap: setProxyKeysMap,
         fetchKeys: getLLMProxyAPIKeys,
         preselectLatest,
+        unavailableKeyNames,
         setSelectedKeyNamesMap: setSelectedProxyKeyNamesMap,
       });
     },
-    [loadingProxyKeyIds, proxyKeysMap]
+    [loadingProxyKeyIds, proxyKeysMap, unavailableKeyNames]
   );
 
   const loadAssociationKeys = useCallback(
-    async (assocId: string) => {
-      if (apiKeysMap.has(assocId) || loadingKeyIds.has(assocId)) return;
-      setLoadingKeyIds((prev) => new Set(prev).add(assocId));
+    async (associationId: string) => {
+      if (apiKeysMap.has(associationId) || loadingKeyIds.has(associationId)) {
+        return;
+      }
+
+      setLoadingKeyIds((prev) => new Set(prev).add(associationId));
+
       try {
-        const response = await listAssociationAPIKeys(assocId);
+        const response = await listAssociationAPIKeys(associationId);
         setApiKeysMap((prev) =>
-          new Map(prev).set(assocId, response.list ?? [])
+          new Map(prev).set(associationId, response.list ?? [])
         );
       } catch {
-        setApiKeysMap((prev) => new Map(prev).set(assocId, []));
+        setApiKeysMap((prev) => new Map(prev).set(associationId, []));
       } finally {
-        setLoadingKeyIds((prev) => {
-          const next = new Set(prev);
-          next.delete(assocId);
-          return next;
-        });
+        setLoadingKeyIds((prev) => removeSetValue(prev, associationId));
       }
     },
     [apiKeysMap, listAssociationAPIKeys, loadingKeyIds]
   );
-
-  const handleToggleExpand = async (assoc: ApplicationAssociation) => {
-    if (expandedIds.has(assoc.id)) {
-      setExpandedIds((prev) => removeSetValue(prev, assoc.id));
-      return;
-    }
-    setExpandedIds((prev) => new Set(prev).add(assoc.id));
-    await loadAssociationKeys(assoc.id);
-    if (currentOrganization?.uuid) {
-      if (assoc.kind === 'LlmProvider') {
-        await loadProviderKeys(assoc.id, currentOrganization.uuid);
-      } else {
-        await loadProxyKeys(assoc.id, currentOrganization.uuid);
-      }
-    }
-  };
 
   const loadAssociationKeysRef = useRef(loadAssociationKeys);
   loadAssociationKeysRef.current = loadAssociationKeys;
@@ -999,22 +691,41 @@ export default function AssociationsTab() {
 
   useEffect(() => {
     if (!currentOrganization?.uuid || allAssociations.length === 0) return;
+
     const orgUuid = currentOrganization.uuid;
-    allAssociations.forEach((assoc) => {
-      void loadAssociationKeysRef.current(assoc.id);
-      if (assoc.kind === 'LlmProvider') {
-        void loadProviderKeysRef.current(assoc.id, orgUuid);
+    allAssociations.forEach((association) => {
+      void loadAssociationKeysRef.current(association.id);
+      if (association.kind === 'LlmProvider') {
+        void loadProviderKeysRef.current(association.id, orgUuid);
       } else {
-        void loadProxyKeysRef.current(assoc.id, orgUuid);
+        void loadProxyKeysRef.current(association.id, orgUuid);
       }
     });
   }, [allAssociations, currentOrganization?.uuid]);
 
+  useEffect(() => {
+    if (unavailableKeyNames.size === 0) return;
+
+    setSelectedProviderKeyNamesMap((prev) =>
+      pruneUnavailableSelectionMap(prev, unavailableKeyNames)
+    );
+    setSelectedProxyKeyNamesMap((prev) =>
+      pruneUnavailableSelectionMap(prev, unavailableKeyNames)
+    );
+    setSelectedManageKeyNames(
+      (prev) =>
+        new Set(
+          Array.from(prev).filter((keyName) => !unavailableKeyNames.has(keyName))
+        )
+    );
+  }, [unavailableKeyNames]);
+
   const filteredAssociations = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
     if (!query) return allAssociations;
-    return allAssociations.filter((a) => {
-      const haystack = [a.id, a.name, a.kind]
+
+    return allAssociations.filter((association) => {
+      const haystack = [association.id, association.name, association.kind]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -1032,9 +743,9 @@ export default function AssociationsTab() {
     [filteredAssociations, page, rowsPerPage]
   );
 
-  const ensureOrgProvidersLoaded = async (): Promise<LLMProvider[]> => {
-    if (orgProviders.length > 0) return orgProviders;
+  const loadOrganizationProviders = useCallback(async (): Promise<LLMProvider[]> => {
     if (!currentOrganization?.uuid) return [];
+
     const response = await getLLMProviders(
       currentOrganization.uuid,
       apimBaseUrl
@@ -1042,33 +753,74 @@ export default function AssociationsTab() {
     const providers = response.list ?? [];
     setOrgProviders(providers);
     return providers;
+  }, [apimBaseUrl, currentOrganization?.uuid]);
+
+  const loadOrganizationProxies = useCallback(async (): Promise<Proxy[]> => {
+    if (!currentOrganization?.uuid) return [];
+
+    const response = currentProject?.id
+      ? await getProxies(
+          currentOrganization.uuid,
+          currentProject.id,
+          apimBaseUrl
+        )
+      : await getOrgProxies(currentOrganization.uuid, apimBaseUrl);
+    const proxies = response.list ?? [];
+    setOrgProxies(proxies);
+    return proxies;
+  }, [apimBaseUrl, currentOrganization?.uuid, currentProject?.id]);
+
+  const ensureOrgProvidersLoaded = async (): Promise<LLMProvider[]> => {
+    if (orgProviders.length > 0) return orgProviders;
+    return loadOrganizationProviders();
+  };
+
+  const ensureOrgProxiesLoaded = async (): Promise<Proxy[]> => {
+    if (orgProxies.length > 0) return orgProxies;
+    return loadOrganizationProxies();
+  };
+
+  const handleToggleExpand = async (association: ApplicationAssociation) => {
+    if (expandedIds.has(association.id)) {
+      setExpandedIds((prev) => removeSetValue(prev, association.id));
+      return;
+    }
+
+    setExpandedIds((prev) => new Set(prev).add(association.id));
+    await loadAssociationKeys(association.id);
+
+    if (!currentOrganization?.uuid) return;
+
+    if (association.kind === 'LlmProvider') {
+      await loadProviderKeys(association.id, currentOrganization.uuid);
+      return;
+    }
+
+    await loadProxyKeys(association.id, currentOrganization.uuid);
+  };
+
+  const resetProviderDrawerState = () => {
+    setSelectedProviderIds(new Set());
+    setSelectedProviderKeyNamesMap(new Map());
+    setExpandedLinkedProviderIds(new Set());
+    setProviderDrawerSearch('');
+    setProviderDrawerLoadError(null);
   };
 
   const handleCloseProviderDrawer = () => {
     if (isAddingProviders) return;
     setProviderDrawerOpen(false);
-    setSelectedProviderIds(new Set());
-    setSelectedProviderKeyNamesMap(new Map());
-    setExpandedLinkedProviderIds(new Set());
-    setProviderDrawerSearch('');
-    setProviderDrawerLoadError(null);
+    resetProviderDrawerState();
   };
 
   const handleOpenProviderDrawer = async () => {
     setProviderDrawerOpen(true);
-    setSelectedProviderIds(new Set());
-    setSelectedProviderKeyNamesMap(new Map());
-    setExpandedLinkedProviderIds(new Set());
-    setProviderDrawerSearch('');
-    setProviderDrawerLoadError(null);
+    resetProviderDrawerState();
     if (!currentOrganization?.uuid) return;
+
     setIsProviderDrawerLoading(true);
     try {
-      const response = await getLLMProviders(
-        currentOrganization.uuid,
-        apimBaseUrl
-      );
-      setOrgProviders(response.list ?? []);
+      await loadOrganizationProviders();
     } catch {
       setProviderDrawerLoadError('Failed to load LLM providers.');
     } finally {
@@ -1088,16 +840,25 @@ export default function AssociationsTab() {
       }
       return;
     }
+
     if (!currentOrganization?.uuid) return;
+
     if (selectedProviderIds.has(provider.id)) {
       setSelectedProviderIds((prev) => removeSetValue(prev, provider.id));
       return;
     }
+
     setSelectedProviderIds((prev) => new Set(prev).add(provider.id));
-    await loadProviderKeys(provider.id, currentOrganization.uuid, true);
+    await loadProviderKeys(
+      provider.id,
+      currentOrganization.uuid,
+      !selectionBlockedMessage
+    );
   };
 
   const handleToggleProviderKey = (providerId: string, keyName: string) => {
+    if (selectionBlockedMessage || unavailableKeyNames.has(keyName)) return;
+
     setSelectedProviderKeyNamesMap((prev) =>
       toggleMapSelectionValue(prev, providerId, keyName)
     );
@@ -1108,9 +869,15 @@ export default function AssociationsTab() {
       buildLinkedKeyPayload(
         selectedProviderKeyNamesMap,
         linkedProviderIds,
-        apiKeysMap
+        apiKeysMap,
+        unavailableKeyNames
       ),
-    [selectedProviderKeyNamesMap, linkedProviderIds, apiKeysMap]
+    [
+      apiKeysMap,
+      linkedProviderIds,
+      selectedProviderKeyNamesMap,
+      unavailableKeyNames,
+    ]
   );
   const hasPendingLinkedProviderKeys = linkedProviderKeyPayload.length > 0;
 
@@ -1118,9 +885,12 @@ export default function AssociationsTab() {
     if (
       (selectedProviderIds.size === 0 && !hasPendingLinkedProviderKeys) ||
       isAddingProviders
-    )
+    ) {
       return;
+    }
+
     setIsAddingProviders(true);
+
     try {
       if (selectedProviderIds.size > 0) {
         await addAssociations({
@@ -1130,33 +900,42 @@ export default function AssociationsTab() {
           })),
         });
       }
+
       const keyPayload = [
-        ...Array.from(selectedProviderIds).flatMap((pid) =>
-          Array.from(selectedProviderKeyNamesMap.get(pid) ?? []).map(
-            (name) => ({ keyId: name, associatedEntity: { id: pid } })
-          )
+        ...Array.from(selectedProviderIds).flatMap((providerId) =>
+          Array.from(selectedProviderKeyNamesMap.get(providerId) ?? [])
+            .filter((keyName) => !unavailableKeyNames.has(keyName))
+            .map((keyName) => ({
+              keyId: keyName,
+              associatedEntity: { id: providerId },
+            }))
         ),
         ...linkedProviderKeyPayload,
       ];
+
       if (keyPayload.length > 0) {
         await addAPIKeys({ apiKeys: keyPayload });
       }
+
       setExpandedIds(new Set());
       setApiKeysMap(new Map());
       await refreshAssociations();
       handleCloseProviderDrawer();
-      const pc = selectedProviderIds.size;
-      const kc = linkedProviderKeyPayload.length;
+
+      const providerCount = selectedProviderIds.size;
+      const keyCount = linkedProviderKeyPayload.length;
       showSnackbar(
-        pc > 0 && kc > 0
-          ? `${pc} LLM provider${
-              pc > 1 ? 's' : ''
-            } associated and ${kc} API key${
-              kc > 1 ? 's' : ''
+        providerCount > 0 && keyCount > 0
+          ? `${providerCount} LLM provider${
+              providerCount > 1 ? 's' : ''
+            } associated and ${keyCount} API key${
+              keyCount > 1 ? 's' : ''
             } added successfully.`
-          : pc > 0
-          ? `${pc} LLM provider${pc > 1 ? 's' : ''} associated successfully.`
-          : `${kc} API key${kc > 1 ? 's' : ''} added successfully.`,
+          : providerCount > 0
+          ? `${providerCount} LLM provider${
+              providerCount > 1 ? 's' : ''
+            } associated successfully.`
+          : `${keyCount} API key${keyCount > 1 ? 's' : ''} added successfully.`,
         'success'
       );
     } catch (error) {
@@ -1169,49 +948,28 @@ export default function AssociationsTab() {
     }
   };
 
-  const ensureOrgProxiesLoaded = async (): Promise<Proxy[]> => {
-    if (orgProxies.length > 0) return orgProxies;
-    if (!currentOrganization?.uuid) return [];
-    const response = currentProject?.id
-      ? await getProxies(
-          currentOrganization.uuid,
-          currentProject.id,
-          apimBaseUrl
-        )
-      : await getOrgProxies(currentOrganization.uuid, apimBaseUrl);
-    const proxies = response.list ?? [];
-    setOrgProxies(proxies);
-    return proxies;
+  const resetProxyDrawerState = () => {
+    setSelectedProxyIds(new Set());
+    setSelectedProxyKeyNamesMap(new Map());
+    setExpandedLinkedProxyIds(new Set());
+    setProxyDrawerSearch('');
+    setProxyDrawerLoadError(null);
   };
 
   const handleCloseProxyDrawer = () => {
     if (isAddingProxies) return;
     setProxyDrawerOpen(false);
-    setSelectedProxyIds(new Set());
-    setSelectedProxyKeyNamesMap(new Map());
-    setExpandedLinkedProxyIds(new Set());
-    setProxyDrawerSearch('');
-    setProxyDrawerLoadError(null);
+    resetProxyDrawerState();
   };
 
   const handleOpenProxyDrawer = async () => {
     setProxyDrawerOpen(true);
-    setSelectedProxyIds(new Set());
-    setSelectedProxyKeyNamesMap(new Map());
-    setExpandedLinkedProxyIds(new Set());
-    setProxyDrawerSearch('');
-    setProxyDrawerLoadError(null);
+    resetProxyDrawerState();
     if (!currentOrganization?.uuid) return;
+
     setIsProxyDrawerLoading(true);
     try {
-      const response = currentProject?.id
-        ? await getProxies(
-            currentOrganization.uuid,
-            currentProject.id,
-            apimBaseUrl
-          )
-        : await getOrgProxies(currentOrganization.uuid, apimBaseUrl);
-      setOrgProxies(response.list ?? []);
+      await loadOrganizationProxies();
     } catch {
       setProxyDrawerLoadError('Failed to load LLM proxies.');
     } finally {
@@ -1231,16 +989,25 @@ export default function AssociationsTab() {
       }
       return;
     }
+
     if (!currentOrganization?.uuid) return;
+
     if (selectedProxyIds.has(proxy.id)) {
       setSelectedProxyIds((prev) => removeSetValue(prev, proxy.id));
       return;
     }
+
     setSelectedProxyIds((prev) => new Set(prev).add(proxy.id));
-    await loadProxyKeys(proxy.id, currentOrganization.uuid, true);
+    await loadProxyKeys(
+      proxy.id,
+      currentOrganization.uuid,
+      !selectionBlockedMessage
+    );
   };
 
   const handleToggleProxyKey = (proxyId: string, keyName: string) => {
+    if (selectionBlockedMessage || unavailableKeyNames.has(keyName)) return;
+
     setSelectedProxyKeyNamesMap((prev) =>
       toggleMapSelectionValue(prev, proxyId, keyName)
     );
@@ -1251,9 +1018,15 @@ export default function AssociationsTab() {
       buildLinkedKeyPayload(
         selectedProxyKeyNamesMap,
         linkedProxyIds,
-        apiKeysMap
+        apiKeysMap,
+        unavailableKeyNames
       ),
-    [selectedProxyKeyNamesMap, linkedProxyIds, apiKeysMap]
+    [
+      apiKeysMap,
+      linkedProxyIds,
+      selectedProxyKeyNamesMap,
+      unavailableKeyNames,
+    ]
   );
   const hasPendingLinkedProxyKeys = linkedProxyKeyPayload.length > 0;
 
@@ -1261,9 +1034,12 @@ export default function AssociationsTab() {
     if (
       (selectedProxyIds.size === 0 && !hasPendingLinkedProxyKeys) ||
       isAddingProxies
-    )
+    ) {
       return;
+    }
+
     setIsAddingProxies(true);
+
     try {
       if (selectedProxyIds.size > 0) {
         await addAssociations({
@@ -1273,32 +1049,42 @@ export default function AssociationsTab() {
           })),
         });
       }
+
       const keyPayload = [
-        ...Array.from(selectedProxyIds).flatMap((pid) =>
-          Array.from(selectedProxyKeyNamesMap.get(pid) ?? []).map((name) => ({
-            keyId: name,
-            associatedEntity: { id: pid },
-          }))
+        ...Array.from(selectedProxyIds).flatMap((proxyId) =>
+          Array.from(selectedProxyKeyNamesMap.get(proxyId) ?? [])
+            .filter((keyName) => !unavailableKeyNames.has(keyName))
+            .map((keyName) => ({
+              keyId: keyName,
+              associatedEntity: { id: proxyId },
+            }))
         ),
         ...linkedProxyKeyPayload,
       ];
+
       if (keyPayload.length > 0) {
         await addAPIKeys({ apiKeys: keyPayload });
       }
+
       setExpandedIds(new Set());
       setApiKeysMap(new Map());
       await refreshAssociations();
       handleCloseProxyDrawer();
-      const pc = selectedProxyIds.size;
-      const kc = linkedProxyKeyPayload.length;
+
+      const proxyCount = selectedProxyIds.size;
+      const keyCount = linkedProxyKeyPayload.length;
       showSnackbar(
-        pc > 0 && kc > 0
-          ? `${pc} LLM proxy${pc > 1 ? 's' : ''} associated and ${kc} API key${
-              kc > 1 ? 's' : ''
+        proxyCount > 0 && keyCount > 0
+          ? `${proxyCount} LLM proxy${
+              proxyCount > 1 ? 's' : ''
+            } associated and ${keyCount} API key${
+              keyCount > 1 ? 's' : ''
             } added successfully.`
-          : pc > 0
-          ? `${pc} LLM proxy${pc > 1 ? 's' : ''} associated successfully.`
-          : `${kc} API key${kc > 1 ? 's' : ''} added successfully.`,
+          : proxyCount > 0
+          ? `${proxyCount} LLM proxy${
+              proxyCount > 1 ? 's' : ''
+            } associated successfully.`
+          : `${keyCount} API key${keyCount > 1 ? 's' : ''} added successfully.`,
         'success'
       );
     } catch (error) {
@@ -1313,10 +1099,13 @@ export default function AssociationsTab() {
 
   const handleRemove = async () => {
     if (!deleteTarget || isRemoving) return;
+
     setIsRemoving(true);
+
     try {
       const mappedKeysResponse = await listAssociationAPIKeys(deleteTarget.id);
       const mappedKeys = mappedKeysResponse.list ?? [];
+
       if (mappedKeys.length > 0) {
         await Promise.all(
           mappedKeys.map((key) =>
@@ -1326,6 +1115,7 @@ export default function AssociationsTab() {
           )
         );
       }
+
       await removeAssociation(deleteTarget.id);
       setExpandedIds((prev) => removeSetValue(prev, deleteTarget.id));
       setApiKeysMap((prev) => {
@@ -1333,6 +1123,7 @@ export default function AssociationsTab() {
         next.delete(deleteTarget.id);
         return next;
       });
+
       const label =
         deleteTarget.kind === 'LlmProvider' ? 'LLM provider' : 'LLM proxy';
       setDeleteTarget(null);
@@ -1347,21 +1138,24 @@ export default function AssociationsTab() {
     }
   };
 
-  const handleOpenManageKeysDrawer = async (assoc: ApplicationAssociation) => {
+  const handleOpenManageKeysDrawer = async (association: ApplicationAssociation) => {
     if (!currentOrganization?.uuid) return;
-    setManageKeysDrawerTarget(assoc);
+
+    setManageKeysDrawerTarget(association);
     setSelectedManageKeyNames(new Set());
+
     try {
-      if (assoc.kind === 'LlmProvider') {
+      if (association.kind === 'LlmProvider') {
         await ensureOrgProvidersLoaded();
       } else {
         await ensureOrgProxiesLoaded();
       }
+
       await Promise.all([
-        loadAssociationKeys(assoc.id),
-        assoc.kind === 'LlmProvider'
-          ? loadProviderKeys(assoc.id, currentOrganization.uuid)
-          : loadProxyKeys(assoc.id, currentOrganization.uuid),
+        loadAssociationKeys(association.id),
+        association.kind === 'LlmProvider'
+          ? loadProviderKeys(association.id, currentOrganization.uuid)
+          : loadProxyKeys(association.id, currentOrganization.uuid),
       ]);
     } catch {
       showSnackbar('Failed to load API keys for this association.', 'error');
@@ -1375,12 +1169,15 @@ export default function AssociationsTab() {
   };
 
   const handleToggleManagedKey = (keyName: string) => {
+    if (selectionBlockedMessage || unavailableKeyNames.has(keyName)) return;
     setSelectedManageKeyNames((prev) => toggleSetValue(prev, keyName));
   };
 
   const handleAddManagedKeys = async () => {
     if (!manageKeysDrawerTarget || selectedManageKeyNames.size === 0) return;
+
     setIsAddingManagedKeys(true);
+
     try {
       const existingMappedKeyIds = new Set(
         (apiKeysMap.get(manageKeysDrawerTarget.id) ?? []).map(
@@ -1388,16 +1185,24 @@ export default function AssociationsTab() {
         )
       );
       const apiKeys = Array.from(selectedManageKeyNames)
-        .filter((keyId) => !existingMappedKeyIds.has(keyId))
+        .filter(
+          (keyId) =>
+            !existingMappedKeyIds.has(keyId) && !unavailableKeyNames.has(keyId)
+        )
         .map((keyId) => ({
           keyId,
           associatedEntity: { id: manageKeysDrawerTarget.id },
         }));
+
       if (apiKeys.length === 0) {
         handleCloseManageKeysDrawer();
-        showSnackbar('All selected API keys are already associated.', 'info');
+        showSnackbar(
+          'Selected API keys are already associated or used in another application.',
+          'info'
+        );
         return;
       }
+
       await addAPIKeys({ apiKeys });
       setExpandedIds(new Set());
       setApiKeysMap((prev) => {
@@ -1405,6 +1210,7 @@ export default function AssociationsTab() {
         next.delete(manageKeysDrawerTarget.id);
         return next;
       });
+
       await refreshAssociations();
       await loadAssociationKeysRef.current(manageKeysDrawerTarget.id);
       handleCloseManageKeysDrawer();
@@ -1419,18 +1225,22 @@ export default function AssociationsTab() {
     }
   };
 
-  const handleRemoveKey = async (assocId: string, key: MappedAPIKey) => {
+  const handleRemoveKey = async (associationId: string, key: MappedAPIKey) => {
     const mappedKeyId = resolveMappedKeyId(key);
     if (removingKeyIds.has(mappedKeyId)) return;
+
     setRemovingKeyIds((prev) => new Set(prev).add(mappedKeyId));
+
     try {
       await removeAPIKey(mappedKeyId, { entityID: resolveEntityId(key) });
       setApiKeysMap((prev) => {
         const next = new Map(prev);
-        const currentKeys = next.get(assocId) ?? [];
+        const currentKeys = next.get(associationId) ?? [];
         next.set(
-          assocId,
-          currentKeys.filter((k) => resolveMappedKeyId(k) !== mappedKeyId)
+          associationId,
+          currentKeys.filter(
+            (currentKey) => resolveMappedKeyId(currentKey) !== mappedKeyId
+          )
         );
         return next;
       });
@@ -1444,20 +1254,51 @@ export default function AssociationsTab() {
       setRemovingKeyIds((prev) => removeSetValue(prev, mappedKeyId));
     }
   };
-  const hasAssociations = allAssociations.length > 0;
-  const hasSearchQuery = searchValue.trim().length > 0;
-  const hasFilteredAssociations = filteredAssociations.length > 0;
-  const showNoSearchResults =
-    hasAssociations && hasSearchQuery && !hasFilteredAssociations;
 
-  // Provider drawer computed
-  const filteredOrgProviders = useMemo(() => {
-    return filterItemsByQuery(
-      orgProviders,
-      providerDrawerSearch,
-      (provider) => [provider.name, provider.description, provider.template]
-    );
-  }, [orgProviders, providerDrawerSearch]);
+  const hasAssociations = allAssociations.length > 0;
+  const showNoSearchResults =
+    hasAssociations &&
+    searchValue.trim().length > 0 &&
+    filteredAssociations.length === 0;
+
+  const providerDrawerKeyState = useMemo(
+    () =>
+      buildDisabledKeyStateByEntity(
+        providerKeysMap,
+        unavailableKeyNames,
+        reservedKeyOwners
+      ),
+    [providerKeysMap, reservedKeyOwners, unavailableKeyNames]
+  );
+  const proxyDrawerKeyState = useMemo(
+    () =>
+      buildDisabledKeyStateByEntity(
+        proxyKeysMap,
+        unavailableKeyNames,
+        reservedKeyOwners
+      ),
+    [proxyKeysMap, reservedKeyOwners, unavailableKeyNames]
+  );
+
+  const filteredOrgProviders = useMemo(
+    () =>
+      filterItemsByQuery(
+        orgProviders,
+        providerDrawerSearch,
+        (provider) => [provider.name, provider.description, provider.template]
+      ),
+    [orgProviders, providerDrawerSearch]
+  );
+  const filteredOrgProxies = useMemo(
+    () =>
+      filterItemsByQuery(orgProxies, proxyDrawerSearch, (proxy) => [
+        proxy.name,
+        proxy.description,
+        proxy.version,
+        proxy.context,
+      ]),
+    [orgProxies, proxyDrawerSearch]
+  );
 
   const providerAddButtonLabel = buildAddButtonLabel({
     isSubmitting: isAddingProviders,
@@ -1466,17 +1307,6 @@ export default function AssociationsTab() {
     entityLabel: 'Provider',
     defaultLabel: 'Add Providers',
   });
-
-  // Proxy drawer computed
-  const filteredOrgProxies = useMemo(() => {
-    return filterItemsByQuery(orgProxies, proxyDrawerSearch, (proxy) => [
-      proxy.name,
-      proxy.description,
-      proxy.version,
-      proxy.context,
-    ]);
-  }, [orgProxies, proxyDrawerSearch]);
-
   const proxyAddButtonLabel = buildAddButtonLabel({
     isSubmitting: isAddingProxies,
     selectedCount: selectedProxyIds.size,
@@ -1485,13 +1315,13 @@ export default function AssociationsTab() {
     defaultLabel: 'Add LLM Proxy',
   });
 
-  // Manage keys drawer computed
   const managedIsProvider = manageKeysDrawerTarget?.kind === 'LlmProvider';
   const managedProvider = managedIsProvider
-    ? orgProviders.find((p) => p.id === manageKeysDrawerTarget?.id) ?? null
+    ? orgProviders.find((provider) => provider.id === manageKeysDrawerTarget?.id) ??
+      null
     : null;
   const managedProxy = !managedIsProvider
-    ? orgProxies.find((p) => p.id === manageKeysDrawerTarget?.id) ?? null
+    ? orgProxies.find((proxy) => proxy.id === manageKeysDrawerTarget?.id) ?? null
     : null;
   const managedProviderLogo = getTemplateLogo(managedProvider?.template);
   const managedProviderTemplate = getProviderTemplateDisplayName(
@@ -1514,8 +1344,29 @@ export default function AssociationsTab() {
       : loadingProxyKeyIds.has(manageKeysDrawerTarget.id)
     : false;
   const managedMappedKeyStatusMap = useMemo(
-    () => new Map(managedMappedKeys.map((k) => [k.keyId, k.status])),
+    () => new Map(managedMappedKeys.map((key) => [key.keyId, key.status])),
     [managedMappedKeys]
+  );
+  const managedDisabledKeyNames = useMemo(
+    () =>
+      new Set(
+        managedAvailableKeys
+          .map((key) => key.name ?? '')
+          .filter(
+            (keyName) => Boolean(keyName) && unavailableKeyNames.has(keyName)
+          )
+      ),
+    [managedAvailableKeys, unavailableKeyNames]
+  );
+  const managedDisabledReasons = useMemo(
+    () =>
+      new Map(
+        Array.from(managedDisabledKeyNames).map((keyName) => [
+          keyName,
+          formatReservedKeyMessage(reservedKeyOwners.get(keyName) ?? new Set()),
+        ])
+      ),
+    [managedDisabledKeyNames, reservedKeyOwners]
   );
   const managedVisibleKeys = getVisibleKeys(
     managedAvailableKeys,
@@ -1523,391 +1374,47 @@ export default function AssociationsTab() {
     true
   );
   const hasAddableManagedKeys = managedAvailableKeys.some(
-    (k) => k.name && !managedMappedKeyStatusMap.has(k.name)
+    (key) =>
+      key.name &&
+      !managedMappedKeyStatusMap.has(key.name) &&
+      !managedDisabledKeyNames.has(key.name)
   );
+
   return (
     <>
-      {/* ── Main table ────────────────────────────────────────────────────── */}
-      <ListingTable.Container sx={{ minWidth: 600 }}>
-        <ListingTable.Toolbar
-          showSearch={hasAssociations}
-          searchValue={searchValue}
-          onSearchChange={setSearchValue}
-          searchPlaceholder="Search associations..."
-          actions={
-            hasAssociations ? (
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="contained"
-                  size="small"
-                  startIcon={<Plus size={16} />}
-                  onClick={() => void handleOpenProviderDrawer()}
-                >
-                  Add LLM Provider
-                </Button>
-                <Button
-                  variant="contained"
-                  size="small"
-                  startIcon={<Plus size={16} />}
-                  onClick={() => void handleOpenProxyDrawer()}
-                >
-                  Add LLM Proxy
-                </Button>
-              </Stack>
-            ) : null
-          }
-        />
-
-        {loadError ? (
-          <Alert severity="error" sx={{ mx: 2, mb: 2 }}>
-            {loadError}
-          </Alert>
-        ) : null}
-
-        {isLoading || hasFilteredAssociations ? (
-          <ListingTable>
-            <ListingTable.Head>
-              <ListingTable.Row>
-                <ListingTable.Cell sx={{ width: 32, pr: 0 }} />
-                <ListingTable.Cell>Name</ListingTable.Cell>
-                <ListingTable.Cell>Version</ListingTable.Cell>
-                <ListingTable.Cell>Type</ListingTable.Cell>
-                <ListingTable.Cell align="right">Actions</ListingTable.Cell>
-              </ListingTable.Row>
-            </ListingTable.Head>
-            <ListingTable.Body>
-              {isLoading
-                ? Array.from({ length: 3 }).map((_, i) => (
-                    // eslint-disable-next-line react/no-array-index-key
-                    <ListingTable.Row key={i}>
-                      <ListingTable.Cell />
-                      <ListingTable.Cell>
-                        <Skeleton variant="text" width="60%" />
-                      </ListingTable.Cell>
-                      <ListingTable.Cell>
-                        <Skeleton variant="text" width="50%" />
-                      </ListingTable.Cell>
-                      <ListingTable.Cell>
-                        <Skeleton variant="text" width="40%" />
-                      </ListingTable.Cell>
-                      <ListingTable.Cell align="right">
-                        <Skeleton variant="circular" width={24} height={24} />
-                      </ListingTable.Cell>
-                    </ListingTable.Row>
-                  ))
-                : paginatedAssociations.flatMap((assoc) => {
-                    const isProvider = assoc.kind === 'LlmProvider';
-                    const isExpanded = expandedIds.has(assoc.id);
-                    const isLoadingKeys = loadingKeyIds.has(assoc.id);
-                    const keys = dedupeMappedKeys(
-                      apiKeysMap.get(assoc.id) ?? []
-                    );
-                    const hasLoadedMappedKeys = apiKeysMap.has(assoc.id);
-                    const entityKeys = isProvider
-                      ? providerKeysMap.get(assoc.id) ?? []
-                      : proxyKeysMap.get(assoc.id) ?? [];
-                    const hasLoadedEntityKeys = isProvider
-                      ? providerKeysMap.has(assoc.id)
-                      : proxyKeysMap.has(assoc.id);
-                    const isLoadingEntityKeys = isProvider
-                      ? loadingProviderKeyIds.has(assoc.id)
-                      : loadingProxyKeyIds.has(assoc.id);
-                    const mappedKeyIds = new Set(
-                      keys.map((k) => k.keyId).filter(Boolean)
-                    );
-                    const canDetermineAddableKeys =
-                      hasLoadedMappedKeys && hasLoadedEntityKeys;
-                    const hasEntityKeys = entityKeys.some((k) =>
-                      Boolean(k.name)
-                    );
-                    const hasAvailableKeysToAdd = entityKeys.some(
-                      (k) => k.name && !mappedKeyIds.has(k.name)
-                    );
-                    const entityLabel = isProvider ? 'provider' : 'proxy';
-                    const addApiKeyTooltip =
-                      !canDetermineAddableKeys ||
-                      isLoadingEntityKeys ||
-                      isLoadingKeys
-                        ? 'Loading API keys...'
-                        : !hasEntityKeys
-                        ? `No API keys available for this ${entityLabel}.`
-                        : !hasAvailableKeysToAdd
-                        ? `All API keys are already associated for this ${entityLabel}.`
-                        : 'Add API Key';
-                    const isAddApiKeyDisabled =
-                      !canDetermineAddableKeys ||
-                      isLoadingEntityKeys ||
-                      isLoadingKeys ||
-                      !hasAvailableKeysToAdd;
-
-                    const mainRow = (
-                      <ListingTable.Row key={`assoc-${assoc.id}`} hover>
-                        <ListingTable.Cell sx={{ pr: 0 }}>
-                          <IconButton
-                            size="small"
-                            onClick={() => void handleToggleExpand(assoc)}
-                            aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown size={16} />
-                            ) : (
-                              <ChevronRight size={16} />
-                            )}
-                          </IconButton>
-                        </ListingTable.Cell>
-                        <ListingTable.Cell>
-                          {assoc.name || '—'}
-                        </ListingTable.Cell>
-                        <ListingTable.Cell>
-                          <Typography variant="body2">
-                            {String(assoc.version ?? '—')}
-                          </Typography>
-                        </ListingTable.Cell>
-                        <ListingTable.Cell>
-                          {assoc.kind ? (
-                            <Chip
-                              label={
-                                assoc.kind === 'LlmProvider'
-                                  ? 'LLM Provider'
-                                  : 'LLM Proxy'
-                              }
-                              size="small"
-                              variant="outlined"
-                              color="primary"
-                            />
-                          ) : (
-                            '—'
-                          )}
-                        </ListingTable.Cell>
-                        <ListingTable.Cell align="right">
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'flex-end',
-                              gap: 0.8,
-                            }}
-                          >
-                            <Tooltip title={addApiKeyTooltip}>
-                              <span>
-                                <IconButton
-                                  size="small"
-                                  color="primary"
-                                  disabled={isAddApiKeyDisabled}
-                                  onClick={() =>
-                                    void handleOpenManageKeysDrawer(assoc)
-                                  }
-                                  aria-label={`Add API key for ${
-                                    assoc.name || assoc.id
-                                  }`}
-                                >
-                                  <Plus size={16} />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => setDeleteTarget(assoc)}
-                              aria-label={`Remove ${assoc.name || assoc.id}`}
-                            >
-                              <Trash2 size={16} />
-                            </IconButton>
-                          </Box>
-                        </ListingTable.Cell>
-                      </ListingTable.Row>
-                    );
-
-                    if (!isExpanded) return [mainRow];
-
-                    const sectionTitleRow = (
-                      <ListingTable.Row key={`${assoc.id}-section-title`}>
-                        <ListingTable.Cell />
-                        <ListingTable.Cell colSpan={4}>
-                          <Box sx={{ pl: 2, pt: 0.75, pb: 0.25 }}>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{
-                                display: 'block',
-                                fontWeight: 600,
-                                letterSpacing: 0.4,
-                              }}
-                            >
-                              Associated API Keys
-                            </Typography>
-                          </Box>
-                        </ListingTable.Cell>
-                      </ListingTable.Row>
-                    );
-
-                    const keyRows = isLoadingKeys
-                      ? [
-                          <ListingTable.Row key={`${assoc.id}-loading`}>
-                            <ListingTable.Cell />
-                            <ListingTable.Cell colSpan={4}>
-                              <Box
-                                sx={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 1,
-                                  pl: 2,
-                                  py: 0.5,
-                                }}
-                              >
-                                <CircularProgress size={14} />
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  Loading API keys...
-                                </Typography>
-                              </Box>
-                            </ListingTable.Cell>
-                          </ListingTable.Row>,
-                        ]
-                      : keys.length === 0
-                      ? [
-                          <ListingTable.Row key={`${assoc.id}-empty`}>
-                            <ListingTable.Cell />
-                            <ListingTable.Cell colSpan={4}>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ pl: 2, py: 0.5, display: 'block' }}
-                              >
-                                No API keys mapped to this {entityLabel}.
-                              </Typography>
-                            </ListingTable.Cell>
-                          </ListingTable.Row>,
-                        ]
-                      : keys.map((key) => (
-                          <ListingTable.Row
-                            key={`apikey-${assoc.id}-${key.keyId}`}
-                            sx={{ bgcolor: 'action.hover' }}
-                          >
-                            <ListingTable.Cell />
-                            <ListingTable.Cell>
-                              <Stack
-                                direction="row"
-                                spacing={0.75}
-                                alignItems="center"
-                                sx={{ pl: 2 }}
-                              >
-                                <Key size={14} color="disabled" />
-                                <Typography variant="caption" fontWeight={500}>
-                                  {key.keyId || '—'}
-                                </Typography>
-                              </Stack>
-                            </ListingTable.Cell>
-                            <ListingTable.Cell>
-                              {key.status ? (
-                                <Chip
-                                  label={key.status}
-                                  size="small"
-                                  variant="outlined"
-                                  color={getKeyStatusColor(key.status)}
-                                />
-                              ) : (
-                                '—'
-                              )}
-                            </ListingTable.Cell>
-                            <ListingTable.Cell>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                              >
-                                Expired At {formatDate(key.expiresAt)}
-                              </Typography>
-                            </ListingTable.Cell>
-                            <ListingTable.Cell>
-                              <Tooltip title="Remove API key">
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    color="error"
-                                    disabled={removingKeyIds.has(
-                                      resolveMappedKeyId(key)
-                                    )}
-                                    onClick={() =>
-                                      void handleRemoveKey(assoc.id, key)
-                                    }
-                                    aria-label={`Remove API key ${key.keyId}`}
-                                  >
-                                    {removingKeyIds.has(
-                                      resolveMappedKeyId(key)
-                                    ) ? (
-                                      <CircularProgress size={14} />
-                                    ) : (
-                                      <X size={14} />
-                                    )}
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                            </ListingTable.Cell>
-                          </ListingTable.Row>
-                        ));
-
-                    return [mainRow, sectionTitleRow, ...keyRows];
-                  })}
-            </ListingTable.Body>
-          </ListingTable>
-        ) : (
-          <ListingTable.EmptyState
-            illustration={
-              showNoSearchResults ? <Search size={64} /> : <Inbox size={64} />
-            }
-            title={
-              showNoSearchResults ? 'No associations found' : 'No Associations'
-            }
-            description={
-              showNoSearchResults
-                ? 'No associations match your search.'
-                : 'Associate LLM providers and proxies to enable AI capabilities for this application.'
-            }
-            action={
-              showNoSearchResults ? (
-                <Button variant="outlined" onClick={() => setSearchValue('')}>
-                  Clear search
-                </Button>
-              ) : (
-                <Stack direction="row" spacing={1} justifyContent="center">
-                  <Button
-                    variant="contained"
-                    startIcon={<Plus size={16} />}
-                    onClick={() => void handleOpenProviderDrawer()}
-                  >
-                    Add LLM Provider
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<Plus size={16} />}
-                    onClick={() => void handleOpenProxyDrawer()}
-                  >
-                    Add LLM Proxy
-                  </Button>
-                </Stack>
-              )
-            }
-          />
-        )}
-
-        {/* ── Pagination ── */}
-        {hasFilteredAssociations && (
-          <TablePagination
-            component="div"
-            count={filteredAssociations.length}
-            page={page}
-            onPageChange={(_, newPage) => setPage(newPage)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={(e) => {
-              setRowsPerPage(parseInt(e.target.value, 10));
-              setPage(0);
-            }}
-            rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
-          />
-        )}
-      </ListingTable.Container>
+      <AssociationsTable
+        isLoading={isLoading}
+        loadError={loadError}
+        hasAssociations={hasAssociations}
+        showNoSearchResults={showNoSearchResults}
+        filteredAssociationsCount={filteredAssociations.length}
+        paginatedAssociations={paginatedAssociations}
+        searchValue={searchValue}
+        onSearchChange={setSearchValue}
+        onOpenProviderDrawer={handleOpenProviderDrawer}
+        onOpenProxyDrawer={handleOpenProxyDrawer}
+        expandedIds={expandedIds}
+        apiKeysMap={apiKeysMap}
+        loadingKeyIds={loadingKeyIds}
+        removingKeyIds={removingKeyIds}
+        providerKeysMap={providerKeysMap}
+        loadingProviderKeyIds={loadingProviderKeyIds}
+        proxyKeysMap={proxyKeysMap}
+        loadingProxyKeyIds={loadingProxyKeyIds}
+        unavailableKeyNames={unavailableKeyNames}
+        selectionBlockedMessage={selectionBlockedMessage}
+        page={page}
+        rowsPerPage={rowsPerPage}
+        onPageChange={setPage}
+        onRowsPerPageChange={(nextRowsPerPage) => {
+          setRowsPerPage(nextRowsPerPage);
+          setPage(0);
+        }}
+        onToggleExpand={handleToggleExpand}
+        onOpenManageKeysDrawer={handleOpenManageKeysDrawer}
+        onDeleteAssociation={setDeleteTarget}
+        onRemoveKey={handleRemoveKey}
+      />
 
       <AssociationSelectionDrawer
         open={providerDrawerOpen}
@@ -1931,6 +1438,11 @@ export default function AssociationsTab() {
         loadingMappedKeyIds={loadingKeyIds}
         loadingEntityKeyIds={loadingProviderKeyIds}
         selectedKeyNamesMap={selectedProviderKeyNamesMap}
+        disabledKeyNamesByEntity={
+          providerDrawerKeyState.disabledKeyNamesByEntity
+        }
+        disabledReasonsByEntity={providerDrawerKeyState.disabledReasonsByEntity}
+        selectionBlockedMessage={selectionBlockedMessage}
         onItemClick={handleProviderClick}
         onToggleKey={handleToggleProviderKey}
         getItemMeta={(provider) => {
@@ -1995,6 +1507,9 @@ export default function AssociationsTab() {
         loadingMappedKeyIds={loadingKeyIds}
         loadingEntityKeyIds={loadingProxyKeyIds}
         selectedKeyNamesMap={selectedProxyKeyNamesMap}
+        disabledKeyNamesByEntity={proxyDrawerKeyState.disabledKeyNamesByEntity}
+        disabledReasonsByEntity={proxyDrawerKeyState.disabledReasonsByEntity}
+        selectionBlockedMessage={selectionBlockedMessage}
         onItemClick={handleProxyClick}
         onToggleKey={handleToggleProxyKey}
         getItemMeta={(proxy) => ({
@@ -2017,7 +1532,6 @@ export default function AssociationsTab() {
         onAdd={handleAddProxies}
       />
 
-      {/* ── Manage Keys Drawer (shared for provider + proxy) ─────────────── */}
       <Drawer
         anchor="right"
         open={Boolean(manageKeysDrawerTarget)}
@@ -2059,7 +1573,7 @@ export default function AssociationsTab() {
         </Box>
 
         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-          {!manageKeysDrawerTarget ? null : (
+          {manageKeysDrawerTarget ? (
             <Card sx={{ border: 2, borderColor: 'divider' }}>
               <Box
                 sx={{
@@ -2105,8 +1619,7 @@ export default function AssociationsTab() {
                         manageKeysDrawerTarget.name ||
                         '—'}
                     </Typography>
-                    {/* Provider: template chip */}
-                    {managedIsProvider && managedProviderTemplate && (
+                    {managedIsProvider && managedProviderTemplate ? (
                       <Chip
                         label={` ${managedProviderTemplate}`}
                         size="small"
@@ -2127,9 +1640,8 @@ export default function AssociationsTab() {
                           ) : undefined
                         }
                       />
-                    )}
-                    {/* Proxy: version chip */}
-                    {!managedIsProvider && managedProxy?.version && (
+                    ) : null}
+                    {!managedIsProvider && managedProxy?.version ? (
                       <Chip
                         label={`v${managedProxy.version}`}
                         size="small"
@@ -2137,7 +1649,7 @@ export default function AssociationsTab() {
                         color="primary"
                         sx={{ borderRadius: 0.5 }}
                       />
-                    )}
+                    ) : null}
                   </Stack>
                   <Typography
                     variant="caption"
@@ -2196,7 +1708,10 @@ export default function AssociationsTab() {
                         )
                       )
                     }
+                    disabledKeyNames={managedDisabledKeyNames}
+                    disabledReasonByName={managedDisabledReasons}
                     keyStatusByName={managedMappedKeyStatusMap}
+                    selectionBlockedMessage={selectionBlockedMessage}
                     emptyText={`No active API keys available for this ${
                       managedIsProvider ? 'provider' : 'proxy'
                     }.`}
@@ -2205,7 +1720,7 @@ export default function AssociationsTab() {
                 )}
               </Box>
             </Card>
-          )}
+          ) : null}
         </Box>
 
         <Box
@@ -2244,7 +1759,6 @@ export default function AssociationsTab() {
         </Box>
       </Drawer>
 
-      {/* ── Delete Confirmation Dialog ───────────────────────────────────── */}
       <Dialog
         open={Boolean(deleteTarget)}
         onClose={() => {

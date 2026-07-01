@@ -23,14 +23,14 @@ Gateway Management provides APIs for registering, managing, and deleting API gat
 
 | Method | Endpoint | Description | Status |
 |--------|----------|-------------|--------|
-| POST | `/api/v1/gateways` | Register new gateway | ✅ Implemented |
-| GET | `/api/v1/gateways` | List all gateways | ✅ Implemented |
-| GET | `/api/v1/gateways/{id}` | Get gateway details | ✅ Implemented |
-| PUT | `/api/v1/gateways/{id}` | Update gateway | ✅ Implemented |
-| DELETE | `/api/v1/gateways/{id}` | Delete gateway | ✅ Implemented |
-| POST | `/api/v1/gateways/{id}/tokens` | Rotate gateway token | ✅ Implemented |
-| GET | `/api/v1/gateways/{id}/live-proxy-artifacts` | Get deployed artifacts | ✅ Implemented |
-| DELETE | `/api/v1/gateways/{id}/tokens/{tokenId}` | Revoke token | ⏳ Planned |
+| POST | `/api/v0.9/gateways` | Register new gateway | ✅ Implemented |
+| GET | `/api/v0.9/gateways` | List all gateways | ✅ Implemented |
+| GET | `/api/v0.9/gateways/{id}` | Get gateway details | ✅ Implemented |
+| PUT | `/api/v0.9/gateways/{id}` | Update gateway | ✅ Implemented |
+| DELETE | `/api/v0.9/gateways/{id}` | Delete gateway | ✅ Implemented |
+| POST | `/api/v0.9/gateways/{id}/tokens` | Rotate gateway token | ✅ Implemented |
+| GET | `/api/v0.9/gateways/{id}/live-proxy-artifacts` | Get deployed artifacts | ✅ Implemented |
+| DELETE | `/api/v0.9/gateways/{id}/tokens/{tokenId}` | Revoke token | ⏳ Planned |
 
 ## Authentication & Authorization
 
@@ -57,7 +57,7 @@ The organization ID is automatically extracted from the JWT token and used for a
 
 ### 1. Gateway Registration
 
-**Endpoint**: `POST /api/v1/gateways`
+**Endpoint**: `POST /api/v0.9/gateways`
 
 **Behavior**:
 1. Validates JWT token and extracts organization claim
@@ -77,7 +77,7 @@ The organization ID is automatically extracted from the JWT token and used for a
 
 ### 2. List Gateways
 
-**Endpoint**: `GET /api/v1/gateways`
+**Endpoint**: `GET /api/v0.9/gateways`
 
 **Behavior**:
 - Returns all gateways for organization from JWT token (200 OK)
@@ -85,7 +85,7 @@ The organization ID is automatically extracted from the JWT token and used for a
 
 ### 3. Get Gateway Details
 
-**Endpoint**: `GET /api/v1/gateways/{gatewayId}`
+**Endpoint**: `GET /api/v0.9/gateways/{gatewayId}`
 
 **Behavior**:
 - Retrieves gateway details by ID (200 OK)
@@ -94,7 +94,7 @@ The organization ID is automatically extracted from the JWT token and used for a
 
 ### 4. Token Rotation
 
-**Endpoint**: `POST /api/v1/gateways/{gatewayId}/tokens`
+**Endpoint**: `POST /api/v0.9/gateways/{gatewayId}/tokens`
 
 **Behavior**:
 - Generates new token while keeping existing tokens active (201 Created)
@@ -105,7 +105,7 @@ The organization ID is automatically extracted from the JWT token and used for a
 
 ### 5. Gateway Deletion
 
-**Endpoint**: `DELETE /api/v1/gateways/{gatewayId}`
+**Endpoint**: `DELETE /api/v0.9/gateways/{gatewayId}`
 
 **Status**: ✅ Complete
 
@@ -227,7 +227,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 
 ### Gateway Status Monitoring
 
-1. **Lightweight Status API**: New endpoint `/api/v1/status/gateways` provides minimal gateway information for frequent polling by management portals
+1. **Lightweight Status API**: New endpoint `/api/v0.9/status/gateways` provides minimal gateway information for frequent polling by management portals
 2. **Optional Filtering**: Query parameter `gatewayId` allows filtering to a specific gateway
 3. **Response Structure**: Returns only essential fields (id, name, isActive, isCritical) for efficient polling
 4. **Organization Scoping**: Automatically filtered by organization from JWT token
@@ -337,7 +337,7 @@ CREATE TABLE gateway_tokens (
 
 **Request** (organization ID from JWT token):
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -371,7 +371,7 @@ curl -k -X POST https://localhost:9243/api/v1/gateways \
 
 **Request** (filters by organization from JWT token):
 ```bash
-curl -k https://localhost:9243/api/v1/gateways \
+curl -k https://localhost:9243/api/v0.9/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -418,7 +418,7 @@ curl -k https://localhost:9243/api/v1/gateways \
 ### Get Gateway by ID
 
 ```bash
-curl -k https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999 \
+curl -k https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999 \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -443,7 +443,7 @@ curl -k https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174
 
 **Get all gateway statuses:**
 ```bash
-curl -k https://localhost:9243/api/v1/status/gateways \
+curl -k https://localhost:9243/api/v0.9/status/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -475,7 +475,7 @@ curl -k https://localhost:9243/api/v1/status/gateways \
 
 **Get specific gateway status:**
 ```bash
-curl -k https://localhost:9243/api/v1/status/gateways?gatewayId=987e6543-e21b-45d3-a789-426614174999 \
+curl -k https://localhost:9243/api/v0.9/status/gateways?gatewayId=987e6543-e21b-45d3-a789-426614174999 \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -503,7 +503,7 @@ curl -k https://localhost:9243/api/v1/status/gateways?gatewayId=987e6543-e21b-45
 ### Rotate Gateway Token
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -541,7 +541,7 @@ curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-4
 
 ```bash
 # Register first gateway
-curl -k -X POST https://localhost:9243/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -550,7 +550,7 @@ curl -k -X POST https://localhost:9243/api/v1/gateways \
   }'
 
 # Attempt duplicate (should return 409 Conflict)
-curl -k -X POST https://localhost:9243/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -572,15 +572,15 @@ curl -k -X POST https://localhost:9243/api/v1/gateways \
 
 ```bash
 # Rotate once (2 active tokens: initial + rotation 1)
-curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer <token>' \
 
 # Rotate again (3 active tokens: initial + rotation 1 + rotation 2)
-curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer <token>' \
 
 # Attempt third rotation (should return 400 Bad Request)
-curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer <token>' \
 ```
 
@@ -620,7 +620,7 @@ Detailed design and planning documents are available in the `artifacts/` directo
 
 ### Token Revocation (Planned)
 
-**Endpoint**: `DELETE /api/v1/gateways/{gatewayId}/tokens/{tokenId}`
+**Endpoint**: `DELETE /api/v0.9/gateways/{gatewayId}/tokens/{tokenId}`
 
 Immediate token revocation with idempotent behavior.
 

@@ -65,9 +65,7 @@ spec:
   displayName: Ping API
   version: v1.0
   description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
-  provider: WSO2
   status: PUBLISHED
-  gatewayType: wso2/api-platform
   referenceID: ping-api-v1.0
 
   tags:
@@ -77,7 +75,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
   visibility: PUBLIC
   visibleGroups: []
@@ -176,12 +174,12 @@ Scripts and CLI tools authenticate with a Bearer token obtained directly from th
 
 ```bash
 # Get a token from the Platform API (runs alongside the devportal)
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
 # Find the org UUID
 ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
-  https://localhost:3000/organizations | jq -r '.[0].orgID')
+  https://localhost:3000/organizations | jq -r '.[0].orgId')
 
 # Publish the API
 curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \
@@ -211,4 +209,4 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Register and publish your first API | [Publish APIs](../publish-apis/publishing-apis.md) |
 | Set up subscription plans | [Subscription Plans](../administer/subscription-plans.md) |
 | Customize the portal look and feel | [Theming](../administer/theming/org-level-theming.md) |
-| Connect to the API Gateway | [Gateway Integration](../administer/gateway-integration.md) |
+| Notify your gateway of key/subscription changes | [Webhook Integration](../administer/webhook-integration.md) |

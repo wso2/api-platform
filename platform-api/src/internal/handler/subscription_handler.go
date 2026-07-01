@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // SubscriptionHandler handles application-level subscription CRUD
@@ -52,7 +53,7 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, su
 	}
 }
 
-// CreateSubscriptionRequest is the body for POST /api/v1/subscriptions
+// CreateSubscriptionRequest is the body for POST /api/v0.9/subscriptions
 type CreateSubscriptionRequest struct {
 	APIID              string  `json:"apiId" binding:"required"`
 	SubscriberID       string  `json:"subscriberId" binding:"required"`
@@ -61,67 +62,67 @@ type CreateSubscriptionRequest struct {
 	Status             string  `json:"status,omitempty"`
 }
 
-// UpdateSubscriptionRequest is the body for PUT /api/v1/subscriptions/:subscriptionId
+// UpdateSubscriptionRequest is the body for PUT /api/v0.9/subscriptions/:subscriptionId
 type UpdateSubscriptionRequest struct {
 	Status string `json:"status,omitempty"`
 }
 
-// CreateSubscription handles POST /api/v1/subscriptions
-func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+// CreateSubscription handles POST /api/v0.9/subscriptions
+func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
 		h.slogger.Error("Organization claim not found in token when creating subscription")
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 	var req CreateSubscriptionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid create subscription request body", "organizationId", orgId, "error", err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 	if req.APIID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
 	}
 	if req.SubscriberID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId is required"))
 		return
 	}
 	switch req.Status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
 		return
 	}
 	sub, err := h.subscriptionService.CreateSubscription(req.APIID, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, req.Status)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Subscription already exists for this API"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Subscription already exists for this API"))
 			return
 		}
 		h.slogger.Error("Failed to create subscription", "apiId", req.APIID, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription"))
 		return
 	}
-	c.JSON(http.StatusCreated, h.toSubscriptionResponse(sub, orgId))
+	httputil.WriteJSON(w, http.StatusCreated, h.toSubscriptionResponse(sub, orgId))
 }
 
-// ListSubscriptions handles GET /api/v1/subscriptions
-func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
-	apiId := c.Query("apiId")
-	subscriberID := c.Query("subscriberId")
-	applicationID := c.Query("applicationId")
-	status := c.Query("status")
+// ListSubscriptions handles GET /api/v0.9/subscriptions
+func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
+	apiId := r.URL.Query().Get("apiId")
+	subscriberID := r.URL.Query().Get("subscriberId")
+	applicationID := r.URL.Query().Get("applicationId")
+	status := r.URL.Query().Get("status")
 
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
@@ -140,13 +141,23 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		switch status {
 		case "ACTIVE", "INACTIVE", "REVOKED":
 		default:
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
 			return
 		}
 		statusPtr = &status
 	}
-	limitStr := c.DefaultQuery("limit", "20")
-	offsetStr := c.DefaultQuery("offset", "0")
+	var limitStr string
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limitStr = v
+	} else {
+		limitStr = "20"
+	}
+	var offsetStr string
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offsetStr = v
+	} else {
+		offsetStr = "0"
+	}
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit <= 0 {
 		limit = 20
@@ -161,19 +172,19 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr, limit, offset)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
 			return
 		}
 		h.slogger.Error("Failed to list subscriptions", "apiId", apiId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
 		return
 	}
 	// Bulk fetch API handles and plan names to avoid N+1 queries
 	apiUUIDSet := make(map[string]struct{})
 	planIDSet := make(map[string]struct{})
 	for _, sub := range list {
-		if sub.APIUUID != "" {
-			apiUUIDSet[sub.APIUUID] = struct{}{}
+		if sub.ArtifactUUID != "" {
+			apiUUIDSet[sub.ArtifactUUID] = struct{}{}
 		}
 		if sub.SubscriptionPlanID != nil && *sub.SubscriptionPlanID != "" {
 			planIDSet[*sub.SubscriptionPlanID] = struct{}{}
@@ -190,23 +201,23 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	apiHandleMap, err := h.subscriptionService.GetAPIHandleMap(apiUUIDs, orgId)
 	if err != nil {
 		h.slogger.Error("Failed to bulk fetch API handles for list", "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
 		return
 	}
 	planNameMap, err := h.subscriptionPlanService.GetPlanNameMap(planIDs, orgId)
 	if err != nil {
 		h.slogger.Error("Failed to bulk fetch plan names for list", "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
 		return
 	}
-	items := make([]gin.H, 0, len(list))
+	items := make([]map[string]any, 0, len(list))
 	for _, sub := range list {
 		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, apiHandleMap, planNameMap))
 	}
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"subscriptions": items,
 		"count":         len(items),
-		"pagination": gin.H{
+		"pagination": map[string]any{
 			"total":  total,
 			"offset": offset,
 			"limit":  limit,
@@ -214,139 +225,135 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	})
 }
 
-// GetSubscription handles GET /api/v1/subscriptions/:subscriptionId
-func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+// GetSubscription handles GET /api/v0.9/subscriptions/:subscriptionId
+func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
-	subscriptionId := c.Param("subscriptionId")
+	subscriptionId := r.PathValue("subscriptionId")
 	if subscriptionId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
 	}
 	sub, err := h.subscriptionService.GetSubscription(subscriptionId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
 			return
 		}
 		h.slogger.Error("Failed to get subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription"))
 		return
 	}
-	c.JSON(http.StatusOK, h.toSubscriptionResponse(sub, orgId))
+	httputil.WriteJSON(w, http.StatusOK, h.toSubscriptionResponse(sub, orgId))
 }
 
-// UpdateSubscription handles PUT /api/v1/subscriptions/:subscriptionId
-func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+// UpdateSubscription handles PUT /api/v0.9/subscriptions/:subscriptionId
+func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
-	subscriptionId := c.Param("subscriptionId")
+	subscriptionId := r.PathValue("subscriptionId")
 	if subscriptionId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
 	}
 	var req UpdateSubscriptionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 	switch req.Status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid subscription status"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid subscription status"))
 		return
 	}
-	subscriberID, ok := requireSubscriptionSubscriberQuery(c)
+	subscriberID, ok := requireSubscriptionSubscriberQuery(w, r)
 	if !ok {
 		return
 	}
 	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, req.Status)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
-			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to update subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription"))
 		return
 	}
-	c.JSON(http.StatusOK, h.toSubscriptionResponse(sub, orgId))
+	httputil.WriteJSON(w, http.StatusOK, h.toSubscriptionResponse(sub, orgId))
 }
 
-// DeleteSubscription handles DELETE /api/v1/subscriptions/:subscriptionId
-func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+// DeleteSubscription handles DELETE /api/v0.9/subscriptions/:subscriptionId
+func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
-	subscriptionId := c.Param("subscriptionId")
+	subscriptionId := r.PathValue("subscriptionId")
 	if subscriptionId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
 	}
-	subscriberID, ok := requireSubscriptionSubscriberQuery(c)
+	subscriberID, ok := requireSubscriptionSubscriberQuery(w, r)
 	if !ok {
 		return
 	}
 	err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId, subscriberID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
-			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to delete subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete subscription"))
 		return
 	}
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// RegisterRoutes registers subscription routes under the given router
-func requireSubscriptionSubscriberQuery(c *gin.Context) (string, bool) {
-	q := strings.TrimSpace(c.Query("subscriberId"))
+func requireSubscriptionSubscriberQuery(w http.ResponseWriter, r *http.Request) (string, bool) {
+	q := strings.TrimSpace(r.URL.Query().Get("subscriberId"))
 	if q == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId query parameter is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId query parameter is required"))
 		return "", false
 	}
 	return q, true
 }
 
-func (h *SubscriptionHandler) RegisterRoutes(r *gin.Engine) {
-	subGroup := r.Group("/api/v1/subscriptions")
-	{
-		subGroup.POST("", h.CreateSubscription)
-		subGroup.GET("", h.ListSubscriptions)
-		subGroup.GET("/:subscriptionId", h.GetSubscription)
-		subGroup.PUT("/:subscriptionId", h.UpdateSubscription)
-		subGroup.DELETE("/:subscriptionId", h.DeleteSubscription)
-	}
+func (h *SubscriptionHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/subscriptions", h.CreateSubscription)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/subscriptions", h.ListSubscriptions)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/subscriptions/{subscriptionId}", h.GetSubscription)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscriptions/{subscriptionId}", h.UpdateSubscription)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscriptions/{subscriptionId}", h.DeleteSubscription)
 }
 
-func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) gin.H {
+func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) map[string]any {
 	// apiId in response should be the handle (e.g. "samp1"), not the internal UUID
-	apiIdForResponse := h.subscriptionService.ResolveAPIHandle(sub.APIUUID, orgId)
+	apiIdForResponse := h.subscriptionService.ResolveAPIHandle(sub.ArtifactUUID, orgId)
 	if apiIdForResponse == "" {
-		apiIdForResponse = sub.APIUUID // fallback to UUID
+		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
-	resp := gin.H{
+	resp := map[string]any{
 		"id":             sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
@@ -360,11 +367,10 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	}
 	if sub.SubscriptionPlanID != nil {
 		resp["subscriptionPlanId"] = *sub.SubscriptionPlanID
-		// Resolve plan name for display (subscription_plans.plan_name)
 		if h.subscriptionPlanService != nil {
 			plan, err := h.subscriptionPlanService.GetPlan(*sub.SubscriptionPlanID, orgId)
 			if err == nil && plan != nil {
-				resp["subscriptionPlanName"] = plan.PlanName
+				resp["subscriptionPlanName"] = plan.Name
 			}
 		}
 	}
@@ -377,12 +383,12 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 
 // toSubscriptionResponseWithMaps builds a subscription response using pre-fetched lookup maps.
 // Used by ListSubscriptions to avoid N+1 queries.
-func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, apiHandleMap, planNameMap map[string]string) gin.H {
-	apiIdForResponse := apiHandleMap[sub.APIUUID]
+func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, apiHandleMap, planNameMap map[string]string) map[string]any {
+	apiIdForResponse := apiHandleMap[sub.ArtifactUUID]
 	if apiIdForResponse == "" {
-		apiIdForResponse = sub.APIUUID // fallback to UUID
+		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
-	resp := gin.H{
+	resp := map[string]any{
 		"id":             sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,

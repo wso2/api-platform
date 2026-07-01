@@ -315,6 +315,26 @@ export interface Policy {
 }
 
 /**
+ * Global (api-level) policy — no path binding
+ */
+export interface GlobalPolicy {
+  name: string;
+  version: string;
+  executionCondition?: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Operation policy — path-bound
+ */
+export interface OperationPolicy {
+  name: string;
+  version: string;
+  executionCondition?: string;
+  paths: PolicyPath[];
+}
+
+/**
  * API Key security configuration
  */
 export interface ApiKeySecurity {
@@ -374,6 +394,8 @@ export interface LLMProvider {
   upstream?: Upstream;
   accessControl?: AccessControl;
   rateLimiting?: RateLimiting;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   security?: SecurityConfig;
   status?: 'Active' | 'Degraded' | 'Paused' | string;
@@ -397,6 +419,8 @@ export interface CreateLLMProviderRequest {
   modelProviders?: ModelProvider[];
   upstream: Upstream;
   accessControl: AccessControl;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   openapi?: string;
 }
@@ -424,7 +448,7 @@ export type UpdateLLMProviderRequest = Partial<
  * Token location configuration
  */
 export interface TokenLocation {
-  location: 'payload' | 'header' | 'query' | string;
+  location: 'payload' | 'header' | 'queryParam' | 'pathParam' | string;
   identifier: string;
 }
 
@@ -453,9 +477,15 @@ export interface TemplateMetadata {
  * Read-only fields (createdAt, updatedAt) excluded
  */
 export interface ProviderTemplate {
-  id?: string;
+  id: string;
   name: string;
+  provider?: string;
+  managedBy?: string;
+  groupId?: string;
   description?: string;
+  version: string;
+  isLatest?: boolean;
+  enabled?: boolean;
   promptTokens?: TokenLocation;
   completionTokens?: TokenLocation;
   totalTokens?: TokenLocation;
@@ -463,12 +493,39 @@ export interface ProviderTemplate {
   requestModel?: TokenLocation;
   responseModel?: TokenLocation;
   metadata?: TemplateMetadata;
+  resourceMappings?: ResourceMappings;
+  openapi?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Flat logo URL, present on list responses (LLMProviderTemplateListItem). */
+  logoUrl?: string;
 }
 
 /**
- * Create Provider Template request - only required fields
+ * Per-resource token & model extraction overrides. Each mapping targets a
+ * resource path pattern (e.g. "/responses" or "/chat/*") and may override any
+ * of the six extraction identifiers for requests matching that path.
  */
-export type CreateProviderTemplateRequest = Omit<ProviderTemplate, 'id'>;
+export interface ResourceMapping {
+  resource: string;
+  promptTokens?: TokenLocation;
+  completionTokens?: TokenLocation;
+  totalTokens?: TokenLocation;
+  remainingTokens?: TokenLocation;
+  requestModel?: TokenLocation;
+  responseModel?: TokenLocation;
+}
+
+export interface ResourceMappings {
+  resources?: ResourceMapping[];
+}
+
+/**
+ * Create Provider Template request. Mirrors `ProviderTemplate`; `id` is
+ * required (the backend expects an explicit handle, e.g. "kimi-full").
+ */
+export type CreateProviderTemplateRequest = ProviderTemplate;
 
 /**
  * Update Provider Template request - all fields optional
@@ -550,6 +607,8 @@ export interface Proxy {
   vhost?: string;
   provider?: string | ProxyProviderConfig;
   openapi?: string;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   security?: ProxySecurityConfig;
   createdAt?: string;
@@ -591,6 +650,8 @@ export interface CreateProxyRequest {
   vhost?: string;
   provider: ProxyProviderConfig;
   openapi: string;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies: Policy[];
   security: ProxySecurityConfig;
 }

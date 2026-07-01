@@ -16,8 +16,7 @@
  * under the License.
  */
 
-import { PLATFORM_API_BASE_URL } from '../config.env';
-import { getStoredToken, getOrgToken } from '../clients/choreoApiClient';
+import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { logger } from '../utils/logger';
 
 // ============================================================================
@@ -27,15 +26,9 @@ import { logger } from '../utils/logger';
 /**
  * Organization schema from the Platform API.
  *
- * curl reference:
- *   POST https://localhost:9243/api/v1/organizations
- *   -H 'Authorization: Bearer <token>'
- *   -H 'accept: application/json' -H 'content-type: application/json'
- *   --data-raw '{"id":"<uuid>","name":"<name>","handle":"<handle>","region":"us"}'
- *   --insecure
- *
- * TODO: [REMOVE BEFORE PRODUCTION] Bearer token is currently hardcoded in
- *       choreoApiClient.ts (DEV_FALLBACK_TOKEN). Replace with proper auth.
+ * Requests are routed same-origin through the BFF proxy. The browser holds no
+ * token: every call rides the HttpOnly `_bff_session` cookie and the BFF injects
+ * the bearer token when proxying to the Platform API.
  */
 export interface PlatformOrganization {
   /** UUID v4 — client-generated and sent on registration */
@@ -62,24 +55,23 @@ export type RegisterOrganizationRequest = Pick<
 const platformUrl = (path: string): string => `${PLATFORM_API_BASE_URL}${path}`;
 
 /**
- * Headers for POST /organizations (registration token — no org claim required).
- * TODO: [REMOVE BEFORE PRODUCTION] Remove DEV_FALLBACK_TOKEN from getStoredToken()
+ * Base JSON headers. No Authorization — the BFF injects the bearer token from
+ * the session when proxying. All calls below use `credentials: 'include'` so the
+ * HttpOnly `_bff_session` cookie rides along and the BFF can resolve the token.
  */
-const authHeaders = (): Record<string, string> => ({
+const jsonHeaders = (): Record<string, string> => ({
   'Content-Type': 'application/json',
   Accept: 'application/json',
-  Authorization: `Bearer ${getStoredToken()}`,
 });
 
 /**
- * Headers for GET /organizations calls — uses the org-specific token whose JWT
- * `organization` claim matches the registered org UUID.
- * TODO: [REMOVE BEFORE PRODUCTION] Remove DEV_GET_ORG_TOKEN from getOrgToken()
+ * Headers for state-mutating requests (POST/PUT/PATCH/DELETE). Adds the custom
+ * CSRF header the BFF requires — cross-site attackers cannot set a custom header
+ * because CORS is closed. Must match the BFF's CSRF_HEADER config.
  */
-const orgAuthHeaders = (): Record<string, string> => ({
-  'Content-Type': 'application/json',
-  Accept: 'application/json',
-  Authorization: `Bearer ${getOrgToken()}`,
+const mutatingHeaders = (): Record<string, string> => ({
+  ...jsonHeaders(),
+  [CSRF_HEADER]: CSRF_VALUE,
 });
 
 const parseErrorMessage = async (res: Response): Promise<string> => {
@@ -91,6 +83,17 @@ const parseErrorMessage = async (res: Response): Promise<string> => {
   }
 };
 
+/**
+ * Build an Error that carries the originating HTTP status, so callers can
+ * branch on it (e.g. surface a "session expired" logout flow on 401) instead
+ * of string-matching the message.
+ */
+const httpError = (message: string, status: number): Error & { status: number } => {
+  const err = new Error(message) as Error & { status: number };
+  err.status = status;
+  return err;
+};
+
 // ============================================================================
 // Organization API Functions
 // ============================================================================
@@ -99,9 +102,7 @@ const parseErrorMessage = async (res: Response): Promise<string> => {
  * Register a new organization.
  *
  * Endpoint: POST /organizations
- * Auth:     Bearer token (sent even though security: [] — server accepts it)
- *
- * TODO: [REMOVE BEFORE PRODUCTION] Remove hardcoded token from authHeaders().
+ * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function registerOrganization(
   org: RegisterOrganizationRequest,
@@ -110,7 +111,8 @@ export async function registerOrganization(
 
   const response = await fetch(platformUrl('/organizations'), {
     method: 'POST',
-    headers: authHeaders(),
+    credentials: 'include',
+    headers: mutatingHeaders(),
     body: JSON.stringify(org),
   });
 
@@ -119,12 +121,12 @@ export async function registerOrganization(
     logger.error('registerOrganization failed:', response.status, message);
 
     if (response.status === 409) {
-      throw new Error(`Organization with handle "${org.handle}" already exists.`);
+      throw httpError(`Organization with handle "${org.handle}" already exists.`, 409);
     }
     if (response.status === 400) {
-      throw new Error(`Invalid organization data: ${message}`);
+      throw httpError(`Invalid organization data: ${message}`, 400);
     }
-    throw new Error(`Failed to register organization: ${message}`);
+    throw httpError(`Failed to register organization: ${message}`, response.status);
   }
 
   const created: PlatformOrganization = await response.json();
@@ -136,14 +138,13 @@ export async function registerOrganization(
  * Get the current user's organization.
  *
  * Endpoint: GET /organizations
- * Auth:     Bearer token (org resolved from JWT claim)
- *
- * TODO: [REMOVE BEFORE PRODUCTION] Remove hardcoded token from authHeaders().
+ * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function getOrganization(): Promise<PlatformOrganization> {
   const response = await fetch(platformUrl('/organizations'), {
     method: 'GET',
-    headers: orgAuthHeaders(),
+    credentials: 'include',
+    headers: jsonHeaders(),
   });
 
   if (!response.ok) {
@@ -160,14 +161,15 @@ export async function getOrganization(): Promise<PlatformOrganization> {
  * Returns null when the org is not yet registered (404).
  *
  * Endpoint: GET /organizations/{organizationId}
- * Auth:     Bearer token
+ * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function getOrganizationById(
   id: string,
 ): Promise<PlatformOrganization | null> {
   const response = await fetch(platformUrl(`/organizations/${id}`), {
     method: 'GET',
-    headers: orgAuthHeaders(),
+    credentials: 'include',
+    headers: jsonHeaders(),
   });
 
   if (response.status === 404) return null;
@@ -184,14 +186,15 @@ export async function getOrganizationById(
  * Returns null when the org is not yet registered (404).
  *
  * Endpoint: GET /organizations/{handle}
- * Auth:     Bearer token
+ * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function getOrganizationByHandle(
   handle: string,
 ): Promise<PlatformOrganization | null> {
   const response = await fetch(platformUrl(`/organizations/${handle}`), {
     method: 'GET',
-    headers: orgAuthHeaders(),
+    credentials: 'include',
+    headers: jsonHeaders(),
   });
 
   if (response.status === 404) return null;
@@ -207,21 +210,20 @@ export async function getOrganizationByHandle(
  * Check if an organization exists by UUID (HEAD request).
  *
  * Endpoint: HEAD /organizations/{organizationId}
- * Auth:     Bearer token
- *
- * TODO: [REMOVE BEFORE PRODUCTION] Remove hardcoded token from authHeaders().
+ * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function checkOrganizationExists(
   organizationId: string,
 ): Promise<boolean> {
   const response = await fetch(platformUrl(`/organizations/${organizationId}`), {
     method: 'HEAD',
-    headers: orgAuthHeaders(),
+    credentials: 'include',
+    headers: jsonHeaders(),
   });
 
   if (response.status === 404) return false;
   if (response.ok) return true;
 
   const message = await parseErrorMessage(response);
-  throw new Error(`Failed to check organization: ${message}`);
+  throw httpError(`Failed to check organization: ${message}`, response.status);
 }
