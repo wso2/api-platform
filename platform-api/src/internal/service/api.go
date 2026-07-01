@@ -616,12 +616,8 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTA
 	if req.Channels != nil {
 		existingAPI.Channels = req.Channels
 	}
-	if req.Policies != nil {
-		existingAPI.Policies = req.Policies
-	}
-	if req.SubscriptionPlans != nil {
-		existingAPI.SubscriptionPlans = req.SubscriptionPlans
-	}
+	existingAPI.Policies = req.Policies
+	existingAPI.SubscriptionPlans = req.SubscriptionPlans
 	if !s.isEmptyUpstream(req.Upstream) {
 		existingAPI.Upstream = req.Upstream
 	}
