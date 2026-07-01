@@ -741,46 +741,65 @@ func loadArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID stri
 //
 // It returns the metadata to persist on the deployment record. An empty string means "no metadata".
 func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	effectiveMetadata := func(existing []byte) string {
+		if metadataProvided {
+			return deployMetadata
+		}
+		if len(existing) > 0 {
+			return string(existing)
+		}
+		return ""
+	}
 
-	var existingMetadata []byte
-	selectQuery := `
+	existing, found, err := readArtifactGatewayAssociation(db, artifactUUID, gatewayUUID, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		// Existing association is never modified at deploy time.
+		return effectiveMetadata(existing), nil
+	}
+
+	// No association yet → insert one, seeding its metadata from the deploy request.
+	now := time.Now()
+	var metaArg []byte
+	if strings.TrimSpace(deployMetadata) != "" {
+		metaArg = []byte(deployMetadata)
+	}
+	insertQuery := `
+		INSERT INTO artifact_gateway_mappings (
+			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?)`
+	if _, err := db.Exec(db.Rebind(insertQuery), artifactUUID, orgUUID, gatewayUUID, metaArg, now, now); err != nil {
+		// A concurrent deploy for the same artifact/gateway may have inserted the row
+		// between our read and this insert, tripping the primary key. Re-read: if the row
+		// now exists the ensure has effectively succeeded (idempotent); otherwise the
+		// failure is genuine and we surface the original error.
+		existing, found, rereadErr := readArtifactGatewayAssociation(db, artifactUUID, gatewayUUID, orgUUID)
+		if rereadErr == nil && found {
+			return effectiveMetadata(existing), nil
+		}
+		return "", fmt.Errorf("failed to create gateway association: %w", err)
+	}
+	return deployMetadata, nil
+}
+
+// readArtifactGatewayAssociation returns the stored metadata for an artifact/gateway
+// association and whether the association exists.
+func readArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID string) (metadata []byte, found bool, err error) {
+	query := `
 		SELECT metadata
 		FROM artifact_gateway_mappings
 		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?`
-	err := db.QueryRow(db.Rebind(selectQuery), artifactUUID, gatewayUUID, orgUUID).Scan(&existingMetadata)
-	exists := true
+	err = db.QueryRow(db.Rebind(query), artifactUUID, gatewayUUID, orgUUID).Scan(&metadata)
 	if errors.Is(err, sql.ErrNoRows) {
-		exists = false
-	} else if err != nil {
-		return "", fmt.Errorf("failed to check gateway association: %w", err)
+		return nil, false, nil
 	}
-
-	if !exists {
-		now := time.Now()
-		var metaArg []byte
-		if strings.TrimSpace(deployMetadata) != "" {
-			metaArg = []byte(deployMetadata)
-		}
-		insertQuery := `
-			INSERT INTO artifact_gateway_mappings (
-				artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?)`
-		if _, err := db.Exec(db.Rebind(insertQuery), artifactUUID, orgUUID, gatewayUUID, metaArg, now, now); err != nil {
-			return "", fmt.Errorf("failed to create gateway association: %w", err)
-		}
-		return deployMetadata, nil
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to check gateway association: %w", err)
 	}
-
-	// Existing association is never modified at deploy time. When the deploy request
-	// provides metadata (even an explicit empty value), it is used as-is
-	if metadataProvided {
-		return deployMetadata, nil
-	}
-	if len(existingMetadata) > 0 {
-		return string(existingMetadata), nil
-	}
-	return "", nil
+	return metadata, true, nil
 }
 
 // ---- LLM Providers ----

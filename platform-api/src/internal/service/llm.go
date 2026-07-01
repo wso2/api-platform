@@ -2892,6 +2892,7 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 	}
 
 	resolved := make([]model.AssociatedGatewayMapping, 0, len(*associatedGateways))
+	seen := make(map[string]struct{}, len(*associatedGateways))
 	for _, ag := range *associatedGateways {
 		gw, err := gatewayRepo.GetByHandleAndOrgID(ag.Name, orgUUID)
 		if err != nil {
@@ -2900,6 +2901,13 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 		if gw == nil {
 			return nil, constants.ErrGatewayNotFound
 		}
+
+		// Associations are a set (enforced by the artifact_gateway_mappings primary key).
+		// Reject duplicate gateways up-front rather than letting the repo insert fail.
+		if _, dup := seen[gw.ID]; dup {
+			return nil, fmt.Errorf("%w: duplicate associated gateway %q", constants.ErrInvalidInput, ag.Name)
+		}
+		seen[gw.ID] = struct{}{}
 
 		metadata := ""
 		if ag.Configurations != nil && len(*ag.Configurations) > 0 {
