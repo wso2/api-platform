@@ -130,7 +130,7 @@ async function seedSampleAPIs(orgId) {
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.id);
                         if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
@@ -215,7 +215,7 @@ async function seedSampleMCPs(orgId) {
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.id);
                         if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);

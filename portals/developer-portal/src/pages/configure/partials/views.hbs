@@ -16,23 +16,23 @@
         {{#views}}
         <tr>
             <td class="w-10">
-                <input type="text" class="form-control w-50" id="viewHandle{{handle}}" name="viewHandle" required
-                    value="{{handle}}" readonly>
+                <input type="text" class="form-control w-50" id="viewHandle{{id}}" name="viewHandle" required
+                    value="{{id}}" readonly>
             </td>
             <td class="w-10">
-                <input type="text" class="form-control w-50" id="viewDisplayName{{handle}}" name="viewDisplayName" required
+                <input type="text" class="form-control w-50" id="viewDisplayName{{id}}" name="viewDisplayName" required
                     value="{{name}}">
             </td>
             <td class="w-20">
-                <select id="labelSelect{{handle}}" class="form-select"
-                    onchange="addViewLabel('labelSelect{{handle}}', 'labelsContainer{{handle}}')">
+                <select id="labelSelect{{id}}" class="form-select"
+                    onchange="addViewLabel('labelSelect{{id}}', 'labelsContainer{{id}}')">
                     {{#each @root.orgLabels as |orgLabelGroup|}}
                     <option>{{orgLabelGroup.name}}</option>
                     {{/each}}
                 </select>
             </td>
             <td class="w-20">
-                <div id="labelsContainer{{handle}}" class="d-flex flex-wrap gap-2 mb-3">
+                <div id="labelsContainer{{id}}" class="d-flex flex-wrap gap-2 mb-3">
                     {{#each labels}}
                     <span class="span-tag">{{this}}<span class="remove">&times;</span></span>
                     {{/each}}
@@ -40,12 +40,12 @@
             </td>
             <td class="text-center">
                 <button type="button" class="common-btn-outlined"
-                    onclick="editView('{{json labels}}', 'labelsContainer{{handle}}', 'viewDisplayName{{handle}}', 'viewHandle{{handle}}', '{{@root.orgId}}')">
+                    onclick="editView('{{json labels}}', 'labelsContainer{{id}}', 'viewDisplayName{{id}}', 'viewHandle{{id}}', '{{@root.orgId}}')">
                     <i class="bi bi-save"></i>
                 </button>
-                {{#unless (eq handle "default")}}
+                {{#unless (eq id "default")}}
                 <button type="button" class="common-btn-outlined" style="margin-right: 10px;"
-                    onclick="openWarningModal('DeleteView', '{{@root.orgId}}', '{{handle}}', '', '', '', '')">
+                    onclick="openWarningModal('DeleteView', '{{@root.orgId}}', '{{id}}', '', '', '', '')">
                     <i class="bi bi-trash"></i>
                 </button>
                 {{/unless}}

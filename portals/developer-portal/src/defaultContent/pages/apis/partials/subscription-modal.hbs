@@ -61,7 +61,7 @@
                                         data-org-id="{{@root.orgId}}"
                                         data-api-id="{{../id}}"
                                         data-plan-id="{{id}}"
-                                        data-plan-name="{{handle}}"
+                                        data-plan-name="{{id}}"
                                         data-display-name="{{name}}"
                                         {{#unless @root.isReadOnlyMode}}onclick="handlePlanSubscription(this)"{{/unless}}
                                         {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>

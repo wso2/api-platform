@@ -23,7 +23,7 @@
   {{#each subscriptionPlans}}
   <div class="aov-plan-card subscription-card{{#if (isCurrentPlan handle @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
     id="subscriptionCard-{{id}}"
-    data-policy-name="{{handle}}">
+    data-policy-name="{{id}}">
     <div class="aov-plan-ribbon" aria-hidden="true">
       <div class="aov-plan-ribbon-label mcp-ribbon-label">SUBSCRIBED</div>
     </div>
@@ -32,7 +32,7 @@
         <span class="aov-plan-icon" style="background:#eef1f5;color:#3a4f6a;">
           <i class="bi bi-lightning-charge-fill"></i>
         </span>
-        <span class="aov-plan-name">{{#if name}}{{name}}{{else}}{{handle}}{{/if}}</span>
+        <span class="aov-plan-name">{{#if name}}{{name}}{{else}}{{id}}{{/if}}</span>
       </div>
       {{#unless (isCurrentPlan handle @root.subscriptions)}}
       <span class="aov-recommended-badge mcp-recommended-badge" style="display:none;">RECOMMENDED</span>
@@ -54,7 +54,7 @@
         {{#if (isCurrentPlan handle @root.subscriptions)}}
         <button type="button"
           class="dp-btn dp-btn--outline dp-btn--block mcp-view-sub-btn"
-          data-policy-name="{{handle}}">
+          data-policy-name="{{id}}">
           <i class="bi bi-eye"></i> View subscription
         </button>
         {{else}}
@@ -63,9 +63,9 @@
           data-org-id="{{@root.orgId}}"
           data-api-id="{{../apiMetadata.id}}"
           data-plan-id="{{id}}"
-          data-plan-name="{{handle}}"
+          data-plan-name="{{id}}"
           data-policy-id="{{id}}"
-          data-policy-name="{{handle}}"
+          data-policy-name="{{id}}"
           data-display-name="{{name}}"
           onclick="handlePlanSubscription(this)"
           {{#if @root.isReadOnlyMode}}disabled{{/if}}><span class="aov-plan-spinner"></span>Subscribe</button>

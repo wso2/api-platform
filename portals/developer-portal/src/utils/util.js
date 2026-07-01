@@ -730,7 +730,7 @@ function validateScripts(strContent) {
             // API workflows JSON data island (pages/api-workflows/page.hbs)
             "<script type=\"application/json\" id=\"apiWorkflowsDataContainer\">{{{json apiWorkflows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
-            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"handle\":\"{{apiMetadata.handle}}\"}</script>",
+            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"id\":\"{{apiMetadata.id}}\"}</script>",
             // Home discover data island (pages/home/page.hbs)
             "<script type=\"application/json\" id=\"homeDiscoverData\">{\"baseUrl\":\"{{baseUrl}}\"}</script>",
             // Existing-subs bootstrap (api-landing/partials/api-subscription-plans.hbs)
@@ -792,18 +792,17 @@ async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
     const enrichedPlans = [];
     if (subscriptionPlans) {
         for (const plan of subscriptionPlans) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.handle);
+            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.id);
             if (!subscriptionPlan) {
                 logger.warn('Subscription plan not found, skipping', {
                     orgId,
-                    handle: plan.handle
+                    id: plan.id
                 });
                 continue;
             }
             enrichedPlans.push({
                 id: subscriptionPlan.id,
                 name: subscriptionPlan.name,
-                handle: subscriptionPlan.handle,
                 description: subscriptionPlan.description,
                 limits: subscriptionPlan.limits || [],
             });
