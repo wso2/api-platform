@@ -497,6 +497,7 @@ Changes the subscription plan in-place. The subscription UUID and token remain u
 
 ```json
 {
+  "apiId": "api-5f2b8c1a",
   "planId": "pol-9a3d1f7e"
 }
 ```

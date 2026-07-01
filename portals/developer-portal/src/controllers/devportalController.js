@@ -122,7 +122,6 @@ const updateApplication = async (req, res) => {
                     { application_id: appId, name: renamedApp.name, description: renamedApp.description },
                     { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: appId }
                 );
-                await apiKeyService.notifyApplicationKeysChanged(orgId, appId, { id: appId, name: renamedApp.name }, t);
             });
         } catch (pubErr) {
             logger.warn('Failed to publish webhook events after app update', { orgId: orgId, appId: appId, error: pubErr.message });

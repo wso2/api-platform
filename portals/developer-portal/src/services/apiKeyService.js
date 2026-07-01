@@ -132,21 +132,6 @@ async function publishKeyApplicationUpdated(orgId, keyId, name, api, application
 }
 
 /**
- * Fan out an application-level change (rename or delete) to every key currently
- * associated with that app, as individual per-key apikey.application_updated events.
- * `application` is { id, name } for a rename, or null for a delete.
- */
-async function notifyApplicationKeysChanged(orgId, appId, application, transaction) {
-    if (!appId) return;
-    const keys = await apiKeyDao.list(orgId, { appId }, transaction);
-    for (const key of keys) {
-        const meta = key.dp_api_metadata;
-        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
-        await publishKeyApplicationUpdated(orgId, key.uuid, key.name, api, application, transaction);
-    }
-}
-
-/**
  * Generate a new API key. Returns { keyId, name, plaintext, expiresAt, status }.
  * The plaintext is shown to the caller exactly once and never persisted.
  */
@@ -347,6 +332,6 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
 
 module.exports = {
     generate, regenerate, revoke, list,
-    associateApplication, removeApplicationAssociation, notifyApplicationKeysChanged,
+    associateApplication, removeApplicationAssociation,
     publishKeyApplicationUpdated
 };

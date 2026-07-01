@@ -194,7 +194,7 @@ SubscriptionPlan.belongsToMany(APIMetadata, {
     otherKey: "api_uuid",
 });
 
-SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'api_uuid' });
+SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'api_uuid', as: 'dp_api_metadata' });
 SubscriptionMapping.belongsTo(SubscriptionPlan, { foreignKey: 'plan_uuid' });
 
 Application.belongsTo(Organization, {

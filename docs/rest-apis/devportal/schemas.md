@@ -1065,6 +1065,7 @@ xor
 
 ```json
 {
+  "apiId": "api-5f2b8c1a",
   "planId": "pol-9a3d1f7e"
 }
 
@@ -1074,6 +1075,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — used as a fallback when the API cannot be derived from the subscription record.|
 |planId|string|true|none|Developer Portal subscription plan ID to switch to.|
 
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>

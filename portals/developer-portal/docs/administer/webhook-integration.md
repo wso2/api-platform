@@ -449,7 +449,7 @@ Fired when a developer renames an application or changes its details. `data` car
 }
 ```
 
-If the application has API keys associated with it (see [`apikey.application_updated`](#apikeyapplication_updated)), one such event is fired per associated key with the new name, alongside this event.
+Unlike `application.deleted`, this does **not** fan out to a per-key `apikey.application_updated` event — the key-to-application association is unchanged by a rename, so a subscriber that keys its own records off `application_id` can pick up the new name from this single event.
 
 ### `application.deleted`
 

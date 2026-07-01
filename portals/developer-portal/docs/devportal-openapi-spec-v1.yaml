@@ -853,8 +853,7 @@ paths:
       description: >-
         Updates an application owned by the authenticated user in the specified organization. The request may be JSON,
         multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated`
-        webhook event is published, plus one `apikey.application_updated` event per API key currently associated with
-        the application.
+        webhook event is published.
       operationId: updateApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"

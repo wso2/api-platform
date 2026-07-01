@@ -334,7 +334,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/applications/{applica
 
 ```
 
-Updates an application owned by the authenticated user in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated` webhook event is published, plus one `apikey.application_updated` event per API key currently associated with the application.
+Updates an application owned by the authenticated user in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated` webhook event is published.
 
 > Payload
 
