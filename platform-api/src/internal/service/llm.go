@@ -1031,7 +1031,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
-		ProjectUUID:      req.ProjectId,
+		ProjectUUID:      projectUUID,
 		ID:               handle,
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
