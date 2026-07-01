@@ -151,6 +151,13 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		}
 	}
 
+	// Resolve any associated gateways up-front so they can be persisted within the
+	// same transaction as the MCP proxy create.
+	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create MCP proxy model
 	m := &model.MCPProxy{
 		Handle:           handle,
@@ -171,6 +178,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		},
 		Origin: constants.OriginCP,
+		AssociatedGateways: associatedGateways,
 	}
 
 	if err := s.repo.Create(m); err != nil {
@@ -347,6 +355,20 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		existing.Name = origName
 		existing.Version = origVersion
 		existing.Configuration = origConfiguration
+	}
+
+	// Gateway associations are managed only when the field is present in the request. An
+	// omitted field leaves associations untouched; an explicit (possibly empty) list
+	// replaces the full set. A gateway the proxy is actively deployed on must remain
+	// associated, so the update is rejected if it would drop such a gateway. Deployments
+	// themselves are never modified here.
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, s.deploymentRepo, orgUUID, existing.UUID, existing.AssociatedGateways, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+	if manage {
+		existing.AssociatedGateways = requested
+		existing.ReplaceAssociatedGateways = true
 	}
 
 	if err := s.repo.Update(existing); err != nil {
@@ -547,6 +569,10 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
+	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
+		out.AssociatedGateways = associated
+	}
+	return out
 }
 
 func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
