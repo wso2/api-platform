@@ -170,7 +170,7 @@ const generateHandle = (name) =>
 
 const createAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const viewName = req.params.viewName;
+    const viewHandle = req.params.viewId;
     const userId = util.resolveActor(req);
     const { name, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
     let resolvedHandle = (id && id.trim()) ? id.trim() : generateHandle(name);
@@ -196,12 +196,12 @@ const createAPIWorkflow = async (req, res) => {
     }
     let t;
     try {
-        const orgDetails = await orgDao.get(orgId);
+        const orgDetails = await orgDao.getByUuid(orgId);
         t = await sequelize.transaction();
-        const viewId = await resolveViewId(orgId, viewName);
+        const viewId = await resolveViewId(orgId, viewHandle);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
-            : generateAgentPrompt(name, description, [], orgDetails.idp_ref_id || '', viewName, '', resolvedHandle);
+            : generateAgentPrompt(name, description, [], orgDetails.idp_ref_id || '', viewHandle, '', resolvedHandle);
 
         const apiWorkflow = await apiWorkflowDao.create(orgId, viewId, {
             name,
@@ -233,7 +233,7 @@ const createAPIWorkflow = async (req, res) => {
 
 const updateAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiWorkflowId: apiWorkflowHandle, viewName } = req.params;
+    const { apiWorkflowId: apiWorkflowHandle, viewId: viewHandle } = req.params;
     const userId = util.resolveActor(req);
     const { name, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
     if (status !== undefined && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
@@ -254,7 +254,7 @@ const updateAPIWorkflow = async (req, res) => {
     }
     const t = await sequelize.transaction();
     try {
-        const viewId = await resolveViewId(orgId, viewName);
+        const viewId = await resolveViewId(orgId, viewHandle);
         const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!existing) {
             await t.rollback();
@@ -291,10 +291,10 @@ const updateAPIWorkflow = async (req, res) => {
 
 const deleteAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiWorkflowId: apiWorkflowHandle, viewName } = req.params;
+    const { apiWorkflowId: apiWorkflowHandle, viewId: viewHandle } = req.params;
     const t = await sequelize.transaction();
     try {
-        const viewId = await resolveViewId(orgId, viewName);
+        const viewId = await resolveViewId(orgId, viewHandle);
         const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!existing) {
             await t.rollback();
@@ -317,9 +317,9 @@ const deleteAPIWorkflow = async (req, res) => {
 
 const getAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiWorkflowId: apiWorkflowHandle, viewName } = req.params;
+    const { apiWorkflowId: apiWorkflowHandle, viewId: viewHandle } = req.params;
     try {
-        const viewId = await resolveViewId(orgId, viewName);
+        const viewId = await resolveViewId(orgId, viewHandle);
         const apiWorkflow = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!apiWorkflow) {
             return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
@@ -333,9 +333,9 @@ const getAPIWorkflow = async (req, res) => {
 
 const getAllAPIWorkflows = async (req, res) => {
     const orgId = req.orgId;
-    const { viewName } = req.params;
+    const { viewId: viewHandle } = req.params;
     try {
-        const viewId = await resolveViewId(orgId, viewName);
+        const viewId = await resolveViewId(orgId, viewHandle);
         const apiWorkflows = await apiWorkflowDao.list(orgId, viewId);
         res.status(200).json(util.toPaginatedList(apiWorkflows.map(toAPIWorkflowDTO), req));
     } catch (error) {

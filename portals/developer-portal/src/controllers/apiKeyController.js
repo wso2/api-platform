@@ -37,8 +37,12 @@ function normalizeOptionalId(value) {
     return { ok: true, value: value.trim() };
 }
 
+async function resolveApiId(orgId, apiHandle) {
+    return apiDao.getId(orgId, apiHandle);
+}
+
 async function resolveApiIdOrRespond(orgId, apiHandle, res) {
-    const apiId = await apiDao.getId(orgId, apiHandle);
+    const apiId = await resolveApiId(orgId, apiHandle);
     if (!apiId) {
         res.status(404).json({ code: '404', message: 'Not Found', description: 'API not found' });
         return null;
@@ -125,7 +129,7 @@ async function listApiKeys(req, res) {
     }
 
     try {
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        const apiId = await resolveApiId(orgId, apiHandle);
         if (!apiId) {
             return res.status(404).json({
                 status: 'error', code: '404', message: 'Not Found', errors: [{ field: 'apiId', message: 'API not found' }],

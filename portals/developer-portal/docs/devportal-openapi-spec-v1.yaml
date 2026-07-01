@@ -170,9 +170,9 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /devportal/v1/views/{viewName}/asset:
+  /devportal/v1/views/{viewId}/asset:
     parameters:
-      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/viewId"
     get:
       tags:
         - Organization Content
@@ -201,9 +201,9 @@ paths:
               schema:
                 type: string
       security: []
-  /devportal/v1/views/{viewName}/apply-theme:
+  /devportal/v1/views/{viewId}/apply-theme:
     parameters:
-      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/viewId"
     post:
       tags:
         - Organization Content
@@ -225,9 +225,9 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
-  /devportal/v1/views/{viewName}/reset-theme:
+  /devportal/v1/views/{viewId}/reset-theme:
     parameters:
-      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/viewId"
     post:
       tags:
         - Organization Content
@@ -1311,9 +1311,9 @@ paths:
         - OAuth2Security:
             - dp:view_read
             - dp:view_manage
-  /devportal/v1/views/{viewName}:
+  /devportal/v1/views/{viewId}:
     parameters:
-      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/viewId"
     put:
       tags:
         - Views
@@ -1455,9 +1455,9 @@ paths:
       security:
         - OAuth2Security:
             - dp:app_key_revoke
-  /devportal/v1/views/{viewName}/api-workflows:
+  /devportal/v1/views/{viewId}/api-workflows:
     parameters:
-      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/viewId"
     post:
       tags:
         - API Workflows
@@ -1499,9 +1499,9 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_read
             - dp:api_workflow_manage
-  /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}:
+  /devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId}:
     parameters:
-      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/viewId"
       - $ref: "#/components/parameters/apiWorkflowId"
     get:
       tags:
@@ -1560,9 +1560,9 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_delete
             - dp:api_workflow_manage
-  /devportal/v1/views/{viewName}/api-workflows/generate-prompt:
+  /devportal/v1/views/{viewId}/api-workflows/generate-prompt:
     parameters:
-      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/viewId"
     post:
       tags:
         - API Workflows
@@ -1995,6 +1995,8 @@ components:
       required: true
       schema:
         type: string
+        example: acme
+      description: The organization's handle (also matches by name or IDP reference ID). Not the internal database uuid.
     fileType:
       name: fileType
       in: path
@@ -2060,13 +2062,14 @@ components:
         type: string
         example: sub-uuid-12345
       description: Webhook subscriber ID (UUID).
-    viewName:
-      name: viewName
+    viewId:
+      name: viewId
       in: path
       required: true
       schema:
         type: string
         example: default
+      description: The view's handle (unique per org). Not the internal database uuid.
     apiWorkflowId:
       name: apiWorkflowId
       in: path
@@ -2218,10 +2221,11 @@ components:
       required: true
       description: >-
         Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field.
-        When YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all
-        other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts
-        `labels` (array of `{name, displayName}`) and `views` (array of `{handle, name, labels}`) to bootstrap
-        labels and views at creation time — these are not available via the `application/json` content type.
+        When YAML is used, the service always takes the handle from `metadata.name` (the `id` field is ignored) and
+        `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec`
+        block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{id, name,
+        labels}` — `id` becomes the view's handle) to bootstrap labels and views at creation time — these are not
+        available via the `application/json` content type.
       content:
         application/json:
           schema:
@@ -2231,7 +2235,7 @@ components:
             businessOwner: Jane Doe
             businessOwnerContact: +1-202-555-0147
             businessOwnerEmail: jane.doe@acme.example
-            handle: acme
+            id: acme
             idpRefId: ACME
         multipart/form-data:
           schema:
@@ -2252,10 +2256,11 @@ components:
       required: true
       description: >-
         Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When
-        YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all other
-        fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels`
-        (upserted by name) and `views` (upserted by handle, with `labels` replacing the view's label set) — these
-        are not available via the `application/json` content type.
+        YAML is used, the service always takes the handle from `metadata.name` (the `id` field is ignored) and
+        `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec`
+        block additionally accepts `labels` (upserted by name) and `views` (upserted by `id`, which becomes the
+        view's handle, with `labels` replacing the view's label set) — these are not available via the
+        `application/json` content type.
       content:
         application/json:
           schema:
@@ -2480,7 +2485,7 @@ components:
             partnerView:
               summary: Create a partner APIs view
               value:
-                handle: partner-apis
+                id: partner-apis
                 name: Partner APIs
                 labels:
                   - partner
@@ -2488,7 +2493,7 @@ components:
             internalView:
               summary: Create a view using the handle as name
               value:
-                handle: internal-apis
+                id: internal-apis
                 labels:
                   - internal
     ViewUpdateBody:
@@ -3390,7 +3395,7 @@ components:
           schema:
             $ref: "#/components/schemas/ViewResponse"
           example:
-            handle: partner-apis
+            id: partner-apis
             name: Partner APIs
             labels:
               - partner
@@ -3579,6 +3584,8 @@ components:
       properties:
         id:
           type: string
+          description: The organization's handle (unique). Not the internal database uuid.
+          example: acme
         name:
           type: string
         businessOwner:
@@ -3591,8 +3598,6 @@ components:
           type: string
           format: email
           nullable: true
-        handle:
-          type: string
         idpRefId:
           type: string
           description: >-
@@ -3873,12 +3878,13 @@ components:
     ViewResponse:
       type: object
       required:
-        - handle
+        - id
         - name
         - labels
       properties:
-        handle:
+        id:
           type: string
+          description: The view's handle (unique per org). Not the internal database uuid.
           example: partner-apis
         name:
           type: string
@@ -3895,7 +3901,7 @@ components:
       type: object
       required:
         - name
-        - handle
+        - id
         - idpRefId
       properties:
         name:
@@ -3907,9 +3913,10 @@ components:
         businessOwnerEmail:
           type: string
           format: email
-        handle:
+        id:
           type: string
-          description: Public organization handle used in portal URLs.
+          description: Desired handle for the organization (unique), stored as-is. Used in portal URLs.
+          example: acme
         idpRefId:
           type: string
           description: >-
@@ -3935,7 +3942,7 @@ components:
       type: object
       required:
         - name
-        - handle
+        - id
         - idpRefId
       properties:
         name:
@@ -3947,8 +3954,10 @@ components:
         businessOwnerEmail:
           type: string
           format: email
-        handle:
+        id:
           type: string
+          description: Desired handle for the organization (unique), stored as-is. Used in portal URLs.
+          example: acme
         idpRefId:
           type: string
           description: >-
@@ -4488,15 +4497,16 @@ components:
     ViewCreateRequest:
       type: object
       required:
-        - handle
+        - id
         - labels
       properties:
-        handle:
+        id:
           type: string
+          description: Desired handle for the view (unique per org), stored as-is.
           example: partner-apis
         name:
           type: string
-          description: Optional display name. Defaults to `handle` when omitted.
+          description: Optional display name. Defaults to the handle when omitted.
           example: Partner APIs
         labels:
           type: array

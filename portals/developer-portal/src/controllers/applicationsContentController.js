@@ -29,6 +29,7 @@ const sampleApiLoader = require('../utils/sampleApiLoader');
 const kmDao = require('../dao/keyManagerDao');
 const adminService = require('../services/adminService');
 const apiKeyService = require('../services/apiKeyService');
+const { CustomError } = require('../utils/errors/customErrors');
 
 const orgIDValue = async (orgName) => {
     const organization = await orgDao.get(orgName);
@@ -57,10 +58,15 @@ const buildProfile = (req) => {
  * Shared data loader for both application overview and manage-keys pages.
  * Keeps loadApplication / loadApplicationKeys lean and avoids drift between the two.
  */
-const loadApplicationData = async (req, orgName, applicationId, viewName) => {
+const loadApplicationData = async (req, orgName, applicationHandle, viewName) => {
     const orgId = await orgIDValue(orgName);
 
     const userId = req[constants.USER_ID]
+    const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+    if (!appRecord) {
+        throw new CustomError(404, "Records Not Found", 'Application not found');
+    }
+    const applicationId = appRecord.uuid;
     const applicationList = await adminService.getApplicationKeyMap(orgId, applicationId, userId);
 
     let applicationReference = "";
@@ -165,6 +171,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     return {
         orgId,
+        applicationId,
         applicationList,
         keyManagersMetadata: kMmetaData,
         productionKeys,
@@ -246,11 +253,11 @@ const loadApplication = async (req, res, next) => {
     const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
-        const applicationId = req.params.applicationId;
-        const data = await loadApplicationData(req, orgName, applicationId, viewName);
+        const applicationHandle = req.params.applicationId;
+        const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
-        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, applicationId);
+        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId);
 
         templateContent = {
             orgId: data.orgId,
@@ -309,8 +316,8 @@ const loadApplicationKeys = async (req, res, next) => {
     const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
-        const applicationId = req.params.applicationId;
-        const data = await loadApplicationData(req, orgName, applicationId, viewName);
+        const applicationHandle = req.params.applicationId;
+        const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
 

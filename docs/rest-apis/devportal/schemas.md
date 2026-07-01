@@ -249,12 +249,11 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "id": "string",
+  "id": "acme",
   "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
@@ -268,12 +267,11 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
+|id|string|false|none|The organization's handle (unique). Not the internal database uuid.|
 |name|string|false|none|none|
 |businessOwner|string¦null|false|none|none|
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
-|handle|string|false|none|none|
 |idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
 |configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
@@ -777,7 +775,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "handle": "partner-apis",
+  "id": "partner-apis",
   "name": "Partner APIs",
   "labels": [
     "partner",
@@ -791,7 +789,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|handle|string|true|none|none|
+|id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
 |name|string|true|none|none|
 |labels|[string]|true|none|none|
 
@@ -808,7 +806,7 @@ OAuth client ID mapping entry attached to an application.
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "handle": "string",
+  "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
@@ -826,7 +824,7 @@ OAuth client ID mapping entry attached to an application.
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|handle|string|true|none|Public organization handle used in portal URLs.|
+|id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
 |idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
 |configuration|object|false|none|none|
@@ -853,7 +851,7 @@ OAuth client ID mapping entry attached to an application.
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "handle": "string",
+  "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
@@ -871,7 +869,7 @@ OAuth client ID mapping entry attached to an application.
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|handle|string|true|none|none|
+|id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
 |idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
 |configuration|object|false|none|none|
@@ -1569,7 +1567,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "handle": "partner-apis",
+  "id": "partner-apis",
   "name": "Partner APIs",
   "labels": [
     "partner",
@@ -1583,8 +1581,8 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|handle|string|true|none|none|
-|name|string|false|none|Optional display name. Defaults to `handle` when omitted.|
+|id|string|true|none|Desired handle for the view (unique per org), stored as-is.|
+|name|string|false|none|Optional display name. Defaults to the handle when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>

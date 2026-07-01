@@ -19,7 +19,7 @@
 
 class ViewDTO {
     constructor(view) {
-        this.handle = view.handle;
+        this.id = view.handle;
         this.name = view.name;
         this.labels = view.dp_labels.map(label => label.dataValues.name);
     }

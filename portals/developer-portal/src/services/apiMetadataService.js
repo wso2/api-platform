@@ -283,13 +283,8 @@ const getAPIMetadata = async (req, res) => {
 
     const orgId = req.orgId;
     const { apiId: apiHandle } = req.params;
-    let apiId;
     try {
-        apiId = await apiDao.getId(orgId, apiHandle);
-        if (!apiId) {
-            return res.status(404).send("API not found");
-        }
-        const retrievedAPI = await getMetadataFromDB(orgId, apiId);
+        const retrievedAPI = await getMetadataFromDBByHandle(orgId, apiHandle);
         if (retrievedAPI !== "") {
             // Create response object
             res.status(200).send(retrievedAPI);
@@ -301,7 +296,7 @@ const getAPIMetadata = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId,
-            apiId
+            apiId: apiHandle
         });
         util.handleError(res, error);
     }
@@ -313,6 +308,20 @@ const getMetadataFromDB = async (orgId, apiId) => {
         timeout: 60000,
     }, async (t) => {
         const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, uuid: apiId }, t);
+        if (retrievedAPI.length > 0) {
+            return new APIDTO(retrievedAPI[0]);
+        } else {
+            return "";
+        }
+    });
+};
+
+const getMetadataFromDBByHandle = async (orgId, apiHandle) => {
+
+    return await sequelize.transaction({
+        timeout: 60000,
+    }, async (t) => {
+        const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, handle: apiHandle }, t);
         if (retrievedAPI.length > 0) {
             return new APIDTO(retrievedAPI[0]);
         } else {
@@ -618,11 +627,12 @@ const updateAPIMetadata = async (req, res) => {
 const deleteAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
     const { apiId: apiHandle } = req.params;
+    let apiId;
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
         try {
-            const apiId = await apiDao.getId(orgId, apiHandle);
+            apiId = await apiDao.getId(orgId, apiHandle);
             if (!apiId) {
                 return res.status(404).send("API not found");
             }
@@ -1471,6 +1481,9 @@ const addView = async (req, res) => {
     const orgId = req.orgId;
     const labels = req.body.labels;
     const userId = util.resolveActor(req);
+    if (req.body.id) {
+        req.body.handle = req.body.id;
+    }
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -1495,7 +1508,7 @@ const updateView = async (req, res) => {
     const orgId = req.orgId;
     const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
     const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
-    const viewName = req.params.viewName;
+    const viewHandle = req.params.viewId;
     const userId = util.resolveActor(req);
     try {
         await sequelize.transaction({
@@ -1504,11 +1517,11 @@ const updateView = async (req, res) => {
 
             let viewId = "";
             if (req.body.name) {
-                let viewResponse = await viewDao.update(orgId, viewName, req.body.name, userId, t);
+                let viewResponse = await viewDao.update(orgId, viewHandle, req.body.name, userId, t);
                 viewId = viewResponse.dataValues.uuid;
             }
             if (removedLabels.length !== 0 || addedLabels.length !== 0) {
-                viewId = viewId ? viewId : await viewDao.getId(orgId, viewName, t);
+                viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
             }
             if (removedLabels.length !== 0) {
                 await viewDao.deleteLabels(orgId, viewId, removedLabels, t);
@@ -1531,7 +1544,7 @@ const updateView = async (req, res) => {
 const deleteView = async (req, res) => {
 
     const orgId = req.orgId;
-    const name = req.params.viewName;
+    const name = req.params.viewId;
     try {
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
@@ -1552,7 +1565,7 @@ const deleteView = async (req, res) => {
 const getView = async (req, res) => {
 
     const orgId = req.orgId;
-    const name = req.params.viewName;
+    const name = req.params.viewId;
     try {
         const view = await getViewInfo(orgId, name);
         if (view) {

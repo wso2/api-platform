@@ -4,13 +4,13 @@
 
 <a id="opIdgetOrgAsset"></a>
 
-`GET /devportal/v1/views/{viewName}/asset`
+`GET /devportal/v1/views/{viewId}/asset`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/asset?fileType=string&fileName=string \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewId}/asset?fileType=string&fileName=string \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
@@ -25,7 +25,7 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 |fileType|query|string|true|Organization content file type, such as style, image, text, template, or partial.|
 |fileName|query|string|true|Stored organization content file name.|
 |filePath|query|string|false|Optional relative content path used together with `fileType` and `fileName`.|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -47,13 +47,13 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 
 <a id="opIdapplyTheme"></a>
 
-`POST /devportal/v1/views/{viewName}/apply-theme`
+`POST /devportal/v1/views/{viewId}/apply-theme`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/apply-theme \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/apply-theme \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -84,7 +84,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|ZIP file upload. Organization content uploads are limited to 50 MB.|
 |» file|body|string(binary)|true|ZIP file containing organization layout assets.|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -160,13 +160,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdresetTheme"></a>
 
-`POST /devportal/v1/views/{viewName}/reset-theme`
+`POST /devportal/v1/views/{viewId}/reset-theme`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/reset-theme \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/reset-theme \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -186,7 +186,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
