@@ -3711,7 +3711,21 @@ components:
             this organization with its Control Plane (Platform API) counterpart. Not used for authentication or
             org resolution.
         configuration:
-          $ref: "#/components/schemas/GenericObject"
+          type: object
+          description: >-
+            Organization portal configuration. Always includes `devportalMode`; may contain
+            additional free-form keys set by the caller.
+          properties:
+            devportalMode:
+              type: string
+              enum:
+                - DEFAULT
+                - MCP_SERVERS_ONLY
+                - APIS_ONLY
+              description: Controls the mode of the developer portal.
+          additionalProperties: true
+          example:
+            devportalMode: DEFAULT
       additionalProperties: false
     OrganizationContentUploadResponse:
       type: object

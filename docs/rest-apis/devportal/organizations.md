@@ -78,7 +78,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {}
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
@@ -222,7 +224,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "handle": "string",
       "idpRefId": "string",
       "cpRefId": "string",
-      "configuration": {}
+      "configuration": {
+        "devportalMode": "DEFAULT"
+      }
     }
   ],
   "pagination": {
@@ -265,11 +269,20 @@ Status Code **200**
 |»» handle|string|false|none|none|
 |»» idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |»» cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
-|»» configuration|[GenericObject](schemas.md#schemagenericobject)|false|none|none|
+|»» configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
+|»»» devportalMode|string|false|none|Controls the mode of the developer portal.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 ## Update an organization
 
@@ -350,7 +363,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {}
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
@@ -481,7 +496,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {}
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 

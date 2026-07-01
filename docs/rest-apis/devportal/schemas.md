@@ -257,7 +257,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {}
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 
 ```
@@ -274,7 +276,16 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 |handle|string|false|none|none|
 |idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
-|configuration|[GenericObject](#schemagenericobject)|false|none|none|
+|configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
+|» devportalMode|string|false|none|Controls the mode of the developer portal.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
 
