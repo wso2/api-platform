@@ -466,51 +466,6 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"message": "Token revoked successfully"})
 }
 
-// GetGatewayArtifacts handles GET /api/v0.9/gateways/{gatewayId}/live-proxy-artifacts
-func (h *GatewayHandler) GetGatewayArtifacts(w http.ResponseWriter, r *http.Request) {
-	orgId, exists := middleware.GetOrganizationFromRequest(r)
-	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	gatewayId := r.PathValue("gatewayId")
-	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Gateway ID is required"))
-		return
-	}
-
-	// Parse artifact type filter parameter
-	artifactType := r.URL.Query().Get("artifactType")
-	// Validate artifactType if provided
-	if artifactType != "" {
-		if !constants.ValidArtifactTypes[artifactType] {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid artifact type. Valid values are: "+constants.ArtifactTypeAPI+", "+constants.ArtifactTypeMCP+
-					", "+constants.ArtifactTypeAPIProduct))
-			return
-		}
-	}
-
-	// Get paginated artifacts for the gateway
-	artifactListResponse, err := h.gatewayService.GetGatewayArtifacts(gatewayId, orgId, artifactType)
-	if err != nil {
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
-			return
-		}
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get gateway artifacts"))
-		return
-	}
-
-	// Return paginated artifact list
-	httputil.WriteJSON(w, http.StatusOK, artifactListResponse)
-}
-
 // GetGatewayManifest handles GET /api/v0.9/gateways/{gatewayId}/manifest
 // Called by APIM to retrieve the manifest pushed by the gateway controller on connect.
 func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Request) {
@@ -706,7 +661,6 @@ func (h *GatewayHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.ListTokens)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.RotateToken)
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{gatewayId}/tokens/{tokenId}", h.RevokeToken)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/live-proxy-artifacts", h.GetGatewayArtifacts)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/manifest", h.GetGatewayManifest)
 
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies", h.ListCustomPolicies)
