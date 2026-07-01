@@ -94,7 +94,7 @@ export default function ApplicationNew() {
 
       const newApplication = await createApplication({
         id: appHandle,
-        name: trimmedName,
+        displayName: trimmedName,
         type: 'genai',
         description: formState.description.trim() || undefined,
         projectId: currentProject?.id,

@@ -148,7 +148,7 @@ export default function ProviderTemplateFormFields({
                 context: contextEditedRef.current ? prev.context : buildAutoContext(newName),
               }));
             }}
-            placeholder={`WSO2 ${template?.name || ''} Provider`}
+            placeholder={`WSO2 ${template?.displayName || ''} Provider`}
             data-cyid="provider-name-input"
           />
         </FormControl>
@@ -199,7 +199,7 @@ export default function ProviderTemplateFormFields({
             onChange={(e) =>
               setFormState((prev) => ({ ...prev, description: e.target.value }))
             }
-            placeholder={`Primary ${template?.name || ''} provider`}
+            placeholder={`Primary ${template?.displayName || ''} provider`}
             data-cyid="provider-description-input"
           />
         </FormControl>

@@ -45,7 +45,7 @@ export async function createProxy(
 ): Promise<Proxy> {
   try {
     const response = await post<Proxy>(
-      `/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies`,
       proxy,
       baseUrl
     );
@@ -66,7 +66,7 @@ export async function createProxy(
 export async function getProxies(organizationId: string, projectId: string, baseUrl: string): Promise<ProxiesResponse> {
   try {
     const response = await get<ProxiesResponse>(
-      `/llm-proxies?organizationId=${encodeURIComponent(organizationId)}&projectId=${encodeURIComponent(projectId)}`,
+      `/llm-proxies?projectId=${encodeURIComponent(projectId)}`,
       undefined,
       baseUrl
     );
@@ -84,10 +84,11 @@ export async function getProxies(organizationId: string, projectId: string, base
  * @param baseUrl - The APIM base URL
  * @returns Promise with the list of proxies
  */
+// TODO: listLLMProxies requires projectId per openapi.yaml — this function omits it and may 400; needs backend/product clarification
 export async function getOrgProxies(organizationId: string, baseUrl: string): Promise<ProxiesResponse> {
   try {
     const response = await get<ProxiesResponse>(
-      `/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies`,
       undefined,
       baseUrl
     );
@@ -113,7 +114,7 @@ export async function getProxy(
 ): Promise<Proxy> {
   try {
     const response = await get<Proxy>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}`,
       undefined,
       baseUrl
     );
@@ -141,7 +142,7 @@ export async function updateProxy(
 ): Promise<Proxy> {
   try {
     const response = await put<Proxy>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}`,
       updates,
       baseUrl
     );
@@ -167,7 +168,7 @@ export async function deleteProxy(
 ): Promise<void> {
   try {
     await del<void>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}`,
       undefined,
       baseUrl
     );

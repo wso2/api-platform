@@ -60,7 +60,7 @@ function getInitials(name: string): string {
 
 export type ServiceProviderSummaryItem = {
   id: string;
-  name: string;
+  displayName: string;
   status?: string;
   lastUpdated?: string;
   modelCount?: number;
@@ -307,14 +307,14 @@ export default function ServiceProvidersSummaryCard({
         ) : (
           <Stack divider={<Divider />} spacing={1}>
             {visibleProviders.map((provider) => {
-              const providerId = provider.id ?? provider.name;
+              const providerId = provider.id ?? provider.displayName;
               const lastUpdated = provider.lastUpdated;
               const templateKey = (provider.template ?? '').toLowerCase();
               const templateDisplayName = getProviderTemplateDisplayName(
                 provider.template
               );
               const providerDisplayName = truncateProviderDisplayName(
-                provider.name
+                provider.displayName
               );
               const templateLogo = templateLogoMap[templateKey];
               const hasTemplateLogo = Boolean(templateLogo);
@@ -370,7 +370,7 @@ export default function ServiceProvidersSummaryCard({
                           '& img': { objectFit: 'contain' },
                         }}
                       >
-                        {getInitials(provider.name)}
+                        {getInitials(provider.displayName)}
                       </Avatar>
                     }
                     title={

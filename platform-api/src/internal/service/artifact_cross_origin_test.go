@@ -319,7 +319,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 		Id:        strPointer("cp-proxy"),
 		DisplayName:      "CP Proxy",
 		Version:   "v1.0",
-		ProjectId: importTestProjectID,
+		ProjectId: "default", // project handle (setupImportTest inserts handle "default")
 		Provider:  api.LLMProxyProvider{Id: providerHandle}, // references the DP provider
 	})
 	if err != nil {

@@ -60,7 +60,7 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
     '/settings/llm-provider-templates'
   )}/${templateId}`;
 
-  const [name, setName] = useState(template.name ?? '');
+  const [name, setName] = useState(template.displayName ?? '');
   const [description, setDescription] = useState(template.description ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -76,7 +76,7 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
     const payload: UpdateProviderTemplateRequest = {
       ...rest,
       id: templateId,
-      name: name.trim(),
+      displayName: name.trim(),
       description: description.trim() || undefined,
     };
 

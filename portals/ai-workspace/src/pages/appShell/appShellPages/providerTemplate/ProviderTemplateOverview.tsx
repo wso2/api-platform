@@ -404,7 +404,7 @@ export default function ProviderTemplateOverview() {
 
     const payload: UpdateProviderTemplateRequest = {
       id: template.id,
-      name: template.name,
+      displayName: template.displayName,
       version: currentVersion,
       managedBy: provider.trim() || 'customer',
       description: template.description,
@@ -684,12 +684,12 @@ export default function ProviderTemplateOverview() {
                   '& img': { objectFit: 'contain' },
                 }}
               >
-                {!hasLogo ? getInitials(template.name) : null}
+                {!hasLogo ? getInitials(template.displayName) : null}
               </Avatar>
               <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                  <Typography variant="h3" title={template.name}>
-                    {truncateProviderDisplayName(template.name)}
+                  <Typography variant="h3" title={template.displayName}>
+                    {truncateProviderDisplayName(template.displayName)}
                   </Typography>
                   {canEdit && (
                     <Tooltip title="Edit template">
@@ -1171,7 +1171,7 @@ export default function ProviderTemplateOverview() {
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>
           Delete version <strong>{currentVersion}</strong> of{' '}
-          <strong>&apos;{template.name}&apos;</strong>?
+          <strong>&apos;{template.displayName}&apos;</strong>?
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

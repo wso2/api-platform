@@ -57,7 +57,7 @@ export async function createProviderTemplate(
 ): Promise<ProviderTemplate> {
   try {
     const response = await post<ProviderTemplate>(
-      `/llm-provider-templates?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates`,
       template,
       baseUrl
     );
@@ -83,7 +83,7 @@ export async function createProviderTemplate(
 export async function getProviderTemplates(organizationId: string, baseUrl: string): Promise<ProviderTemplatesResponse> {
   try {
     const response = await get<ProviderTemplatesResponse>(
-      `/llm-provider-templates?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates`,
       undefined,
       baseUrl
     );
@@ -114,7 +114,7 @@ export async function getProviderTemplate(
 ): Promise<ProviderTemplate> {
   try {
     const response = await get<ProviderTemplate>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}`,
       undefined,
       baseUrl
     );
@@ -142,7 +142,7 @@ export async function getProviderTemplateVersions(
 ): Promise<ProviderTemplate[]> {
   try {
     const response = await get<ProviderTemplate[] | ProviderTemplatesResponse>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions`,
       undefined,
       baseUrl
     );
@@ -169,7 +169,7 @@ export async function getProviderTemplateVersion(
 ): Promise<ProviderTemplate> {
   try {
     const response = await get<ProviderTemplate>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}`,
       undefined,
       baseUrl
     );
@@ -199,7 +199,7 @@ export async function createProviderTemplateVersion(
 ): Promise<ProviderTemplate> {
   try {
     const response = await post<ProviderTemplate>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions`,
       template,
       baseUrl
     );
@@ -245,7 +245,7 @@ export async function setProviderTemplateVersionEnabled(
 ): Promise<ProviderTemplate> {
   try {
     const response = await patch<ProviderTemplate>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}`,
       { enabled },
       baseUrl
     );
@@ -272,7 +272,7 @@ export async function deleteProviderTemplateVersion(
 ): Promise<void> {
   try {
     await del<void>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}`,
       undefined,
       baseUrl
     );
@@ -290,7 +290,7 @@ export async function updateProviderTemplate(
 ): Promise<ProviderTemplate> {
   try {
     const response = await put<ProviderTemplate>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}`,
       updates,
       baseUrl
     );
@@ -321,7 +321,7 @@ export async function deleteProviderTemplate(
 ): Promise<void> {
   try {
     await del<void>(
-      `/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-provider-templates/${encodeURIComponent(templateId)}`,
       undefined,
       baseUrl
     );

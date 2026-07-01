@@ -88,8 +88,8 @@ describe('AI Workspace — LLM provider secret management', () => {
     cy.wait('@createSecret').then((interception) => {
       expect(interception.response.statusCode).to.be.oneOf([200, 201]);
       // The UI posts multipart/form-data; assert on the response body instead.
-      const handle = interception.response.body?.handle;
-      expect(handle).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      const secretId = interception.response.body?.id;
+      expect(secretId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     // Provider must be created with placeholder, not plaintext.
@@ -124,8 +124,8 @@ describe('AI Workspace — LLM provider secret management', () => {
       },
       form: true,
       body: {
-        handle: existingHandle,
-        name: `${providerName} API Key`,
+        id: existingHandle,
+        displayName: `${providerName} API Key`,
         value: 'sk-tc58-pre-existing-value',
         type: 'GENERIC',
       },

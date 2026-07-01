@@ -245,7 +245,7 @@ function deleteProjectByName(authToken, targetProjectName, fallbackProjectName) 
 
     const projects = response.body?.list ?? [];
     const targetProject = projects.find(
-      (project) => project.name === targetProjectName
+      (project) => project.displayName === targetProjectName
     );
 
     if (!targetProject?.id) {
@@ -267,7 +267,7 @@ function ensureFallbackProject(authToken, fallbackProjectName) {
     method: 'POST',
     url: '/api/proxy/api/v0.9/projects',
     body: {
-      name: fallbackProjectName,
+      displayName: fallbackProjectName,
       description: 'Reserved project to satisfy E2E cleanup invariants.',
     },
     failOnStatusCode: false,

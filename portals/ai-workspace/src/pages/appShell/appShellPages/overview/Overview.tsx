@@ -228,8 +228,8 @@ function ServiceProvidersSummaryCardSection({
   const providerItems = useMemo<ServiceProviderSummaryItem[]>(
     () =>
       providersResponse.list.map((provider) => ({
-        id: provider.id ?? provider.name,
-        name: provider.name,
+        id: provider.id ?? provider.displayName,
+        displayName: provider.displayName,
         status: provider.status ?? 'Unknown',
         lastUpdated:
           provider.lastUpdated ?? provider.updatedAt ?? provider.createdAt,

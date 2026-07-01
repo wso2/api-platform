@@ -136,8 +136,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const toOrganization = (p: PlatformOrganization): Organization => ({
     id: p.id,
     uuid: p.id,
-    handle: p.handle,
-    name: p.name,
+    handle: p.id,
+    name: p.displayName,
     region: p.region,
     owner: { id: 0, idpId: '' },
   });
@@ -146,11 +146,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     try {
       const tokenOrg = userRef.current?.org;
 
-      if (tokenOrg?.id) {
-        // Primary path: fetch org by UUID from the token (works for both OIDC and file-based auth).
-        let platformOrg = await getOrganizationById(tokenOrg.id);
+      if (tokenOrg?.handle) {
+        // Primary path: fetch org by handle from the token (works for both OIDC and file-based auth).
+        let platformOrg = await getOrganizationById(tokenOrg.handle);
 
-        if (!platformOrg && tokenOrg.handle) {
+        if (!platformOrg) {
           // Org not registered yet — provision it from token claims.
           const displayName = tokenOrg.name || tokenOrg.handle;
           logger.info('[AppShellContext] Auto-provisioning organization:', tokenOrg.handle);
@@ -158,9 +158,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           setProvisioningOrgName(displayName);
           try {
             await registerOrganization({
-              id: tokenOrg.id,
-              name: displayName,
-              handle: tokenOrg.handle,
+              id: tokenOrg.handle,
+              displayName,
               region: DEFAULT_ORG_REGION,
             });
           } catch (provisionErr: any) {
@@ -170,11 +169,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
             }
           }
           setIsProvisioning(false);
-          platformOrg = await getOrganizationById(tokenOrg.id);
+          platformOrg = await getOrganizationById(tokenOrg.handle);
         }
 
         if (!platformOrg) {
-          logger.warn('[AppShellContext] Org not found for id:', tokenOrg.id);
+          logger.warn('[AppShellContext] Org not found for handle:', tokenOrg.handle);
           setError('Organization not found. Please contact your administrator.');
           return;
         }

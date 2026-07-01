@@ -173,7 +173,7 @@ export async function createLLMProvider(
     // Routed through the BFF composite endpoint so the BFF can compensate by
     // deleting the pre-created secret if the provider creation fails.
     const response = await post<LLMProvider>(
-      `/llm-providers?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers`,
       fullProvider,
       BFF_COMPOSITE_BASE_URL
     );
@@ -202,7 +202,7 @@ export async function getLLMProviders(
 ): Promise<LLMProvidersResponse> {
   try {
     const response = await get<LLMProvidersResponse>(
-      `/llm-providers?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers`,
       undefined,
       baseUrl
     );
@@ -233,7 +233,7 @@ export async function getLLMProvider(
 ): Promise<LLMProvider> {
   try {
     const response = await get<LLMProvider>(
-      `/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}`,
       undefined,
       baseUrl
     );
@@ -259,7 +259,7 @@ export async function getLLMProviderProxies(
 ): Promise<ProxiesResponse> {
   try {
     const response = await get<ProxiesResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/llm-proxies`,
       undefined,
       baseUrl
     );
@@ -307,7 +307,7 @@ export async function updateLLMProvider(
       )
     ) as UpdateLLMProviderRequest;
     const response = await put<LLMProvider>(
-      `/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}`,
       safeUpdates,
       baseUrl
     );
@@ -338,7 +338,7 @@ export async function deleteLLMProvider(
 ): Promise<void> {
   try {
     await del<void>(
-      `/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}`,
       undefined,
       baseUrl
     );
@@ -370,12 +370,16 @@ export async function getLLMProviderDeployments(
   status?: string
 ): Promise<DeploymentListResponse> {
   try {
-    let url = `/llm-providers/${encodeURIComponent(providerId)}/deployments?organizationId=${encodeURIComponent(organizationId)}`;
+    let url = `/llm-providers/${encodeURIComponent(providerId)}/deployments`;
+    const queryParams: string[] = [];
     if (gatewayId) {
-      url += `&gatewayId=${encodeURIComponent(gatewayId)}`;
+      queryParams.push(`gatewayId=${encodeURIComponent(gatewayId)}`);
     }
     if (status) {
-      url += `&status=${encodeURIComponent(status)}`;
+      queryParams.push(`status=${encodeURIComponent(status)}`);
+    }
+    if (queryParams.length > 0) {
+      url += `?${queryParams.join('&')}`;
     }
     const response = await get<DeploymentListResponse>(url, undefined, baseUrl);
     return response;
@@ -405,7 +409,7 @@ export async function deployLLMProvider(
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments`,
       deployRequest,
       baseUrl
     );
@@ -433,7 +437,7 @@ export async function getLLMProviderDeployment(
 ): Promise<DeploymentResponse> {
   try {
     const response = await get<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}`,
       undefined,
       baseUrl
     );
@@ -461,7 +465,7 @@ export async function deleteLLMProviderDeployment(
 ): Promise<void> {
   try {
     await del<void>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}`,
       undefined,
       baseUrl
     );
@@ -490,7 +494,7 @@ export async function undeployLLMProviderDeployment(
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/undeploy?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?gatewayId=${encodeURIComponent(gatewayId)}`,
       {},
       baseUrl
     );
@@ -520,7 +524,7 @@ export async function restoreLLMProviderDeployment(
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/restore?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/restore?gatewayId=${encodeURIComponent(gatewayId)}`,
       {},
       baseUrl
     );
@@ -552,7 +556,7 @@ export async function createLLMProviderAPIKey(
 ): Promise<CreateLLMProviderAPIKeyResponse> {
   try {
     const response = await post<CreateLLMProviderAPIKeyResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/api-keys?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/api-keys`,
       request,
       baseUrl
     );
@@ -576,7 +580,7 @@ export async function getLLMProviderAPIKeys(
 ): Promise<APIKeyListResponse> {
   try {
     const response = await get<APIKeyListResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/api-keys?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/api-keys`,
       undefined,
       PLATFORM_API_BASE_URL
     );
@@ -604,7 +608,7 @@ export async function deleteLLMProviderAPIKey(
 ): Promise<void> {
   try {
     await del<void>(
-      `/llm-providers/${encodeURIComponent(providerId)}/api-keys/${encodeURIComponent(keyName)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/api-keys/${encodeURIComponent(keyName)}`,
       undefined,
       baseUrl
     );

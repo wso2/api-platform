@@ -155,14 +155,13 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    checkOrganizationExists(org.id)
+    checkOrganizationExists(org.handle)
       .then(async (exists) => {
         if (!exists) {
           setOrgState('provisioning');
           await registerOrganization({
-            id: org.id,
-            name: org.name || org.handle,
-            handle: org.handle,
+            id: org.handle,
+            displayName: org.name || org.handle,
             region: DEFAULT_ORG_REGION,
           });
         }

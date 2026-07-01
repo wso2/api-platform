@@ -31,12 +31,10 @@ import { logger } from '../utils/logger';
  * the bearer token when proxying to the Platform API.
  */
 export interface PlatformOrganization {
-  /** UUID v4 — client-generated and sent on registration */
+  /** Handle (URL-friendly slug), pattern: ^[a-z0-9-]+$ — readOnly, server-assigned */
   id: string;
-  /** URL-friendly unique handle, pattern: ^[a-z0-9-]+$ */
-  handle: string;
   /** Display name */
-  name: string;
+  displayName: string;
   /** Geographic region, e.g. "us", "eu", "ap" */
   region: string;
   createdAt?: string;
@@ -45,7 +43,7 @@ export interface PlatformOrganization {
 
 export type RegisterOrganizationRequest = Pick<
   PlatformOrganization,
-  'id' | 'handle' | 'name' | 'region'
+  'id' | 'displayName' | 'region'
 >;
 
 // ============================================================================
@@ -107,7 +105,7 @@ const httpError = (message: string, status: number): Error & { status: number } 
 export async function registerOrganization(
   org: RegisterOrganizationRequest,
 ): Promise<PlatformOrganization> {
-  logger.info('Registering organization:', org.handle);
+  logger.info('Registering organization:', org.id);
 
   const response = await fetch(platformUrl('/organizations'), {
     method: 'POST',
@@ -121,7 +119,7 @@ export async function registerOrganization(
     logger.error('registerOrganization failed:', response.status, message);
 
     if (response.status === 409) {
-      throw httpError(`Organization with handle "${org.handle}" already exists.`, 409);
+      throw httpError(`Organization with handle "${org.id}" already exists.`, 409);
     }
     if (response.status === 400) {
       throw httpError(`Invalid organization data: ${message}`, 400);
@@ -157,16 +155,17 @@ export async function getOrganization(): Promise<PlatformOrganization> {
 }
 
 /**
- * Fetch an organization by its UUID.
+ * Fetch an organization by its handle.
  * Returns null when the org is not yet registered (404).
  *
  * Endpoint: GET /organizations/{organizationId}
+ *           where {organizationId} is the org handle.
  * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function getOrganizationById(
-  id: string,
+  handle: string,
 ): Promise<PlatformOrganization | null> {
-  const response = await fetch(platformUrl(`/organizations/${id}`), {
+  const response = await fetch(platformUrl(`/organizations/${handle}`), {
     method: 'GET',
     credentials: 'include',
     headers: jsonHeaders(),
@@ -207,15 +206,16 @@ export async function getOrganizationByHandle(
 }
 
 /**
- * Check if an organization exists by UUID (HEAD request).
+ * Check if an organization exists by handle (HEAD request).
  *
  * Endpoint: HEAD /organizations/{organizationId}
+ *           where {organizationId} is the org handle.
  * Auth:     BFF session cookie; the BFF injects the bearer token.
  */
 export async function checkOrganizationExists(
-  organizationId: string,
+  handle: string,
 ): Promise<boolean> {
-  const response = await fetch(platformUrl(`/organizations/${organizationId}`), {
+  const response = await fetch(platformUrl(`/organizations/${handle}`), {
     method: 'HEAD',
     credentials: 'include',
     headers: jsonHeaders(),

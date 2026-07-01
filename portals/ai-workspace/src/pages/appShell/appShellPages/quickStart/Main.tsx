@@ -553,7 +553,7 @@ export default function QuickStart(): JSX.Element {
                 ) : (
                   projectsForCurrentOrganization.map((project) => (
                     <MenuItem key={project.id} value={project.id}>
-                      {project.name}
+                      {project.displayName}
                     </MenuItem>
                   ))
                 )}

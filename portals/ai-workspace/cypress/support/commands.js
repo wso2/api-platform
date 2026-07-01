@@ -88,7 +88,9 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
         const page = response.body?.list ?? [];
         const next = acc.concat(
           page.filter(
-            (p) => typeof p.name === 'string' && p.name.startsWith('E2E ')
+            (p) =>
+              typeof p.displayName === 'string' &&
+              p.displayName.startsWith('E2E ')
           )
         );
         if (page.length < PAGE_SIZE) return next;

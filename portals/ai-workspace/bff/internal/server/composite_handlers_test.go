@@ -71,9 +71,13 @@ func TestExtractSecretHandle(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := extractSecretHandle([]byte(tc.body))
+			handles := extractSecretHandles([]byte(tc.body))
+			got := ""
+			if len(handles) > 0 {
+				got = handles[0]
+			}
 			if got != tc.want {
-				t.Errorf("extractSecretHandle() = %q, want %q", got, tc.want)
+				t.Errorf("extractSecretHandles() first = %q, want %q", got, tc.want)
 			}
 		})
 	}

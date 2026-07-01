@@ -341,7 +341,7 @@ export default function ServiceProviderNew() {
 
       const payload = {
         id: providerId,
-        name: formState.name.trim(),
+        displayName: formState.name.trim(),
         description: formState.description.trim(),
         version: formState.version.trim(),
         context: formState.context.trim() || '/',
@@ -402,7 +402,7 @@ export default function ServiceProviderNew() {
     setSelectedTemplateId(baseTemplate.id ?? null);
     setSelectedVersionTemplateId(versionTemplateId);
     setSelectedTemplateVersion(version);
-    setFormState((prev) => ({ ...prev, providerType: baseTemplate.name }));
+    setFormState((prev) => ({ ...prev, providerType: baseTemplate.displayName }));
     setOpenapiSpec('');
     setVersionDialogOpen(false);
     setPendingTemplate(null);
@@ -484,7 +484,7 @@ export default function ServiceProviderNew() {
             <TemplateVersionDialog
               open={versionDialogOpen}
               templateId={pendingTemplate.id ?? ''}
-              templateName={pendingTemplate.name}
+              templateName={pendingTemplate.displayName}
               onClose={() => {
                 setVersionDialogOpen(false);
                 setPendingTemplate(null);

@@ -298,13 +298,13 @@ function LLMProxyNewContent({
       return '';
     }
     if (preselectedProvider?.id === lockedProviderId) {
-      return truncateProviderDisplayName(preselectedProvider.name);
+      return truncateProviderDisplayName(preselectedProvider.displayName);
     }
     const option = providerOptions.find(
       (provider) => provider.id === lockedProviderId
     );
-    if (option?.name) {
-      return truncateProviderDisplayName(option.name);
+    if (option?.displayName) {
+      return truncateProviderDisplayName(option.displayName);
     }
     return truncateProviderDisplayName(lockedProviderId);
   }, [
@@ -343,25 +343,25 @@ function LLMProxyNewContent({
         const rawKey = manualApiKeyValue.trim() || selectedProviderApiKeyValue || '';
         const secretHandle = generateSecretHandle();
         const secretResponse = await createSecret({
-          handle: secretHandle,
-          name: `${generatedId} Provider API Key`,
+          id: secretHandle,
+          displayName: `${generatedId} Provider API Key`,
           description: `Auto-generated secret for LLM proxy ${generatedId}`,
           value: rawKey,
           type: 'GENERIC',
         });
         logger.info('Created secret for LLM proxy provider auth', {
-          secretHandle: secretResponse.handle,
+          secretHandle: secretResponse.id,
           proxyId: generatedId,
         });
-        createdSecretHandle = secretResponse.handle;
+        createdSecretHandle = secretResponse.id;
         providerAuthType = 'api-key';
         providerAuthHeader = selectedProviderApiKeyName;
-        providerAuthValue = buildSecretPlaceholder(secretResponse.handle);
+        providerAuthValue = buildSecretPlaceholder(secretResponse.id);
       }
 
       const payload: CreateProxyRequest = {
         id: generatedId,
-        name: trimmedName,
+        displayName: trimmedName,
         description:
           formState.description.trim() ||
           intl.formatMessage({
@@ -465,7 +465,7 @@ function LLMProxyNewContent({
         formState.providerId,
         currentOrganization.uuid,
         {
-          name: buildApiKeyResourceName(trimmedDisplayName),
+          id: buildApiKeyResourceName(trimmedDisplayName),
           displayName: trimmedDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',
@@ -665,7 +665,7 @@ function LLMProxyNewContent({
                     ) : (
                       providerOptions.map((provider) => (
                         <MenuItem key={provider.id} value={provider.id}>
-                          {truncateProviderDisplayName(provider.name)}
+                          {truncateProviderDisplayName(provider.displayName)}
                         </MenuItem>
                       ))
                     )}

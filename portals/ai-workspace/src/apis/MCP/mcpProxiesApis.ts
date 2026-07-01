@@ -34,21 +34,21 @@ import type {
 /**
  * Create a new MCP Server
  *
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param mcpServer - The MCP server details
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the created MCP server
  */
 export async function createMCPServer(
   mcpServer: CreateMCPServerRequest,
-  organizationId: string,
-  _baseUrl: string
+  baseUrl: string
 ): Promise<MCPServer> {
   try {
     // Routed through the BFF composite endpoint so the BFF can compensate by
     // deleting the pre-created secret if the MCP server creation fails.
     const response = await post<MCPServer>(
-      `/mcp-proxies?organizationId=${encodeURIComponent(organizationId)}`,
+      '/mcp-proxies',
       mcpServer,
       BFF_COMPOSITE_BASE_URL
     );
@@ -62,7 +62,8 @@ export async function createMCPServer(
 /**
  * Get all MCP Servers
  *
- * @param organizationId - The organization ID
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param projectId - The project ID
  * @param baseUrl - The APIM base URL
  * @param limit - Maximum number of MCP servers to return
@@ -70,7 +71,6 @@ export async function createMCPServer(
  * @returns Promise with the list of MCP servers
  */
 export async function getMCPServers(
-  organizationId: string,
   projectId: string,
   baseUrl: string,
   limit: number = 20,
@@ -78,7 +78,7 @@ export async function getMCPServers(
 ): Promise<MCPServerListResponse> {
   try {
     const response = await get<MCPServerListResponse>(
-      `/mcp-proxies?organizationId=${encodeURIComponent(organizationId)}&projectId=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
+      `/mcp-proxies?projectId=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
       undefined,
       baseUrl
     );
@@ -92,19 +92,19 @@ export async function getMCPServers(
 /**
  * Get a single MCP Server by ID
  *
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param mcpServerId - The MCP server ID
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the MCP server details
  */
 export async function getMCPServer(
   mcpServerId: string,
-  organizationId: string,
   baseUrl: string
 ): Promise<MCPServer> {
   try {
     const response = await get<MCPServer>(
-      `/mcp-proxies/${encodeURIComponent(mcpServerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/mcp-proxies/${encodeURIComponent(mcpServerId)}`,
       undefined,
       baseUrl
     );
@@ -118,21 +118,21 @@ export async function getMCPServer(
 /**
  * Update an existing MCP Server
  *
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param mcpServerId - The MCP server ID
  * @param updates - The fields to update
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the updated MCP server
  */
 export async function updateMCPServer(
   mcpServerId: string,
   updates: UpdateMCPServerRequest,
-  organizationId: string,
   baseUrl: string
 ): Promise<MCPServer> {
   try {
     const response = await put<MCPServer>(
-      `/mcp-proxies/${encodeURIComponent(mcpServerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/mcp-proxies/${encodeURIComponent(mcpServerId)}`,
       updates,
       baseUrl
     );
@@ -146,19 +146,19 @@ export async function updateMCPServer(
 /**
  * Delete an MCP Server
  *
+ * Organization is resolved from the JWT token on the server side.
+ *
  * @param mcpServerId - The MCP server ID
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise that resolves when the MCP server is deleted
  */
 export async function deleteMCPServer(
   mcpServerId: string,
-  organizationId: string,
   baseUrl: string
 ): Promise<void> {
   try {
     await del<void>(
-      `/mcp-proxies/${encodeURIComponent(mcpServerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/mcp-proxies/${encodeURIComponent(mcpServerId)}`,
       undefined,
       baseUrl
     );

@@ -160,7 +160,7 @@ export default function LLMProxyDeploymentsCard() {
         proxy.id,
         currentOrganization.uuid,
         {
-          name: `key-${Date.now()}`,
+          id: `key-${Date.now()}`,
           displayName: `API Key - ${new Date().toLocaleString()}`,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',

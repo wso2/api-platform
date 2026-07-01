@@ -155,15 +155,15 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           const secretHandle = generateSecretHandle();
           const secretResponse = await createSecret(
             {
-              handle: secretHandle,
-              name: `${provider.name} API Key`,
-              description: `Auto-generated secret for LLM provider ${provider.name}`,
+              id: secretHandle,
+              displayName: `${provider.displayName} API Key`,
+              description: `Auto-generated secret for LLM provider ${provider.displayName}`,
               value: authValue,
               type: 'GENERIC',
             },
           );
           logger.info('Created secret for LLM provider', {
-            secretHandle: secretResponse.handle,
+            secretHandle: secretResponse.id,
             providerId: provider.id,
           });
 
@@ -175,7 +175,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 ...provider.upstream.main,
                 auth: {
                   ...provider.upstream.main.auth,
-                  value: buildSecretPlaceholder(secretResponse.handle),
+                  value: buildSecretPlaceholder(secretResponse.id),
                 },
               },
             },
@@ -235,8 +235,8 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           // with a different key never collides with an existing secret.
           const secretHandle = generateSecretHandle();
           const secretResponse = await createSecret({
-            handle: secretHandle,
-            name: `${providerId} API Key`,
+            id: secretHandle,
+            displayName: `${providerId} API Key`,
             description: `Auto-generated secret for LLM provider ${providerId}`,
             value: authValue,
             type: 'GENERIC',
@@ -252,7 +252,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 url: updates.upstream?.main?.url ?? currentProvider?.upstream?.main?.url ?? '',
                 auth: {
                   ...updates.upstream?.main?.auth,
-                  value: buildSecretPlaceholder(secretResponse.handle),
+                  value: buildSecretPlaceholder(secretResponse.id),
                 },
               },
             },

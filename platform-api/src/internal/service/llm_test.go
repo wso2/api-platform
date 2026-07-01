@@ -1089,6 +1089,10 @@ func (m *mockProjectRepo) GetProjectByUUID(projectID string) (*model.Project, er
 	return m.project, nil
 }
 
+func (m *mockProjectRepo) GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error) {
+	return m.project, nil
+}
+
 type noopAuditRepo struct{}
 
 func (n *noopAuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {

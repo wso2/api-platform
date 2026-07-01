@@ -90,18 +90,22 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		return nil, constants.ErrInvalidInput
 	}
 
-	// Validate project exists if provided
-	if s.projectRepo != nil && req.ProjectId != nil && *req.ProjectId != "" {
-		project, err := s.projectRepo.GetProjectByUUID(*req.ProjectId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate project: %w", err)
+	// req.ProjectId is the project handle; resolve it to the project UUID so the
+	// proxy is stored against the same identifier List filters on.
+	var projectUUID *string
+	if req.ProjectId != nil && *req.ProjectId != "" {
+		resolved := *req.ProjectId
+		if s.projectRepo != nil {
+			project, err := s.projectRepo.GetProjectByHandleAndOrgID(*req.ProjectId, orgUUID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to validate project: %w", err)
+			}
+			if project == nil || project.OrganizationID != orgUUID {
+				return nil, constants.ErrProjectNotFound
+			}
+			resolved = project.ID
 		}
-		if project == nil {
-			return nil, constants.ErrProjectNotFound
-		}
-		if project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
-		}
+		projectUUID = &resolved
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -151,7 +155,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	m := &model.MCPProxy{
 		Handle:           handle,
 		OrganizationUUID: orgUUID,
-		ProjectUUID:      req.ProjectId,
+		ProjectUUID:      projectUUID,
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
@@ -210,7 +214,21 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 }
 
 // ListByProject retrieves MCP proxies for an organization filtered by project ID
-func (s *MCPProxyService) ListByProject(orgUUID, projectUUID string, limit, offset int) (*api.MCPProxyListResponse, error) {
+func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, offset int) (*api.MCPProxyListResponse, error) {
+	// projectHandle is the project handle; resolve it to the project UUID so the
+	// filter matches the identifier proxies are stored against.
+	projectUUID := projectHandle
+	if s.projectRepo != nil {
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate project: %w", err)
+		}
+		if project == nil || project.OrganizationID != orgUUID {
+			return nil, constants.ErrProjectNotFound
+		}
+		projectUUID = project.ID
+	}
+
 	// TODO: pagination
 	proxies, err := s.repo.ListByProject(orgUUID, projectUUID)
 	if err != nil {

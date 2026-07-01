@@ -145,31 +145,15 @@ export enum ProjectTypeResponse {
 
 /**
  * Base project information
- * This matches the ProjectBase type from choreo-console
+ * Matches platform-api's `Project` schema (openapi.yaml).
  */
 export interface ProjectBase {
   id: string;
-  orgId: string;
-  name: string;
-  version: string;
-  stage?: string;
-  owner?: string;
-  group?: string;
-  createdDate: string;
-  updatedAt: string;
-  handler: string;
-  region: string;
+  displayName: string;
   description?: string;
-  type?: ProjectTypeResponse;
-  gitProvider?: string;
-  repository?: string;
-  gitOrganization?: string;
-  branch?: string;
-  secretRef?: string;
-  defaultDeploymentPipelineId?: string;
-  deploymentPipelineIds?: string[];
-  gitRepositoryUrl?: string;
-  allowedPermissions?: ProjectPermission[];
+  organizationId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // ============================================================================
@@ -383,7 +367,7 @@ export interface SecurityConfig {
  */
 export interface LLMProvider {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
   version?: string;
   context?: string;
@@ -410,7 +394,7 @@ export interface LLMProvider {
  */
 export interface CreateLLMProviderRequest {
   id: string;
-  name: string;
+  displayName: string;
   description: string;
   version: string;
   context?: string;
@@ -478,7 +462,7 @@ export interface TemplateMetadata {
  */
 export interface ProviderTemplate {
   id: string;
-  name: string;
+  displayName: string;
   provider?: string;
   managedBy?: string;
   groupId?: string;
@@ -599,7 +583,7 @@ export interface ProxyProviderConfig {
  */
 export interface Proxy {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
   version?: string;
   projectId?: string;
@@ -642,7 +626,7 @@ export interface DeploymentResponse {
  */
 export interface CreateProxyRequest {
   id: string;
-  name: string;
+  displayName: string;
   description: string;
   version: string;
   projectId: string;
@@ -680,7 +664,7 @@ export interface DeploymentListResponse {
 export interface DeployRequest {
   name: string;
   gatewayId: string;
-  base?: string;
+  base: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -692,10 +676,11 @@ export interface DeployRequest {
  * Create API Key request
  */
 export interface CreateLLMProviderAPIKeyRequest {
-  name: string;
-  displayName?: string;
+  id?: string;
+  displayName: string;
   expiresAt?: string;
   issuer?: string;
+  allowedTargets?: string[];
 }
 
 /**
@@ -704,7 +689,7 @@ export interface CreateLLMProviderAPIKeyRequest {
 export interface CreateLLMProviderAPIKeyResponse {
   status: string;
   message: string;
-  keyId: string;
+  id: string;
   apiKey: string;
 }
 
@@ -712,10 +697,11 @@ export interface CreateLLMProviderAPIKeyResponse {
  * Create API Key request for LLM proxies
  */
 export interface CreateLLMProxyAPIKeyRequest {
-  name: string;
-  displayName?: string;
+  id?: string;
+  displayName: string;
   expiresAt?: string;
   issuer?: string;
+  allowedTargets?: string[];
 }
 
 /**
@@ -724,7 +710,7 @@ export interface CreateLLMProxyAPIKeyRequest {
 export interface CreateLLMProxyAPIKeyResponse {
   status: string;
   message: string;
-  keyId: string;
+  id: string;
   apiKey: string;
 }
 
@@ -780,7 +766,7 @@ export interface MCPServerCapabilities {
  */
 export interface MCPServer {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
   version?: string;
   projectId?: string;
@@ -799,7 +785,7 @@ export interface MCPServer {
  */
 export interface CreateMCPServerRequest {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
   version?: string;
   projectId?: string;
@@ -834,6 +820,7 @@ export type MCPServerListResponse = ApiListResponse<MCPServer>;
  */
 export interface MCPServerInfoFetchRequest {
   url: string;
+  proxyId?: string;
   transportType?: string;
   headers?: Record<string, string>;
   auth?: {
@@ -890,7 +877,7 @@ export interface MCPServerPromptArgument {
  */
 export interface Application {
   id: string;
-  name: string;
+  displayName: string;
   type?: string;
   description?: string;
   owner?: string;
@@ -905,7 +892,7 @@ export interface Application {
  */
 export interface CreateApplicationRequest {
   id: string;
-  name: string;
+  displayName: string;
   type: 'genai';
   description?: string;
   owner?: string;
@@ -916,7 +903,7 @@ export interface CreateApplicationRequest {
  * Update Application Request
  */
 export interface UpdateApplicationRequest {
-  name?: string;
+  displayName?: string;
   description?: string;
 }
 
@@ -987,7 +974,7 @@ export interface AddApplicationAPIKeysRequest {
  * Remove application API key mapping options
  */
 export interface RemoveApplicationAPIKeyOptions {
-  entityID?: string;
+  entityID: string;
 }
 
 /**
@@ -996,7 +983,8 @@ export interface RemoveApplicationAPIKeyOptions {
 export interface ApplicationAssociation {
   id: string;
   kind?: string;
-  name?: string;
+  displayName: string;
+  version: string;
   [key: string]: unknown;
 }
 

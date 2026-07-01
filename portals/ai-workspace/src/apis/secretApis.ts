@@ -26,8 +26,8 @@ export type SecretType = 'GENERIC' | 'CERTIFICATE';
 export type SecretStatus = 'ACTIVE' | 'DEPRECATED';
 
 export interface CreateSecretRequest {
-  handle: string;
-  name: string;
+  id: string;
+  displayName: string;
   description?: string;
   value: string;
   type?: SecretType;
@@ -41,8 +41,8 @@ export interface UpdateSecretRequest {
 
 export interface SecretMetadata {
   uuid: string;
-  handle: string;
-  name: string;
+  id: string;
+  displayName: string;
   description?: string;
   type: SecretType;
   provider: string;
@@ -96,8 +96,8 @@ export async function createSecret(
   request: CreateSecretRequest,
 ): Promise<CreateSecretResponse> {
   const form = new FormData();
-  form.append('handle', request.handle);
-  form.append('name', request.name);
+  form.append('id', request.id);
+  form.append('displayName', request.displayName);
   if (request.description) form.append('description', request.description);
   form.append('value', request.value);
   if (request.type) form.append('type', request.type);

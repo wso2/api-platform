@@ -32,20 +32,19 @@ import type {
  * Fetch server info from MCP proxy backend services
  *
  * Validates connectivity and retrieves metadata about the backend services.
+ * Organization is resolved from the JWT token on the server side.
  *
  * @param request - The server info fetch request
- * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
  * @returns Promise with the server info response
  */
 export async function fetchMCPProxyServerInfo(
   request: MCPServerInfoFetchRequest,
-  organizationId: string,
   baseUrl: string
 ): Promise<MCPServerInfoFetchResponse> {
   try {
     const response = await post<MCPServerInfoFetchResponse>(
-      `/mcp-proxies/fetch-server-info?organizationId=${encodeURIComponent(organizationId)}`,
+      '/mcp-proxies/fetch-server-info',
       request,
       baseUrl
     );

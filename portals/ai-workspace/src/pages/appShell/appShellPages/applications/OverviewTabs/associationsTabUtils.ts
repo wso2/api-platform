@@ -23,7 +23,7 @@ export const ROWS_PER_PAGE_OPTIONS = [5, 10, 25];
 
 export type DrawerEntity = {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
 };
 

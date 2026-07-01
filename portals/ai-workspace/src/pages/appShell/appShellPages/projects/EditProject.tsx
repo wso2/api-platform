@@ -55,7 +55,7 @@ function EditProjectForm() {
     if (initialized || !projectId) return;
     const project = projectsForCurrentOrganization.find((p) => p.id === projectId);
     if (project) {
-      setName(project.name);
+      setName(project.displayName);
       setDescription(project.description ?? '');
       setInitialized(true);
     }
@@ -65,10 +65,15 @@ function EditProjectForm() {
     const trimmedName = name.trim();
     if (!trimmedName || !projectId) return;
 
+    const project = projectsForCurrentOrganization.find((p) => p.id === projectId);
+    if (!project) return;
+
     try {
       setIsSubmitting(true);
       await updateProject(projectId, {
-        name: trimmedName,
+        id: project.id,
+        organizationId: project.organizationId,
+        displayName: trimmedName,
         ...(description.trim() ? { description: description.trim() } : {}),
       });
       showSnackbar('Project updated successfully.', 'success');

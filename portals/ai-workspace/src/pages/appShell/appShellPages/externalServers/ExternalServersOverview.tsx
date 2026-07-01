@@ -224,7 +224,6 @@ export default function ExternalServersOverview(): JSX.Element {
         setIsLoading(true);
         const response = await mcpProxiesApis.getMCPServer(
           serverId,
-          organizationId,
           apimBaseUrl
         );
         if (!cancelled) {
@@ -264,7 +263,6 @@ export default function ExternalServersOverview(): JSX.Element {
         const deploymentPromises = availableGateways.map((gateway) =>
           getMCPServerDeployments(
             serverId,
-            organizationId,
             apimBaseUrl,
             gateway.id
           ).catch((error) => {
@@ -458,7 +456,6 @@ export default function ExternalServersOverview(): JSX.Element {
       const updated = await mcpProxiesApis.updateMCPServer(
         server.id,
         { ...updatePayload, policies: policiesPayload },
-        organizationId,
         apimBaseUrl
       );
       setServer(updated);
@@ -539,7 +536,7 @@ export default function ExternalServersOverview(): JSX.Element {
     return {
       endpointUrl: server.upstream?.main?.url ?? '',
       serverInfo: {
-        name: server.name ?? '',
+        name: server.displayName ?? '',
         version: server.version ?? '',
       },
       tools: (server.capabilities.tools ??
@@ -609,7 +606,7 @@ export default function ExternalServersOverview(): JSX.Element {
       </Button>
 
       <ExternalServerStepBanner
-        serverName={server?.name}
+        serverName={server?.displayName}
         hasPolicies={(server?.policies?.length ?? 0) > 0}
         hasDeployments={deployedGateways.length > 0}
         onStepClick={handleStepBannerClick}
@@ -639,7 +636,7 @@ export default function ExternalServersOverview(): JSX.Element {
                   color: 'primary.contrastText',
                 }}
               >
-                {getInitials(server.name)}
+                {getInitials(server.displayName)}
               </Avatar>
               <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                 <Stack
@@ -648,7 +645,7 @@ export default function ExternalServersOverview(): JSX.Element {
                   alignItems="center"
                   flexWrap="wrap"
                 >
-                  <Typography variant="h3">{server.name}</Typography>
+                  <Typography variant="h3">{server.displayName}</Typography>
                   <Chip
                     label={server.version}
                     size="small"

@@ -772,8 +772,8 @@ function ServiceProviderOverviewContent() {
       document.body.removeChild(textarea);
     }
   };
-  const providerKey = provider.id ?? provider.name;
-  const providerDisplayName = truncateProviderDisplayName(provider.name);
+  const providerKey = provider.id ?? provider.displayName;
+  const providerDisplayName = truncateProviderDisplayName(provider.displayName);
   const logoUrl = PROVIDER_LOGO_MAP[providerKey];
   const hasLogo = Boolean(logoUrl);
   const templateDisplayName = getProviderTemplateDisplayName(provider.template);
@@ -881,7 +881,7 @@ function ServiceProviderOverviewContent() {
               ) : (
                 projectsForCurrentOrganization.map((project: ProjectBase) => (
                   <MenuItem key={project.id} value={project.id}>
-                    {project.name}
+                    {project.displayName}
                   </MenuItem>
                 ))
               )}
@@ -966,7 +966,7 @@ function ServiceProviderOverviewContent() {
                       },
                     }}
                   >
-                    {!hasLogo ? getInitials(provider.name) : null}
+                    {!hasLogo ? getInitials(provider.displayName) : null}
                   </Avatar>
                   <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                     <Stack
@@ -1194,7 +1194,7 @@ function ServiceProviderOverviewContent() {
       </Button>
       <Box mt={1}>
         <LLLMStepBanner
-          providerName={provider.name}
+          providerName={provider.displayName}
           onStepClick={handleLLLMStepBannerClick}
           refreshTrigger={stepBannerRefreshTrigger}
         />
@@ -1229,7 +1229,7 @@ function ServiceProviderOverviewContent() {
                   },
                 }}
               >
-                {!hasLogo ? getInitials(provider.name) : null}
+                {!hasLogo ? getInitials(provider.displayName) : null}
               </Avatar>
               <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                 <Stack

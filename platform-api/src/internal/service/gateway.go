@@ -706,14 +706,14 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 		return constants.ErrGatewayNotFound
 	}
 
-	// Delete gateway (FK CASCADE will automatically remove tokens and deployments; association_mappings cleanup is handled by the repository)
-	err = s.gatewayRepo.Delete(gatewayID, orgID)
+	// Delete gateway by UUID (FK CASCADE will automatically remove tokens and deployments; association_mappings cleanup is handled by the repository)
+	err = s.gatewayRepo.Delete(gateway.ID, orgID)
 	if err != nil {
 		return err
 	}
 
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", gatewayID, "gateway", orgID, deletedBy)
+		_ = s.auditRepo.Record("DELETE", gateway.ID, "gateway", orgID, deletedBy)
 	}
 
 	return nil
