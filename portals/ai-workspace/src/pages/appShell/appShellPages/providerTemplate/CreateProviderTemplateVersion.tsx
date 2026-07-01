@@ -330,7 +330,7 @@ function CreateProviderTemplateVersionForm({
                     defaultMessage={'Name'}
                   />
                 </FormLabel>
-                <TextField fullWidth value={template.displayName} disabled />
+                <TextField fullWidth value={template.displayName ?? ''} disabled />
               </FormControl>
             </Grid>
 

@@ -461,7 +461,7 @@ export default function LLMProxyOverviewTab() {
       setIsDeletingKey(true);
       await deleteProxyAPIKey(deleteTargetKeyName);
       setApiKeys((prev) =>
-        prev.filter((key) => (key.name || '').trim() !== deleteTargetKeyName)
+        prev.filter((key) => (key.id || '').trim() !== deleteTargetKeyName)
       );
       setDeleteTargetKeyName(null);
       showSnackbar('API key deleted successfully.', 'success');
@@ -728,11 +728,11 @@ export default function LLMProxyOverviewTab() {
                             {apiKeys.map((key) => (
                               <ListingTable.Row
                                 key={`${
-                                  key.name || key.maskedApiKey || 'api-key'
+                                  key.id || key.maskedApiKey || 'api-key'
                                 }-${key.expiresAt || ''}`}
                               >
                                 <ListingTable.Cell>
-                                  {key.name || '-'}
+                                  {key.displayName || key.id || '-'}
                                 </ListingTable.Cell>
                                 <ListingTable.Cell>
                                   {key.maskedApiKey || '-'}
@@ -751,7 +751,7 @@ export default function LLMProxyOverviewTab() {
                                 <ListingTable.Cell align="right">
                                   <Tooltip
                                     title={
-                                      key.name
+                                      key.id
                                         ? 'Delete API key'
                                         : 'Unable to delete key without a name'
                                     }
@@ -762,10 +762,10 @@ export default function LLMProxyOverviewTab() {
                                         color="error"
                                         onClick={() =>
                                           setDeleteTargetKeyName(
-                                            key.name?.trim() || null
+                                            key.id?.trim() || null
                                           )
                                         }
-                                        disabled={!key.name || isDeletingKey}
+                                        disabled={!key.id || isDeletingKey}
                                       >
                                         <Trash2 size={16} />
                                       </IconButton>

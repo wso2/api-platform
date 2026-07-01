@@ -172,7 +172,7 @@ func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	orgs, err := h.orgService.ListOrganizations(limit, offset)
+	orgs, total, err := h.orgService.ListOrganizations(limit, offset)
 	if err != nil {
 		h.slogger.Error("Failed to list organizations", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
@@ -184,7 +184,7 @@ func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.R
 		Count: len(orgs),
 		List:  orgs,
 		Pagination: api.Pagination{
-			Total:  len(orgs),
+			Total:  total,
 			Offset: offset,
 			Limit:  limit,
 		},

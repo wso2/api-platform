@@ -161,7 +161,7 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
     if (!query) return activeKeys;
 
     return activeKeys.filter((key) => {
-      const haystack = [key.name, key.artifactId, key.artifactType]
+      const haystack = [key.displayName, key.id, key.artifactId, key.artifactType]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -236,7 +236,7 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
       setIsAddingKeys(true);
 
       const keysToAdd = Array.from(selectedKeyIds).map((keyName) => {
-        const matched = availableKeys.find((k) => k.name === keyName);
+        const matched = availableKeys.find((k) => k.id === keyName);
         return {
           keyId: keyName,
           associatedEntity: { id: matched?.artifactId ?? '' },
@@ -511,7 +511,7 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
           ) : (
             <Stack spacing={1.5}>
               {filteredAvailableKeys.map((key) => {
-                const keyIdentifier = key.name ?? '';
+                const keyIdentifier = key.id ?? '';
                 const isAlreadyAdded = alreadyMappedKeyIds.has(keyIdentifier);
                 const isSelected = selectedKeyIds.has(keyIdentifier);
                 return (
@@ -555,7 +555,7 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
                       />
                       <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
                         <Typography variant="body2" fontWeight={600} noWrap>
-                          {key.name || '—'}
+                          {key.displayName || key.id || '—'}
                         </Typography>
                         <Typography
                           variant="caption"

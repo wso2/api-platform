@@ -84,7 +84,8 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 			continue
 		}
 		item := api.APIKeyItem{
-			Name:           k.Name,
+			Id:             &k.Name,
+			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
@@ -201,6 +202,11 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		}
 	}
 
+	displayName := req.DisplayName
+	if displayName == "" {
+		displayName = name
+	}
+
 	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
 	if err != nil {
 		s.slogger.Error("Failed to get gateways for API key broadcast", "proxyId", proxyID, "error", err)
@@ -241,6 +247,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		UUID:           apiKeyUUID,
 		ArtifactUUID:   proxy.UUID,
 		Name:           name,
+		DisplayName:    displayName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",

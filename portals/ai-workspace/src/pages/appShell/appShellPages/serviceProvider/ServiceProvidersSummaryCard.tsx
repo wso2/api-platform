@@ -307,7 +307,7 @@ export default function ServiceProvidersSummaryCard({
         ) : (
           <Stack divider={<Divider />} spacing={1}>
             {visibleProviders.map((provider) => {
-              const providerId = provider.id ?? provider.displayName;
+              const providerId = provider.id;
               const lastUpdated = provider.lastUpdated;
               const templateKey = (provider.template ?? '').toLowerCase();
               const templateDisplayName = getProviderTemplateDisplayName(

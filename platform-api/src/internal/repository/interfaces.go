@@ -33,6 +33,7 @@ type OrganizationRepository interface {
 	UpdateOrganization(org *model.Organization) error
 	DeleteOrganization(orgId string) error
 	ListOrganizations(limit, offset int) ([]*model.Organization, error)
+	CountOrganizations() (int, error)
 }
 
 // ProjectRepository defines the interface for project data access
@@ -55,6 +56,8 @@ type ArtifactRepository interface {
 	GetByHandle(handle, orgUUID string) (*model.Artifact, error)
 	GetByUUID(uuid, orgUUID string) (*model.Artifact, error)
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
+	GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error)
+	GetMetadataByUUIDs(uuids []string, orgUUID string) (map[string]*model.APIMetadata, error)
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 	ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error)
 }

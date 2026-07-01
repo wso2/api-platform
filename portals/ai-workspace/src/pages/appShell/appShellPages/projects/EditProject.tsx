@@ -66,7 +66,13 @@ function EditProjectForm() {
     if (!trimmedName || !projectId) return;
 
     const project = projectsForCurrentOrganization.find((p) => p.id === projectId);
-    if (!project) return;
+    if (!project) {
+      showSnackbar(
+        'Project is unavailable or still loading. Please try again.',
+        'error'
+      );
+      return;
+    }
 
     try {
       setIsSubmitting(true);

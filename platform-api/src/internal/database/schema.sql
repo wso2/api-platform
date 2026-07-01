@@ -387,7 +387,8 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    display_name VARCHAR(63) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes BLOB NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -400,7 +401,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, display_name)
+    UNIQUE(artifact_uuid, handle)
 );
 
 -- Application API Key mappings table

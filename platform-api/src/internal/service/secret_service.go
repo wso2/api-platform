@@ -233,7 +233,6 @@ func hashSecret(key []byte, plaintext string) string {
 
 func secretToResponse(s *model.Secret) *dto.SecretResponse {
 	return &dto.SecretResponse{
-		UUID:        s.UUID,
 		Handle:      s.Handle,
 		DisplayName: s.DisplayName,
 		CreatedAt:   s.CreatedAt,
@@ -243,7 +242,6 @@ func secretToResponse(s *model.Secret) *dto.SecretResponse {
 
 func secretToSummary(s *model.Secret) *dto.SecretSummary {
 	return &dto.SecretSummary{
-		ID:          s.UUID,
 		Handle:      s.Handle,
 		DisplayName: s.DisplayName,
 		Description: s.Description,

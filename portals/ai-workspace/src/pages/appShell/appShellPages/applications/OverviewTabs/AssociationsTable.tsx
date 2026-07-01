@@ -218,13 +218,13 @@ export default function AssociationsTable({
                   const canDetermineAddableKeys =
                     hasLoadedMappedKeys && hasLoadedEntityKeys;
                   const hasEntityKeys = entityKeys.some((key) =>
-                    Boolean(key.name)
+                    Boolean(key.id)
                   );
                   const hasAvailableKeysToAdd = entityKeys.some(
                     (key) =>
-                      key.name &&
-                      !mappedKeyIds.has(key.name) &&
-                      !unavailableKeyNames.has(key.name)
+                      key.id &&
+                      !mappedKeyIds.has(key.id) &&
+                      !unavailableKeyNames.has(key.id)
                   );
                   const entityLabel = isProvider ? 'provider' : 'proxy';
                   const addApiKeyTooltip = selectionBlockedMessage

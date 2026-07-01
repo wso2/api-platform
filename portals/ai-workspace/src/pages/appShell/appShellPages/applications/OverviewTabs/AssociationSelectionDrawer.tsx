@@ -121,7 +121,7 @@ export function SelectableKeyList({
         </Typography>
       ) : null}
       {keys.map((key) => {
-        const keyName = key.name ?? "";
+        const keyName = key.id ?? "";
         const isLocked = lockedKeyNames.has(keyName);
         const isUsedElsewhere = disabledKeyNames.has(keyName);
         const isInteractionBlocked = Boolean(selectionBlockedMessage);
@@ -189,7 +189,7 @@ export function SelectableKeyList({
               noWrap
               sx={{ flex: 1 }}
             >
-              {key.name || "—"}
+              {key.displayName || key.id || "—"}
             </Typography>
             {keyStatus ? (
               <Chip

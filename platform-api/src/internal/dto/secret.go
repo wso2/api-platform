@@ -39,7 +39,6 @@ type UpdateSecretRequest struct {
 
 // SecretResponse is returned on POST and PUT.
 type SecretResponse struct {
-	UUID        string    `json:"uuid"`
 	Handle      string    `json:"id"`
 	DisplayName string    `json:"displayName"`
 	CreatedAt   time.Time `json:"createdAt"`
@@ -48,7 +47,6 @@ type SecretResponse struct {
 
 // SecretSummary is returned on GET list and GET by ID — no value field.
 type SecretSummary struct {
-	ID          string    `json:"uuid"`
 	Handle      string    `json:"id"`
 	DisplayName string    `json:"displayName"`
 	Description string    `json:"description,omitempty"`

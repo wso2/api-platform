@@ -5016,7 +5016,7 @@ components:
     APIKeyItem:
       type: object
       required:
-        - name
+        - displayName
         - maskedApiKey
         - status
         - createdAt
@@ -5024,9 +5024,16 @@ components:
         - updatedAt
         - allowedTargets
       properties:
-        name:
+        id:
           type: string
-          description: URL-safe identifier of the API key
+          description: URL-safe handle (identifier) of the API key (generated from displayName when not supplied)
+          minLength: 3
+          maxLength: 40
+        displayName:
+          type: string
+          description: Human-readable display name of the API key
+          minLength: 1
+          maxLength: 128
         maskedApiKey:
           type: string
           description: Masked representation of the API key for display purposes
@@ -6556,12 +6563,18 @@ components:
       type: object
       required:
         - apiId
+        - kind
         - subscriberId
       properties:
         apiId:
           type: string
-          description: API handle or UUID (REST API identifier)
-          example: "c9f2b6ae-1234-5678-9abc-def012345678"
+          description: Handle (ID) of the artifact to subscribe to. Resolved against the table for the given kind.
+          example: "my-rest-api"
+        kind:
+          type: string
+          enum: [RestApi, LlmProvider, LlmProxy, Mcp]
+          description: Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+          example: "RestApi"
         subscriberId:
           type: string
           minLength: 1
@@ -6590,8 +6603,13 @@ components:
           description: Subscription UUID
         apiId:
           type: string
-          format: uuid
-          description: REST API UUID
+          description: Handle (ID) of the subscribed artifact
+          example: "my-rest-api"
+        kind:
+          type: string
+          enum: [RestApi, LlmProvider, LlmProxy, Mcp]
+          description: Type of the subscribed artifact
+          example: "RestApi"
         subscriberId:
           type: string
           minLength: 1
@@ -8355,10 +8373,6 @@ components:
       required:
         - displayName
       properties:
-        uuid:
-          type: string
-          description: UUID of the secret
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
         id:
           type: string
           minLength: 3
@@ -8383,10 +8397,6 @@ components:
       required:
         - displayName
       properties:
-        uuid:
-          type: string
-          description: UUID of the secret
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
         id:
           type: string
           minLength: 3

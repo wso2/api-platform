@@ -1034,7 +1034,8 @@ export interface APIKeyRevokeRequest {
  * User API Key
  */
 export interface UserAPIKey {
-  name?: string;
+  id?: string;
+  displayName?: string;
   artifactId?: string;
   artifactType?: string;
   maskedApiKey?: string;
