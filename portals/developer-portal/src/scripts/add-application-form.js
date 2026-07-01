@@ -14,6 +14,25 @@ const name = document.getElementById('applicationName').value;
 
 let hasStartTyping = false;
 
+// Slugifies a display name into a handle, matching platform-api's handle convention:
+// lowercase, alphanumeric + hyphens only, no leading/trailing/consecutive hyphens,
+// max 40 chars. Actual uniqueness (per org) is enforced server-side; if the generated
+// handle happens to collide, the create request fails and the user can retry.
+function generateHandle(name) {
+    let handle = (name || '')
+        .toLowerCase()
+        .replace(/[\s_]+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    handle = handle.substring(0, 40).replace(/-$/, '');
+    if (handle.length < 3) {
+        const suffix = Math.random().toString(36).slice(2, 6);
+        handle = handle ? `${handle}-${suffix}` : suffix;
+    }
+    return handle;
+}
+
 function showApplicationForm() {
     if (formView) {
         formView.classList.remove('d-none');
@@ -161,6 +180,7 @@ applicationForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({
                 displayName: name,
                 description,
+                id: generateHandle(name),
             }),
         });
 
