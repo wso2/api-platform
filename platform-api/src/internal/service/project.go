@@ -113,28 +113,23 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 		return nil, fmt.Errorf("failed to generate project ID: %w", err)
 	}
 
-	orgUUID, err := utils.ParseOpenAPIUUID(organizationID)
-	if err != nil {
-		return nil, err
-	}
-
 	var description *string
 	if req.Description != nil {
 		description = req.Description
 	}
 
 	project := &api.Project{
-		Id:             &handle,
-		DisplayName:    req.DisplayName,
-		OrganizationId: orgUUID,
-		Description:    description,
-		CreatedAt:      utils.TimePtrIfNotZero(time.Now()),
-		UpdatedAt:      utils.TimePtrIfNotZero(time.Now()),
+		Id:          &handle,
+		DisplayName: req.DisplayName,
+		Description: description,
+		CreatedAt:   utils.TimePtrIfNotZero(time.Now()),
+		UpdatedAt:   utils.TimePtrIfNotZero(time.Now()),
 	}
 
 	projectModel := s.apiToModel(project)
 	projectModel.ID = projectID
 	projectModel.Handle = handle
+	projectModel.OrganizationID = organizationID
 	projectModel.CreatedBy = actor
 	projectModel.UpdatedBy = actor
 
@@ -143,7 +138,7 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	}
 	_ = s.auditRepo.Record("CREATE", projectModel.ID, "project", organizationID, actor)
 
-	return s.modelToAPI(projectModel), nil
+	return s.modelToAPI(projectModel, org.Handle), nil
 }
 
 func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project, error) {
@@ -155,7 +150,16 @@ func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project,
 		return nil, constants.ErrProjectNotFound
 	}
 
-	return s.modelToAPI(projectModel), nil
+	org, err := s.orgRepo.GetOrganizationByUUID(projectModel.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
+
+	return s.modelToAPI(projectModel, orgHandle), nil
 }
 
 func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api.Project, error) {
@@ -174,7 +178,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 
 	projects := make([]api.Project, 0)
 	for _, projectModel := range projectModels {
-		apiProj := s.modelToAPI(projectModel)
+		apiProj := s.modelToAPI(projectModel, org.Handle)
 		if apiProj == nil {
 			s.slogger.Warn("Failed to convert project model to API", "organizationId", organizationID)
 			continue
@@ -222,7 +226,16 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 	}
 	_ = s.auditRepo.Record("UPDATE", project.ID, "project", orgId, actor)
 
-	return s.modelToAPI(project), nil
+	org, err := s.orgRepo.GetOrganizationByUUID(orgId)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
+
+	return s.modelToAPI(project, orgHandle), nil
 }
 
 func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
@@ -296,33 +309,17 @@ func (s *ProjectService) apiToModel(project *api.Project) *model.Project {
 		handle = *project.Id
 	}
 
-	organizationID := ""
-	if project.OrganizationId != nil {
-		organizationID = utils.OpenAPIUUIDToString(*project.OrganizationId)
-	}
-
 	return &model.Project{
-		Handle:         handle,
-		Name:           project.DisplayName,
-		OrganizationID: organizationID,
-		Description:    description,
-		CreatedAt:      createdAt,
-		UpdatedAt:      updatedAt,
+		Handle:      handle,
+		Name:        project.DisplayName,
+		Description: description,
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 	}
 }
 
-func (s *ProjectService) modelToAPI(projectModel *model.Project) *api.Project {
+func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle string) *api.Project {
 	if projectModel == nil {
-		return nil
-	}
-
-	projectUUID, err := utils.ParseOpenAPIUUID(projectModel.ID)
-	if err != nil {
-		return nil
-	}
-
-	orgID, err := utils.ParseOpenAPIUUID(projectModel.OrganizationID)
-	if err != nil {
 		return nil
 	}
 
@@ -335,8 +332,7 @@ func (s *ProjectService) modelToAPI(projectModel *model.Project) *api.Project {
 	return &api.Project{
 		Id:             &handle,
 		DisplayName:    projectModel.Name,
-		Uuid:           projectUUID,
-		OrganizationId: orgID,
+		OrganizationId: &orgHandle,
 		Description:    description,
 		CreatedAt:      utils.TimePtrIfNotZero(projectModel.CreatedAt),
 		UpdatedAt:      utils.TimePtrIfNotZero(projectModel.UpdatedAt),

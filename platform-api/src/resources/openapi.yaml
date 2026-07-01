@@ -910,7 +910,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -963,7 +966,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -3125,7 +3131,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -3181,7 +3190,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -5133,12 +5145,6 @@ components:
         - displayName
         - region
       properties:
-        uuid:
-          type: string
-          format: uuid
-          description: Unique UUID for the organization
-          readOnly: true
-          example: "123e4567-e89b-12d3-a456-426614174000"
         id:
           type: string
           description: Handle (URL-friendly slug) for the organization
@@ -5215,22 +5221,18 @@ components:
           minLength: 1
           maxLength: 128
           example: "Default Project"
-        uuid:
-          type: string
-          format: uuid
-          description: Unique UUID for the project
-          readOnly: true
-          example: "yr434567-de34-76uj6-w376-234324532"
         description:
           type: string
           description: Description of the project
           example: "This is the default project for development"
         organizationId:
           type: string
-          format: uuid
-          description: UUID of the organization this project belongs to
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this project belongs to
           readOnly: true
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "acme"
         createdAt:
           type: string
           format: date-time
@@ -5273,9 +5275,11 @@ components:
           example: "GenAI Demo App"
         projectId:
           type: string
-          format: uuid
-          description: UUID of the project this application belongs to.
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this application belongs to.
+          example: default-project
         type:
           $ref: '#/components/schemas/ApplicationType'
         description:
@@ -5309,9 +5313,11 @@ components:
           example: "GenAI Demo App"
         projectId:
           type: string
-          format: uuid
-          description: UUID of the project this application belongs to
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this application belongs to
+          example: default-project
         type:
           $ref: '#/components/schemas/ApplicationType'
         description:
@@ -5397,7 +5403,6 @@ components:
       type: object
       required:
         - id
-        - uuid
         - displayName
         - version
         - kind
@@ -5408,11 +5413,6 @@ components:
           minLength: 1
           maxLength: 63
           example: provider-handle
-        uuid:
-          type: string
-          format: uuid
-          description: UUID of the associated target
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
         displayName:
           type: string
           description: Human-readable name for the associated target
@@ -5594,9 +5594,11 @@ components:
           example: admin
         projectId:
           type: string
-          format: uuid
-          description: ID of the project this API belongs to
-          example: yr434567-de34-76uj6-w376-234324532
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this API belongs to
+          example: default-project
         createdAt:
           type: string
           format: date-time
@@ -5824,8 +5826,11 @@ components:
       properties:
         gatewayId:
           type: string
-          format: uuid
-          example: "987e6543-e21b-45d3-a789-426614174999"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway to associate with the REST API
+          example: prod-gateway-01
 
     RESTAPIGatewayListResponse:
       type: object
@@ -6039,12 +6044,6 @@ components:
       required:
         - displayName
       properties:
-        uuid:
-          type: string
-          format: uuid
-          description: Unique UUID for the gateway
-          readOnly: true
-          example: "987e6543-e21b-45d3-a789-426614174999"
         id:
           type: string
           description: Handle (URL-friendly slug) for the gateway
@@ -6054,9 +6053,11 @@ components:
           example: "prod-gateway-01"
         organizationId:
           type: string
-          format: uuid
-          description: UUID of the organization this gateway belongs to
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this gateway belongs to
+          example: "acme"
         displayName:
           type: string
           description: Human-readable gateway name
@@ -6147,12 +6148,6 @@ components:
       type: object
       description: Lightweight gateway status information optimized for frequent polling
       properties:
-        uuid:
-          type: string
-          format: uuid
-          description: Unique UUID for the gateway
-          readOnly: true
-          example: "987e6543-e21b-45d3-a789-426614174999"
         id:
           type: string
           description: Handle (URL-friendly slug) for the gateway
@@ -6486,9 +6481,6 @@ components:
       required:
         - displayName
       properties:
-        uuid:
-          type: string
-          format: uuid
         id:
           type: string
           description: Handle (slug) for the subscription plan
@@ -6512,7 +6504,11 @@ components:
           format: date-time
         organizationId:
           type: string
-          format: uuid
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this plan belongs to
+          example: "acme"
         status:
           type: string
           enum: [ACTIVE, INACTIVE]
@@ -6550,12 +6546,12 @@ components:
           example: "user-123"
         applicationId:
           type: string
-          description: Application ID (from DevPortal/STS). Optional in token-based subscriptions.
-          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          description: Handle (ID) of the application this subscription belongs to. Optional in token-based subscriptions.
+          example: "my-app-handle"
         subscriptionPlanId:
           type: string
-          description: Subscription plan UUID. Links the subscription to rate limit and billing configuration.
-          example: "plan-uuid-1"
+          description: Handle (slug) of the subscription plan. Links the subscription to rate limit and billing configuration.
+          example: "gold"
         status:
           type: string
           description: Subscription status (default ACTIVE)
@@ -6579,20 +6575,25 @@ components:
           description: Unique subscriber identifier for this API (required)
         applicationId:
           type: string
-          description: Application ID (optional for token-based subscriptions)
+          description: Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
+          example: "my-app-handle"
         subscriptionToken:
           type: string
           description: Opaque subscription token for API invocation via Subscription-Key header
         subscriptionPlanId:
           type: string
-          description: Subscription plan UUID
+          description: Handle (slug) of the subscription plan
+          example: "gold"
         subscriptionPlanName:
           type: string
           description: Subscription plan display name (e.g. Bronze, Gold)
         organizationId:
           type: string
-          format: uuid
-          description: Organization UUID
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this subscription belongs to
+          example: "acme"
         status:
           type: string
           enum: [ACTIVE, INACTIVE, REVOKED]
@@ -6718,8 +6719,11 @@ components:
           example: "current"
         gatewayId:
           type: string
-          format: uuid
-          description: The target gateway UUID for this deployment
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the target gateway for this deployment
+          example: prod-gateway-01
         metadata:
           type: object
           additionalProperties: true
@@ -6744,8 +6748,11 @@ components:
           example: "v1.0-production"
         gatewayId:
           type: string
-          format: uuid
-          description: UUID of the gateway
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway
+          example: prod-gateway-01
         status:
           type: string
           enum:

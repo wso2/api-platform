@@ -63,7 +63,6 @@ type CreateSubscriptionRequest struct {
 	Status             string  `json:"status,omitempty"`
 }
 
-
 // CreateSubscription handles POST /api/v0.9/subscriptions
 func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
@@ -358,7 +357,7 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 		"uuid":           sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
-		"organizationId": sub.OrganizationUUID,
+		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,
@@ -393,7 +392,7 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 		"uuid":           sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
-		"organizationId": sub.OrganizationUUID,
+		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,

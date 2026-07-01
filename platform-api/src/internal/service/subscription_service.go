@@ -32,6 +32,8 @@ type SubscriptionService struct {
 	apiRepo          repository.APIRepository
 	artifactRepo     repository.ArtifactRepository
 	subscriptionRepo repository.SubscriptionRepository
+	planRepo         repository.SubscriptionPlanRepository
+	orgRepo          repository.OrganizationRepository
 	gatewayEvents    *GatewayEventsService
 	auditRepo        repository.AuditRepository
 	slogger          *slog.Logger
@@ -42,6 +44,8 @@ func NewSubscriptionService(
 	apiRepo repository.APIRepository,
 	artifactRepo repository.ArtifactRepository,
 	subscriptionRepo repository.SubscriptionRepository,
+	planRepo repository.SubscriptionPlanRepository,
+	orgRepo repository.OrganizationRepository,
 	gatewayEvents *GatewayEventsService,
 	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
@@ -53,10 +57,25 @@ func NewSubscriptionService(
 		apiRepo:          apiRepo,
 		artifactRepo:     artifactRepo,
 		subscriptionRepo: subscriptionRepo,
+		planRepo:         planRepo,
+		orgRepo:          orgRepo,
 		gatewayEvents:    gatewayEvents,
 		auditRepo:        auditRepo,
 		slogger:          slogger,
 	}
+}
+
+// ResolveOrgHandle returns the organization handle for display (organizationId in
+// responses should be the handle, not the internal UUID).
+func (s *SubscriptionService) ResolveOrgHandle(orgUUID string) string {
+	if orgUUID == "" {
+		return ""
+	}
+	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
+	if err != nil || org == nil {
+		return orgUUID // fallback to UUID if lookup fails
+	}
+	return org.Handle
 }
 
 // resolveAPIUUID resolves apiId (handle or UUID) to rest_apis.uuid for the organization
@@ -135,6 +154,16 @@ func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, subscrib
 	}
 	if exists {
 		return nil, constants.ErrSubscriptionAlreadyExists
+	}
+
+	if subscriptionPlanId != nil && *subscriptionPlanId != "" {
+		plan, err := s.planRepo.GetByHandleAndOrg(*subscriptionPlanId, orgUUID)
+		if err != nil {
+			return nil, err
+		}
+		if plan == nil {
+			return nil, constants.ErrSubscriptionPlanNotFound
+		}
 	}
 
 	sub := &model.Subscription{

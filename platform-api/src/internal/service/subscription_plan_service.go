@@ -32,6 +32,7 @@ import (
 type SubscriptionPlanService struct {
 	planRepo      repository.SubscriptionPlanRepository
 	gatewayRepo   repository.GatewayRepository
+	orgRepo       repository.OrganizationRepository
 	gatewayEvents *GatewayEventsService
 	auditRepo     repository.AuditRepository
 	slogger       *slog.Logger
@@ -41,6 +42,7 @@ type SubscriptionPlanService struct {
 func NewSubscriptionPlanService(
 	planRepo repository.SubscriptionPlanRepository,
 	gatewayRepo repository.GatewayRepository,
+	orgRepo repository.OrganizationRepository,
 	gatewayEvents *GatewayEventsService,
 	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
@@ -51,10 +53,24 @@ func NewSubscriptionPlanService(
 	return &SubscriptionPlanService{
 		planRepo:      planRepo,
 		gatewayRepo:   gatewayRepo,
+		orgRepo:       orgRepo,
 		gatewayEvents: gatewayEvents,
 		auditRepo:     auditRepo,
 		slogger:       slogger,
 	}
+}
+
+// ResolveOrgHandle returns the organization handle for display (organizationId in
+// responses should be the handle, not the internal UUID).
+func (s *SubscriptionPlanService) ResolveOrgHandle(orgUUID string) string {
+	if orgUUID == "" {
+		return ""
+	}
+	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
+	if err != nil || org == nil {
+		return orgUUID // fallback to UUID if lookup fails
+	}
+	return org.Handle
 }
 
 // CreatePlan creates a new subscription plan

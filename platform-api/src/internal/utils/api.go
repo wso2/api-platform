@@ -29,7 +29,6 @@ import (
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -69,16 +68,16 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 		lifeCycleStatus = string(*restAPI.LifeCycleStatus)
 	}
 
-	projectID := OpenAPIUUIDToString(restAPI.ProjectId)
-
 	apiModel := &model.API{
-		Handle:          handle,
-		Name:            restAPI.DisplayName,
-		Kind:            kind,
-		Description:     description,
-		Version:         restAPI.Version,
-		CreatedBy:       createdBy,
-		ProjectID:       projectID,
+		Handle:      handle,
+		Name:        restAPI.DisplayName,
+		Kind:        kind,
+		Description: description,
+		Version:     restAPI.Version,
+		CreatedBy:   createdBy,
+		// ProjectID is set to the request-supplied project handle here; the caller must
+		// overwrite it with the resolved project's UUID before persisting.
+		ProjectID:       restAPI.ProjectId,
 		OrganizationID:  orgID,
 		LifeCycleStatus: lifeCycleStatus,
 		Channels:        u.ChannelsAPIToModel(restAPI.Channels),
@@ -107,14 +106,10 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 
 // ModelToRESTAPI converts internal model representation to REST API model.
 // Note: Model.Handle maps to RESTAPI.Id (user-facing identifier)
-func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
+// projectHandle is the handle of the project referenced by modelAPI.ProjectID (resolved by the caller).
+func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API, projectHandle string) (*api.RESTAPI, error) {
 	if modelAPI == nil {
 		return nil, nil
-	}
-
-	projectID, err := ParseOpenAPIUUID(modelAPI.ProjectID)
-	if err != nil {
-		return nil, err
 	}
 
 	var status *api.RESTAPILifeCycleStatus
@@ -135,7 +130,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
 		DisplayName:       modelAPI.Name,
 		Operations:        u.OperationsModelToAPI(modelAPI.Configuration.Operations),
 		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
-		ProjectId:         *projectID,
+		ProjectId:         projectHandle,
 		ReadOnly:          BoolPtr(modelAPI.Origin == constants.OriginDP),
 		SubscriptionPlans: stringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
 		Transport:         stringSlicePtr(modelAPI.Configuration.Transport),
@@ -791,7 +786,7 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 		LifeCycleStatus: &lifeCycleStatus,
 		Kind:            StringPtrIfNotEmpty(kind),
 		Transport:       stringSlicePtr([]string{"http", "https"}),
-		ProjectId:       openapi_types.UUID{},
+		ProjectId:       "",
 
 		// Fields that may be set by caller:
 		// - Id

@@ -26,9 +26,6 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
-
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // mockAPIRepository is a mock implementation of the APIRepository interface
@@ -197,7 +194,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 
 // TestValidateCreateAPIRequest tests the validateCreateAPIRequest method
 func TestValidateCreateAPIRequest(t *testing.T) {
-	projectID := openapi_types.UUID(uuid.MustParse("11111111-1111-1111-1111-111111111111"))
+	projectID := "11111111-1111-1111-1111-111111111111"
 
 	tests := []struct {
 		name                     string
@@ -215,11 +212,11 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid create request",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,
@@ -229,12 +226,12 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "handle already exists",
 			req: &api.CreateRESTAPIRequest{
-				Id:        ptr("my-handle"),
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Upstream:  api.Upstream{},
+				Id:          ptr("my-handle"),
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
 			},
 			mockHandleExists: true,
 			wantErr:          true,
@@ -243,11 +240,11 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "name version already exists",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
 			},
 			mockNameVersionExists:    true,
 			wantErr:                  true,
@@ -258,11 +255,11 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "missing name",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Upstream:  api.Upstream{},
+				DisplayName: "",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidAPIName,
@@ -270,11 +267,11 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "missing project id",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: openapi_types.UUID{},
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   "",
+				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
 			errContains: "project id is required",
@@ -282,11 +279,11 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid context",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "invalid",
-				Version:   "v1",
-				ProjectId: projectID,
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "invalid",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidAPIContext,
@@ -294,11 +291,11 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid version",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "",
-				ProjectId: projectID,
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidAPIVersion,
@@ -306,7 +303,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid lifecycle state",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:            "Test API",
+				DisplayName:     "Test API",
 				Context:         "/test",
 				Version:         "v1",
 				ProjectId:       projectID,
@@ -319,12 +316,12 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid api type",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Kind:      ptr("INVALID_TYPE"),
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Kind:        ptr("INVALID_TYPE"),
+				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidAPIType,
@@ -332,12 +329,12 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "invalid transport",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Transport: slicePtr([]string{"invalid"}),
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Transport:   slicePtr([]string{"invalid"}),
+				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
 			expectedErr: constants.ErrInvalidTransport,
@@ -345,7 +342,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid lifecycle state",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:            "Test API",
+				DisplayName:     "Test API",
 				Context:         "/test",
 				Version:         "v1",
 				ProjectId:       projectID,
@@ -360,12 +357,12 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid api type",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Kind:      ptr("RestApi"),
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Kind:        ptr("RestApi"),
+				Upstream:    api.Upstream{},
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,
@@ -375,12 +372,12 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		{
 			name: "valid transport",
 			req: &api.CreateRESTAPIRequest{
-				DisplayName:      "Test API",
-				Context:   "/test",
-				Version:   "v1",
-				ProjectId: projectID,
-				Transport: slicePtr([]string{"https"}),
-				Upstream:  api.Upstream{},
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Transport:   slicePtr([]string{"https"}),
+				Upstream:    api.Upstream{},
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,
@@ -429,8 +426,9 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 
 func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 	service := &APIService{
-		apiRepo: &mockAPIRepository{},
-		apiUtil: &utils.APIUtil{},
+		apiRepo:     &mockAPIRepository{},
+		projectRepo: &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
+		apiUtil:     &utils.APIUtil{},
 	}
 
 	condition := "request.path == '/pets'"

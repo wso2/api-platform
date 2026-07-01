@@ -24,6 +24,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -32,7 +33,6 @@ import (
 	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // WebSubAPIDeploymentHandler handles deployment routes for WebSub APIs
@@ -87,7 +87,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "base is required"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.GatewayId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}

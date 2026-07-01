@@ -34,7 +34,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -126,23 +125,21 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
-		return nil, constants.ErrDeploymentGatewayIDRequired
-	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := strings.TrimSpace(req.GatewayId)
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
+	gatewayID := gateway.ID
 
 	// Get LLM provider
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
@@ -258,6 +255,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -340,6 +338,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
@@ -419,6 +418,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -494,6 +494,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		mapped, err := toAPIDeploymentResponse(
+			s.gatewayRepo,
 			d.DeploymentID,
 			d.Name,
 			d.GatewayID,
@@ -535,6 +536,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -1216,23 +1218,21 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
-		return nil, constants.ErrDeploymentGatewayIDRequired
-	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := strings.TrimSpace(req.GatewayId)
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
+	gatewayID := gateway.ID
 
 	// Get LLM proxy
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
@@ -1344,6 +1344,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -1426,6 +1427,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
@@ -1505,6 +1507,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -1580,6 +1583,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		mapped, err := toAPIDeploymentResponse(
+			s.gatewayRepo,
 			d.DeploymentID,
 			d.Name,
 			d.GatewayID,
@@ -1621,6 +1625,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,

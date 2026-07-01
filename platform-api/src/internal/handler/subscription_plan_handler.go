@@ -81,7 +81,6 @@ type CreateSubscriptionPlanRequest struct {
 	Status             string  `json:"status,omitempty"`
 }
 
-
 // CreateSubscriptionPlan handles POST /api/v0.9/subscription-plans
 func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
@@ -151,7 +150,7 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription plan"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusCreated, toSubscriptionPlanResponse(created))
+	httputil.WriteJSON(w, http.StatusCreated, h.toSubscriptionPlanResponse(created))
 }
 
 // ListSubscriptionPlans handles GET /api/v0.9/subscription-plans
@@ -194,7 +193,7 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 	}
 	items := make([]map[string]any, 0, len(list))
 	for _, p := range list {
-		items = append(items, toSubscriptionPlanResponse(p))
+		items = append(items, h.toSubscriptionPlanResponse(p))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"subscriptionPlans": items, "count": len(items)})
 }
@@ -223,7 +222,7 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, toSubscriptionPlanResponse(plan))
+	httputil.WriteJSON(w, http.StatusOK, h.toSubscriptionPlanResponse(plan))
 }
 
 // UpdateSubscriptionPlan handles PUT /api/v0.9/subscription-plans/:planId
@@ -306,7 +305,7 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, toSubscriptionPlanResponse(updated))
+	httputil.WriteJSON(w, http.StatusOK, h.toSubscriptionPlanResponse(updated))
 }
 
 // DeleteSubscriptionPlan handles DELETE /api/v0.9/subscription-plans/:planId
@@ -350,14 +349,13 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscription-plans/{subscriptionPlanId}", h.DeleteSubscriptionPlan)
 }
 
-func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) map[string]any {
+func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.SubscriptionPlan) map[string]any {
 	resp := map[string]any{
-		"uuid":             plan.UUID,
 		"id":               plan.Handle,
 		"displayName":      plan.Name,
 		"billingPlan":      plan.BillingPlan,
 		"stopOnQuotaReach": plan.StopOnQuotaReach,
-		"organizationId":   plan.OrganizationUUID,
+		"organizationId":   h.planService.ResolveOrgHandle(plan.OrganizationUUID),
 		"status":           string(plan.Status),
 		"createdAt":        plan.CreatedAt,
 		"updatedAt":        plan.UpdatedAt,

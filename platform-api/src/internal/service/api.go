@@ -32,8 +32,6 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
-
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // APIService handles business logic for API operations
@@ -81,16 +79,13 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		return nil, err
 	}
 
-	projectID := utils.OpenAPIUUIDToString(req.ProjectId)
+	projectHandle := strings.TrimSpace(req.ProjectId)
 	// Check if project exists
-	project, err := s.projectRepo.GetProjectByUUID(projectID)
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if project == nil {
-		return nil, constants.ErrProjectNotFound
-	}
-	if project.OrganizationID != orgUUID {
 		return nil, constants.ErrProjectNotFound
 	}
 
@@ -132,6 +127,7 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 
 	apiREST := s.createRequestToRESTAPI(req, handle)
 	apiModel := s.apiUtil.RESTAPIToModel(apiREST, orgUUID)
+	apiModel.ProjectID = project.ID
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		s.slogger.Error("Failed to create API in repository", "apiName", req.DisplayName, "error", err)
@@ -145,7 +141,24 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 
 	_ = s.auditRepo.Record("CREATE", apiUUID, "rest_api", orgUUID, createdBy)
 
-	return s.apiUtil.ModelToRESTAPI(apiModel)
+	return s.modelToRESTAPI(apiModel)
+}
+
+// modelToRESTAPI converts an internal API model to the API representation,
+// resolving the project's handle for the response's projectId field.
+func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
+	if apiModel == nil {
+		return nil, nil
+	}
+	project, err := s.projectRepo.GetProjectByUUID(apiModel.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	projectHandle := apiModel.ProjectID
+	if project != nil {
+		projectHandle = project.Handle
+	}
+	return s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
 }
 
 // GetAPIByUUID retrieves an API by its ID
@@ -165,7 +178,7 @@ func (s *APIService) GetAPIByUUID(apiUUID, orgUUID string) (*api.RESTAPI, error)
 		return nil, constants.ErrAPINotFound
 	}
 
-	return s.apiUtil.ModelToRESTAPI(apiModel)
+	return s.modelToRESTAPI(apiModel)
 }
 
 // GetAPIByHandle retrieves an API by its handle
@@ -208,20 +221,20 @@ func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) 
 	return metadata.ID, nil
 }
 
-// GetAPIsByOrganization retrieves all APIs for an organization with optional project filter
-func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID string) ([]api.RESTAPI, error) {
-	// If project ID is provided, validate that it belongs to the organization
-	if projectUUID != "" {
-		project, err := s.projectRepo.GetProjectByUUID(projectUUID)
+// GetAPIsByOrganization retrieves all APIs for an organization with optional project filter.
+// projectHandle, when provided, is the project's handle (not UUID).
+func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string) ([]api.RESTAPI, error) {
+	projectUUID := ""
+	// If project handle is provided, resolve it and validate that it belongs to the organization
+	if projectHandle != "" {
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
 		if err != nil {
 			return nil, err
 		}
 		if project == nil {
 			return nil, constants.ErrProjectNotFound
 		}
-		if project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
-		}
+		projectUUID = project.ID
 	}
 
 	apiModels, err := s.apiRepo.GetAPIsByOrganizationUUID(orgUUID, projectUUID)
@@ -231,7 +244,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID string) (
 
 	apis := make([]api.RESTAPI, 0)
 	for _, apiModel := range apiModels {
-		apiResponse, err := s.apiUtil.ModelToRESTAPI(apiModel)
+		apiResponse, err := s.modelToRESTAPI(apiModel)
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +296,7 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 
 	_ = s.auditRepo.Record("UPDATE", apiUUID, "rest_api", orgUUID, updatedBy)
 
-	return s.apiUtil.ModelToRESTAPI(updatedAPIModel)
+	return s.modelToRESTAPI(updatedAPIModel)
 }
 
 // DeleteAPI deletes an API
@@ -405,14 +418,11 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 	}
 	var validGateways []*model.Gateway
 	for _, gatewayId := range gatewayIds {
-		gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+		gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgUUID)
 		if err != nil {
 			return nil, err
 		}
 		if gateway == nil {
-			return nil, constants.ErrGatewayNotFound
-		}
-		if gateway.OrganizationID != orgUUID {
 			return nil, constants.ErrGatewayNotFound
 		}
 		validGateways = append(validGateways, gateway)
@@ -463,7 +473,15 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewa
 	if err != nil {
 		return nil, err
 	}
-	response, err := apiGatewayDetailsToAPIList(gatewayDetails)
+	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
+	response, err := apiGatewayDetailsToAPIList(gatewayDetails, orgHandle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert API gateway details: %w", err)
 	}
@@ -497,7 +515,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	if !s.isValidVersion(req.Version) {
 		return constants.ErrInvalidAPIVersion
 	}
-	if req.ProjectId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.ProjectId) == "" {
 		return errors.New("project id is required")
 	}
 
@@ -589,7 +607,7 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTA
 		return nil, err
 	}
 
-	existingAPI, err := s.apiUtil.ModelToRESTAPI(existingAPIModel)
+	existingAPI, err := s.modelToRESTAPI(existingAPIModel)
 	if err != nil {
 		return nil, err
 	}
@@ -815,7 +833,7 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 }
 
 // apiGatewayDetailsToAPIList converts APIGatewayWithDetails models to RESTAPIGatewayListResponse
-func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails) (*api.RESTAPIGatewayListResponse, error) {
+func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails, orgHandle string) (*api.RESTAPIGatewayListResponse, error) {
 	if gatewayDetails == nil {
 		return &api.RESTAPIGatewayListResponse{
 			Count: 0,
@@ -830,7 +848,7 @@ func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails) (
 
 	responses := make([]api.RESTAPIGatewayResponse, 0, len(gatewayDetails))
 	for _, gwd := range gatewayDetails {
-		response, err := apiGatewayDetailsToAPI(gwd)
+		response, err := apiGatewayDetailsToAPI(gwd, orgHandle)
 		if err != nil {
 			return nil, err
 		}
@@ -851,18 +869,9 @@ func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails) (
 }
 
 // apiGatewayDetailsToAPI converts a single APIGatewayWithDetails model to RESTAPIGatewayResponse
-func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatewayResponse, error) {
+func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails, orgHandle string) (*api.RESTAPIGatewayResponse, error) {
 	if gwd == nil {
 		return nil, nil
-	}
-
-	gatewayID, err := utils.ParseOpenAPIUUID(gwd.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gateway ID as UUID: %w", err)
-	}
-	orgID, err := utils.ParseOpenAPIUUID(gwd.OrganizationID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gateway OrganizationID as UUID: %w", err)
 	}
 
 	response := api.RESTAPIGatewayResponse{
@@ -871,12 +880,11 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 		Description:       utils.StringPtrIfNotEmpty(gwd.Description),
 		DisplayName:       gwd.Name,
 		FunctionalityType: restAPIGatewayFunctionalityTypePtr(gwd.FunctionalityType),
-		Uuid:              gatewayID,
 		Id:                utils.StringPtrIfNotEmpty(gwd.Handle),
 		IsActive:          utils.BoolPtr(gwd.IsActive),
 		IsCritical:        utils.BoolPtr(gwd.IsCritical),
 		IsDeployed:        gwd.IsDeployed,
-		OrganizationId:    orgID,
+		OrganizationId:    utils.StringPtrIfNotEmpty(orgHandle),
 		Properties:        utils.MapPtrIfNotEmpty(gwd.Properties),
 		UpdatedAt:         utils.TimePtrIfNotZero(gwd.UpdatedAt),
 		Vhost:             utils.StringPtrIfNotEmpty(gwd.Vhost),

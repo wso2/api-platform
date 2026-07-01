@@ -606,7 +606,7 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 	}
 
 	// 7. Return GatewayResponse
-	return gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway), nil
 }
 
 // ListGateways retrieves all gateways with constitution-compliant envelope structure
@@ -628,7 +628,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*api.GatewayListResponse, 
 	// Convert to API types
 	responses := make([]api.GatewayResponse, 0, len(gateways))
 	for _, gw := range gateways {
-		if resp := gatewayModelToAPI(gw); resp != nil {
+		if resp := s.gatewayModelToAPI(gw); resp != nil {
 			responses = append(responses, *resp)
 		}
 	}
@@ -656,7 +656,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 		return nil, errors.New("gateway not found")
 	}
 
-	return gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway), nil
 }
 
 // UpdateGateway updates gateway details
@@ -692,7 +692,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 		_ = s.auditRepo.Record("UPDATE", gateway.ID, "gateway", orgId, updatedBy)
 	}
 
-	return gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway), nil
 }
 
 // DeleteGateway deletes a gateway and all associated tokens (CASCADE)
@@ -1062,25 +1062,20 @@ func hashToken(plainToken string) string {
 // Mapping functions
 
 // gatewayModelToAPI converts a Gateway model to GatewayResponse API type
-func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
+func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 	if gateway == nil {
 		return nil
 	}
 
-	gatewayID, err := uuid.Parse(gateway.ID)
-	if err != nil {
-		return nil
-	}
-	orgID, err := uuid.Parse(gateway.OrganizationID)
-	if err != nil {
-		return nil
+	orgHandle := ""
+	if org, err := s.orgRepo.GetOrganizationByUUID(gateway.OrganizationID); err == nil && org != nil {
+		orgHandle = org.Handle
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
 	return &api.GatewayResponse{
-		Uuid:              &gatewayID,
 		Id:                &gateway.Handle,
-		OrganizationId:    &orgID,
+		OrganizationId:    &orgHandle,
 		DisplayName:       gateway.Name,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
@@ -1100,13 +1095,7 @@ func gatewayStatusModelToAPI(gateway *model.Gateway) *api.GatewayStatusResponse 
 		return nil
 	}
 
-	gatewayID, err := uuid.Parse(gateway.ID)
-	if err != nil {
-		return nil
-	}
-
 	return &api.GatewayStatusResponse{
-		Uuid:       &gatewayID,
 		Id:         &gateway.Handle,
 		IsActive:   &gateway.IsActive,
 		IsCritical: &gateway.IsCritical,

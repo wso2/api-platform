@@ -60,7 +60,7 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
 		return
 	}
-	if utils.OpenAPIUUIDToString(req.ProjectId) == "00000000-0000-0000-0000-000000000000" {
+	if strings.TrimSpace(req.ProjectId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
 		return
 	}

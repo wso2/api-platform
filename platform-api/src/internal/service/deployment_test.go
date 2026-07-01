@@ -1058,6 +1058,7 @@ func TestGetDeployments(t *testing.T) {
 			service := &DeploymentService{
 				apiRepo:        mockAPIRepo,
 				deploymentRepo: mockDeploymentRepo,
+				gatewayRepo:    &mockDeploymentGatewayRepository{gateway: &model.Gateway{ID: testGatewayID, Handle: "test-gateway"}},
 				cfg:            &testConfig,
 			}
 
@@ -1154,6 +1155,7 @@ func TestGetDeployment(t *testing.T) {
 			service := &DeploymentService{
 				apiRepo:        mockAPIRepo,
 				deploymentRepo: mockDeploymentRepo,
+				gatewayRepo:    &mockDeploymentGatewayRepository{gateway: &model.Gateway{ID: testGatewayID, Handle: "test-gateway"}},
 			}
 
 			result, err := service.GetDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
@@ -1484,6 +1486,7 @@ func TestGetDeployments_MixedStates(t *testing.T) {
 	service := &DeploymentService{
 		apiRepo:        mockAPIRepo,
 		deploymentRepo: mockDeploymentRepo,
+		gatewayRepo:    &mockDeploymentGatewayRepository{gateway: &model.Gateway{ID: testGatewayID, Handle: "test-gateway"}},
 		cfg:            &testConfig,
 	}
 
@@ -1708,6 +1711,7 @@ func TestGetDeployment_ArchivedDeployment(t *testing.T) {
 	service := &DeploymentService{
 		apiRepo:        mockAPIRepo,
 		deploymentRepo: mockDeploymentRepo,
+		gatewayRepo:    &mockDeploymentGatewayRepository{gateway: &model.Gateway{ID: testGatewayID, Handle: "test-gateway"}},
 	}
 
 	result, err := service.GetDeployment(testAPIUUID, testDeploymentID, testOrgUUID)

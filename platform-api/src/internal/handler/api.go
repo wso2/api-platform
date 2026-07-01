@@ -29,8 +29,6 @@ import (
 	"platform-api/src/internal/utils"
 	"strings"
 
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/wso2/go-httpkit/httputil"
 )
 
@@ -77,7 +75,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 			"API version is required"))
 		return
 	}
-	if req.ProjectId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.ProjectId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
@@ -213,10 +211,6 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) {
 	projectId := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
-		return
-	}
-	if _, err := uuid.Parse(projectId); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "invalid projectId"))
 		return
 	}
 
@@ -394,7 +388,7 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 	// Extract gateway IDs from request
 	gatewayIds := make([]string, len(req))
 	for i, gw := range req {
-		gatewayIds[i] = utils.OpenAPIUUIDToString(gw.GatewayId)
+		gatewayIds[i] = gw.GatewayId
 	}
 
 	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId)

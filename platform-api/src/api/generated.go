@@ -482,7 +482,8 @@ type AddApplicationAssociationsRequest struct {
 
 // AddGatewayToRESTAPIRequest defines model for AddGatewayToRESTAPIRequest.
 type AddGatewayToRESTAPIRequest struct {
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayId Handle (URL-friendly slug) of the gateway to associate with the REST API
+	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // Application defines model for Application.
@@ -501,8 +502,8 @@ type Application struct {
 	// Id Application handle/identifier
 	Id string `binding:"required" json:"id" yaml:"id"`
 
-	// ProjectId UUID of the project this application belongs to
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this application belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// Type Type of the application
 	Type      ApplicationType `json:"type" yaml:"type"`
@@ -525,9 +526,6 @@ type ApplicationAssociation struct {
 
 	// UpdatedAt Timestamp when the association was updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid UUID of the associated target
-	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
 
 	// Version Version of the associated target
 	Version string `binding:"required" json:"version" yaml:"version"`
@@ -671,8 +669,8 @@ type CreateApplicationRequest struct {
 	// Id Unique handle/identifier for the application. Can be provided during creation or auto-generated.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// ProjectId UUID of the project this application belongs to.
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this application belongs to.
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// Type Type of the application
 	Type ApplicationType `json:"type" yaml:"type"`
@@ -850,8 +848,8 @@ type CreateRESTAPIRequest struct {
 	// Policies List of policies to be applied on the API
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
-	// ProjectId ID of the project this API belongs to
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -910,7 +908,7 @@ type CreateSubscriptionRequest struct {
 	// ApiId API handle or UUID (REST API identifier)
 	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
 
-	// ApplicationId Application ID (from DevPortal/STS). Optional in token-based subscriptions.
+	// ApplicationId Handle (ID) of the application this subscription belongs to. Optional in token-based subscriptions.
 	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 
 	// Status Subscription status (default ACTIVE)
@@ -919,7 +917,7 @@ type CreateSubscriptionRequest struct {
 	// SubscriberId Unique subscriber identifier for the subscription (required)
 	SubscriberId string `binding:"required" json:"subscriberId" yaml:"subscriberId"`
 
-	// SubscriptionPlanId Subscription plan UUID. Links the subscription to rate limit and billing configuration.
+	// SubscriptionPlanId Handle (slug) of the subscription plan. Links the subscription to rate limit and billing configuration.
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 }
 
@@ -956,8 +954,8 @@ type DeployRequest struct {
 	// Base The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
 	Base string `binding:"required" json:"base" yaml:"base"`
 
-	// GatewayId The target gateway UUID for this deployment
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
+	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
 	// Metadata Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -986,8 +984,8 @@ type DeploymentResponse struct {
 	// DeploymentId Unique identifier for the deployment
 	DeploymentId openapi_types.UUID `binding:"required" json:"deploymentId" yaml:"deploymentId"`
 
-	// GatewayId UUID of the gateway
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayId Handle (URL-friendly slug) of the gateway
+	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
 	// Metadata Metadata associated with the deployment
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -1143,17 +1141,14 @@ type GatewayResponse struct {
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
 
-	// OrganizationId UUID of the organization this gateway belongs to
-	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this gateway belongs to
+	OrganizationId *string `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid Unique UUID for the gateway
-	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
@@ -1183,9 +1178,6 @@ type GatewayStatusResponse struct {
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
-
-	// Uuid Unique UUID for the gateway
-	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // LLMAccessControl defines model for LLMAccessControl.
@@ -1841,9 +1833,6 @@ type Organization struct {
 
 	// UpdatedAt Timestamp when the organization was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid Unique UUID for the organization
-	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // Pagination defines model for Pagination.
@@ -1887,14 +1876,11 @@ type Project struct {
 	// Id Handle (URL-friendly slug) for the project
 	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
-	// OrganizationId UUID of the organization this project belongs to
-	OrganizationId *openapi_types.UUID `binding:"required" json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this project belongs to
+	OrganizationId *string `binding:"required" json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
 	// UpdatedAt Timestamp when the project was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid Unique UUID for the project
-	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // ProjectListResponse defines model for ProjectListResponse.
@@ -1936,8 +1922,8 @@ type RESTAPI struct {
 	// Policies List of policies to be applied on the API
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
-	// ProjectId ID of the project this API belongs to
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -2014,17 +2000,14 @@ type RESTAPIGatewayResponse struct {
 	// IsDeployed Whether the API is currently deployed to this gateway
 	IsDeployed bool `json:"isDeployed" yaml:"isDeployed"`
 
-	// OrganizationId UUID of the organization this gateway belongs to
-	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this gateway belongs to
+	OrganizationId *string `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid Unique UUID for the gateway
-	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
@@ -2221,18 +2204,18 @@ type Subscription struct {
 	// ApiId REST API UUID
 	ApiId *openapi_types.UUID `json:"apiId,omitempty" yaml:"apiId,omitempty"`
 
-	// ApplicationId Application ID (optional for token-based subscriptions)
+	// ApplicationId Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
 	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// OrganizationId Organization UUID
-	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this subscription belongs to
+	OrganizationId *string             `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	Status         *SubscriptionStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
 	// SubscriberId Unique subscriber identifier for this API (required)
 	SubscriberId *string `json:"subscriberId,omitempty" yaml:"subscriberId,omitempty"`
 
-	// SubscriptionPlanId Subscription plan UUID
+	// SubscriptionPlanId Handle (slug) of the subscription plan
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 
 	// SubscriptionPlanName Subscription plan display name (e.g. Bronze, Gold)
@@ -2267,14 +2250,15 @@ type SubscriptionPlan struct {
 	ExpiryTime  *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
 	// Id Handle (slug) for the subscription plan
-	Id                 *string                 `json:"id,omitempty" yaml:"id,omitempty"`
-	OrganizationId     *openapi_types.UUID     `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// OrganizationId Handle (URL-friendly slug) of the organization this plan belongs to
+	OrganizationId     *string                 `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	Status             *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	StopOnQuotaReach   *bool                   `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int                    `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string                 `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
 	UpdatedAt          *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Uuid               *openapi_types.UUID     `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
@@ -2724,13 +2708,13 @@ type GetMCPProxyDeploymentsParamsStatus string
 
 // RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
 type RestoreMCPProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployMCPProxyDeploymentParams defines parameters for UndeployMCPProxyDeployment.
 type UndeployMCPProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
@@ -2764,13 +2748,13 @@ type GetDeploymentsParamsStatus string
 
 // RestoreDeploymentParams defines parameters for RestoreDeployment.
 type RestoreDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployDeploymentParams defines parameters for UndeployDeployment.
 type UndeployDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 

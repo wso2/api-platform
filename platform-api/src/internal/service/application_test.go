@@ -26,9 +26,6 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
-
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type mockApplicationRepository struct {
@@ -250,6 +247,10 @@ type mockProjectRepository struct {
 }
 
 func (m *mockProjectRepository) GetProjectByUUID(projectID string) (*model.Project, error) {
+	return m.projectByUUID, m.projectByUUIDErr
+}
+
+func (m *mockProjectRepository) GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error) {
 	return m.projectByUUID, m.projectByUUIDErr
 }
 
@@ -485,7 +486,7 @@ func TestGetApplicationsByOrganization_AppliesPagination(t *testing.T) {
 		},
 	}
 	projectRepo := &mockProjectRepository{
-		projectByUUID: &model.Project{ID: projectID, OrganizationID: orgID},
+		projectByUUID: &model.Project{ID: projectID, Handle: projectID, OrganizationID: orgID},
 	}
 	orgRepo := &mockApplicationOrganizationRepository{
 		org: &model.Organization{ID: orgID},
@@ -803,7 +804,7 @@ func TestCreateApplication_RequiresProjectID(t *testing.T) {
 
 	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
 		DisplayName: "Sample App",
-		Type: api.ApplicationType("genai"),
+		Type:        api.ApplicationType("genai"),
 	}, orgID, "")
 	if !errors.Is(err, constants.ErrProjectNotFound) {
 		t.Fatalf("expected ErrProjectNotFound, got %v", err)
@@ -850,11 +851,10 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 		orgRepo:     orgRepo,
 	}
 
-	projectUUID := openapi_types.UUID(uuid.MustParse("11111111-1111-1111-1111-111111111111"))
 	_, err := svc.CreateApplication(&api.CreateApplicationRequest{
-		DisplayName:      "Sample App",
-		ProjectId: projectUUID,
-		Type:      api.ApplicationType("genai"),
+		DisplayName: "Sample App",
+		ProjectId:   "some-project-handle",
+		Type:        api.ApplicationType("genai"),
 	}, orgID, "")
 	if !errors.Is(err, constants.ErrProjectNotFound) {
 		t.Fatalf("expected ErrProjectNotFound, got %v", err)

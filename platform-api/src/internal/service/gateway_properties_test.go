@@ -140,7 +140,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 	baseGateway := &model.Gateway{
 		ID:             gatewayID,
 		OrganizationID: orgID,
-		Handle:    "old-gateway",
+		Handle:         "old-gateway",
 		Description:    "Old description",
 		Properties: map[string]interface{}{
 			"region": "us-east",
@@ -155,6 +155,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
+			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
 			auditRepo:   &noopAuditRepo{},
 		}
 
@@ -193,6 +194,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
+			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
 			auditRepo:   &noopAuditRepo{},
 		}
 

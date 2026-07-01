@@ -27,8 +27,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"time"
-
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type OrganizationService struct {
@@ -116,7 +114,6 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create organization in platform-api database first
 	org := &api.Organization{
-		Uuid:        &openapi_types.UUID{},
 		Id:          &handle,
 		DisplayName: name,
 		Region:      region,
@@ -237,13 +234,7 @@ func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Org
 		return nil, nil
 	}
 
-	orgID, err := utils.ParseOpenAPIUUID(orgModel.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse organization ID as UUID: %w", err)
-	}
-
 	return &api.Organization{
-		Uuid:        orgID,
 		Id:          &orgModel.Handle,
 		DisplayName: orgModel.Name,
 		Region:      orgModel.Region,

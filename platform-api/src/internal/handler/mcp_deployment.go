@@ -24,6 +24,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -32,7 +33,6 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // MCPProxyDeploymentHandler handles MCP proxy deployment endpoints
@@ -91,7 +91,7 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *htt
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.GatewayId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"gatewayId is required"))
 		return

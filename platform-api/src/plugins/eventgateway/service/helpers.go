@@ -66,6 +66,7 @@ func ensureArtifactMutableByUUID(repo repository.ArtifactRepository, artifactUUI
 
 // toAPIDeploymentResponse converts deployment fields into an api.DeploymentResponse.
 func toAPIDeploymentResponse(
+	gatewayRepo repository.GatewayRepository,
 	deploymentID string,
 	name string,
 	gatewayID string,
@@ -77,14 +78,22 @@ func toAPIDeploymentResponse(
 	statusReason *string,
 ) (*api.DeploymentResponse, error) {
 	deploymentUUID := utils.ParseOpenAPIUUIDOrZero(deploymentID)
-	gatewayUUID := utils.ParseOpenAPIUUIDOrZero(gatewayID)
 	baseUUID := utils.ParseOptionalOpenAPIUUID(baseDeploymentID)
+
+	gateway, err := gatewayRepo.GetByUUID(gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve gateway handle: %w", err)
+	}
+	gatewayHandle := gatewayID
+	if gateway != nil {
+		gatewayHandle = gateway.Handle
+	}
 
 	resp := &api.DeploymentResponse{
 		BaseDeploymentId: baseUUID,
 		CreatedAt:        createdAt,
 		DeploymentId:     deploymentUUID,
-		GatewayId:        gatewayUUID,
+		GatewayId:        gatewayHandle,
 		Metadata:         utils.MapPtrIfNotEmpty(metadata),
 		Name:             name,
 		Status:           api.DeploymentResponseStatus(status),
