@@ -324,7 +324,7 @@ const deleteOrganization = async (req, res) => {
     }
 };
 
-const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName, userId) => {
+const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName, userId, t) => {
     let content;
     // eslint-disable-next-line no-useless-catch
     try {
@@ -337,7 +337,7 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
                 orgId: orgId,
                 viewName: viewName,
                 createdBy: userId
-            });
+            }, t);
         }
     } catch (error) {
         throw error;
@@ -391,7 +391,7 @@ const applyTheme = async (req, res) => {
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
     const userId = util.resolveActor(req);
-    const extractPath = path.join(process.cwd(), '..', '.tmp', orgId);
+    const extractPath = path.join(process.cwd(), '..', '.tmp', `${orgId}-${viewName}-${Date.now()}`);
     let tempZipPath;
     try {
         if (!zipFile) {
@@ -408,10 +408,12 @@ const applyTheme = async (req, res) => {
         }
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
-        await orgDao.deleteAllContent(orgId, viewName);
-        for (const { filePath, fileName, fileContent, fileType } of files) {
-            await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId);
-        }
+        await sequelize.transaction(async (t) => {
+            await orgDao.deleteAllContent(orgId, viewName, t);
+            for (const { filePath, fileName, fileContent, fileType } of files) {
+                await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId, t);
+            }
+        });
         fs.rmSync(extractPath, { recursive: true, force: true });
         if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
         res.status(200).json({ id: orgId, fileName: zipFile.originalname });

@@ -23,6 +23,8 @@ const { Sequelize } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 
 const PLAN_INCLUDE = [{ model: SubscriptionPlanLimit, as: 'limits' }];
+const LIMIT_ORDER = [[{ model: SubscriptionPlanLimit, as: 'limits' }, 'uuid', 'ASC']];
+const VALID_LIMIT_TYPES = ['REQUEST_COUNT', 'EVENT_COUNT', 'BANDWIDTH', 'TOTAL_TOKEN_COUNT'];
 
 const buildSubscriptionPlanRow = (orgId, plan) => {
   return {
@@ -38,12 +40,21 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
 const normalizeLimits = (limits) => {
   if (!Array.isArray(limits)) return [];
   return limits.map(l => {
-    if (l.limitCount === undefined || l.limitCount === null) {
-      throw new Sequelize.ValidationError('limitCount is required for each limit');
+    if (typeof l.limitCount !== 'number' || !Number.isFinite(l.limitCount) ||
+        (l.limitCount !== -1 && l.limitCount <= 0)) {
+      throw new Sequelize.ValidationError('limitCount must be -1 (unlimited) or a positive number for each limit');
+    }
+    const limitType = (l.limitType || 'REQUEST_COUNT').toUpperCase();
+    if (!VALID_LIMIT_TYPES.includes(limitType)) {
+      throw new Sequelize.ValidationError(`limitType must be one of ${VALID_LIMIT_TYPES.join(', ')}`);
+    }
+    if (l.timeAmount !== undefined && l.timeAmount !== null &&
+        (typeof l.timeAmount !== 'number' || !Number.isFinite(l.timeAmount) || l.timeAmount <= 0)) {
+      throw new Sequelize.ValidationError('timeAmount must be a positive number when provided');
     }
     return {
       uuid: uuidv4(),
-      limit_type: (l.limitType || 'REQUEST_COUNT').toUpperCase(),
+      limit_type: limitType,
       time_unit: l.timeUnit ? l.timeUnit.toUpperCase() : null,
       time_amount: l.timeAmount || 1,
       limit_count: l.limitCount,
@@ -69,7 +80,7 @@ const create = async (orgId, plan, createdBy, t) => {
 
     const created = await SubscriptionPlan.create(row, { transaction: t });
     await replaceLimits(created.uuid, plan.limits || [], t);
-    return await SubscriptionPlan.findOne({ where: { uuid: created.uuid }, include: PLAN_INCLUDE, transaction: t });
+    return await SubscriptionPlan.findOne({ where: { uuid: created.uuid }, include: PLAN_INCLUDE, order: LIMIT_ORDER, transaction: t });
   } catch (error) {
     if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
       throw error;
@@ -87,7 +98,7 @@ const createMany = async (orgId, plans, createdBy, t) => {
       await replaceLimits(p.uuid, plan.limits || [], t);
       uuids.push(p.uuid);
     }
-    return await SubscriptionPlan.findAll({ where: { uuid: uuids }, include: PLAN_INCLUDE, transaction: t });
+    return await SubscriptionPlan.findAll({ where: { uuid: uuids }, include: PLAN_INCLUDE, order: LIMIT_ORDER, transaction: t });
   } catch (error) {
     if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
       throw error;
@@ -131,6 +142,7 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
     return await SubscriptionPlan.findOne({
       where: { uuid: planId, org_uuid: orgId },
       include: PLAN_INCLUDE,
+      order: LIMIT_ORDER,
       transaction: t
     });
   } catch (error) {
@@ -188,6 +200,7 @@ const getByName = async (orgId, planName, t) => {
                 org_uuid: orgId
             },
             include: PLAN_INCLUDE,
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlanResponse;
@@ -207,6 +220,7 @@ const get = async (planId, orgId, t) => {
                 uuid: planId
             },
             include: PLAN_INCLUDE,
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlanResponse;
@@ -230,6 +244,7 @@ const listByApi = async (apiId, t) => {
                 },
                 ...PLAN_INCLUDE,
             ],
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlanResponse;
@@ -249,6 +264,7 @@ const list = async (orgId, t) => {
                 org_uuid: orgId
             },
             include: PLAN_INCLUDE,
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlansResponse;

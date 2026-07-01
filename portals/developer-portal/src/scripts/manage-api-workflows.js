@@ -876,7 +876,8 @@ function openInVSCode() {
     }
 
     const name = document.getElementById('apiWorkflowName')?.value?.trim() || 'workflow';
-    const filename = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.arazzo.yaml';
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workflow';
+    const filename = slug + '.arazzo.yaml';
 
     const blob = new Blob([content], { type: 'application/yaml' });
     const url = URL.createObjectURL(blob);

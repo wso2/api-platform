@@ -1822,13 +1822,18 @@
     rows.forEach(function(row){
       var rawCount = row.querySelector('.cfg-limit-count').value.trim();
       var count = rawCount === '-1' ? -1 : parseInt(rawCount, 10);
-      if (isNaN(count)) return;
-      var unit = row.querySelector('.cfg-limit-unit').value || null;
-      var amount = parseInt(row.querySelector('.cfg-limit-amount').value, 10) || 1;
+      var rawAmount = row.querySelector('.cfg-limit-amount').value.trim();
+      var amount = rawAmount === '' ? 1 : parseInt(rawAmount, 10);
+      if (isNaN(count) || (count !== -1 && count <= 0)) {
+        throw new Error('Limit count must be -1 (unlimited) or a positive number.');
+      }
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Limit time amount must be a positive number.');
+      }
       limits.push({
         limitType:  row.querySelector('.cfg-limit-type').value,
         limitCount: count,
-        timeUnit:   unit,
+        timeUnit:   row.querySelector('.cfg-limit-unit').value || null,
         timeAmount: amount,
       });
     });
@@ -1864,11 +1869,19 @@
     var planName    = v('pol-name');
     if (!displayName || !planName) { await showAlert('Display name and name are required.', 'error'); return; }
 
+    var limits;
+    try {
+      limits = readLimits();
+    } catch (e) {
+      await showAlert(e.message, 'error');
+      return;
+    }
+
     var body = {
       name:        displayName,
       handle:      planName,
       description: v('pol-desc') || undefined,
-      limits:      readLimits(),
+      limits:      limits,
       refId:       v('pol-refid') || undefined,
     };
     if (editPlanId) body.id = editPlanId;

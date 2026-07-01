@@ -22,10 +22,10 @@
       {{/unless}}
     </div>
     <div class="aov-plan-limit">
-      {{#if limits.length}}{{#with (lookup limits 0)}}
+      {{#if limits.length}}{{#each limits}}
       <span class="aov-plan-count">{{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}</span>
       <span class="aov-plan-unit">{{limitTypeLabel limitType}}{{#if timeUnit}} / {{#unless (eq timeAmount 1)}}{{timeAmount}} {{/unless}}{{timeUnitLabel timeUnit}}{{/if}}</span>
-      {{/with}}{{else if requestCount}}
+      {{/each}}{{else if requestCount}}
       <span class="aov-plan-count">{{requestCount}}</span>
       <span class="aov-plan-unit">requests / min</span>
       {{else}}

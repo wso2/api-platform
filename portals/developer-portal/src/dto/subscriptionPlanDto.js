@@ -28,7 +28,7 @@ class SubscriptionPlan {
             limitType:  l.limit_type,
             timeUnit:   l.time_unit ?? null,
             timeAmount: l.time_amount,
-            limitCount: Number(l.limit_count),
+            limitCount: Number.isSafeInteger(Number(l.limit_count)) ? Number(l.limit_count) : String(l.limit_count),
         }));
     }
 }

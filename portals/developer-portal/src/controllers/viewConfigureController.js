@@ -62,7 +62,8 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.apiWorkflows = apiWorkflows;
 
         const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
-        templateContent.orgAPIs = await Promise.all(allAPIs.map(async api => ({
+        const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
+        templateContent.orgAPIs = allAPIs.map(api => ({
             apiId: api.uuid,
             apiName: api.name,
             apiHandle: api.handle,
@@ -75,8 +76,8 @@ const loadViewSettingsPage = async (req, res) => {
             tags: (api.dp_tags || []).map(tag => tag.name),
             agentVisibility: api.agent_visibility,
             subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.name),
-            existingDocs: await apiFileDao.listDocNames(orgId, api.uuid),
-        })));
+            existingDocs: docNamesByApiId[api.uuid] || [],
+        }));
 
         let orgLabels = [];
         try {

@@ -49,8 +49,8 @@ const helpers = {
 
     // JSON helpers
     json: (context) => JSON.stringify(context ?? null),
-    // For embedding JSON inside HTML double-quoted attributes: " → &quot;
-    jsonAttr: (context) => JSON.stringify(context ?? null).replace(/"/g, '&quot;'),
+    // For embedding JSON inside HTML double-quoted attributes
+    jsonAttr: (context) => new Handlebars.SafeString(Handlebars.escapeExpression(JSON.stringify(context ?? null))),
 
     // Subscription plan limit display helpers
     limitTypeLabel: (type) => {

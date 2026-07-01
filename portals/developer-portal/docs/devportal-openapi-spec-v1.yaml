@@ -189,9 +189,17 @@ paths:
         "200":
           $ref: "#/components/responses/OrganizationContentAssetResponse"
         "400":
-          $ref: "#/components/responses/TextMessageResponse"
+          description: Invalid or missing `fileType`/`fileName` query parameters.
+          content:
+            text/plain:
+              schema:
+                type: string
         "404":
-          $ref: "#/components/responses/TextMessageResponse"
+          description: No matching organization content asset was found.
+          content:
+            text/plain:
+              schema:
+                type: string
       security: []
   /devportal/v1/views/{viewName}/apply-theme:
     parameters:
@@ -2087,7 +2095,7 @@ components:
       schema:
         type: string
         example: getting-started.md
-      description: File name selector used by file retrieval and organization content deletion.
+      description: File name selector used to delete a single stored API content file.
     orgContentFileNameQuery:
       name: fileName
       in: query

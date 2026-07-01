@@ -144,7 +144,7 @@ async function updateOrgContent(orgId) {
     });
     if (response.ok) {
         const result = await response.json();
-        await showAlert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`, 'success');
+        await showAlert(`Upload successful! Organization ID: ${result.id}, File Name: ${result.fileName}`, 'success');
         window.location.href = 'configure';
     } else {
         const error = await response.text();
@@ -166,7 +166,7 @@ async function uploadContent(orgId) {
     });
     if (response.ok) {
         const result = await response.json();
-        await showAlert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`, 'success');
+        await showAlert(`Upload successful! Organization ID: ${result.id}, File Name: ${result.fileName}`, 'success');
         window.location.href = 'configure';
     } else {
         const error = await response.text();
@@ -219,7 +219,7 @@ async function editView(existingLabels, labelsContainerID, nameID, handleID, org
         removedLabels: sanitizeRemovedLabels
     }
     const response = await fetch(devportalApi.org(`/views/${handle}`), {
-        method: 'POST',
+        method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
         },

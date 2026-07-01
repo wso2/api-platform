@@ -243,7 +243,7 @@ module.exports = {
             "handle": "AsyncUnlimited",
             "name": "AsyncUnlimited",
             "description": "Allows unlimited requests for Async APIs",
-            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
+            "limits": [{ "limitType": "EVENT_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
         }
     ],
     ERROR_MESSAGE: {

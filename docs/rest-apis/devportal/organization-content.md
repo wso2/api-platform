@@ -40,8 +40,8 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Stored organization content asset.|string|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Plain text success response.|string|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid or missing `fileType`/`fileName` query parameters.|string|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|No matching organization content asset was found.|string|
 
 ## Apply a theme
 

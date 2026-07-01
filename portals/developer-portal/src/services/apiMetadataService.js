@@ -981,7 +981,7 @@ const getAPIFile = async (req, res) => {
 
             if (apiFileResponse) {
                 // Send file content as text
-                return res.status(200).send(Buffer.isBuffer(apiFile) ? apiFile : constants.CHARSET_UTF8);
+                return res.status(200).send(apiFile);
             } else {
                 res.status(404).send("API File not found");
             }
@@ -1224,7 +1224,7 @@ const updateSubscriptionPlans = async (req, res) => {
             }, async (t) => {
                 for (const plan of subscriptionPlans) {
                     const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
-                    if (!result) {
+                    if (!result?.subscriptionPlanResponse) {
                         throw new CustomError(
                             500,
                             constants.ERROR_CODE[500],

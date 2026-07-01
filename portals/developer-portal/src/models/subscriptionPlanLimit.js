@@ -53,7 +53,18 @@ const SubscriptionPlanLimit = sequelize.define('dp_subscription_plan_limit', {
     tableName: 'dp_subscription_plan_limits',
     indexes: [
         { name: 'idx_dp_subscription_plan_limits_plan', fields: ['plan_uuid'] },
-        { name: 'uq_dp_subscription_plan_limits', unique: true, fields: ['plan_uuid', 'limit_type', 'time_amount', 'time_unit'] }
+        {
+            name: 'uq_dp_subscription_plan_limits',
+            unique: true,
+            fields: ['plan_uuid', 'limit_type', 'time_amount', 'time_unit'],
+            where: { time_unit: { [Sequelize.Op.ne]: null } }
+        },
+        {
+            name: 'uq_dp_subscription_plan_limits_null_unit',
+            unique: true,
+            fields: ['plan_uuid', 'limit_type', 'time_amount'],
+            where: { time_unit: null }
+        }
     ]
 });
 
