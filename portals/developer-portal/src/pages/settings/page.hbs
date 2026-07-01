@@ -130,8 +130,8 @@
                         {{#if (eq apiType "GRAPHQL")}}cfg-api-avatar--graphql
                         {{else if (eq apiType "WS")}}cfg-api-avatar--ws
                         {{else if (eq apiType "SOAP")}}cfg-api-avatar--soap
-                        {{else if (eq apiType "MCP")}}cfg-api-avatar--mcp
-                        {{else if (eq apiType "WEBSUB")}}cfg-api-avatar--websub
+                        {{else if (eq apiType "Mcp")}}cfg-api-avatar--mcp
+                        {{else if (eq apiType "WebSubApi")}}cfg-api-avatar--websub
                         {{else}}cfg-api-avatar--rest{{/if}}">{{firstTwoLetters apiName}}</span>
                       <div>
                         <div class="cfg-cell-name">{{apiName}}</div>
@@ -144,14 +144,14 @@
                       {{#if (eq apiType "GRAPHQL")}}cfg-type-badge--graphql
                       {{else if (eq apiType "WS")}}cfg-type-badge--ws
                       {{else if (eq apiType "SOAP")}}cfg-type-badge--soap
-                      {{else if (eq apiType "MCP")}}cfg-type-badge--mcp
-                      {{else if (eq apiType "WEBSUB")}}cfg-type-badge--websub
+                      {{else if (eq apiType "Mcp")}}cfg-type-badge--mcp
+                      {{else if (eq apiType "WebSubApi")}}cfg-type-badge--websub
                       {{else}}cfg-type-badge--rest{{/if}}">
                       {{#if (eq apiType "WS")}}WebSocket
                       {{else if (eq apiType "GRAPHQL")}}GraphQL
                       {{else if (eq apiType "SOAP")}}SOAP
-                      {{else if (eq apiType "WEBSUB")}}WebSub
-                      {{else if (eq apiType "MCP")}}MCP
+                      {{else if (eq apiType "WebSubApi")}}WebSub
+                      {{else if (eq apiType "Mcp")}}MCP
                       {{else}}REST{{/if}}
                     </span>
                   </td>
@@ -252,12 +252,12 @@
                 <div class="cfg-form-group">
                   <label for="wz-type">API type</label>
                   <select id="wz-type" class="cfg-form-input">
-                    <option value="REST">REST</option>
+                    <option value="RestApi">REST</option>
                     <option value="WS">WebSocket</option>
                     <option value="GRAPHQL">GraphQL</option>
                     <option value="SOAP">SOAP</option>
-                    <option value="WEBSUB">WebSub</option>
-                    <option value="MCP">MCP</option>
+                    <option value="WebSubApi">WebSub</option>
+                    <option value="Mcp">MCP</option>
                   </select>
                 </div>
                 <div class="cfg-form-group">
@@ -893,14 +893,14 @@
 
   /* type-color map */
   var typeMap = {
-    REST:    { av:'cfg-api-avatar--rest',    tb:'cfg-type-badge--rest',    label:'REST' },
-    WS:      { av:'cfg-api-avatar--ws',      tb:'cfg-type-badge--ws',      label:'WebSocket' },
-    GRAPHQL: { av:'cfg-api-avatar--graphql', tb:'cfg-type-badge--graphql', label:'GraphQL' },
-    SOAP:    { av:'cfg-api-avatar--soap',    tb:'cfg-type-badge--soap',    label:'SOAP' },
-    WEBSUB:  { av:'cfg-api-avatar--websub',  tb:'cfg-type-badge--websub',  label:'WebSub' },
-    MCP:     { av:'cfg-api-avatar--mcp',     tb:'cfg-type-badge--mcp',     label:'MCP' },
+    RestApi:   { av:'cfg-api-avatar--rest',    tb:'cfg-type-badge--rest',    label:'REST' },
+    WS:        { av:'cfg-api-avatar--ws',      tb:'cfg-type-badge--ws',      label:'WebSocket' },
+    GRAPHQL:   { av:'cfg-api-avatar--graphql', tb:'cfg-type-badge--graphql', label:'GraphQL' },
+    SOAP:      { av:'cfg-api-avatar--soap',    tb:'cfg-type-badge--soap',    label:'SOAP' },
+    WebSubApi: { av:'cfg-api-avatar--websub',  tb:'cfg-type-badge--websub',  label:'WebSub' },
+    Mcp:       { av:'cfg-api-avatar--mcp',     tb:'cfg-type-badge--mcp',     label:'MCP' },
   };
-  function typeInfo(t) { return typeMap[t] || typeMap['REST']; }
+  function typeInfo(t) { return typeMap[t] || typeMap['RestApi']; }
   function initials(name) { var w=String(name||'').trim().split(/\s+/); return (w[0]?w[0][0]:'') + (w[1]?w[1][0]:''); }
 
   /* ── handle auto-generate ── */
@@ -1054,7 +1054,7 @@
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = 'Add API';
       ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
-      sel('wz-type','REST'); sel('wz-status','PUBLISHED');
+      sel('wz-type','RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');

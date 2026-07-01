@@ -28,7 +28,7 @@
                         {{#each subAPIs}}
                         {{> api-key apiId=apiId keyType="PRODUCTION"}}
                         {{> api-key apiId=apiId keyType="SANDBOX"}}
-                        {{#in apiType values="REST, WS, WEBSUB, GRAPHQL"}}
+                        {{#in apiType values="RestApi, WS, WebSubApi, GRAPHQL"}}
                         <tr class="data-row" id="data-row-{{subId}}" data-index="{{@index}}">
                             <td class="app-td" style="width: 20%;">
                                 <span onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'"
@@ -56,7 +56,7 @@
                 </table>
             </div>
             {{#each subAPIs}}
-            {{#in apiType values="REST, WS, WEBSUB, GRAPHQL"}}
+            {{#in apiType values="RestApi, WS, WebSubApi, GRAPHQL"}}
             {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appId=../applicationMetadata.id subId=subId}}
             {{/in}}
             {{/each}}
@@ -97,7 +97,7 @@
                     </thead>
                     <tbody id="subscribed-api-body">
                         {{#each subAPIs}}
-                        {{#if (eq apiType "MCP")}}
+                        {{#if (eq apiType "Mcp")}}
                         <tr class="data-row" data-index="{{@index}}" id="data-row-{{subId}}">
                             <td class="app-td" style="width: 25%;">
                                 <span onclick="window.location.href='{{@root.baseUrl}}/mcp/{{apiHandle}}'"
@@ -123,7 +123,7 @@
                     </tbody>
                 </table>
                 {{#each subAPIs}}
-                {{#if (eq apiType "MCP")}}
+                {{#if (eq apiType "Mcp")}}
                 {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appId=../applicationMetadata.id subId=subId}}
                 {{/if}}
                 {{/each}}

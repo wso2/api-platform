@@ -133,6 +133,7 @@ All events share this top-level shape:
 
 - `org.ref_id` is the control-plane reference for the organisation; falls back to the internal org UUID when the org has not yet been linked to the control plane.
 - `encrypted_fields` lists the names of fields within `data` that carry an encrypted envelope. Always present — empty (`[]`) for events with no sensitive fields.
+- `data.api.type` uses the same Kind naming as the control plane: `RestApi`, `Mcp`, `WebSubApi`, `SOAP`, `WS`, or `GRAPHQL`.
 
 The `data` field varies by event type and is described below.
 
@@ -158,7 +159,8 @@ Fired when a developer generates a new API key for an API.
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "subscription": {
       "ref_id": "sub-uuid",
@@ -199,7 +201,8 @@ Fired when a developer rotates an existing key. The `key_id` and `name` are unch
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "key": {
       "wrappedKey": "<base64>",
@@ -227,7 +230,8 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "subscription": {
       "ref_id": "sub-uuid",
@@ -254,7 +258,8 @@ Fired whenever a single key's application association changes: the key is associ
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "application": {
       "id": "app-uuid",
@@ -287,7 +292,8 @@ Fired when a developer subscribes to an API. The subscription token is delivered
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "token": {
       "wrappedKey": "<base64>",
@@ -321,7 +327,8 @@ Fired when a subscription's status changes (ACTIVE ↔ INACTIVE). No encrypted f
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "status": "INACTIVE"
   }
@@ -350,7 +357,8 @@ Fired when a developer switches their subscription to a different plan. The subs
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     }
   }
 }
@@ -377,7 +385,8 @@ Fired when a developer regenerates a subscription token. The old token is immedi
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "token": {
       "wrappedKey": "<base64>",
@@ -411,7 +420,8 @@ Fired when a developer unsubscribes. Your subscriber should revoke access for th
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     }
   }
 }

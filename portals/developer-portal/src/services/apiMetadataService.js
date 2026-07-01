@@ -82,6 +82,7 @@ const createAPIMetadata = async (req, res) => {
             }
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
+            apiMetadata.type = util.resolveApiType(apiMetadata.type);
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
@@ -408,6 +409,7 @@ const updateAPIMetadata = async (req, res) => {
             }
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
+            apiMetadata.type = util.resolveApiType(apiMetadata.type);
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
