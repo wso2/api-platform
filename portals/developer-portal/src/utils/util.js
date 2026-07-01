@@ -704,8 +704,6 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/filter.js' defer></script>",
             "<script src='/technical-scripts/common.js' defer></script>",
             "<script src='/technical-scripts/subscription.js' defer></script>",
-            "<script src='/technical-scripts/add-application-form.js' defer></script>",
-            "<script src='/technical-scripts/subscription.js' defer></script>",
             "<script src='/technical-scripts/subscription-modal.js' defer></script>",
             "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
             "<script src='/technical-scripts/api-keys-page.js' defer></script>",
