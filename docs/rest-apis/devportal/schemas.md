@@ -1079,7 +1079,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — used as a fallback when the API cannot be derived from the subscription record.|
+|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
 |planId|string|true|none|Developer Portal subscription plan ID to switch to.|
 
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>

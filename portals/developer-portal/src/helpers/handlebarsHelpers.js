@@ -44,6 +44,9 @@ const helpers = {
         return array.some(item => item[key]);
     },
 
+    // URL helpers
+    urlEncode: (value) => encodeURIComponent(value ?? ''),
+
     // JSON helpers
     json: (context) => JSON.stringify(context ?? null),
     // For embedding JSON inside HTML double-quoted attributes: " → &quot;

@@ -180,7 +180,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ name: name, description: desc }),
+      body: JSON.stringify({ displayName: name, description: desc }),
     })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);

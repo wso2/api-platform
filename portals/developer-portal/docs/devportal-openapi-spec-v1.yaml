@@ -2391,7 +2391,10 @@ components:
                 description: Developer Portal key ID returned by generate or list.
                 example: key-12345
               expiresAt:
-                type: string
+                oneOf:
+                  - type: string
+                    format: date-time
+                  - type: number
                 description: >-
                   New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or
                   epoch milliseconds. Omit to leave the current expiry unchanged.
@@ -2756,6 +2759,11 @@ components:
               displayName:
                 type: string
                 description: Application display name when sending form fields instead of YAML.
+              handle:
+                type: string
+                description: >-
+                  Immutable, org-scoped slug for the application. Optional — defaults to `displayName`
+                  when omitted.
               description:
                 type: string
           examples:
@@ -2763,6 +2771,7 @@ components:
               summary: Multipart form fields
               value:
                 displayName: Weather App
+                handle: weather-app
                 description: Application used to call Weather APIs.
             yamlFile:
               summary: Application YAML upload
@@ -4086,8 +4095,10 @@ components:
         apiId:
           type: string
           description: >-
-            Developer Portal API ID the subscription belongs to. Optional — used as a fallback when
-            the API cannot be derived from the subscription record.
+            Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated
+            against the API derived from the existing subscription record and the request is rejected with
+            400 if they don't match. It is never used as a fallback: if the API cannot be derived from the
+            subscription record, the request fails with 400 regardless of this value.
           example: api-5f2b8c1a
         planId:
           type: string

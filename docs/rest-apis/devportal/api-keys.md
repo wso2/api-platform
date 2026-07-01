@@ -303,7 +303,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided, updates the key's expiry; the key's `name` cannot be changed by this operation.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
-|» expiresAt|body|string|false|New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. Omit to leave the current expiry unchanged.|
+|» expiresAt|body|any|false|New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. Omit to leave the current expiry unchanged.|
+|»» *anonymous*|body|string(date-time)|false|none|
+|»» *anonymous*|body|number|false|none|
 |apiId|path|string|true|none|
 
 > Example responses

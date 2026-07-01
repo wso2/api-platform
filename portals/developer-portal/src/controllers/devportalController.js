@@ -53,9 +53,6 @@ function parseApplicationDataFromRequest(req) {
         if (!displayName) {
             throw new CustomError(400, "Bad Request", "Missing required application field: displayName");
         }
-        if (!spec.description) {
-            throw new CustomError(400, "Bad Request", "Missing required application field: description");
-        }
         return {
             displayName,
             description: spec.description,

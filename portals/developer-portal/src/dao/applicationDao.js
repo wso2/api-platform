@@ -89,7 +89,7 @@ const get = async (orgId, appId, userId, t) => {
     }
 }
 
-const getId = async (orgId, userId, displayName) => {
+const getId = async (orgId, userId, handle) => {
     try {
         return await Application.findOne(
             {
@@ -97,7 +97,7 @@ const getId = async (orgId, userId, displayName) => {
                 where: {
                     org_uuid: orgId,
                     created_by: userId,
-                    display_name: displayName
+                    handle: handle
                 }
             });
     } catch (error) {
