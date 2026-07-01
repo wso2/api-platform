@@ -320,20 +320,24 @@ function ServiceProvidersSummaryCardSection({
 
   const providerItems = useMemo<ServiceProviderSummaryItem[]>(
     () =>
-      providersResponse.list.map((provider) => ({
-        id: provider.id ?? provider.displayName,
-        displayName: provider.displayName,
-        status: provider.status ?? 'Unknown',
-        lastUpdated:
-          provider.lastUpdated ?? provider.updatedAt ?? provider.createdAt,
-        description: provider.description,
-        template: provider.template,
-        modelCount:
-          provider.modelProviders?.reduce(
-            (total, mp) => total + (mp.models?.length ?? 0),
-            0
-          ) ?? 0,
-      })),
+      providersResponse.list
+        // Only providers with a real id can be turned into a navigable
+        // detail route; skip ones missing an id rather than routing to a label.
+        .filter((provider) => Boolean(provider.id))
+        .map((provider) => ({
+          id: provider.id as string,
+          displayName: provider.displayName,
+          status: provider.status ?? 'Unknown',
+          lastUpdated:
+            provider.lastUpdated ?? provider.updatedAt ?? provider.createdAt,
+          description: provider.description,
+          template: provider.template,
+          modelCount:
+            provider.modelProviders?.reduce(
+              (total, mp) => total + (mp.models?.length ?? 0),
+              0
+            ) ?? 0,
+        })),
     [providersResponse.list]
   );
 

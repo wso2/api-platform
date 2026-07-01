@@ -33,6 +33,7 @@ type OrganizationRepository interface {
 	UpdateOrganization(org *model.Organization) error
 	DeleteOrganization(orgId string) error
 	ListOrganizations(limit, offset int) ([]*model.Organization, error)
+	CountOrganizations() (int, error)
 }
 
 // ProjectRepository defines the interface for project data access

@@ -147,3 +147,14 @@ func (r *OrganizationRepo) ListOrganizations(limit, offset int) ([]*model.Organi
 	}
 	return orgs, rows.Err()
 }
+
+// CountOrganizations returns the total number of organizations, independent of
+// any pagination applied by ListOrganizations.
+func (r *OrganizationRepo) CountOrganizations() (int, error) {
+	var total int
+	query := `SELECT COUNT(*) FROM organizations`
+	if err := r.db.QueryRow(r.db.Rebind(query)).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}

@@ -57,7 +57,9 @@ const REGIONS = [
   { value: 'ap-southeast-1', label: 'AP Southeast 1 (ap-southeast-1)' },
 ] as const;
 
-const HANDLE_PATTERN = /^[a-z0-9-]+$/;
+// Lowercase alphanumerics and single hyphens as separators — no leading or
+// trailing hyphen, matching the handle input constraint and what is sent as id.
+const HANDLE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** ms to show the success banner before navigating to the workspace */
 const REDIRECT_DELAY_MS = 1500;
 

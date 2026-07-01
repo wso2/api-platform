@@ -91,21 +91,22 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 
 	// req.ProjectId is the project handle; resolve it to the project UUID so the
-	// proxy is stored against the same identifier List filters on.
+	// proxy is stored against the same identifier List filters on. Without the
+	// project repository we cannot resolve the handle, and must not fall back to
+	// storing the raw handle as a UUID — fail fast instead.
 	var projectUUID *string
 	if req.ProjectId != nil && *req.ProjectId != "" {
-		resolved := *req.ProjectId
-		if s.projectRepo != nil {
-			project, err := s.projectRepo.GetProjectByHandleAndOrgID(*req.ProjectId, orgUUID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to validate project: %w", err)
-			}
-			if project == nil || project.OrganizationID != orgUUID {
-				return nil, constants.ErrProjectNotFound
-			}
-			resolved = project.ID
+		if s.projectRepo == nil {
+			return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
 		}
-		projectUUID = &resolved
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(*req.ProjectId, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate project: %w", err)
+		}
+		if project == nil || project.OrganizationID != orgUUID {
+			return nil, constants.ErrProjectNotFound
+		}
+		projectUUID = &project.ID
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -216,18 +217,20 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 // ListByProject retrieves MCP proxies for an organization filtered by project ID
 func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, offset int) (*api.MCPProxyListResponse, error) {
 	// projectHandle is the project handle; resolve it to the project UUID so the
-	// filter matches the identifier proxies are stored against.
-	projectUUID := projectHandle
-	if s.projectRepo != nil {
-		project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate project: %w", err)
-		}
-		if project == nil || project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
-		}
-		projectUUID = project.ID
+	// filter matches the identifier proxies are stored against. Without the
+	// project repository we cannot resolve the handle, and must not filter on the
+	// raw handle as if it were a UUID — fail fast instead.
+	if s.projectRepo == nil {
+		return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
 	}
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate project: %w", err)
+	}
+	if project == nil || project.OrganizationID != orgUUID {
+		return nil, constants.ErrProjectNotFound
+	}
+	projectUUID := project.ID
 
 	// TODO: pagination
 	proxies, err := s.repo.ListByProject(orgUUID, projectUUID)
