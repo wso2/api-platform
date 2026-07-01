@@ -66,11 +66,14 @@ Rejected requests receive HTTP `429` with the body `Rate limit exceeded`.
 
 ## Legacy Policies
 
-The original flat **policies** list is **deprecated** but continues to work. Legacy policies are treated as **operation-level** (per-route) policies — they are the equivalent of, and fully interchangeable with, operation policies. Existing configurations continue to behave exactly as before.
+The original flat **policies** list is **deprecated** but continues to work, so existing configurations behave exactly as before.
+
+When a configuration is created or edited through the AI Workspace UI, each legacy entry is migrated into the new lists automatically, according to its scope:
+
+- A **route-specific** legacy entry — one scoped to a specific path, or to specific methods — becomes an **operation policy**.
+- A **provider-wide** legacy entry — one that applied to all paths and all methods — becomes a **global policy**.
 
 You should pick **one style per resource**: either the deprecated flat `policies` list, or the new global/operation lists. A configuration that mixes a non-empty legacy `policies` list with the new lists is rejected. (Global and operation policies together are always fine — they are complementary.)
-
-Configurations created or edited through the AI Workspace UI are migrated to the new lists automatically. A provider-wide legacy entry (one that applied to all paths and all methods) becomes a global policy; any more specific entry becomes an operation policy.
 
 ## Gateway Version Requirements
 
