@@ -124,18 +124,23 @@ export default function ApplicationsList() {
     );
   };
 
+  const genAIApplications = useMemo(
+    () => applications.filter((app) => app.type === 'genai'),
+    [applications]
+  );
+
   const filteredApplications = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return applications;
+    if (!query) return genAIApplications;
 
-    return applications.filter((app) =>
+    return genAIApplications.filter((app) =>
       [app.name, app.description]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(query)
     );
-  }, [searchQuery, applications]);
+  }, [searchQuery, genAIApplications]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
