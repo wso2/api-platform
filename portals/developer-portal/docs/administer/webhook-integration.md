@@ -249,6 +249,12 @@ Fired whenever a single key's application association changes: the key is associ
   "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
+    "name": "my-key",
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    },
     "application": {
       "id": "app-uuid",
       "name": "My App"
@@ -258,6 +264,7 @@ Fired whenever a single key's application association changes: the key is associ
 ```
 
 - `application` is `null` when the key's association was removed, or when the key's app was deleted
+- `api` is `null` if the key's API metadata is unavailable (should not occur in normal operation)
 - Renaming an app fires this event once per key currently associated with it, each with the app's new `name`
 - Deleting an app fires this event once per key currently associated with it, each with `application: null` — there is no separate "deleted" variant
 
