@@ -243,8 +243,7 @@ export default function ExternalServersNew(): JSX.Element {
     let resolvedAuthValue = authHeaderValue.trim();
     if (authHeaderName.trim() && resolvedAuthValue && !resolvedAuthValue.includes('{{ secret ')) {
       try {
-        const serverId = generateServerId(serverName);
-        const secretHandle = generateSecretHandle(serverId, 'auth');
+        const secretHandle = generateSecretHandle();
         const secretResponse = await createSecret(
           {
             handle: secretHandle,
@@ -253,7 +252,6 @@ export default function ExternalServersNew(): JSX.Element {
             value: resolvedAuthValue,
             type: 'GENERIC',
           },
-          PLATFORM_API_BASE_URL
         );
         resolvedAuthValue = buildSecretPlaceholder(secretResponse.handle);
       } catch (err) {

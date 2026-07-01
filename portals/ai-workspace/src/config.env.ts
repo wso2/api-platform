@@ -165,6 +165,11 @@ export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   '/api/proxy/api/v0.9'
 );
 
+// Base URL for BFF composite endpoints. These are handled directly by the BFF
+// (not forwarded to the Platform API) and provide server-side compensation logic
+// for multi-step operations such as secret creation + resource creation.
+export const BFF_COMPOSITE_BASE_URL = '/api/bff';
+
 // Control-plane host shown in gateway setup instructions (host:port).
 // Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
 export const CONTROLPLANE_HOST = getEnvOrDefault(
