@@ -68,7 +68,7 @@ describe('AI Workspace — MCP server secret management', () => {
     if (authToken && organizationId && createdServerId) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -101,7 +101,8 @@ describe('AI Workspace — MCP server secret management', () => {
     cy.wait('@createSecret').then((interception) => {
       expect(interception.response.statusCode).to.be.oneOf([200, 201]);
       // The UI posts multipart/form-data; assert on the response body instead.
-      const handle = interception.response.body?.handle;
+      // The secret handle is returned as `id` (immutable slug used in placeholders).
+      const handle = interception.response.body?.id;
       expect(handle).to.match(/-auth$/);
     });
 
@@ -177,8 +178,8 @@ describe('AI Workspace — MCP server secret management', () => {
       },
       form: true,
       body: {
-        handle: existingHandle,
-        name: `${serverName} upstream auth`,
+        id: existingHandle,
+        displayName: `${serverName} upstream auth`,
         value: 'Bearer tok-tc82-original',
         type: 'GENERIC',
       },
@@ -320,7 +321,8 @@ describe('AI Workspace — MCP server secret management', () => {
 
     cy.wait('@createSecret').then((interception) => {
       // The UI posts multipart/form-data; assert on the response body instead.
-      const handle = interception.response.body?.handle;
+      // The secret handle is returned as `id` (immutable slug used in placeholders).
+      const handle = interception.response.body?.id;
       expect(handle).to.match(/^[a-z0-9-]+-auth$/);
       expect(handle).to.equal(expectedHandle);
     });
@@ -401,7 +403,7 @@ describe('AI Workspace — MCP server secret management', () => {
       cy.get('input[placeholder="Header"]', { timeout: 10000 })
         .should('be.visible')
         .type(authHeader);
-      cy.get('input[placeholder="Value"]', { timeout: 10000 })
+      cy.get('input[placeholder="Value"]', { timeout: 1/cl0000 })
         .should('be.visible')
         .type(authValue, authValueParseSpecial ? {} : { parseSpecialCharSequences: false });
     }
@@ -438,7 +440,7 @@ function deleteProjectByName(authToken, targetName, fallbackName) {
   }).then((response) => {
     if (response.status !== 200) return;
     const projects = response.body?.list ?? [];
-    const target = projects.find((p) => p.name === targetName);
+    const target = projects.find((p) => p.displayName === targetName);
     if (!target?.id) return;
 
     if (projects.length <= 1) {
@@ -449,7 +451,7 @@ function deleteProjectByName(authToken, targetName, fallbackName) {
           Authorization: `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
-        body: { name: fallbackName, description: 'Reserved for E2E cleanup' },
+        body: { displayName: fallbackName, description: 'Reserved for E2E cleanup' },
         failOnStatusCode: false,
       }).then(() => {
         cy.request({

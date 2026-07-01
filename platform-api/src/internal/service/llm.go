@@ -974,14 +974,18 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	// req.ProjectId is the project handle; resolve it to the project UUID so the
+	// proxy is stored against the same identifier List filters on.
+	projectUUID := req.ProjectId
 	if s.projectRepo != nil {
-		project, err := s.projectRepo.GetProjectByUUID(req.ProjectId)
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(req.ProjectId, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil || project.OrganizationID != orgUUID {
 			return nil, constants.ErrProjectNotFound
 		}
+		projectUUID = project.ID
 	}
 
 	// Validate provider exists
@@ -1027,7 +1031,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
-		ProjectUUID:      req.ProjectId,
+		ProjectUUID:      projectUUID,
 		ID:               handle,
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
