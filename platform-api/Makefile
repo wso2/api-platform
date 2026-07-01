@@ -102,6 +102,8 @@ generate: ## Generate API server code from OpenAPI spec
 	@yq '.components.schemas[].properties |= (. as $$props | (parent | .required[]) as $$req_field | select($$props | has($$req_field)) | .[$$req_field]."x-oapi-codegen-extra-tags".binding = "required")' src/resources/openapi.yaml > src/resources/openapi_with_binding.yaml
 	@echo "Generating API server code from OpenAPI spec with bindings..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml src/resources/openapi_with_binding.yaml
+	@echo "Generating API models for the eventgateway plugin spec..."
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-eventgateway.yaml src/plugins/eventgateway/openapi.yaml
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."

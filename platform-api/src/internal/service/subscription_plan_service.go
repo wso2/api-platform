@@ -32,6 +32,7 @@ import (
 type SubscriptionPlanService struct {
 	planRepo      repository.SubscriptionPlanRepository
 	gatewayRepo   repository.GatewayRepository
+	orgRepo       repository.OrganizationRepository
 	gatewayEvents *GatewayEventsService
 	auditRepo     repository.AuditRepository
 	slogger       *slog.Logger
@@ -41,6 +42,7 @@ type SubscriptionPlanService struct {
 func NewSubscriptionPlanService(
 	planRepo repository.SubscriptionPlanRepository,
 	gatewayRepo repository.GatewayRepository,
+	orgRepo repository.OrganizationRepository,
 	gatewayEvents *GatewayEventsService,
 	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
@@ -51,10 +53,24 @@ func NewSubscriptionPlanService(
 	return &SubscriptionPlanService{
 		planRepo:      planRepo,
 		gatewayRepo:   gatewayRepo,
+		orgRepo:       orgRepo,
 		gatewayEvents: gatewayEvents,
 		auditRepo:     auditRepo,
 		slogger:       slogger,
 	}
+}
+
+// ResolveOrgHandle returns the organization handle for display (organizationId in
+// responses should be the handle, not the internal UUID).
+func (s *SubscriptionPlanService) ResolveOrgHandle(orgUUID string) string {
+	if orgUUID == "" {
+		return ""
+	}
+	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
+	if err != nil || org == nil {
+		return orgUUID // fallback to UUID if lookup fails
+	}
+	return org.Handle
 }
 
 // CreatePlan creates a new subscription plan
@@ -104,9 +120,9 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 	return plan, nil
 }
 
-// GetPlan returns a subscription plan by ID
-func (s *SubscriptionPlanService) GetPlan(planID, orgUUID string) (*model.SubscriptionPlan, error) {
-	plan, err := s.planRepo.GetByID(planID, orgUUID)
+// GetPlan returns a subscription plan by handle
+func (s *SubscriptionPlanService) GetPlan(handle, orgUUID string) (*model.SubscriptionPlan, error) {
+	plan, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrSubscriptionPlanNotFound
@@ -130,8 +146,8 @@ func (s *SubscriptionPlanService) ListPlans(orgUUID string, limit, offset int) (
 }
 
 // UpdatePlan updates a subscription plan
-func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
-	existing, err := s.planRepo.GetByID(planID, orgUUID)
+func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
+	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrSubscriptionPlanNotFound
@@ -142,20 +158,9 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 		return nil, constants.ErrSubscriptionPlanNotFound
 	}
 
-	if update.Handle != nil {
-		if *update.Handle == "" {
-			return nil, fmt.Errorf("handle is required")
-		}
-		if *update.Handle != existing.Handle {
-			handleExists, err := s.planRepo.ExistsByHandleAndOrg(*update.Handle, orgUUID)
-			if err != nil {
-				return nil, err
-			}
-			if handleExists {
-				return nil, constants.ErrSubscriptionPlanAlreadyExists
-			}
-		}
-		existing.Handle = *update.Handle
+	// The handle (id) is immutable; reject any attempt to change it to a different value.
+	if update.Handle != nil && *update.Handle != "" && *update.Handle != existing.Handle {
+		return nil, constants.ErrHandleImmutable
 	}
 	if update.Name != nil {
 		if *update.Name == "" {
@@ -171,6 +176,10 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 	}
 	if update.ThrottleLimitCount != nil {
 		existing.ThrottleLimitCount = update.ThrottleLimitCount
+	} else if update.ClearLimit {
+		existing.ThrottleLimitCount = nil
+		existing.ThrottleLimitUnit = ""
+		existing.StopOnQuotaReach = true
 	}
 	if update.ThrottleLimitUnit != nil {
 		if !constants.ValidThrottleLimitUnits[*update.ThrottleLimitUnit] {
@@ -194,7 +203,7 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 		return nil, err
 	}
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", planID, "subscription_plan", orgUUID, actor)
+		_ = s.auditRepo.Record("UPDATE", existing.UUID, "subscription_plan", orgUUID, actor)
 	}
 
 	s.broadcastPlanEvent(orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
@@ -213,8 +222,8 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 }
 
 // DeletePlan removes a subscription plan
-func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) error {
-	existing, err := s.planRepo.GetByID(planID, orgUUID)
+func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) error {
+	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrSubscriptionPlanNotFound
@@ -225,11 +234,11 @@ func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) erro
 		return constants.ErrSubscriptionPlanNotFound
 	}
 
-	if err := s.planRepo.Delete(planID, orgUUID); err != nil {
+	if err := s.planRepo.Delete(existing.UUID, orgUUID); err != nil {
 		return err
 	}
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", planID, "subscription_plan", orgUUID, actor)
+		_ = s.auditRepo.Record("DELETE", existing.UUID, "subscription_plan", orgUUID, actor)
 	}
 
 	s.broadcastPlanEvent(orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{

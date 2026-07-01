@@ -90,20 +90,21 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := strings.TrimSpace(req.GatewayId)
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
+	gatewayID := gateway.ID
 
 	// Get API
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
@@ -343,6 +344,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -428,6 +430,7 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
@@ -510,6 +513,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -773,6 +777,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		mapped, err := toAPIDeploymentResponse(
+			s.gatewayRepo,
 			d.DeploymentID,
 			d.Name,
 			d.GatewayID,
@@ -816,6 +821,7 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -881,14 +887,23 @@ func (s *DeploymentService) DeployAPIByHandle(apiHandle string, req *api.DeployR
 }
 
 // RestoreDeploymentByHandle restores a previous deployment using API handle
-func (s *DeploymentService) RestoreDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
+func (s *DeploymentService) RestoreDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.RestoreDeployment(apiUUID, deploymentID, gatewayID, orgUUID, actor)
+	// Resolve gateway handle to UUID (the deployment stores the gateway UUID).
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayHandle), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	return s.RestoreDeployment(apiUUID, deploymentID, gateway.ID, orgUUID, actor)
 }
 
 // getUUIDByHandle retrieves the artifact UUID by its handle from the artifact table
@@ -940,15 +955,26 @@ func (s *DeploymentService) GetDeploymentsByHandle(apiHandle, gatewayID, status,
 	return s.GetDeployments(apiUUID, orgUUID, gatewayIdPtr, statusPtr)
 }
 
-// UndeployDeploymentByHandle undeploys a deployment using API handle
-func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
+// UndeployDeploymentByHandle undeploys a deployment using the API handle and the
+// gateway handle. Deploy/attach both identify the gateway by handle, so undeploy
+// resolves the handle to the gateway UUID here to keep the contract consistent.
+func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.UndeployDeployment(apiUUID, deploymentID, gatewayID, orgUUID, actor)
+	// Resolve gateway handle to UUID (the deployment stores the gateway UUID).
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayHandle), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	return s.UndeployDeployment(apiUUID, deploymentID, gateway.ID, orgUUID, actor)
 }
 
 // DeleteDeploymentByHandle deletes a deployment using API handle
@@ -974,6 +1000,7 @@ func (s *DeploymentService) GetDeploymentContentByHandle(apiHandle, deploymentID
 }
 
 func toAPIDeploymentResponse(
+	gatewayRepo repository.GatewayRepository,
 	deploymentID string,
 	name string,
 	gatewayID string,
@@ -985,14 +1012,22 @@ func toAPIDeploymentResponse(
 	statusReason *string,
 ) (*api.DeploymentResponse, error) {
 	deploymentUUID := utils.ParseOpenAPIUUIDOrZero(deploymentID)
-	gatewayUUID := utils.ParseOpenAPIUUIDOrZero(gatewayID)
 	baseUUID := utils.ParseOptionalOpenAPIUUID(baseDeploymentID)
+
+	gateway, err := gatewayRepo.GetByUUID(gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve gateway handle: %w", err)
+	}
+	gatewayHandle := gatewayID
+	if gateway != nil {
+		gatewayHandle = gateway.Handle
+	}
 
 	resp := &api.DeploymentResponse{
 		BaseDeploymentId: baseUUID,
 		CreatedAt:        createdAt,
 		DeploymentId:     deploymentUUID,
-		GatewayId:        gatewayUUID,
+		GatewayId:        gatewayHandle,
 		Metadata:         utils.MapPtrIfNotEmpty(metadata),
 		Name:             name,
 		Status:           api.DeploymentResponseStatus(status),

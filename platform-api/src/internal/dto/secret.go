@@ -22,17 +22,17 @@ import "time"
 // CreateSecretRequest is the request body for POST /api/v1/secrets.
 // Accepts multipart/form-data to support file-based secret values in future.
 type CreateSecretRequest struct {
-	Handle      string `form:"handle" binding:"required"`
-	DisplayName string `form:"name"   binding:"required"`
+	Handle      string `form:"id"          binding:"required"`
+	DisplayName string `form:"displayName" binding:"required"`
 	Description string `form:"description"`
-	Value       string `form:"value"  binding:"required"`
+	Value       string `form:"value"       binding:"required"`
 	Type        string `form:"type"`
 }
 
 // UpdateSecretRequest is the request body for PUT /api/v1/secrets/:id.
 // Accepts multipart/form-data to support file-based secret values in future.
 type UpdateSecretRequest struct {
-	DisplayName string `form:"name"`
+	DisplayName string `form:"displayName"`
 	Description string `form:"description"`
 	Value       string `form:"value" binding:"required"`
 }
@@ -40,8 +40,8 @@ type UpdateSecretRequest struct {
 // SecretResponse is returned on POST and PUT.
 type SecretResponse struct {
 	UUID        string    `json:"uuid"`
-	Handle      string    `json:"handle"`
-	DisplayName string    `json:"name"`
+	Handle      string    `json:"id"`
+	DisplayName string    `json:"displayName"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
@@ -49,8 +49,8 @@ type SecretResponse struct {
 // SecretSummary is returned on GET list and GET by ID — no value field.
 type SecretSummary struct {
 	ID          string    `json:"uuid"`
-	Handle      string    `json:"handle"`
-	DisplayName string    `json:"name"`
+	Handle      string    `json:"id"`
+	DisplayName string    `json:"displayName"`
 	Description string    `json:"description,omitempty"`
 	Type        string    `json:"type"`
 	Provider    string    `json:"provider"`

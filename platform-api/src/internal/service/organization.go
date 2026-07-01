@@ -27,8 +27,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"time"
-
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type OrganizationService struct {
@@ -116,11 +114,10 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create organization in platform-api database first
 	org := &api.Organization{
-		Id:        &openapi_types.UUID{},
-		Handle:    handle,
-		Name:      name,
-		Region:    region,
-		CreatedAt: utils.TimePtrIfNotZero(time.Now()),
+		Id:          &handle,
+		DisplayName: name,
+		Region:      region,
+		CreatedAt:   utils.TimePtrIfNotZero(time.Now()),
 	}
 
 	orgModel := s.apiToModel(org, id)
@@ -189,6 +186,24 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	return org, nil
 }
 
+func (s *OrganizationService) GetOrganizationByHandle(handle string) (*api.Organization, error) {
+	orgModel, err := s.orgRepo.GetOrganizationByHandle(handle)
+	if err != nil {
+		return nil, err
+	}
+
+	if orgModel == nil {
+		return nil, constants.ErrOrganizationNotFound
+	}
+
+	org, convErr := s.modelToAPI(orgModel)
+	if convErr != nil {
+		return nil, convErr
+	}
+
+	return org, nil
+}
+
 // Mapping functions
 func (s *OrganizationService) apiToModel(org *api.Organization, id string) *model.Organization {
 	if org == nil {
@@ -200,10 +215,14 @@ func (s *OrganizationService) apiToModel(org *api.Organization, id string) *mode
 		createdAt = *org.CreatedAt
 	}
 
+	handle := ""
+	if org.Id != nil {
+		handle = *org.Id
+	}
 	return &model.Organization{
 		ID:        id,
-		Handle:    org.Handle,
-		Name:      org.Name,
+		Handle:    handle,
+		Name:      org.DisplayName,
 		Region:    org.Region,
 		CreatedAt: createdAt,
 		UpdatedAt: time.Now(),
@@ -215,18 +234,12 @@ func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Org
 		return nil, nil
 	}
 
-	orgID, err := utils.ParseOpenAPIUUID(orgModel.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse organization ID as UUID: %w", err)
-	}
-
 	return &api.Organization{
-		Id:        orgID,
-		Handle:    orgModel.Handle,
-		Name:      orgModel.Name,
-		Region:    orgModel.Region,
-		CreatedAt: utils.TimePtrIfNotZero(orgModel.CreatedAt),
-		UpdatedAt: utils.TimePtrIfNotZero(orgModel.UpdatedAt),
+		Id:          &orgModel.Handle,
+		DisplayName: orgModel.Name,
+		Region:      orgModel.Region,
+		CreatedAt:   utils.TimePtrIfNotZero(orgModel.CreatedAt),
+		UpdatedAt:   utils.TimePtrIfNotZero(orgModel.UpdatedAt),
 	}, nil
 }
 

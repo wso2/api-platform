@@ -190,28 +190,23 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	}
 
 	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
 	} else {
-		displayName := ""
-		if req.DisplayName != nil {
-			displayName = *req.DisplayName
-		}
-		if displayName == "" {
+		if req.DisplayName == "" {
 			s.slogger.Error("Failed to generate API key name", "providerId", providerID, "error", constants.ErrHandleSourceEmpty)
 			return nil, fmt.Errorf("failed to generate API key name: both name and displayName are empty: %w", constants.ErrHandleSourceEmpty)
 		}
-
-		name, err = utils.GenerateHandle(displayName, nil)
+		name, err = utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {
 			s.slogger.Error("Failed to generate API key name", "providerId", providerID, "error", err)
 			return nil, fmt.Errorf("failed to generate API key name: %w", err)
 		}
 	}
 
-	displayName := name
-	if req.DisplayName != nil && *req.DisplayName != "" {
-		displayName = *req.DisplayName
+	displayName := req.DisplayName
+	if displayName == "" {
+		displayName = name
 	}
 
 	var expiresAt *string
@@ -319,7 +314,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	return &api.CreateLLMProviderAPIKeyResponse{
 		Status:  "success",
 		Message: "API key created successfully",
-		KeyId:   name,
+		Id:      name,
 		ApiKey:  apiKey,
 	}, nil
 }

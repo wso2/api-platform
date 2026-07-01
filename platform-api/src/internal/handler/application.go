@@ -56,11 +56,11 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if strings.TrimSpace(req.Name) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
+	if strings.TrimSpace(req.DisplayName) == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
 		return
 	}
-	if utils.OpenAPIUUIDToString(req.ProjectId) == "00000000-0000-0000-0000-000000000000" {
+	if strings.TrimSpace(req.ProjectId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
 		return
 	}
@@ -86,7 +86,7 @@ func (h *ApplicationHandler) GetApplication(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -156,14 +156,14 @@ func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 	userID := h.resolveRequesterUserID(r)
 
-	var req api.UpdateApplicationRequest
+	var req api.Application
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.NewValidationErrorResponse(w, err)
 		return
@@ -185,7 +185,7 @@ func (h *ApplicationHandler) DeleteApplication(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -207,7 +207,7 @@ func (h *ApplicationHandler) ListApplicationAssociations(w http.ResponseWriter, 
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -248,7 +248,7 @@ func (h *ApplicationHandler) AddApplicationAssociations(w http.ResponseWriter, r
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -280,7 +280,7 @@ func (h *ApplicationHandler) RemoveApplicationAssociation(w http.ResponseWriter,
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	associationID := r.PathValue("associationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
@@ -306,7 +306,7 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(w http.ResponseWriter, r *ht
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -347,7 +347,7 @@ func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(w http.ResponseWr
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	associationID := r.PathValue("associationId")
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
@@ -393,7 +393,7 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 		return
 	}
 
-	appID := r.PathValue("appId")
+	appID := r.PathValue("applicationId")
 	userID := h.resolveRequesterUserID(r)
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
@@ -426,8 +426,8 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *h
 		return
 	}
 
-	appID := r.PathValue("appId")
-	keyID := r.PathValue("keyId")
+	appID := r.PathValue("applicationId")
+	keyID := r.PathValue("apiKeyId")
 	entityID := strings.TrimSpace(r.URL.Query().Get("entityID"))
 	userID := h.resolveRequesterUserID(r)
 	if strings.TrimSpace(appID) == "" {
@@ -455,17 +455,17 @@ func (h *ApplicationHandler) RegisterRoutes(mux *http.ServeMux) {
 	base := constants.APIBasePath + "/applications"
 	mux.HandleFunc("GET "+base, h.ListApplications)
 	mux.HandleFunc("POST "+base, h.CreateApplication)
-	mux.HandleFunc("GET "+base+"/{appId}", h.GetApplication)
-	mux.HandleFunc("PUT "+base+"/{appId}", h.UpdateApplication)
-	mux.HandleFunc("DELETE "+base+"/{appId}", h.DeleteApplication)
+	mux.HandleFunc("GET "+base+"/{applicationId}", h.GetApplication)
+	mux.HandleFunc("PUT "+base+"/{applicationId}", h.UpdateApplication)
+	mux.HandleFunc("DELETE "+base+"/{applicationId}", h.DeleteApplication)
 
-	mux.HandleFunc("GET "+base+"/{appId}/api-keys", h.ListApplicationAPIKeys)
-	mux.HandleFunc("POST "+base+"/{appId}/api-keys", h.AddApplicationAPIKeys)
-	mux.HandleFunc("DELETE "+base+"/{appId}/api-keys/{keyId}", h.RemoveApplicationAPIKey)
-	mux.HandleFunc("GET "+base+"/{appId}/associations", h.ListApplicationAssociations)
-	mux.HandleFunc("POST "+base+"/{appId}/associations", h.AddApplicationAssociations)
-	mux.HandleFunc("GET "+base+"/{appId}/associations/{associationId}/api-keys", h.ListApplicationAssociationAPIKeys)
-	mux.HandleFunc("DELETE "+base+"/{appId}/associations/{associationId}", h.RemoveApplicationAssociation)
+	mux.HandleFunc("GET "+base+"/{applicationId}/api-keys", h.ListApplicationAPIKeys)
+	mux.HandleFunc("POST "+base+"/{applicationId}/api-keys", h.AddApplicationAPIKeys)
+	mux.HandleFunc("DELETE "+base+"/{applicationId}/api-keys/{apiKeyId}", h.RemoveApplicationAPIKey)
+	mux.HandleFunc("GET "+base+"/{applicationId}/associations", h.ListApplicationAssociations)
+	mux.HandleFunc("POST "+base+"/{applicationId}/associations", h.AddApplicationAssociations)
+	mux.HandleFunc("GET "+base+"/{applicationId}/associations/{associationId}/api-keys", h.ListApplicationAssociationAPIKeys)
+	mux.HandleFunc("DELETE "+base+"/{applicationId}/associations/{associationId}", h.RemoveApplicationAssociation)
 }
 
 func (h *ApplicationHandler) resolveRequesterUserID(r *http.Request) string {
@@ -487,7 +487,7 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 			"error", err,
 			"path", r.URL.Path,
 			"method", r.Method,
-			"appId", r.PathValue("appId"),
+			"id", r.PathValue("applicationId"),
 		)
 	}
 
@@ -507,7 +507,7 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 	case errors.Is(err, constants.ErrAPIKeyForbidden):
 		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only the key creator can perform this action"))
 	case errors.Is(err, constants.ErrInvalidApplicationName):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
 	case errors.Is(err, constants.ErrInvalidApplicationType):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
 	case errors.Is(err, constants.ErrUnsupportedApplicationType):
@@ -524,6 +524,9 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid association kind. Only LlmProvider and LlmProxy are supported"))
 	case errors.Is(err, constants.ErrInvalidInput):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application association input"))
+	case errors.Is(err, constants.ErrHandleImmutable):
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"The id is immutable and must match the application being updated"))
 	default:
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", fallback))
 	}

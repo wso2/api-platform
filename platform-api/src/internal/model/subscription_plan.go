@@ -36,8 +36,11 @@ type SubscriptionPlanUpdate struct {
 	StopOnQuotaReach   *bool
 	ThrottleLimitCount *int
 	ThrottleLimitUnit  *string
-	ExpiryTime         *time.Time
-	Status             *SubscriptionPlanStatus
+	// ClearLimit removes the plan's throttling limit entirely. Set when the caller
+	// submits an explicit empty "limits" array. Ignored if ThrottleLimitCount is set.
+	ClearLimit bool
+	ExpiryTime *time.Time
+	Status     *SubscriptionPlanStatus
 }
 
 // SubscriptionPlan represents an organization-scoped subscription plan

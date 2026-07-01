@@ -133,8 +133,8 @@ func doRequest(r http.Handler, method, path string, fields map[string]string, wi
 // createSecret is a helper that POSTs a secret via multipart/form-data.
 func createSecret(r http.Handler, handle, displayName, value string) *httptest.ResponseRecorder {
 	return doRequest(r, http.MethodPost, "/api/v1/secrets", map[string]string{
-		"handle":      handle,
-		"name":        displayName,
+		"id":          handle,
+		"displayName": displayName,
 		"value":       value,
 	}, true)
 }
@@ -156,8 +156,8 @@ func TestSecretHandler_Create_201(t *testing.T) {
 	}
 
 	resp := parseBody(w)
-	if resp["handle"] != "it-key" {
-		t.Errorf("expected handle=it-key, got %v", resp["handle"])
+	if resp["id"] != "it-key" {
+		t.Errorf("expected id=it-key, got %v", resp["id"])
 	}
 	// Subsequent GET should not have value field.
 	wGet := doRequest(r, http.MethodGet, "/api/v1/secrets/it-key", nil, true)
@@ -189,7 +189,7 @@ func TestSecretHandler_Create_401_NoOrg(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	body, ct := multipartForm(map[string]string{"handle": "no-org-key", "name": "No Org Key", "value": "val"})
+	body, ct := multipartForm(map[string]string{"id": "no-org-key", "displayName": "No Org Key", "value": "val"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
 	req.Header.Set("Content-Type", ct)
 	// Intentionally NOT setting X-Test-Org
@@ -319,8 +319,8 @@ func TestSecretHandler_Get_200(t *testing.T) {
 	}
 
 	resp := parseBody(w)
-	if resp["handle"] != "get-key" {
-		t.Errorf("expected handle=get-key, got %v", resp["handle"])
+	if resp["id"] != "get-key" {
+		t.Errorf("expected id=get-key, got %v", resp["id"])
 	}
 	if _, hasValue := resp["value"]; hasValue {
 		t.Errorf("GET by handle should NOT contain value field")
@@ -377,7 +377,7 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 	r := middleware.NewTestContextMiddleware(mux)
 
 	// Create then soft-delete (deprecate) the secret.
-	body, ct := multipartForm(map[string]string{"handle": "react-key", "name": "React Key", "value": "old-val"})
+	body, ct := multipartForm(map[string]string{"id": "react-key", "displayName": "React Key", "value": "old-val"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
 	req.Header.Set("Content-Type", ct)
 	req.Header.Set("X-Test-Org", "org-react-it")
@@ -526,8 +526,8 @@ func doRequestAs(r http.Handler, method, path, orgID string) *httptest.ResponseR
 // createSecretOnRouter is like createSecret but uses a provided router.
 func createSecretOnRouter(r http.Handler, handle, displayName, value string) *httptest.ResponseRecorder {
 	body, ct := multipartForm(map[string]string{
-		"handle":      handle,
-		"name":        displayName,
+		"id":          handle,
+		"displayName": displayName,
 		"value":       value,
 	})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
@@ -663,7 +663,7 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 
 	// (a) Create and DELETE → 204
 	createBody, createCT := multipartForm(map[string]string{
-		"handle": "soft-del-key", "name": "Soft Del Key", "value": "plaintext",
+		"id": "soft-del-key", "displayName": "Soft Del Key", "value": "plaintext",
 	})
 	createReq, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", createBody)
 	createReq.Header.Set("Content-Type", createCT)

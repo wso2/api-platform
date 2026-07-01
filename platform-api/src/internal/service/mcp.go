@@ -78,7 +78,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" {
+	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -100,14 +100,28 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		}
 	}
 
-	// Check if MCP proxy already exists
-	exists, err := s.repo.Exists(req.Id, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check MCP proxy exists: %w", err)
+	// Determine handle: use provided id or auto-generate from displayName
+	var handle string
+	if req.Id != nil && *req.Id != "" {
+		handle = *req.Id
+		exists, err := s.repo.Exists(handle, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check MCP proxy exists: %w", err)
+		}
+		if exists {
+			return nil, constants.ErrMCPProxyExists
+		}
+	} else {
+		var err error
+		handle, err = utils.GenerateHandle(req.DisplayName, func(h string) bool {
+			exists, _ := s.repo.Exists(h, orgUUID)
+			return exists
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate MCP proxy handle: %w", err)
+		}
 	}
-	if exists {
-		return nil, constants.ErrMCPProxyExists
-	}
+	req.Id = &handle
 
 	// Temporary check for maximum MCP proxy limit per organization before creation
 	proxyCount, err := s.repo.Count(orgUUID)
@@ -131,15 +145,15 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 
 	// Create MCP proxy model
 	m := &model.MCPProxy{
-		Handle:           req.Id,
+		Handle:           handle,
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		Configuration: model.MCPProxyConfiguration{
-			Name:         req.Name,
+			Name:         req.DisplayName,
 			Version:      req.Version,
 			Context:      req.Context,
 			Vhost:        req.Vhost,
@@ -159,7 +173,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 
 	_ = s.auditRepo.Record("CREATE", m.UUID, "mcp_proxy", orgUUID, createdBy)
-	return s.Get(orgUUID, req.Id)
+	return s.Get(orgUUID, handle)
 }
 
 // List retrieves all MCP proxies for an organization
@@ -243,10 +257,10 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != "" && req.Id != handle {
-		return nil, constants.ErrInvalidInput
+	if req.Id != nil && *req.Id != "" && *req.Id != handle {
+		return nil, constants.ErrHandleImmutable
 	}
-	if req.Name == "" || req.Version == "" {
+	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -282,12 +296,12 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	existingUpstreamConfig := existing.Configuration.Upstream
 
 	// Update fields
-	existing.Name = req.Name
+	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.UpdatedBy = updatedBy
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
-		Name:         req.Name,
+		Name:         req.DisplayName,
 		Version:      req.Version,
 		Context:      req.Context,
 		Vhost:        req.Vhost,
@@ -483,8 +497,8 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 	}
 
 	return &api.MCPProxy{
-		Id:             m.Handle,
-		Name:           m.Name,
+		Id:             &m.Handle,
+		DisplayName:    m.Name,
 		Description:    &desc,
 		CreatedBy:      &createdBy,
 		Version:        m.Version,
@@ -508,7 +522,7 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 
 	return &api.MCPProxyListItem{
 		Id:             utils.StringPtrIfNotEmpty(m.Handle),
-		Name:           utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:    m.Name,
 		Description:    utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:        utils.StringPtrIfNotEmpty(m.Version),

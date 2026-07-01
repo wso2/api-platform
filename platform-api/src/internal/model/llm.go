@@ -163,7 +163,7 @@ type LLMProviderTemplate struct {
 	OrganizationUUID string                       `json:"organizationId" db:"organization_uuid"`
 	ID               string                       `json:"id" db:"handle"`
 	GroupID          string                       `json:"groupId,omitempty" db:"group_id"`
-	Name             string                       `json:"name" db:"name"`
+	Name             string                       `json:"displayName" db:"display_name"`
 	Description      string                       `json:"description,omitempty" db:"description"`
 	ManagedBy        string                       `json:"managedBy,omitempty" db:"managed_by"`
 	CreatedBy        string                       `json:"createdBy,omitempty" db:"created_by"`
@@ -190,7 +190,7 @@ type LLMProvider struct {
 	UUID             string             `json:"uuid" db:"uuid"`
 	OrganizationUUID string             `json:"organizationId" db:"organization_uuid"`
 	ID               string             `json:"id" db:"handle"`
-	Name             string             `json:"name" db:"name"`
+	Name             string             `json:"displayName" db:"display_name"`
 	Description      string             `json:"description,omitempty" db:"description"`
 	CreatedBy        string             `json:"createdBy,omitempty" db:"created_by"`
 	UpdatedBy        string             `json:"updatedBy,omitempty" db:"updated_by"`
@@ -224,7 +224,7 @@ type LLMProxy struct {
 	UUID             string         `json:"uuid" db:"uuid"`
 	OrganizationUUID string         `json:"organizationId" db:"organization_uuid"`
 	ID               string         `json:"id" db:"handle"`
-	Name             string         `json:"name" db:"name"`
+	Name             string         `json:"displayName" db:"display_name"`
 	ProjectUUID      string         `json:"projectId" db:"project_uuid"`
 	Description      string         `json:"description,omitempty" db:"description"`
 	CreatedBy        string         `json:"createdBy,omitempty" db:"created_by"`

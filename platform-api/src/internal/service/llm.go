@@ -128,11 +128,11 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
-	baseHandle, err := utils.GenerateHandle(req.Name, nil)
+	baseHandle, err := utils.GenerateHandle(req.DisplayName, nil)
 	if err != nil || baseHandle == "" {
 		return nil, constants.ErrInvalidInput
 	}
@@ -162,7 +162,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		ID:               handle,
 		GroupID:          baseHandle,
 		Version:          version,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		ManagedBy:        defaultTemplateManagedBy(req.ManagedBy),
 		CreatedBy:        createdBy,
@@ -242,10 +242,10 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != "" && req.Id != handle {
-		return nil, constants.ErrInvalidInput
+	if req.Id != nil && *req.Id != "" && *req.Id != handle {
+		return nil, constants.ErrHandleImmutable
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
@@ -284,7 +284,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		UpdatedBy:        updatedBy,
 		ManagedBy:        managedBy,
@@ -315,7 +315,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to resolve template family: %w", baseErr)
 	}
 	if base != "" {
-		if err := s.repo.RenameFamily(base, orgUUID, req.Name); err != nil {
+		if err := s.repo.RenameFamily(base, orgUUID, req.DisplayName); err != nil {
 			return nil, fmt.Errorf("failed to propagate template name: %w", err)
 		}
 	}
@@ -350,7 +350,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	version, ok := normalizeTemplateVersion(req.Version)
@@ -375,7 +375,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		OrganizationUUID: orgUUID,
 		ID:               makeTemplateHandle(baseHandle, version),
 		GroupID:          baseHandle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		ManagedBy:        managedBy,
 		CreatedBy:        createdBy,
@@ -592,7 +592,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" || req.Template == "" {
+	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
@@ -634,13 +634,28 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
 
-	exists, err := s.repo.Exists(req.Id, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check provider exists: %w", err)
+	// Determine handle: use provided id or auto-generate from displayName
+	var handle string
+	if req.Id != nil && *req.Id != "" {
+		handle = *req.Id
+		exists, err := s.repo.Exists(handle, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check provider exists: %w", err)
+		}
+		if exists {
+			return nil, constants.ErrLLMProviderExists
+		}
+	} else {
+		var err error
+		handle, err = utils.GenerateHandle(req.DisplayName, func(h string) bool {
+			exists, _ := s.repo.Exists(h, orgUUID)
+			return exists
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate provider handle: %w", err)
+		}
 	}
-	if exists {
-		return nil, constants.ErrLLMProviderExists
-	}
+	req.Id = &handle
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
 	if s.secretService != nil {
@@ -672,8 +687,8 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
-		ID:               req.Id,
-		Name:             req.Name,
+		ID:               handle,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
@@ -702,7 +717,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
 
-	created, err := s.repo.GetByID(req.Id, orgUUID)
+	created, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch created provider: %w", err)
 	}
@@ -753,7 +768,7 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		template := utils.StringPtrIfNotEmpty(tplHandle)
 		resp.List = append(resp.List, api.LLMProviderListItem{
 			Id:          &id,
-			Name:        &name,
+			DisplayName: name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Version:     &version,
@@ -795,8 +810,8 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != "" && req.Id != handle {
-		return nil, constants.ErrInvalidInput
+	if req.Id != nil && *req.Id != "" && *req.Id != handle {
+		return nil, constants.ErrHandleImmutable
 	}
 	// Fetch existing provider to preserve sensitive fields on update
 	existing, err := s.repo.GetByID(handle, orgUUID)
@@ -810,7 +825,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
 		return nil, err
 	}
-	if req.Name == "" || req.Version == "" || req.Template == "" {
+	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
@@ -847,7 +862,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		UpdatedBy:        updatedBy,
 		Version:          req.Version,
@@ -956,7 +971,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
+	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if s.projectRepo != nil {
@@ -978,13 +993,28 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, constants.ErrLLMProviderNotFound
 	}
 
-	exists, err := s.repo.Exists(req.Id, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check proxy exists: %w", err)
+	// Determine handle: use provided id or auto-generate from displayName
+	var handle string
+	if req.Id != nil && *req.Id != "" {
+		handle = *req.Id
+		exists, err := s.repo.Exists(handle, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check proxy exists: %w", err)
+		}
+		if exists {
+			return nil, constants.ErrLLMProxyExists
+		}
+	} else {
+		var err error
+		handle, err = utils.GenerateHandle(req.DisplayName, func(h string) bool {
+			exists, _ := s.repo.Exists(h, orgUUID)
+			return exists
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate proxy handle: %w", err)
+		}
 	}
-	if exists {
-		return nil, constants.ErrLLMProxyExists
-	}
+	req.Id = &handle
 
 	proxyCount, err := s.repo.Count(orgUUID)
 	if err != nil {
@@ -998,8 +1028,8 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
-		ID:               req.Id,
-		Name:             req.Name,
+		ID:               handle,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
@@ -1027,7 +1057,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	}
 
 	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_proxy", orgUUID, createdBy)
-	created, err := s.repo.GetByID(req.Id, orgUUID)
+	created, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch created proxy: %w", err)
 	}
@@ -1037,21 +1067,26 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	return mapProxyModelToAPI(created), nil
 }
 
-func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offset int) (*api.LLMProxyListResponse, error) {
-	if projectUUID != nil && *projectUUID != "" && s.projectRepo != nil {
-		project, err := s.projectRepo.GetProjectByUUID(*projectUUID)
+func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, offset int) (*api.LLMProxyListResponse, error) {
+	var resolvedProjectUUID *string
+	if projectHandle != nil && *projectHandle != "" {
+		if s.projectRepo == nil {
+			return nil, constants.ErrProjectNotFound
+		}
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(*projectHandle, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil || project.OrganizationID != orgUUID {
 			return nil, constants.ErrProjectNotFound
 		}
+		resolvedProjectUUID = &project.ID
 	}
 
 	var items []*model.LLMProxy
 	var err error
-	if projectUUID != nil && *projectUUID != "" {
-		items, err = s.repo.ListByProject(orgUUID, *projectUUID, limit, offset)
+	if resolvedProjectUUID != nil {
+		items, err = s.repo.ListByProject(orgUUID, *resolvedProjectUUID, limit, offset)
 	} else {
 		items, err = s.repo.List(orgUUID, limit, offset)
 	}
@@ -1059,8 +1094,8 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 		return nil, fmt.Errorf("failed to list proxies: %w", err)
 	}
 	var totalCount int
-	if projectUUID != nil && *projectUUID != "" {
-		totalCount, err = s.repo.CountByProject(orgUUID, *projectUUID)
+	if resolvedProjectUUID != nil {
+		totalCount, err = s.repo.CountByProject(orgUUID, *resolvedProjectUUID)
 	} else {
 		totalCount, err = s.repo.Count(orgUUID)
 	}
@@ -1091,7 +1126,7 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
-			Name:        &name,
+			DisplayName: name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Context:     contextValue,
@@ -1153,7 +1188,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
-			Name:        &name,
+			DisplayName: name,
 			Description: desc,
 			CreatedBy:   createdBy,
 			Context:     contextValue,
@@ -1186,10 +1221,10 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != "" && req.Id != handle {
-		return nil, constants.ErrInvalidInput
+	if req.Id != nil && *req.Id != "" && *req.Id != handle {
+		return nil, constants.ErrHandleImmutable
 	}
-	if req.Name == "" || req.Version == "" || req.Provider.Id == "" {
+	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -1218,7 +1253,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		UpdatedBy:        updatedBy,
 		Version:          req.Version,
@@ -1958,7 +1993,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 	return api.LLMProviderTemplateListItem{
 		Id:          &id,
 		GroupId:     utils.StringPtrIfNotEmpty(t.GroupID),
-		Name:        &name,
+		DisplayName: name,
 		Description: utils.StringPtrIfNotEmpty(t.Description),
 		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
 		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
@@ -1979,9 +2014,9 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 	isLatest := m.IsLatest
 	enabled := m.Enabled
 	return &api.LLMProviderTemplate{
-		Id:               m.ID,
+		Id:               &m.ID,
 		GroupId:          utils.StringPtrIfNotEmpty(m.GroupID),
-		Name:             m.Name,
+		DisplayName:      m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
 		ManagedBy:        utils.StringPtrIfNotEmpty(m.ManagedBy),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
@@ -2202,8 +2237,8 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 	}
 
 	out := &api.LLMProvider{
-		Id:                m.ID,
-		Name:              m.Name,
+		Id:                &m.ID,
+		DisplayName:       m.Name,
 		Description:       utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:         utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:           m.Version,
@@ -2241,13 +2276,14 @@ func validateModelProviders(template string, providers *[]api.LLMModelProvider) 
 
 	seenProviders := make(map[string]struct{}, len(*providers))
 	for _, p := range *providers {
-		if strings.TrimSpace(p.Id) == "" {
+		providerID := strings.TrimSpace(utils.ValueOrEmpty(p.Id))
+		if providerID == "" {
 			return constants.ErrInvalidInput
 		}
-		if _, ok := seenProviders[p.Id]; ok {
+		if _, ok := seenProviders[providerID]; ok {
 			return constants.ErrInvalidInput
 		}
-		seenProviders[p.Id] = struct{}{}
+		seenProviders[providerID] = struct{}{}
 
 		models := []api.LLMModel{}
 		if p.Models != nil {
@@ -2255,13 +2291,14 @@ func validateModelProviders(template string, providers *[]api.LLMModelProvider) 
 		}
 		seenModels := make(map[string]struct{}, len(models))
 		for _, m := range models {
-			if strings.TrimSpace(m.Id) == "" {
+			modelID := strings.TrimSpace(utils.ValueOrEmpty(m.Id))
+			if modelID == "" {
 				return constants.ErrInvalidInput
 			}
-			if _, ok := seenModels[m.Id]; ok {
+			if _, ok := seenModels[modelID]; ok {
 				return constants.ErrInvalidInput
 			}
-			seenModels[m.Id] = struct{}{}
+			seenModels[modelID] = struct{}{}
 		}
 	}
 	return nil
@@ -2277,10 +2314,10 @@ func mapModelProvidersAPI(in *[]api.LLMModelProvider) []model.LLMModelProvider {
 		if p.Models != nil {
 			models = make([]model.LLMModel, 0, len(*p.Models))
 			for _, m := range *p.Models {
-				models = append(models, model.LLMModel{ID: m.Id, Name: utils.ValueOrEmpty(m.Name), Description: utils.ValueOrEmpty(m.Description)})
+				models = append(models, model.LLMModel{ID: utils.ValueOrEmpty(m.Id), Name: m.DisplayName, Description: utils.ValueOrEmpty(m.Description)})
 			}
 		}
-		out = append(out, model.LLMModelProvider{ID: p.Id, Name: utils.ValueOrEmpty(p.Name), Models: models})
+		out = append(out, model.LLMModelProvider{ID: utils.ValueOrEmpty(p.Id), Name: p.DisplayName, Models: models})
 	}
 	return out
 }
@@ -2293,10 +2330,10 @@ func mapModelProvidersModelToAPI(in []model.LLMModelProvider) *[]api.LLMModelPro
 	for _, p := range in {
 		models := make([]api.LLMModel, 0, len(p.Models))
 		for _, m := range p.Models {
-			models = append(models, api.LLMModel{Id: m.ID, Name: utils.StringPtrIfNotEmpty(m.Name), Description: utils.StringPtrIfNotEmpty(m.Description)})
+			models = append(models, api.LLMModel{Id: &m.ID, DisplayName: m.Name, Description: utils.StringPtrIfNotEmpty(m.Description)})
 		}
 		modelsPtr := &models
-		out = append(out, api.LLMModelProvider{Id: p.ID, Name: utils.StringPtrIfNotEmpty(p.Name), Models: modelsPtr})
+		out = append(out, api.LLMModelProvider{Id: &p.ID, DisplayName: p.Name, Models: modelsPtr})
 	}
 	return &out
 }
@@ -2529,8 +2566,8 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 	createdAt := utils.TimePtr(m.CreatedAt)
 	updatedAt := utils.TimePtr(m.UpdatedAt)
 	out := &api.LLMProxy{
-		Id:          m.ID,
-		Name:        m.Name,
+		Id:          &m.ID,
+		DisplayName: m.Name,
 		Description: utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:   utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:     m.Version,

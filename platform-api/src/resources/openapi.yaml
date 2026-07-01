@@ -101,10 +101,10 @@ paths:
 
   /organizations/{organizationId}:
     get:
-      summary: Get organization by UUID
+      summary: Get organization by ID
       description: |
-        Returns the organization with the specified UUID.
-      operationId: GetOrganizationByUUID
+        Returns the organization with the specified handle (id).
+      operationId: GetOrganization
       security:
         - OAuth2Security:
             - ap:organization:read
@@ -112,7 +112,13 @@ paths:
       tags:
         - Organizations
       parameters:
-        - $ref: '#/components/parameters/organizationId'
+        - name: organizationId
+          in: path
+          required: true
+          description: ID of the organization.
+          schema:
+            type: string
+            maxLength: 50
       responses:
         '200':
           description: Organization retrieved successfully
@@ -129,9 +135,9 @@ paths:
     head:
       summary: Check if organization exists
       description: |
-        Checks if an organization with the specified UUID.
+        Checks if an organization with the specified handle (id) exists.
         Returns only headers without a response body.
-      operationId: HeadOrganizationByUuid
+      operationId: HeadOrganization
       security:
         - OAuth2Security:
             - ap:organization:read
@@ -139,7 +145,13 @@ paths:
       tags:
         - Organizations
       parameters:
-        - $ref: '#/components/parameters/organizationId'
+        - name: organizationId
+          in: path
+          required: true
+          description: ID of the organization.
+          schema:
+            type: string
+            maxLength: 50
       responses:
         '200':
           description: Organization exists
@@ -170,7 +182,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateProjectRequest'
             example:
-              name: "My Project"
+              displayName: "My Project"
       responses:
         '201':
           description: Project created successfully
@@ -229,7 +241,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/projectId'
       responses:
         '200':
           description: Project retrieved successfully
@@ -259,13 +271,13 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/projectId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateProjectRequest'
+              $ref: '#/components/schemas/Project'
       responses:
         '200':
           description: Project updated successfully
@@ -299,7 +311,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/projectId'
       responses:
         '204':
           description: Project deleted successfully
@@ -331,8 +343,6 @@ paths:
         - REST APIs
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - $ref: '#/components/parameters/api-name-Q'
-        - $ref: '#/components/parameters/api-version-Q'
       responses:
         '200':
           description: REST APIs retrieved successfully
@@ -387,7 +397,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}:
+  /rest-apis/{restApiId}:
     get:
       summary: Get REST API by UUID
       description: |
@@ -438,7 +448,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateRESTAPIRequest'
+              $ref: '#/components/schemas/RESTAPI'
       responses:
         '200':
           description: API updated successfully
@@ -488,7 +498,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
 
-  /rest-apis/{apiId}/gateways:
+  /rest-apis/{restApiId}/gateways:
     get:
       summary: Get gateways for REST API
       description: |
@@ -568,7 +578,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/api-keys:
+  /rest-apis/{restApiId}/api-keys:
     post:
       summary: Create API key
       description: |
@@ -617,7 +627,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/api-keys/{keyName}:
+  /rest-apis/{restApiId}/api-keys/{apiKeyId}:
     put:
       summary: Update API key
       description: |
@@ -635,7 +645,7 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/apiId'
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: The unique name/identifier of the API key
@@ -690,7 +700,7 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/apiId'
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: The unique name/identifier of the API key to revoke
@@ -717,7 +727,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments:
+  /rest-apis/{restApiId}/deployments:
     post:
       summary: Create and deploy a new deployment
       description: |
@@ -804,7 +814,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/{deploymentId}:
+  /rest-apis/{restApiId}/deployments/{deploymentId}:
     get:
       summary: Get deployment by ID
       description: |
@@ -868,7 +878,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/{deploymentId}/undeploy:
+  /rest-apis/{restApiId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy deployment from gateway
       description: |
@@ -900,7 +910,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -921,7 +934,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/{deploymentId}/restore:
+  /rest-apis/{restApiId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous deployment
       description: |
@@ -953,7 +966,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -1064,7 +1080,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-provider-templates/{id}:
+  /llm-provider-templates/{llmProviderTemplateId}:
     get:
       summary: Get LLM provider template by id
       description: Retrieve the complete configuration for a specific LLM provider template.
@@ -1076,7 +1092,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier for the LLM provider template
@@ -1102,7 +1118,7 @@ paths:
       description: |
         Update the latest version of a template in place (name, description, and
         other configuration). This does NOT create a new version — use
-        POST /llm-provider-templates/{id}/versions to create a new version.
+        POST /llm-provider-templates/{llmProviderTemplateId}/versions to create a new version.
       operationId: updateLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1111,7 +1127,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier of the template to update
@@ -1153,7 +1169,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier of the template to delete
@@ -1176,7 +1192,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-provider-templates/{id}/versions:
+  /llm-provider-templates/{llmProviderTemplateId}/versions:
     get:
       summary: List versions of an LLM provider template
       description: List all immutable versions of a template, newest first.
@@ -1188,7 +1204,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier for the LLM provider template
@@ -1241,7 +1257,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier for the LLM provider template
@@ -1272,7 +1288,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-provider-templates/{id}/versions/{version}:
+  /llm-provider-templates/{llmProviderTemplateId}/versions/{version}:
     get:
       summary: Get a specific version of an LLM provider template
       description: Retrieve the complete configuration for a specific immutable version.
@@ -1284,7 +1300,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier for the LLM provider template
@@ -1324,7 +1340,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier for the LLM provider template
@@ -1381,7 +1397,7 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: id
+        - name: llmProviderTemplateId
           in: path
           required: true
           description: Unique identifier for the LLM provider template
@@ -1427,7 +1443,7 @@ paths:
               $ref: '#/components/schemas/LLMProvider'
             example:
               id: wso2-openai-provider
-              name: WSO2 OpenAI Provider
+              displayName: WSO2 OpenAI Provider
               version: v1.0
               template: openai
               upstream:
@@ -1470,10 +1486,10 @@ paths:
                         duration: 1
                         unit: month
               associatedGateways:
-                - name: prod-eu
+                - id: prod-eu
                   configurations:
                     host: prod-eu.platform-gw.local
-                - name: prod-us
+                - id: prod-us
                   configurations:
                     host: prod-us.platform-gw.local
       responses:
@@ -1532,7 +1548,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}:
+  /llm-providers/{llmProviderId}:
     get:
       summary: Get LLM provider by identifier
       description: Retrieve the complete configuration for a specific LLM provider.
@@ -1544,7 +1560,7 @@ paths:
       tags:
         - LLM Providers
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1575,7 +1591,7 @@ paths:
       tags:
         - LLM Providers
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1616,7 +1632,7 @@ paths:
       tags:
         - LLM Providers
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1636,7 +1652,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/deployments:
+  /llm-providers/{llmProviderId}/deployments:
     post:
       summary: Create and deploy a new LLM provider deployment
       description: |
@@ -1654,7 +1670,7 @@ paths:
         - LLM Provider Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1709,7 +1725,7 @@ paths:
         - LLM Provider Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1733,7 +1749,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/deployments/{deploymentId}:
+  /llm-providers/{llmProviderId}/deployments/{deploymentId}:
     get:
       summary: Get LLM provider deployment by ID
       description: |
@@ -1749,7 +1765,7 @@ paths:
         - LLM Provider Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1784,7 +1800,7 @@ paths:
         - LLM Provider Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1807,7 +1823,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/deployments/{deploymentId}/undeploy:
+  /llm-providers/{llmProviderId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy LLM provider deployment from gateway
       description: |
@@ -1827,7 +1843,7 @@ paths:
         - LLM Provider Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1865,7 +1881,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/deployments/{deploymentId}/restore:
+  /llm-providers/{llmProviderId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous LLM provider deployment
       description: |
@@ -1885,7 +1901,7 @@ paths:
         - LLM Provider Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1927,7 +1943,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/llm-proxies:
+  /llm-providers/{llmProviderId}/llm-proxies:
     get:
       summary: List LLM proxies by provider
       description: Retrieve a list of LLM proxies that use the specified LLM provider.
@@ -1940,7 +1956,7 @@ paths:
       tags:
         - LLM Providers
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -1977,7 +1993,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/api-keys:
+  /llm-providers/{llmProviderId}/api-keys:
     post:
       summary: Create a new API key for an LLM provider
       description: |
@@ -1994,7 +2010,7 @@ paths:
         - LLM Providers
         - API Keys
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -2046,7 +2062,7 @@ paths:
         - LLM Providers
         - API Keys
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
@@ -2071,7 +2087,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/api-keys/{keyName}:
+  /llm-providers/{llmProviderId}/api-keys/{apiKeyId}:
     delete:
       summary: Delete an API key for an LLM provider
       description: |
@@ -2086,14 +2102,14 @@ paths:
         - LLM Providers
         - API Keys
       parameters:
-        - name: id
+        - name: llmProviderId
           in: path
           required: true
           description: Unique identifier of the LLM provider
           schema:
             type: string
           example: wso2-openai-provider
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: Name of the API key to delete
@@ -2195,7 +2211,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}:
+  /llm-proxies/{llmProxyId}:
     get:
       summary: Get LLM proxy by unique identifier
       description: Retrieve the complete configuration for a specific LLM proxy.
@@ -2207,7 +2223,7 @@ paths:
       tags:
         - LLM Proxies
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2238,7 +2254,7 @@ paths:
       tags:
         - LLM Proxies
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2279,7 +2295,7 @@ paths:
       tags:
         - LLM Proxies
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2299,7 +2315,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/deployments:
+  /llm-proxies/{llmProxyId}/deployments:
     post:
       summary: Create and deploy a new LLM proxy deployment
       description: |
@@ -2317,7 +2333,7 @@ paths:
         - LLM Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2372,7 +2388,7 @@ paths:
         - LLM Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2396,7 +2412,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/deployments/{deploymentId}:
+  /llm-proxies/{llmProxyId}/deployments/{deploymentId}:
     get:
       summary: Get LLM proxy deployment by ID
       description: |
@@ -2412,7 +2428,7 @@ paths:
         - LLM Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2447,7 +2463,7 @@ paths:
         - LLM Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2470,7 +2486,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/deployments/{deploymentId}/undeploy:
+  /llm-proxies/{llmProxyId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy LLM proxy deployment from gateway
       description: |
@@ -2490,7 +2506,7 @@ paths:
         - LLM Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2528,7 +2544,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/deployments/{deploymentId}/restore:
+  /llm-proxies/{llmProxyId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous LLM proxy deployment
       description: |
@@ -2548,7 +2564,7 @@ paths:
         - LLM Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2590,7 +2606,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/api-keys:
+  /llm-proxies/{llmProxyId}/api-keys:
     post:
       summary: Create a new API key for an LLM proxy
       description: |
@@ -2606,7 +2622,7 @@ paths:
       tags:
         - LLM Proxies
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2658,7 +2674,7 @@ paths:
         - LLM Proxies
         - API Keys
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
@@ -2683,7 +2699,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/api-keys/{keyName}:
+  /llm-proxies/{llmProxyId}/api-keys/{apiKeyId}:
     delete:
       summary: Delete an API key for an LLM proxy
       description: |
@@ -2698,14 +2714,14 @@ paths:
         - LLM Proxies
         - API Keys
       parameters:
-        - name: id
+        - name: llmProxyId
           in: path
           required: true
           description: Unique identifier of the LLM proxy
           schema:
             type: string
           example: wso2-openai-proxy
-        - name: keyName
+        - name: apiKeyId
           in: path
           required: true
           description: Name of the API key to delete
@@ -2807,7 +2823,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}:
+  /mcp-proxies/{mcpProxyId}:
     get:
       summary: Get MCP proxy by unique identifier
       description: Retrieve the complete configuration for a specific MCP proxy.
@@ -2819,7 +2835,7 @@ paths:
       tags:
         - MCP Proxies
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -2850,7 +2866,7 @@ paths:
       tags:
         - MCP Proxies
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -2891,7 +2907,7 @@ paths:
       tags:
         - MCP Proxies
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -2911,7 +2927,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}/deployments:
+  /mcp-proxies/{mcpProxyId}/deployments:
     post:
       summary: Create and deploy a new deployment for MCP proxy
       description: |
@@ -2929,7 +2945,7 @@ paths:
         - MCP Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -2982,7 +2998,7 @@ paths:
         - MCP Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -3006,7 +3022,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}/deployments/{deploymentId}:
+  /mcp-proxies/{mcpProxyId}/deployments/{deploymentId}:
     get:
       summary: Get deployment by ID
       description: |
@@ -3022,7 +3038,7 @@ paths:
         - MCP Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -3057,7 +3073,7 @@ paths:
         - MCP Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -3078,7 +3094,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}/deployments/{deploymentId}/undeploy:
+  /mcp-proxies/{mcpProxyId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy deployment from gateway
       description: |
@@ -3098,7 +3114,7 @@ paths:
         - MCP Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -3115,7 +3131,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -3134,7 +3153,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}/deployments/{deploymentId}/restore:
+  /mcp-proxies/{mcpProxyId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous deployment
       description: |
@@ -3154,7 +3173,7 @@ paths:
         - MCP Proxy Deployments
         - Deployments
       parameters:
-        - name: id
+        - name: mcpProxyId
           in: path
           required: true
           description: Unique identifier of the MCP proxy
@@ -3171,7 +3190,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -3318,7 +3340,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '200':
           description: Gateway retrieved successfully
@@ -3348,14 +3370,14 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       requestBody:
         description: Gateway object that needs to be updated
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateGatewayRequest'
+              $ref: '#/components/schemas/GatewayResponse'
       responses:
         '200':
           description: Gateway updated successfully
@@ -3388,7 +3410,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '204':
           description: Gateway deleted successfully
@@ -3435,7 +3457,7 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '200':
           description: List of active tokens
@@ -3465,7 +3487,7 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '201':
           description: New token generated successfully
@@ -3503,8 +3525,8 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
-        - $ref: '#/components/parameters/TokenID'
+        - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/tokenId'
       responses:
         '200':
           description: Token revoked successfully
@@ -3547,8 +3569,8 @@ paths:
         - Gateways
         - Artifacts
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
-        - $ref: '#/components/parameters/ArtifactType-Q'
+        - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/artifactType-Q'
       responses:
         '200':
           description: Paginated list of artifacts deployed to the gateway
@@ -3580,7 +3602,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/gatewayId'
       responses:
         '200':
           description: Gateway policy manifest
@@ -3693,7 +3715,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateway-custom-policies/{customPolicyUuid}/versions/{version}:
+  /gateway-custom-policies/{gatewayCustomPolicyId}/versions/{version}:
     get:
       summary: Get a specific custom policy version
       description: Returns a custom policy by its UUID and version for the current organization.
@@ -3705,7 +3727,7 @@ paths:
       tags:
         - Gateway Policies
       parameters:
-        - name: customPolicyUuid
+        - name: gatewayCustomPolicyId
           in: path
           required: true
           schema:
@@ -3745,7 +3767,7 @@ paths:
       tags:
         - Gateway Policies
       parameters:
-        - name: customPolicyUuid
+        - name: gatewayCustomPolicyId
           in: path
           required: true
           schema:
@@ -3859,7 +3881,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}:
+  /applications/{applicationId}:
     get:
       summary: Get application by handle
       description: |
@@ -3908,7 +3930,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateApplicationRequest'
+              $ref: '#/components/schemas/Application'
       responses:
         '200':
           description: Application updated successfully
@@ -3956,7 +3978,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/api-keys:
+  /applications/{applicationId}/api-keys:
     get:
       summary: List application API key mappings
       description: |
@@ -4044,7 +4066,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/api-keys/{keyId}:
+  /applications/{applicationId}/api-keys/{apiKeyId}:
     delete:
       summary: Remove application API key mapping
       description: |
@@ -4076,7 +4098,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/associations:
+  /applications/{applicationId}/associations:
     get:
       summary: List application associations
       description: |
@@ -4160,7 +4182,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/associations/{associationId}:
+  /applications/{applicationId}/associations/{associationId}:
     delete:
       summary: Remove application association
       description: |
@@ -4190,7 +4212,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /applications/{appId}/associations/{associationId}/api-keys:
+  /applications/{applicationId}/associations/{associationId}/api-keys:
     get:
       summary: List application API key mappings for an association
       description: |
@@ -4294,7 +4316,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /subscription-plans/{planId}:
+  /subscription-plans/{subscriptionPlanId}:
     get:
       summary: Get subscription plan by ID
       operationId: GetSubscriptionPlan
@@ -4305,12 +4327,12 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: planId
+        - name: subscriptionPlanId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+            maxLength: 50
       responses:
         '200':
           description: Subscription plan details
@@ -4334,18 +4356,18 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: planId
+        - name: subscriptionPlanId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+            maxLength: 50
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateSubscriptionPlanRequest'
+              $ref: '#/components/schemas/SubscriptionPlan'
       responses:
         '200':
           description: Updated subscription plan
@@ -4375,12 +4397,12 @@ paths:
       tags:
         - SubscriptionPlans
       parameters:
-        - name: planId
+        - name: subscriptionPlanId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+            maxLength: 50
       responses:
         '204':
           description: Subscription plan deleted (no content)
@@ -4521,13 +4543,6 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: subscriberId
-          in: query
-          required: true
-          description: Subscriber ID; must match the subscription's subscriberId.
-          schema:
-            type: string
-            minLength: 1
       responses:
         '200':
           description: Subscription details
@@ -4577,7 +4592,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateSubscriptionRequest'
+              $ref: '#/components/schemas/Subscription'
       responses:
         '200':
           description: Updated subscription
@@ -4695,8 +4710,8 @@ paths:
             schema:
               $ref: '#/components/schemas/SecretCreateRequest'
             example:
-              handle: wso2-openai-key
-              name: WSO2 OpenAI API Key
+              id: wso2-openai-key
+              displayName: WSO2 OpenAI API Key
               description: API key for WSO2 OpenAI integration
               value: sk-xxx
               type: GENERIC
@@ -4769,7 +4784,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /secrets/{handle}:
+  /secrets/{secretId}:
     get:
       summary: Get a secret by handle
       description: Returns metadata for a single secret. The plaintext value is never returned.
@@ -4781,7 +4796,7 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: handle
+        - name: secretId
           in: path
           required: true
           description: The secret handle
@@ -4817,7 +4832,7 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: handle
+        - name: secretId
           in: path
           required: true
           description: The secret handle
@@ -4831,7 +4846,7 @@ paths:
               $ref: '#/components/schemas/SecretUpdateRequest'
             example:
               value: sk-new-rotated-value
-              name: WSO2 OpenAI API Key (rotated)
+              displayName: WSO2 OpenAI API Key (rotated)
       responses:
         '200':
           description: Secret rotated successfully.
@@ -4865,7 +4880,7 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: handle
+        - name: secretId
           in: path
           required: true
           description: The secret handle
@@ -5016,41 +5031,6 @@ components:
             ap:subscription_plan:manage: Full access to subscription plans
             ap:subscription_plan:read: Read subscription plans
             ap:subscription_plan:update: Update a subscription plan
-            ap:webbroker_api:api_key:create: Create an API key for a WebBroker API
-            ap:webbroker_api:api_key:delete: Delete an API key of a WebBroker API
-            ap:webbroker_api:api_key:manage: Full access to a WebBroker API's API keys
-            ap:webbroker_api:api_key:update: Update an API key of a WebBroker API
-            ap:webbroker_api:create: Create a WebBroker API
-            ap:webbroker_api:delete: Delete a WebBroker API
-            ap:webbroker_api:deployment:create: Deploy a WebBroker API
-            ap:webbroker_api:deployment:delete: Delete a WebBroker API deployment
-            ap:webbroker_api:deployment:manage: Full access to WebBroker API deployments
-            ap:webbroker_api:deployment:read: Read WebBroker API deployments
-            ap:webbroker_api:deployment:restore: Restore a WebBroker API deployment
-            ap:webbroker_api:deployment:undeploy: Undeploy a WebBroker API deployment
-            ap:webbroker_api:manage: Full access to WebBroker APIs
-            ap:webbroker_api:read: Read WebBroker APIs
-            ap:webbroker_api:update: Update a WebBroker API
-            ap:websub_api:api_key:create: Create an API key for a WebSub API
-            ap:websub_api:api_key:delete: Delete an API key of a WebSub API
-            ap:websub_api:api_key:manage: Full access to a WebSub API's API keys
-            ap:websub_api:api_key:update: Update an API key of a WebSub API
-            ap:websub_api:create: Create a WebSub API
-            ap:websub_api:delete: Delete a WebSub API
-            ap:websub_api:deployment:create: Deploy a WebSub API
-            ap:websub_api:deployment:delete: Delete a WebSub API deployment
-            ap:websub_api:deployment:manage: Full access to WebSub API deployments
-            ap:websub_api:deployment:read: Read WebSub API deployments
-            ap:websub_api:deployment:restore: Restore a WebSub API deployment
-            ap:websub_api:deployment:undeploy: Undeploy a WebSub API deployment
-            ap:websub_api:manage: Full access to WebSub APIs
-            ap:websub_api:read: Read WebSub APIs
-            ap:websub_api:secret:create: Create a secret for a WebSub API
-            ap:websub_api:secret:delete: Delete a secret of a WebSub API
-            ap:websub_api:secret:manage: Full access to a WebSub API's secrets
-            ap:websub_api:secret:read: Read a WebSub API's secrets
-            ap:websub_api:secret:update: Update a secret of a WebSub API
-            ap:websub_api:update: Update a WebSub API
   schemas:
     APIKeyItem:
       type: object
@@ -5162,25 +5142,22 @@ components:
       type: object
       required:
         - id
-        - handle
-        - name
+        - displayName
         - region
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the organization
-          readOnly: true
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        handle:
-          type: string
-          description: URL-friendly unique handle for the organization
+          description: Handle (URL-friendly slug) for the organization
           pattern: '^[a-z0-9-]+$'
-          minLength: 1
+          minLength: 3
+          maxLength: 40
+          readOnly: true
           example: "acme"
-        name:
+        displayName:
           type: string
-          description: Display name of the organization
+          description: Human-readable name for the organization
+          minLength: 1
+          maxLength: 128
           example: "Acme Corporation"
         region:
           type: string
@@ -5205,53 +5182,44 @@ components:
         from the JWT token and does not need to be provided.
       type: object
       required:
-        - name
+        - displayName
       properties:
         id:
           type: string
-          format: uuid
-          description: UUID of the project
-          minLength: 36
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
-        name:
+          description: Handle (URL-friendly slug) for the project. Auto-generated from displayName if not provided.
+          minLength: 3
+          maxLength: 40
+          example: "default-project"
+        displayName:
           type: string
-          description: Name of the project
+          description: Human-readable name for the project
           minLength: 1
+          maxLength: 128
           example: "Default Project"
         description:
           type: string
           description: Description of the project
           example: "This is the default project for development"
 
-    UpdateProjectRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          description: Name of the project
-          minLength: 1
-          example: "Updated Project Name"
-        description:
-          type: string
-          description: Description of the project
-          example: "Updated project description"
-
     Project:
       type: object
       required:
-        - name
+        - id
+        - displayName
         - organizationId
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the project
+          description: Handle (URL-friendly slug) for the project
+          minLength: 3
+          maxLength: 40
           readOnly: true
-          example: "yr434567-de34-76uj6-w376-234324532"
-        name:
+          example: "default-project"
+        displayName:
           type: string
-          description: Name of the project
+          description: Human-readable name for the project
           minLength: 1
+          maxLength: 128
           example: "Default Project"
         description:
           type: string
@@ -5259,10 +5227,12 @@ components:
           example: "This is the default project for development"
         organizationId:
           type: string
-          format: uuid
-          description: UUID of the organization this project belongs to
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this project belongs to
           readOnly: true
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "acme"
         createdAt:
           type: string
           format: date-time
@@ -5287,24 +5257,29 @@ components:
       description: Request body for creating an application.
       type: object
       required:
-        - name
+        - displayName
         - projectId
         - type
       properties:
         id:
           type: string
           description: Unique handle/identifier for the application. Can be provided during creation or auto-generated.
+          minLength: 3
+          maxLength: 40
           example: my-app-handle
-        name:
+        displayName:
           type: string
+          description: Human-readable name for the application
           minLength: 1
-          description: Name of the application
+          maxLength: 128
           example: "GenAI Demo App"
         projectId:
           type: string
-          format: uuid
-          description: UUID of the project this application belongs to.
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this application belongs to.
+          example: default-project
         type:
           $ref: '#/components/schemas/ApplicationType'
         description:
@@ -5316,42 +5291,33 @@ components:
           description: Creator identifier
           example: "admin"
 
-    UpdateApplicationRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          minLength: 1
-          description: Name of the application
-          example: "Updated GenAI App"
-        description:
-          type: string
-          description: Description of the application
-          example: "Updated application description"
-        type:
-          $ref: '#/components/schemas/ApplicationType'
-
     Application:
       type: object
       required:
         - id
-        - name
+        - displayName
         - projectId
         - type
       properties:
         id:
           type: string
           description: Application handle/identifier
+          minLength: 3
+          maxLength: 40
           example: "my-app-handle"
-        name:
+        displayName:
           type: string
-          description: Name of the application
+          description: Human-readable name for the application
+          minLength: 1
+          maxLength: 128
           example: "GenAI Demo App"
         projectId:
           type: string
-          format: uuid
-          description: UUID of the project this application belongs to
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this application belongs to
+          example: default-project
         type:
           $ref: '#/components/schemas/ApplicationType'
         description:
@@ -5422,6 +5388,8 @@ components:
         id:
           type: string
           description: ID or handle of the association target
+          minLength: 1
+          maxLength: 40
           example: provider-handle
         kind:
           type: string
@@ -5435,23 +5403,21 @@ components:
       type: object
       required:
         - id
-        - uuid
-        - name
+        - displayName
         - version
         - kind
       properties:
         id:
           type: string
           description: Handle/ID of the associated target
+          minLength: 1
+          maxLength: 40
           example: provider-handle
-        uuid:
+        displayName:
           type: string
-          format: uuid
-          description: UUID of the associated target
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
-        name:
-          type: string
-          description: Display name of the associated target
+          description: Human-readable name for the associated target
+          minLength: 1
+          maxLength: 128
           example: "OpenAI Provider"
         version:
           type: string
@@ -5585,7 +5551,7 @@ components:
     RESTAPI:
       title: API object
       required:
-        - name
+        - displayName
         - context
         - version
         - projectId
@@ -5594,13 +5560,16 @@ components:
       properties:
         id:
           type: string
-          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated.
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+          minLength: 3
+          maxLength: 40
           example: my-rest-api-handle
-        name:
-          minLength: 1
-          description: Display name of the API
+        displayName:
+          description: Human-readable name for the API
           pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
           type: string
+          minLength: 1
+          maxLength: 128
           example: PizzaShackAPI
         description:
           maxLength: 32766
@@ -5625,9 +5594,11 @@ components:
           example: admin
         projectId:
           type: string
-          format: uuid
-          description: ID of the project this API belongs to
-          example: yr434567-de34-76uj6-w376-234324532
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this API belongs to
+          example: default-project
         createdAt:
           type: string
           format: date-time
@@ -5858,8 +5829,11 @@ components:
       properties:
         gatewayId:
           type: string
-          format: uuid
-          example: "987e6543-e21b-45d3-a789-426614174999"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway to associate with the REST API
+          example: prod-gateway-01
 
     RESTAPIGatewayListResponse:
       type: object
@@ -5926,21 +5900,20 @@ components:
 
     CreateGatewayRequest:
       description: |
-        Request body for creating a gateway. Organization ID is automatically extracted 
+        Request body for creating a gateway. Organization ID is automatically extracted
         from the JWT token and does not need to be provided.
       type: object
       required:
-        - name
         - displayName
         - vhost
         - functionalityType
       properties:
-        name:
+        id:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
-          maxLength: 64
-          description: URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+          maxLength: 40
+          description: Handle (URL-friendly slug) for the gateway. Immutable after creation.
           example: "prod-gateway-01"
         displayName:
           type: string
@@ -6071,24 +6044,28 @@ components:
 
     GatewayResponse:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the gateway
-          example: "987e6543-e21b-45d3-a789-426614174999"
+          description: Handle (URL-friendly slug) for the gateway
+          minLength: 3
+          maxLength: 40
+          readOnly: true
+          example: "prod-gateway-01"
         organizationId:
           type: string
-          format: uuid
-          description: UUID of the organization this gateway belongs to
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        name:
-          type: string
-          description: URL-friendly gateway identifier
-          example: "prod-gateway-01"
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this gateway belongs to
+          example: "acme"
         displayName:
           type: string
           description: Human-readable gateway name
+          minLength: 1
+          maxLength: 128
           example: "Production Gateway 01"
         description:
           type: string
@@ -6130,29 +6107,6 @@ components:
           format: date-time
           description: Timestamp when gateway was last updated
           example: "2025-10-14T10:30:00Z"
-
-    UpdateGatewayRequest:
-      type: object
-      properties:
-        displayName:
-          type: string
-          minLength: 1
-          maxLength: 128
-          description: Human-readable gateway name
-          example: "Updated Production Gateway"
-        description:
-          type: string
-          description: Description of the gateway
-          example: "Updated gateway description"
-        isCritical:
-          type: boolean
-          description: Whether the gateway is critical for production
-          example: true
-        properties:
-          type: object
-          additionalProperties: true
-          description: Custom key-value properties for the gateway
-          example: {"region": "us-west", "tier": "premium"}
 
     Pagination:
       type: object
@@ -6199,12 +6153,10 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the gateway
-          example: "987e6543-e21b-45d3-a789-426614174999"
-        name:
-          type: string
-          description: URL-friendly gateway identifier
+          description: Handle (URL-friendly slug) for the gateway
+          minLength: 3
+          maxLength: 40
+          readOnly: true
           example: "prod-gateway-01"
         isActive:
           type: boolean
@@ -6322,14 +6274,10 @@ components:
         - $ref: '#/components/schemas/RESTAPI'
         - type: object
           required:
-            - name
+            - displayName
             - context
             - version
             - projectId
-
-    UpdateRESTAPIRequest:
-      allOf:
-        - $ref: '#/components/schemas/RESTAPI'
 
     TimeUnit:
       type: string
@@ -6360,17 +6308,22 @@ components:
     CreateAPIKeyRequest:
       type: object
       required:
+        - displayName
         - apiKey
       properties:
-        name:
+        id:
           type: string
           description: |
             Unique identifier for this API key within the API (optional; if omitted,
             generated from displayName)
+          minLength: 3
+          maxLength: 40
           example: "production-key-01"
         displayName:
           type: string
-          description: Display name of the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production API Key"
         apiKey:
           type: string
@@ -6419,6 +6372,7 @@ components:
     UpdateAPIKeyRequest:
       type: object
       required:
+        - displayName
         - apiKey
       properties:
         name:
@@ -6428,7 +6382,9 @@ components:
           example: "production-key-01"
         displayName:
           type: string
-          description: Display name of the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production API Key (Updated)"
         apiKey:
           type: string
@@ -6473,33 +6429,73 @@ components:
           description: The internal ID of the updated key
           example: "production-key-01"
 
+    SubscriptionPlanLimit:
+      type: object
+      required:
+        - timeUnit
+        - limitCount
+      properties:
+        limitType:
+          type: string
+          description: >-
+            Kind of quota this limit enforces. Only REQUEST_COUNT is currently
+            enforced; other values are accepted by the schema for forward
+            compatibility but are rejected by the API today.
+          enum: [REQUEST_COUNT, BANDWIDTH, TOTAL_TOKEN_COUNT]
+          default: REQUEST_COUNT
+        timeUnit:
+          type: string
+          description: Throttle window unit
+          enum: [MINUTE, HOUR, DAY, MONTH]
+          example: "HOUR"
+        timeAmount:
+          type: integer
+          minimum: 1
+          description: Number of timeUnit windows the limit applies over (e.g. 2 with timeUnit=HOUR means "per 2 hours")
+          default: 1
+        limitCount:
+          type: integer
+          minimum: 1
+          description: Number of requests (or units, for BANDWIDTH/TOTAL_TOKEN_COUNT) allowed in the throttle window
+          example: 10000
+        limitCountUnit:
+          type: string
+          description: Unit for limitCount when limitType is BANDWIDTH (e.g. MB, GB)
+        stopOnQuotaReach:
+          type: boolean
+          description: Whether to block requests when this limit's quota is exhausted
+          default: true
+
     CreateSubscriptionPlanRequest:
       type: object
       required:
-        - planName
+        - displayName
       properties:
-        planName:
+        id:
           type: string
-          description: Name of the subscription plan
+          description: Handle (URL-friendly slug) for the plan. Immutable after creation.
+          minLength: 3
+          maxLength: 40
+          example: "gold"
+        displayName:
+          type: string
+          description: Human-readable name for the subscription plan
+          minLength: 1
+          maxLength: 128
           example: "Gold"
         billingPlan:
           type: string
           description: Billing plan type (e.g. Free, Commercial)
           example: "Free"
-        stopOnQuotaReach:
-          type: boolean
-          description: Whether to block requests when quota is exhausted
-          default: true
-        throttleLimitCount:
-          type: integer
-          minimum: 1
-          description: Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
-          example: 10000
-        throttleLimitUnit:
-          type: string
-          description: Throttle window unit (must be paired with throttleLimitCount)
-          enum: [Min, Hour, Day, Month]
-          example: "Hour"
+        limits:
+          type: array
+          description: >-
+            Throttling limits for the plan (e.g. requests per hour, requests per month).
+            The table backing this API already supports multiple limits per plan, but
+            the platform-api currently only persists and enforces the first entry in
+            this array; any additional entries are accepted but ignored.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanLimit'
         expiryTime:
           type: string
           format: date-time
@@ -6508,65 +6504,41 @@ components:
           type: string
           enum: [ACTIVE, INACTIVE]
           default: ACTIVE
-      if:
-        anyOf:
-          - required: [throttleLimitCount]
-          - required: [throttleLimitUnit]
-      then:
-        required: [throttleLimitCount, throttleLimitUnit]
-
-    UpdateSubscriptionPlanRequest:
-      type: object
-      properties:
-        planName:
-          type: string
-        billingPlan:
-          type: string
-        stopOnQuotaReach:
-          type: boolean
-        throttleLimitCount:
-          type: integer
-          minimum: 1
-          description: Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
-        throttleLimitUnit:
-          type: string
-          description: Throttle window unit (must be paired with throttleLimitCount)
-          enum: [Min, Hour, Day, Month]
-        expiryTime:
-          type: string
-          format: date-time
-        status:
-          type: string
-          enum: [ACTIVE, INACTIVE]
-      if:
-        anyOf:
-          - required: [throttleLimitCount]
-          - required: [throttleLimitUnit]
-      then:
-        required: [throttleLimitCount, throttleLimitUnit]
 
     SubscriptionPlan:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
-          format: uuid
-        planName:
+          description: Handle (slug) for the subscription plan
+          minLength: 3
+          maxLength: 63
+        displayName:
           type: string
+          description: Human-readable name for the subscription plan
+          minLength: 1
+          maxLength: 128
         billingPlan:
           type: string
-        stopOnQuotaReach:
-          type: boolean
-        throttleLimitCount:
-          type: integer
-        throttleLimitUnit:
-          type: string
+        limits:
+          type: array
+          description: >-
+            Throttling limits configured for the plan. Only one entry is currently
+            supported and returned, even though the underlying storage allows multiple.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanLimit'
         expiryTime:
           type: string
           format: date-time
         organizationId:
           type: string
-          format: uuid
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this plan belongs to
+          example: "acme"
         status:
           type: string
           enum: [ACTIVE, INACTIVE]
@@ -6604,30 +6576,22 @@ components:
           example: "user-123"
         applicationId:
           type: string
-          description: Application ID (from DevPortal/STS). Optional in token-based subscriptions.
-          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          description: Handle (ID) of the application this subscription belongs to. Optional in token-based subscriptions.
+          example: "my-app-handle"
         subscriptionPlanId:
           type: string
-          description: Subscription plan UUID. Links the subscription to rate limit and billing configuration.
-          example: "plan-uuid-1"
+          description: Handle (slug) of the subscription plan. Links the subscription to rate limit and billing configuration.
+          example: "gold"
         status:
           type: string
           description: Subscription status (default ACTIVE)
           enum: [ACTIVE, INACTIVE, REVOKED]
           default: ACTIVE
 
-    UpdateSubscriptionRequest:
-      type: object
-      properties:
-        status:
-          type: string
-          description: New subscription status
-          enum: [ACTIVE, INACTIVE, REVOKED]
-
     Subscription:
       type: object
       properties:
-        id:
+        uuid:
           type: string
           format: uuid
           description: Subscription UUID
@@ -6641,20 +6605,25 @@ components:
           description: Unique subscriber identifier for this API (required)
         applicationId:
           type: string
-          description: Application ID (optional for token-based subscriptions)
+          description: Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
+          example: "my-app-handle"
         subscriptionToken:
           type: string
           description: Opaque subscription token for API invocation via Subscription-Key header
         subscriptionPlanId:
           type: string
-          description: Subscription plan UUID
+          description: Handle (slug) of the subscription plan
+          example: "gold"
         subscriptionPlanName:
           type: string
           description: Subscription plan display name (e.g. Bronze, Gold)
         organizationId:
           type: string
-          format: uuid
-          description: Organization UUID
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the organization this subscription belongs to
+          example: "acme"
         status:
           type: string
           enum: [ACTIVE, INACTIVE, REVOKED]
@@ -6716,6 +6685,8 @@ components:
         id:
           type: string
           description: Handle of the artifact
+          minLength: 3
+          maxLength: 40
           example: "inventory-api"
         name:
           type: string
@@ -6761,154 +6732,6 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    CommonResponse:
-      type: object
-      required:
-        - success
-        - message
-        - timestamp
-      properties:
-        success:
-          type: boolean
-          description: Whether the operation was successful
-          example: true
-        message:
-          type: string
-          description: Response message
-          example: "Operation completed successfully"
-        timestamp:
-          type: string
-          format: date-time
-          description: Timestamp of the response
-          example: "2025-10-15T10:30:00Z"
-
-    PublishRESTAPIInfo:
-      type: object
-      description: User-overridable API metadata for publishing
-      properties:
-        apiName:
-          type: string
-          description: Name of the API
-          example: "Pet Store API"
-        apiDescription:
-          type: string
-          description: Description of the API
-          example: "A sample API for pet store operations"
-        apiType:
-          type: string
-          description: Type of the API
-          example: "HTTP"
-        visibility:
-          type: string
-          description: Visibility of the API
-          enum: ["public", "private", "restricted"]
-          example: "public"
-        visibleGroups:
-          type: array
-          description: Groups that can see the API
-          items:
-            type: string
-          example: ["admin", "developer"]
-        tags:
-          type: array
-          description: Tags for the API
-          items:
-            type: string
-          example: ["petstore", "sample"]
-        owners:
-          $ref: '#/components/schemas/Owners'
-        labels:
-          type: array
-          description: Labels for the API
-          items:
-            type: string
-          example: ["label1", "label2"]
-
-    Owners:
-      type: object
-      description: API ownership information
-      properties:
-        technicalOwner:
-          type: string
-          description: Technical owner of the API
-          example: "John Doe"
-        technicalOwnerEmail:
-          type: string
-          description: Email of the technical owner
-          example: "john.doe@example.com"
-        businessOwner:
-          type: string
-          description: Business owner of the API
-          example: "Jane Smith"
-        businessOwnerEmail:
-          type: string
-          description: Email of the business owner
-          example: "jane.smith@example.com"
-
-    EndPoints:
-      type: object
-      description: Production and sandbox endpoints
-      properties:
-        productionURL:
-          type: string
-          format: uri
-          description: Production endpoint URL
-          example: "https://api.example.com/v1"
-        sandboxURL:
-          type: string
-          format: uri
-          description: Sandbox endpoint URL
-          example: "https://sandbox.api.example.com/v1"
-
-    PublishRESTAPIResponse:
-      type: object
-      required:
-        - message
-        - apiId
-        - devPortalRefId
-        - publishedAt
-      properties:
-        message:
-          type: string
-          description: Human-readable success message
-          example: "API published successfully to DevPortal"
-        apiId:
-          type: string
-          format: uuid
-          description: Platform-api API identifier
-          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
-        devPortalRefId:
-          type: string
-          description: DevPortal reference ID for the published API
-          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
-        publishedAt:
-          type: string
-          format: date-time
-          description: Timestamp of publication
-          example: "2025-10-29T21:25:09.418859918+05:30"
-
-    UnpublishRESTAPIResponse:
-      type: object
-      required:
-        - message
-        - apiId
-        - unpublishedAt
-      properties:
-        message:
-          type: string
-          description: Human-readable success message
-          example: "API unpublished successfully from DevPortal"
-        apiId:
-          type: string
-          format: uuid
-          description: Platform-api API identifier
-          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
-        unpublishedAt:
-          type: string
-          format: date-time
-          description: Timestamp when API was unpublished
-          example: "2025-10-29T21:08:59.834784232+05:30"
-
     DeployRequest:
       type: object
       required:
@@ -6926,8 +6749,11 @@ components:
           example: "current"
         gatewayId:
           type: string
-          format: uuid
-          description: The target gateway UUID for this deployment
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the target gateway for this deployment
+          example: prod-gateway-01
         metadata:
           type: object
           additionalProperties: true
@@ -6952,8 +6778,11 @@ components:
           example: "v1.0-production"
         gatewayId:
           type: string
-          format: uuid
-          description: UUID of the gateway
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway
+          example: prod-gateway-01
         status:
           type: string
           enum:
@@ -7149,13 +6978,13 @@ components:
     LLMProviderTemplate:
       type: object
       required:
-        - id
-        - name
+        - displayName
         - version
       properties:
         id:
           type: string
           description: Unique handle for the template
+          minLength: 3
           maxLength: 40
           example: openai
         groupId:
@@ -7166,11 +6995,11 @@ components:
           readOnly: true
           maxLength: 40
           example: openai
-        name:
+        displayName:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
-          maxLength: 255
+          maxLength: 128
           example: OpenAI
         managedBy:
           type: string
@@ -7210,7 +7039,7 @@ components:
             Content version, e.g. v1.0. Required. A new template starts at v1.0;
             editing updates that version in place. Supply a new unique version
             only when creating a new version via
-            POST /llm-provider-templates/{id}/versions.
+            POST /llm-provider-templates/{llmProviderTemplateId}/versions.
           pattern: '^[vV]\d+\.\d+$'
           maxLength: 30
           example: v1.0
@@ -7225,7 +7054,7 @@ components:
             Whether this version is offered when creating providers. Disabled
             versions stay in the catalog but are hidden from the provider picker.
             Response-only: create/update default new versions to enabled; toggle
-            via PATCH /llm-provider-templates/{id}/versions/{version}.
+            via PATCH /llm-provider-templates/{llmProviderTemplateId}/versions/{version}.
           readOnly: true
           example: true
         openapi:
@@ -7272,14 +7101,14 @@ components:
     CreateLLMProviderTemplateVersionRequest:
       type: object
       required:
-        - name
+        - displayName
         - version
       properties:
-        name:
+        displayName:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
-          maxLength: 255
+          maxLength: 128
           example: OpenAI
         version:
           type: string
@@ -7324,9 +7153,13 @@ components:
 
     LLMProviderTemplateListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
+          minLength: 3
+          maxLength: 40
           example: openai
         groupId:
           type: string
@@ -7336,8 +7169,11 @@ components:
           readOnly: true
           maxLength: 40
           example: openai
-        name:
+        displayName:
           type: string
+          description: Human-readable name for the LLM provider template
+          minLength: 1
+          maxLength: 128
           example: OpenAI
         managedBy:
           type: string
@@ -7701,8 +7537,7 @@ components:
     LLMProvider:
       type: object
       required:
-        - id
-        - name
+        - displayName
         - version
         - template
         - upstream
@@ -7711,12 +7546,14 @@ components:
         id:
           type: string
           description: Unique handle for the provider
+          minLength: 3
+          maxLength: 40
           example: wso2-openai-provider
-        name:
+        displayName:
           type: string
           description: Human-readable LLM Provider name
           minLength: 1
-          maxLength: 100
+          maxLength: 128
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
           example: WSO2 OpenAI Provider
         description:
@@ -7811,10 +7648,10 @@ components:
           items:
             $ref: '#/components/schemas/AssociatedGateway'
           example:
-            - name: prod-eu
+            - id: prod-eu
               configurations:
                 host: prod-eu.platform-gw.local
-            - name: prod-us
+            - id: prod-us
               configurations:
                 host: prod-us.platform-gw.local
         createdAt:
@@ -7833,14 +7670,14 @@ components:
     AssociatedGateway:
       type: object
       required:
-        - name
+        - id
       properties:
-        name:
+        id:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
-          maxLength: 64
-          description: Name of the gateway this artifact can be deployed to
+          maxLength: 40
+          description: Handle of the gateway this artifact can be deployed to
           example: prod-eu
         configurations:
           type: object
@@ -7853,12 +7690,19 @@ components:
 
     LLMProviderListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
+          minLength: 3
+          maxLength: 40
           example: wso2-openai-provider
-        name:
+        displayName:
           type: string
+          description: Human-readable name for the LLM provider
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI Provider
         description:
           type: string
@@ -7895,15 +7739,19 @@ components:
     LLMModelProvider:
       type: object
       required:
-        - id
+        - displayName
       properties:
         id:
           type: string
           description: Unique model provider identifier
+          minLength: 3
+          maxLength: 40
           example: claude
-        name:
+        displayName:
           type: string
           description: Human-readable model provider name
+          minLength: 1
+          maxLength: 128
           example: Claude
         models:
           type: array
@@ -7914,15 +7762,19 @@ components:
     LLMModel:
       type: object
       required:
-        - id
+        - displayName
       properties:
         id:
           type: string
           description: Unique model identifier
+          minLength: 3
+          maxLength: 40
           example: claude-3-5-sonnet
-        name:
+        displayName:
           type: string
           description: Human-readable model name
+          minLength: 1
+          maxLength: 128
           example: Claude 3.5 Sonnet
         description:
           type: string
@@ -7949,8 +7801,7 @@ components:
     LLMProxy:
       type: object
       required:
-        - id
-        - name
+        - displayName
         - version
         - projectId
         - provider
@@ -7958,14 +7809,16 @@ components:
         id:
           type: string
           description: Unique handle for the proxy
+          minLength: 3
+          maxLength: 40
           example: wso2-con-assistant
-        name:
+        displayName:
           type: string
-          description: Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          description: Human-readable LLM proxy name
           minLength: 1
-          maxLength: 253
+          maxLength: 128
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: wso2-con-assistant
+          example: WSO2 Con Assistant
         description:
           type: string
           description: Description of the LLM proxy
@@ -8046,8 +7899,8 @@ components:
           items:
             $ref: '#/components/schemas/AssociatedGateway'
           example:
-            - name: prod-eu
-            - name: prod-us
+            - id: prod-eu
+            - id: prod-us
         createdAt:
           type: string
           format: date-time
@@ -8063,12 +7916,19 @@ components:
 
     LLMProxyListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
+          minLength: 3
+          maxLength: 40
           example: wso2-con-assistant
-        name:
+        displayName:
           type: string
+          description: Human-readable name for the LLM proxy
+          minLength: 1
+          maxLength: 128
           example: WSO2 Con Assistant
         description:
           type: string
@@ -8136,23 +7996,29 @@ components:
         id:
           type: string
           description: Unique id of a deployed llm provider
+          minLength: 1
+          maxLength: 40
           example: wso2-openai-provider
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
 
     CreateLLMProviderAPIKeyRequest:
       type: object
+      required:
+        - displayName
       properties:
-        name:
+        id:
           type: string
           description: Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
         displayName:
           type: string
-          description: User-friendly name for the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production Key"
         expiresAt:
           type: string
@@ -8176,7 +8042,7 @@ components:
       required:
         - status
         - message
-        - keyId
+        - id
         - apiKey
       properties:
         status:
@@ -8187,7 +8053,7 @@ components:
           type: string
           description: Detailed message about the operation result
           example: "API key created and broadcasted to gateways successfully"
-        keyId:
+        id:
           type: string
           description: Unique identifier of the generated key
           example: "production-key"
@@ -8197,17 +8063,21 @@ components:
           example: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
     CreateLLMProxyAPIKeyRequest:
       type: object
+      required:
+        - displayName
       properties:
-        name:
+        id:
           type: string
           description: Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
           minLength: 3
-          maxLength: 63
+          maxLength: 40
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
         displayName:
           type: string
-          description: User-friendly name for the API key
+          description: Human-readable name for the API key
+          minLength: 1
+          maxLength: 128
           example: "Production Key"
         expiresAt:
           type: string
@@ -8231,7 +8101,7 @@ components:
       required:
         - status
         - message
-        - keyId
+        - id
         - apiKey
       properties:
         status:
@@ -8242,7 +8112,7 @@ components:
           type: string
           description: Detailed message about the operation result
           example: "API key created and broadcasted to gateways successfully"
-        keyId:
+        id:
           type: string
           description: Unique identifier of the generated key
           example: "production-key"
@@ -8254,20 +8124,21 @@ components:
     MCPProxy:
       type: object
       required:
-        - id
-        - name
+        - displayName
         - version
         - upstream
       properties:
         id:
           type: string
           description: Unique handle for the proxy
+          minLength: 3
+          maxLength: 40
           example: weather-mcp-proxy
-        name:
+        displayName:
           type: string
-          description: Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          description: Human-readable MCP proxy name
           minLength: 1
-          maxLength: 253
+          maxLength: 128
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
           example: Weather Server
         description:
@@ -8344,8 +8215,8 @@ components:
           items:
             $ref: '#/components/schemas/AssociatedGateway'
           example:
-            - name: prod-eu
-            - name: prod-us
+            - id: prod-eu
+            - id: prod-us
         createdAt:
           type: string
           format: date-time
@@ -8359,12 +8230,19 @@ components:
 
     MCPProxyListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
+          minLength: 3
+          maxLength: 40
           example: weather-mcp-proxy
-        name:
+        displayName:
           type: string
+          description: Human-readable name for the MCP proxy
+          minLength: 1
+          maxLength: 128
           example: Weather Server
         description:
           type: string
@@ -8484,525 +8362,23 @@ components:
           items:
             type: object
 
-    WebSubAPI:
-      type: object
-      required:
-        - name
-        - version
-        - projectId
-        - upstream
-        - channels
-      properties:
-        id:
-          type: string
-          description: Unique handle for the WebSub API
-          example: my-websub-api
-        name:
-          type: string
-          description: Human-readable name for the WebSub API
-          minLength: 1
-          maxLength: 253
-          example: My WebSub API
-        description:
-          type: string
-          maxLength: 1023
-          example: A WebSub API for event publishing
-        version:
-          type: string
-          description: Semantic version of the WebSub API
-          pattern: '^v\d+\.\d+$'
-          example: v1.0
-        projectId:
-          type: string
-          description: UUID of the project this API belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
-        context:
-          type: string
-          description: Base path for the API (must start with /)
-          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
-          example: /my-websub-api
-        upstream:
-          $ref: '#/components/schemas/Upstream'
-        allChannels:
-          $ref: '#/components/schemas/WebSubAllChannelPolicies'
-        channels:
-          type: object
-          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
-          additionalProperties:
-            $ref: '#/components/schemas/WebSubChannel'
-        transport:
-          type: array
-          description: Supported transport protocols
-          items:
-            type: string
-            enum:
-              - http
-              - https
-          example:
-            - http
-            - https
-        lifeCycleStatus:
-          type: string
-          description: Lifecycle status of the WebSub API
-          enum:
-            - CREATED
-            - PUBLISHED
-            - DEPRECATED
-            - RETIRED
-          example: CREATED
-        subscriptionPlans:
-          type: array
-          description: List of subscription plan IDs
-          items:
-            type: string
-        kind:
-          type: string
-          description: Kind of the WebSub API
-          readOnly: true
-          default: WebSubApi
-          example: WebSubApi
-        readOnly:
-          type: boolean
-          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-          example: false
-        createdBy:
-          type: string
-          description: Username of the creator
-          readOnly: true
-          example: jane.doe
-        createdAt:
-          type: string
-          format: date-time
-          readOnly: true
-        updatedAt:
-          type: string
-          format: date-time
-          readOnly: true
-
-    WebSubAPIListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: my-websub-api
-        name:
-          type: string
-          example: My WebSub API
-        version:
-          type: string
-          example: v1.0
-        projectId:
-          type: string
-          example: 550e8400-e29b-41d4-a716-446655440000
-        context:
-          type: string
-          example: /my-websub-api
-        lifeCycleStatus:
-          type: string
-          enum:
-            - CREATED
-            - PUBLISHED
-            - DEPRECATED
-            - RETIRED
-          example: CREATED
-        readOnly:
-          type: boolean
-          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-          example: false
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    WebSubAPIListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/WebSubAPIListItem'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    WebSubAllChannelPolicies:
-      type: object
-      description: Policies applied to all channels, organized by event type.
-      properties:
-        on_subscription:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_unsubscription:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_message_received:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_message_delivery:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-
-    WebSubEventPolicies:
-      type: object
-      description: Policies for a single event type.
-      properties:
-        policies:
-          type: array
-          description: List of policies applied for this event type.
-          items:
-            $ref: '#/components/schemas/Policy'
-
-
-    WebSubChannel:
-      type: object
-      description: A single channel definition with optional per-channel policy overrides.
-      properties:
-        on_subscription:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_unsubscription:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_message_received:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_message_delivery:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-
-    WebSubAPIHmacSecretRequest:
-      type: object
-      required:
-        - displayName
-      properties:
-        displayName:
-          type: string
-          description: Human-readable label for the HMAC secret (used to derive the URL-safe name/slug).
-          example: GitHub Webhook
-        secret:
-          type: string
-          description: |
-            Optional. If provided, this value is used as the HMAC secret instead of auto-generating one.
-            Must be at least 32 characters long.
-          minLength: 32
-          example: my-external-secret-value-that-is-at-least-32-chars
-
-    WebSubAPIHmacSecretRegenerateRequest:
-      type: object
-      properties:
-        secret:
-          type: string
-          description: |
-            Optional. If provided, this value is used as the new HMAC secret instead of auto-generating one.
-            Must be at least 32 characters long.
-          minLength: 32
-          example: my-external-secret-value-that-is-at-least-32-chars
-
-    WebSubAPIHmacSecretInfo:
-      type: object
-      required:
-        - uuid
-        - name
-        - displayName
-        - status
-        - createdAt
-        - updatedAt
-      properties:
-        uuid:
-          type: string
-          description: Unique identifier for the HMAC secret.
-        name:
-          type: string
-          description: URL-safe slug derived from the display name.
-          example: github-webhook
-        displayName:
-          type: string
-          description: Human-readable label.
-          example: GitHub Webhook
-        status:
-          type: string
-          description: Status of the HMAC secret.
-          example: active
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    WebSubAPIHmacSecretCreationResponse:
-      type: object
-      required:
-        - secret
-        - message
-      properties:
-        secret:
-          type: string
-          description: |
-            The plaintext HMAC secret value. This is returned **once** at creation/regeneration time
-            and is never stored unencrypted — save it immediately.
-          example: whsec_a3f2c1e4b5d6789012345678901234567890abcdef1234567890abcdef12345678
-        webhookSecret:
-          $ref: '#/components/schemas/WebSubAPIHmacSecretInfo'
-        message:
-          type: string
-          description: Human-readable confirmation message.
-          example: HMAC secret created successfully
-
-    WebSubAPIHmacSecretListResponse:
-      type: object
-      required:
-        - secrets
-      properties:
-        secrets:
-          type: array
-          items:
-            $ref: '#/components/schemas/WebSubAPIHmacSecretInfo'
-
-    WebBrokerAPI:
-      type: object
-      required:
-        - name
-        - version
-        - projectId
-        - receiver
-        - broker
-        - channels
-      properties:
-        id:
-          type: string
-          description: Unique handle for the WebBroker API
-          example: my-webbroker-api
-        name:
-          type: string
-          description: Human-readable name for the WebBroker API
-          minLength: 1
-          maxLength: 253
-          example: My WebBroker API
-        description:
-          type: string
-          maxLength: 1023
-          example: A WebBroker API for real-time messaging
-        version:
-          type: string
-          description: Semantic version of the WebBroker API
-          pattern: '^v\d+\.\d+$'
-          example: v1.0
-        projectId:
-          type: string
-          description: UUID of the project this API belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
-        context:
-          type: string
-          description: Base path for the API (must start with /)
-          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
-          example: /my-webbroker-api
-        receiver:
-          type: object
-          description: WebSocket receiver configuration
-          required:
-            - name
-            - type
-          properties:
-            name:
-              type: string
-              example: websocket-receiver
-            type:
-              type: string
-              enum:
-                - websocket
-              example: websocket
-            properties:
-              type: object
-              additionalProperties: true
-        broker:
-          type: object
-          description: Message broker configuration
-          required:
-            - name
-            - type
-          properties:
-            name:
-              type: string
-              example: kafka-driver
-            type:
-              type: string
-              enum:
-                - kafka
-              example: kafka
-            properties:
-              type: object
-              additionalProperties: true
-        allChannels:
-          $ref: '#/components/schemas/WebBrokerAllChannelPolicies'
-        channels:
-          type: object
-          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies and topics for that channel.
-          additionalProperties:
-            $ref: '#/components/schemas/WebBrokerChannel'
-        transport:
-          type: array
-          description: Supported transport protocols
-          items:
-            type: string
-            enum:
-              - http
-              - https
-          example:
-            - http
-            - https
-        lifeCycleStatus:
-          type: string
-          description: Lifecycle status of the WebBroker API
-          enum:
-            - CREATED
-            - PUBLISHED
-            - DEPRECATED
-            - RETIRED
-          example: CREATED
-        subscriptionPlans:
-          type: array
-          description: List of subscription plan IDs
-          items:
-            type: string
-        kind:
-          type: string
-          description: Kind of the WebBroker API
-          readOnly: true
-          default: WebBrokerApi
-          example: WebBrokerApi
-        readOnly:
-          type: boolean
-          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-          example: false
-        createdBy:
-          type: string
-          description: Username of the creator
-          readOnly: true
-          example: jane.doe
-        createdAt:
-          type: string
-          format: date-time
-          readOnly: true
-        updatedAt:
-          type: string
-          format: date-time
-          readOnly: true
-
-    WebBrokerAPIListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: my-webbroker-api
-        name:
-          type: string
-          example: My WebBroker API
-        version:
-          type: string
-          example: v1.0
-        projectId:
-          type: string
-          example: 550e8400-e29b-41d4-a716-446655440000
-        context:
-          type: string
-          example: /my-webbroker-api
-        lifeCycleStatus:
-          type: string
-          enum:
-            - CREATED
-            - PUBLISHED
-            - DEPRECATED
-            - RETIRED
-          example: CREATED
-        readOnly:
-          type: boolean
-          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-          example: false
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    WebBrokerAPIListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/WebBrokerAPIListItem'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    WebBrokerAllChannelPolicies:
-      type: object
-      description: Policies applied to all channels, organized by event type.
-      properties:
-        on_connection_init:
-          $ref: '#/components/schemas/WebBrokerEventPolicies'
-        on_produce:
-          $ref: '#/components/schemas/WebBrokerEventPolicies'
-        on_consume:
-          $ref: '#/components/schemas/WebBrokerEventPolicies'
-
-    WebBrokerEventPolicies:
-      type: object
-      description: Policies for a single event type.
-      properties:
-        policies:
-          type: array
-          description: List of policies applied for this event type.
-          items:
-            $ref: '#/components/schemas/Policy'
-
-    WebBrokerChannel:
-      type: object
-      description: A single channel definition with topic mappings and optional per-channel policy overrides.
-      properties:
-        produceTo:
-          type: object
-          description: Kafka topic to produce messages to
-          properties:
-            topic:
-              type: string
-              example: stock.prices
-        consumeFrom:
-          type: object
-          description: Kafka topic to consume messages from
-          properties:
-            topic:
-              type: string
-              example: stock.prices.response
-        on_connection_init:
-          $ref: '#/components/schemas/WebBrokerEventPolicies'
-        on_produce:
-          $ref: '#/components/schemas/WebBrokerEventPolicies'
-        on_consume:
-          $ref: '#/components/schemas/WebBrokerEventPolicies'
-
     SecretCreateRequest:
       type: object
       required:
-        - handle
-        - name
+        - displayName
         - value
       properties:
-        handle:
+        id:
           type: string
-          description: Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
+          description: Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
+          minLength: 3
+          maxLength: 40
           example: wso2-openai-key
-        name:
+        displayName:
           type: string
-          description: Human-readable display name for list views
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI API Key
         description:
           type: string
@@ -9019,11 +8395,20 @@ components:
     SecretUpdateRequest:
       type: object
       required:
+        - displayName
         - value
       properties:
-        name:
+        id:
           type: string
-          description: Updated display name
+          description: Secret handle — if provided, must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
+          minLength: 3
+          maxLength: 40
+          example: "wso2-openai-key"
+        displayName:
+          type: string
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
         description:
           type: string
         value:
@@ -9033,16 +8418,23 @@ components:
     SecretResponse:
       type: object
       description: Returned on create (201) and rotate (200). The plaintext value is never included.
+      required:
+        - displayName
       properties:
         uuid:
           type: string
           description: UUID of the secret
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-        handle:
+        id:
           type: string
+          minLength: 3
+          maxLength: 40
           example: wso2-openai-key
-        name:
+        displayName:
           type: string
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI API Key
         createdAt:
           type: string
@@ -9054,16 +8446,23 @@ components:
     SecretSummary:
       type: object
       description: Secret metadata — never includes the plaintext value.
+      required:
+        - displayName
       properties:
         uuid:
           type: string
           description: UUID of the secret
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-        handle:
+        id:
           type: string
+          minLength: 3
+          maxLength: 40
           example: wso2-openai-key
-        name:
+        displayName:
           type: string
+          description: Human-readable name for the secret
+          minLength: 1
+          maxLength: 128
           example: WSO2 OpenAI API Key
         description:
           type: string
@@ -9194,30 +8593,18 @@ components:
             message: Service Unavailable
             description: Secrets management is not configured — set PLATFORM_SECRET_ENCRYPTION_KEY
   parameters:
-    organizationId:
-      name: organizationId
-      in: path
-      required: true
-      description: |
-        **Organization ID** consisting of the **UUID** of the Organization.
-      schema:
-        type: string
-        format: uuid
-        example: "123e4567-e89b-12d3-a456-426614174000"
-
-    ProjectID:
+    projectId:
       name: projectId
       in: path
       required: true
       description: |
-        **Project ID** consisting of the **UUID** of the Project.
+        **Project ID** (handle — unique slug identifier) of the Project.
       schema:
         type: string
-        format: uuid
-        example: "yr434567-de34-76uj6-w376-234324532"
+        example: "default-project"
 
     apiId:
-      name: apiId
+      name: restApiId
       in: path
       description: |
         **API ID** consisting of the **handle** (unique identifier) of the API.
@@ -9227,7 +8614,7 @@ components:
         example: my-rest-api-handle
 
     appId:
-      name: appId
+      name: applicationId
       in: path
       description: |
         **Application ID** consisting of the **handle** of the application.
@@ -9246,19 +8633,8 @@ components:
         type: string
         example: provider-handle
 
-    keyId:
-      name: keyId
-      in: path
-      description: |
-        **API Key ID** consisting of the **UUID** of the API key.
-      required: true
-      schema:
-        type: string
-        format: uuid
-        example: "d2612fbe-b297-4f3c-9d2d-cc821b4dc8d2"
-
     mappedKeyId:
-      name: keyId
+      name: apiKeyId
       in: path
       description: |
         **API Key ID** consisting of the **name** of the API key.
@@ -9283,11 +8659,10 @@ components:
       in: query
       required: true
       description: |
-        **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
       schema:
         type: string
-        format: uuid
-        example: "yr434567-de34-76uj6-w376-234324532"
+        example: "default-project"
 
     gatewayId-Q:
       name: gatewayId
@@ -9299,40 +8674,17 @@ components:
         type: string
         example: "987e6543-e21b-45d3-a789-426614174999"
 
-    api-name-Q:
-      name: name
-      in: query
-      required: false
-      description: |
-        **API Name** to check for existence within the organization.
-        Must be used together with 'version' parameter if 'identifier' is not provided.
-      schema:
-        type: string
-        example: "Weather REST API"
-
-    api-version-Q:
-      name: version
-      in: query
-      required: false
-      description: |
-        **API Version** to check for existence within the organization.
-        Must be used together with 'name' parameter if 'identifier' is not provided.
-      schema:
-        type: string
-        example: "v1"
-
-    GatewayID:
+    gatewayId:
       name: gatewayId
       in: path
       required: true
       description: |
-        **Gateway ID** consisting of the **UUID** of the Gateway.
+        **Gateway ID** (handle — unique slug identifier) of the Gateway.
       schema:
         type: string
-        format: uuid
-        example: "987e6543-e21b-45d3-a789-426614174999"
+        example: "prod-gateway-01"
 
-    TokenID:
+    tokenId:
       name: tokenId
       in: path
       required: true
@@ -9343,7 +8695,7 @@ components:
         format: uuid
         example: "abc12345-f678-90de-f123-456789abcdef"
 
-    ArtifactType-Q:
+    artifactType-Q:
       name: artifactType
       in: query
       required: false
@@ -9361,16 +8713,6 @@ components:
         type: string
         format: uuid
       description: The UUID of the deployment
-
-    deploymentId-Q:
-      name: deploymentId
-      in: query
-      required: false
-      description: |
-        **Deployment ID** consisting of the **UUID** of the Deployment to filter status by.
-      schema:
-        type: string
-        example: "987e6543-e21b-45d3-a789-426614174999"
 
     deploymentStatus-Q:
       name: status

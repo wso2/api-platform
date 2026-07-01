@@ -29,8 +29,6 @@ import (
 	"platform-api/src/internal/utils"
 	"strings"
 
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/wso2/go-httpkit/httputil"
 )
 
@@ -62,7 +60,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API name is required"))
 		return
@@ -77,7 +75,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 			"API version is required"))
 		return
 	}
-	if req.ProjectId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.ProjectId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
@@ -176,7 +174,7 @@ func (h *APIHandler) GetAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -213,10 +211,6 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) {
 	projectId := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
-		return
-	}
-	if _, err := uuid.Parse(projectId); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "invalid projectId"))
 		return
 	}
 
@@ -256,14 +250,14 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
 		return
 	}
 
-	var req api.UpdateRESTAPIRequest
+	var req api.RESTAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			err.Error()))
@@ -287,6 +281,10 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrHandleImmutable) {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidLifecycleState) {
@@ -331,7 +329,7 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -368,7 +366,7 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -390,7 +388,7 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 	// Extract gateway IDs from request
 	gatewayIds := make([]string, len(req))
 	for i, gw := range req {
-		gatewayIds[i] = utils.OpenAPIUUIDToString(gw.GatewayId)
+		gatewayIds[i] = gw.GatewayId
 	}
 
 	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId)
@@ -425,7 +423,7 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -455,11 +453,11 @@ func (h *APIHandler) RegisterRoutes(mux *http.ServeMux) {
 	base := constants.APIBasePath + "/rest-apis"
 	mux.HandleFunc("POST "+base, h.CreateAPI)
 	mux.HandleFunc("GET "+base, h.ListAPIs)
-	mux.HandleFunc("GET "+base+"/{apiId}", h.GetAPI)
-	mux.HandleFunc("PUT "+base+"/{apiId}", h.UpdateAPI)
-	mux.HandleFunc("DELETE "+base+"/{apiId}", h.DeleteAPI)
-	mux.HandleFunc("GET "+base+"/{apiId}/gateways", h.GetAPIGateways)
-	mux.HandleFunc("POST "+base+"/{apiId}/gateways", h.AddGatewaysToAPI)
+	mux.HandleFunc("GET "+base+"/{restApiId}", h.GetAPI)
+	mux.HandleFunc("PUT "+base+"/{restApiId}", h.UpdateAPI)
+	mux.HandleFunc("DELETE "+base+"/{restApiId}", h.DeleteAPI)
+	mux.HandleFunc("GET "+base+"/{restApiId}/gateways", h.GetAPIGateways)
+	mux.HandleFunc("POST "+base+"/{restApiId}/gateways", h.AddGatewaysToAPI)
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {

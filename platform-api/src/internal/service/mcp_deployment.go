@@ -29,6 +29,7 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -73,26 +74,50 @@ func (s *MCPDeploymentService) DeployMCPProxyByHandle(proxyHandle string, req *a
 	return s.deployMCPProxy(proxyUUID, req, orgUUID, createdBy)
 }
 
-// RestoreMCPDeploymentByHandle restores a previous deployment using MCP proxy handle
-func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(proxyHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+// RestoreMCPDeploymentByHandle restores a previous deployment using the MCP proxy
+// handle and the gateway handle. Deploy resolves the gateway by handle, so restore
+// resolves the handle to the gateway UUID here to keep the contract consistent.
+func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.restoreMCPProxyDeployment(proxyUUID, &deploymentID, &gatewayID, orgUUID)
+	// Resolve gateway handle to UUID (the deployment stores the gateway UUID).
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayHandle), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	gatewayUUID := gateway.ID
+
+	return s.restoreMCPProxyDeployment(proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
 }
 
-// UndeployDeploymentByHandle undeploys a deployment using MCP proxy handle
-func (s *MCPDeploymentService) UndeployDeploymentByHandle(proxyHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+// UndeployDeploymentByHandle undeploys a deployment using the MCP proxy handle and
+// the gateway handle. Deploy resolves the gateway by handle, so undeploy resolves
+// the handle to the gateway UUID here to keep the contract consistent.
+func (s *MCPDeploymentService) UndeployDeploymentByHandle(proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.undeployMCPProxyDeployment(proxyUUID, &deploymentID, &gatewayID, orgUUID)
+	// Resolve gateway handle to UUID (the deployment stores the gateway UUID).
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayHandle), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	gatewayUUID := gateway.ID
+
+	return s.undeployMCPProxyDeployment(proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
 }
 
 // DeleteDeploymentByHandle deletes a deployment using MCP proxy handle
@@ -146,20 +171,21 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := strings.TrimSpace(req.GatewayId)
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgId {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
+	gatewayID := gateway.ID
 
 	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
@@ -294,6 +320,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 
 	// Return deployment response
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -395,6 +422,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -476,6 +504,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
@@ -509,6 +538,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -560,6 +590,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		mapped, err := toAPIDeploymentResponse(
+			s.gatewayRepo,
 			d.DeploymentID,
 			d.Name,
 			d.GatewayID,

@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	api "platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
@@ -60,11 +61,6 @@ type CreateSubscriptionRequest struct {
 	ApplicationID      *string `json:"applicationId,omitempty"`
 	SubscriptionPlanID *string `json:"subscriptionPlanId,omitempty"`
 	Status             string  `json:"status,omitempty"`
-}
-
-// UpdateSubscriptionRequest is the body for PUT /api/v0.9/subscriptions/:subscriptionId
-type UpdateSubscriptionRequest struct {
-	Status string `json:"status,omitempty"`
 }
 
 // CreateSubscription handles POST /api/v0.9/subscriptions
@@ -264,12 +260,16 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
 	}
-	var req UpdateSubscriptionRequest
+	var req api.Subscription
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
-	switch req.Status {
+	var status string
+	if req.Status != nil {
+		status = string(*req.Status)
+	}
+	switch status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid subscription status"))
@@ -279,7 +279,7 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, req.Status)
+	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, status)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
@@ -354,10 +354,10 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	resp := map[string]any{
-		"id":             sub.UUID,
+		"uuid":           sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
-		"organizationId": sub.OrganizationUUID,
+		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,
@@ -389,10 +389,10 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	resp := map[string]any{
-		"id":             sub.UUID,
+		"uuid":           sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
-		"organizationId": sub.OrganizationUUID,
+		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,
