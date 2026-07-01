@@ -31,6 +31,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -109,7 +110,7 @@ func (s *Server) deleteSecretAsync(jwt, handle, apiBase string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), platformAPITimeout)
 		defer cancel()
-		path := apiBase + "/secrets/" + handle
+		path := apiBase + "/secrets/" + url.PathEscape(handle)
 		resp, err := s.platformDo(ctx, jwt, http.MethodDelete, path, nil, nil)
 		if err != nil {
 			slog.Warn("bff: secret compensation DELETE failed", "handle", handle, "err", err)

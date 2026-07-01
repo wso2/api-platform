@@ -229,12 +229,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           typeof authValue === 'string' && authValue.includes('{{ secret ');
 
         if (authValue && !isAlreadyPlaceholder) {
-          // Extract the old handle before overwriting — used for best-effort cleanup.
           const currentProvider = providersResponse.list.find((p) => p.id === providerId);
-          const existingPlaceholder = currentProvider?.upstream?.main?.auth?.value;
-          const oldHandle = typeof existingPlaceholder === 'string'
-            ? extractSecretHandle(existingPlaceholder)
-            : null;
 
           // Always create a fresh secret with a new unique handle so re-saving
           // with a different key never collides with an existing secret.
@@ -247,15 +242,6 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
             type: 'GENERIC',
           });
           logger.info('Created new secret for LLM provider update', { secretHandle, providerId });
-
-          // Best-effort: delete the old secret now that it will no longer be
-          // referenced. Ignore 409 (still deployed to a gateway) — the ref will
-          // clear on the next deploy cycle.
-          if (oldHandle) {
-            deleteSecret(oldHandle).catch((err) => {
-              logger.warn('Could not delete old secret after provider update', { oldHandle, err });
-            });
-          }
 
           updatesPayload = {
             ...updates,
@@ -279,6 +265,22 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           organizationId,
           PLATFORM_API_BASE_URL
         );
+
+        // Best-effort: delete the old secret only after the provider update has
+        // succeeded. If the update failed we skip deletion so the provider keeps
+        // a valid secret reference and does not end up with a dangling placeholder.
+        if (authValue && !isAlreadyPlaceholder) {
+          const currentProvider = providersResponse.list.find((p) => p.id === providerId);
+          const existingPlaceholder = currentProvider?.upstream?.main?.auth?.value;
+          const oldHandle = typeof existingPlaceholder === 'string'
+            ? extractSecretHandle(existingPlaceholder)
+            : null;
+          if (oldHandle) {
+            deleteSecret(oldHandle).catch((err) => {
+              logger.warn('Could not delete old secret after provider update', { oldHandle, err });
+            });
+          }
+        }
         setProvidersResponse((prev) => ({
           ...prev,
           list: prev.list.map((provider) =>

@@ -176,6 +176,6 @@ export function generateSecretHandle(): string {
  * Returns null if the value is not a placeholder.
  */
 export function extractSecretHandle(placeholder: string): string | null {
-  const match = placeholder.match(/\{\{\s*secret\s+"([^"]+)"\s*\}\}/);
+  const match = placeholder.match(/^\{\{\s*secret\s+"([^"]+)"\s*\}\}$/);
   return match ? match[1] : null;
 }
