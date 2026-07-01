@@ -252,7 +252,7 @@ function deleteProvider(authToken, organizationId, targetProviderId) {
 function deleteTemplateVersion(authToken, organizationId, templateId) {
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api/proxy/api/v0.9/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api/proxy/api/v0.9/llm-provider-templates/${encodeURIComponent(templateId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     if (response.status === 409) {

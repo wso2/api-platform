@@ -42,7 +42,7 @@ import type { ProviderTemplate } from '../../../../../utils/types';
 interface TemplateVersionDialogProps {
   open: boolean;
   groupId: string;
-  templateName: string;
+  displayName: string;
   onClose: () => void;
   onConfirm: (versionTemplate: ProviderTemplate) => void;
 }
@@ -50,7 +50,7 @@ interface TemplateVersionDialogProps {
 export default function TemplateVersionDialog({
   open,
   groupId,
-  templateName,
+  displayName,
   onClose,
   onConfirm,
 }: TemplateVersionDialogProps) {
@@ -70,7 +70,7 @@ export default function TemplateVersionDialog({
     setVersions([]);
     setSelected('');
     providerTemplateApis
-      .getProviderTemplateVersions(groupId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplateVersions(groupId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (!isMounted) return;
         const parseVerNum = (s: string) => {
@@ -108,7 +108,7 @@ export default function TemplateVersionDialog({
       fullWidth
       data-cyid="template-version-dialog"
     >
-      <DialogTitle>Select a version of {templateName}</DialogTitle>
+      <DialogTitle>Select a version of {displayName}</DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           The provider will be based on the version you choose.

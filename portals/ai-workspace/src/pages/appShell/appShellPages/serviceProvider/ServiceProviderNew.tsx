@@ -418,7 +418,6 @@ export default function ServiceProviderNew() {
         groupId = (
           await providerTemplateApis.getProviderTemplate(
             template.id,
-            organizationId,
             PLATFORM_API_BASE_URL
           )
         ).groupId;
@@ -431,7 +430,6 @@ export default function ServiceProviderNew() {
       const enabledVersions = (
         await providerTemplateApis.getProviderTemplateVersions(
           resolvedGroupId,
-          organizationId,
           PLATFORM_API_BASE_URL
         )
       ).filter((v) => v.enabled !== false);
@@ -501,7 +499,7 @@ export default function ServiceProviderNew() {
             <TemplateVersionDialog
               open={versionDialogOpen}
               groupId={pendingTemplate.groupId ?? pendingTemplate.id ?? ''}
-              templateName={pendingTemplate.displayName}
+              displayName={pendingTemplate.displayName}
               onClose={() => {
                 setVersionDialogOpen(false);
                 setPendingTemplate(null);
@@ -519,7 +517,7 @@ export default function ServiceProviderNew() {
 
           {selectedTemplateId && (
             <ProviderTemplateProvider
-              handle={selectedVersionTemplateId ?? selectedTemplateId}
+              id={selectedVersionTemplateId ?? selectedTemplateId}
             >
               <TemplateBasedFormFieldsContainer
                 formState={formState}

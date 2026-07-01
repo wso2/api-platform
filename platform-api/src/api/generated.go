@@ -323,12 +323,6 @@ const (
 	DeploymentStatusQUNDEPLOYING DeploymentStatusQ = "UNDEPLOYING"
 )
 
-// Defines values for ListLLMProviderTemplatesParamsVersions.
-const (
-	All    ListLLMProviderTemplatesParamsVersions = "all"
-	Latest ListLLMProviderTemplatesParamsVersions = "latest"
-)
-
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
 	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"

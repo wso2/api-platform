@@ -89,7 +89,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
     try {
       setIsLoading(true);
       setError(null);
-      const response = await providerTemplateApis.getProviderTemplates(organizationId, PLATFORM_API_BASE_URL);
+      const response = await providerTemplateApis.getProviderTemplates(PLATFORM_API_BASE_URL);
       // Load latest-first by creation time. (Not updatedAt: the backend seeder
       // re-touches built-in templates on every restart, which would otherwise
       // float them to the top. createdAt also bumps when a new version is added.)
@@ -109,7 +109,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
+  }, [PLATFORM_API_BASE_URL]);
 
   useEffect(() => {
     fetchTemplates();
@@ -120,7 +120,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       throw new Error('Organization ID is missing');
     }
     try {
-      const newTemplate = await providerTemplateApis.createProviderTemplate(template, organizationId, PLATFORM_API_BASE_URL);
+      const newTemplate = await providerTemplateApis.createProviderTemplate(template, PLATFORM_API_BASE_URL);
       setTemplatesResponse((prev) => ({
         ...prev,
         count: prev.count + 1,
@@ -132,7 +132,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       logger.error('Failed to create provider template:', err);
       throw err;
     }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
+  }, [PLATFORM_API_BASE_URL]);
 
   const updateTemplate = useCallback(async (
     templateId: string,
@@ -142,7 +142,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       throw new Error('Organization ID is missing');
     }
     try {
-      const updatedTemplate = await providerTemplateApis.updateProviderTemplate(templateId, updates, organizationId, PLATFORM_API_BASE_URL);
+      const updatedTemplate = await providerTemplateApis.updateProviderTemplate(templateId, updates, PLATFORM_API_BASE_URL);
       setTemplatesResponse((prev) => ({
         ...prev,
         list: prev.list.map((template) =>
@@ -154,7 +154,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       logger.error('Failed to update provider template:', err);
       throw err;
     }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
+  }, [PLATFORM_API_BASE_URL]);
 
   const refreshTemplates = useCallback(async (): Promise<void> => {
     await fetchTemplates();

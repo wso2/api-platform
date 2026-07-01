@@ -324,7 +324,6 @@ export default function ServiceProviderResourcesTab() {
       try {
         const template = await providerTemplateApis.getProviderTemplate(
           templateId,
-          organizationId,
           PLATFORM_API_BASE_URL
         );
         if (!isMounted) return;

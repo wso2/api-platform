@@ -186,7 +186,7 @@ export default function ProviderTemplateOverview() {
     setIsLoading(true);
     setError(null);
     providerTemplateApis
-      .getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplate(templateId, PLATFORM_API_BASE_URL)
       .then((full) => {
         if (isMounted) setTemplate(full);
       })
@@ -213,7 +213,7 @@ export default function ProviderTemplateOverview() {
 
     let isMounted = true;
     providerTemplateApis
-      .getProviderTemplateVersions(groupId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplateVersions(groupId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (isMounted) {
           setVersions(list);
@@ -242,7 +242,6 @@ export default function ProviderTemplateOverview() {
         versions.find((v) => v.version === version)?.id ?? templateId;
       const full = await providerTemplateApis.getProviderTemplate(
         targetHandle,
-        organizationId,
         PLATFORM_API_BASE_URL
       );
       setSelectedVersion(version);
@@ -559,7 +558,6 @@ export default function ProviderTemplateOverview() {
         await providerTemplateApis.setProviderTemplateVersionEnabled(
           template.id,
           next,
-          organizationId,
           PLATFORM_API_BASE_URL
         );
       setTemplate(updated);
@@ -613,7 +611,6 @@ export default function ProviderTemplateOverview() {
         try {
           allVersions = await providerTemplateApis.getProviderTemplateVersions(
             template.groupId ?? template.id,
-            organizationId,
             PLATFORM_API_BASE_URL
           );
         } catch {
@@ -623,7 +620,6 @@ export default function ProviderTemplateOverview() {
 
       await providerTemplateApis.deleteProviderTemplateVersion(
         template.id,
-        organizationId,
         PLATFORM_API_BASE_URL
       );
       await refreshTemplates();

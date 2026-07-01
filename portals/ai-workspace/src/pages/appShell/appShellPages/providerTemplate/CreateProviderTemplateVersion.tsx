@@ -245,7 +245,7 @@ function CreateProviderTemplateVersionForm({
     // The new version is cloned from the current version server-side; the body
     // only carries the fields the user may change.
     const overrides: Partial<ProviderTemplate> = {
-      name: template.name,
+      displayName: template.displayName,
       description: description.trim() || undefined,
       resourceMappings: template.resourceMappings,
       ...tokenFields,
@@ -267,7 +267,6 @@ function CreateProviderTemplateVersionForm({
         derivedToId,
         trimmedVersion,
         overrides,
-        organizationId,
         PLATFORM_API_BASE_URL
       );
       await refreshTemplates();
@@ -590,7 +589,7 @@ export default function CreateProviderTemplateVersion() {
     setIsLoading(true);
     setError(null);
     providerTemplateApis
-      .getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplate(templateId, PLATFORM_API_BASE_URL)
       .then((full) => {
         if (isMounted) setTemplate(full);
       })

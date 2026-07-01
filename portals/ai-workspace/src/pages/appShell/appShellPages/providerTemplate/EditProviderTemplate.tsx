@@ -222,7 +222,7 @@ export default function EditProviderTemplate() {
     setIsLoading(true);
     setError(null);
     providerTemplateApis
-      .getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplate(templateId, PLATFORM_API_BASE_URL)
       .then((full) => {
         if (isMounted) setTemplate(full);
       })
