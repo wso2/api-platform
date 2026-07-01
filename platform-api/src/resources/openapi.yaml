@@ -5974,7 +5974,7 @@ components:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
-          maxLength: 64
+          maxLength: 63
           description: Handle (URL-friendly slug) for the gateway. Immutable after creation.
           example: "prod-gateway-01"
         displayName:
@@ -6106,6 +6106,8 @@ components:
 
     GatewayResponse:
       type: object
+      required:
+        - displayName
       properties:
         uuid:
           type: string
@@ -6617,6 +6619,8 @@ components:
 
     SubscriptionPlan:
       type: object
+      required:
+        - displayName
       properties:
         uuid:
           type: string
@@ -7404,6 +7408,8 @@ components:
 
     LLMProviderTemplateListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
@@ -7918,7 +7924,7 @@ components:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
-          maxLength: 64
+          maxLength: 63
           description: Name of the gateway this artifact can be deployed to
           example: prod-eu
         configurations:
@@ -7932,6 +7938,8 @@ components:
 
     LLMProviderListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
@@ -7980,6 +7988,7 @@ components:
       type: object
       required:
         - id
+        - displayName
       properties:
         id:
           type: string
@@ -8003,6 +8012,7 @@ components:
       type: object
       required:
         - id
+        - displayName
       properties:
         id:
           type: string
@@ -8157,6 +8167,8 @@ components:
 
     LLMProxyListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
@@ -8243,6 +8255,8 @@ components:
 
     CreateLLMProviderAPIKeyRequest:
       type: object
+      required:
+        - displayName
       properties:
         name:
           type: string
@@ -8300,6 +8314,8 @@ components:
           example: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
     CreateLLMProxyAPIKeyRequest:
       type: object
+      required:
+        - displayName
       properties:
         name:
           type: string
@@ -8466,6 +8482,8 @@ components:
 
     MCPProxyListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
@@ -8695,6 +8713,8 @@ components:
 
     WebSubAPIListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
@@ -9016,6 +9036,8 @@ components:
 
     WebBrokerAPIListItem:
       type: object
+      required:
+        - displayName
       properties:
         id:
           type: string
@@ -9123,6 +9145,7 @@ components:
       type: object
       required:
         - id
+        - displayName
         - value
       properties:
         id:
@@ -9174,6 +9197,8 @@ components:
     SecretResponse:
       type: object
       description: Returned on create (201) and rotate (200). The plaintext value is never included.
+      required:
+        - displayName
       properties:
         uuid:
           type: string
@@ -9200,6 +9225,8 @@ components:
     SecretSummary:
       type: object
       description: Secret metadata — never includes the plaintext value.
+      required:
+        - displayName
       properties:
         uuid:
           type: string

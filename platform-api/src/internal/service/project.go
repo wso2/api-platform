@@ -143,7 +143,7 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	}
 	_ = s.auditRepo.Record("CREATE", projectModel.ID, "project", organizationID, actor)
 
-	return project, nil
+	return s.modelToAPI(projectModel), nil
 }
 
 func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project, error) {

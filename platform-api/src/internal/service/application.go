@@ -261,8 +261,8 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		return nil, constants.ErrApplicationNotFound
 	}
 
-	// The id (handle) is immutable: a body id must match the application being updated.
-	if req.Id != "" && req.Id != app.Handle {
+	// The id (handle) is immutable: body id must be present and match the application being updated.
+	if req.Id == "" || req.Id != app.Handle {
 		return nil, constants.ErrHandleImmutable
 	}
 
