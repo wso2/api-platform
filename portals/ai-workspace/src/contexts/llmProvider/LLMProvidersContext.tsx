@@ -33,9 +33,10 @@ import type {
 import * as llmProviderApis from '../../apis/llmProviderApis';
 import {
   createSecret,
-  updateSecret,
+  deleteSecret,
   buildSecretPlaceholder,
   generateSecretHandle,
+  extractSecretHandle,
 } from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
@@ -151,7 +152,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           typeof authValue === 'string' && authValue.includes('{{ secret ');
 
         if (authValue && !isAlreadyPlaceholder) {
-          const secretHandle = generateSecretHandle(provider.id, 'api-key');
+          const secretHandle = generateSecretHandle();
           const secretResponse = await createSecret(
             {
               handle: secretHandle,
@@ -228,32 +229,34 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           typeof authValue === 'string' && authValue.includes('{{ secret ');
 
         if (authValue && !isAlreadyPlaceholder) {
-          const secretHandle = generateSecretHandle(providerId, 'api-key');
-          let secretResponse;
-          try {
-            secretResponse = await updateSecret(secretHandle, {
-              value: authValue,
-              name: `${providerId} API Key`,
-              description: `Auto-generated secret for LLM provider ${providerId}`,
+          // Extract the old handle before overwriting — used for best-effort cleanup.
+          const currentProvider = providersResponse.list.find((p) => p.id === providerId);
+          const existingPlaceholder = currentProvider?.upstream?.main?.auth?.value;
+          const oldHandle = typeof existingPlaceholder === 'string'
+            ? extractSecretHandle(existingPlaceholder)
+            : null;
+
+          // Always create a fresh secret with a new unique handle so re-saving
+          // with a different key never collides with an existing secret.
+          const secretHandle = generateSecretHandle();
+          const secretResponse = await createSecret({
+            handle: secretHandle,
+            name: `${providerId} API Key`,
+            description: `Auto-generated secret for LLM provider ${providerId}`,
+            value: authValue,
+            type: 'GENERIC',
+          });
+          logger.info('Created new secret for LLM provider update', { secretHandle, providerId });
+
+          // Best-effort: delete the old secret now that it will no longer be
+          // referenced. Ignore 409 (still deployed to a gateway) — the ref will
+          // clear on the next deploy cycle.
+          if (oldHandle) {
+            deleteSecret(oldHandle).catch((err) => {
+              logger.warn('Could not delete old secret after provider update', { oldHandle, err });
             });
-            logger.info('Rotated secret for LLM provider update', { secretHandle, providerId });
-          } catch (updateErr) {
-            const status = (updateErr as Error & { status?: number }).status;
-            if (status !== 404) throw updateErr;
-            // Secret does not exist yet (first-time provider create via update path)
-            secretResponse = await createSecret({
-              handle: secretHandle,
-              name: `${providerId} API Key`,
-              description: `Auto-generated secret for LLM provider ${providerId}`,
-              value: authValue,
-              type: 'GENERIC',
-            });
-            logger.info('Created new secret for LLM provider update', { secretHandle, providerId });
           }
 
-          const currentProvider = providersResponse.list.find(
-            (p) => p.id === providerId
-          );
           updatesPayload = {
             ...updates,
             upstream: {

@@ -142,18 +142,19 @@ export function buildSecretPlaceholder(secretName: string): string {
 }
 
 /**
- * Generates a deterministic secret handle from a provider ID and field name.
- * Ensures the handle conforms to the allowed character set (lowercase alphanumeric + hyphens).
- *
- * Example: generateSecretHandle('wso2-openai', 'api-key') → 'wso2-openai-api-key'
+ * Generates a unique secret handle. Each call returns a different value so
+ * re-creating a resource with the same name never collides with a prior
+ * (possibly soft-deleted) secret.
  */
-export function generateSecretHandle(providerId: string, fieldName = 'api-key'): string {
-  const handle = `${providerId}-${fieldName}`
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  if (!handle) {
-    throw new Error(`Cannot generate a valid secret handle from providerId="${providerId}" and fieldName="${fieldName}"`);
-  }
-  return handle;
+export function generateSecretHandle(): string {
+  return crypto.randomUUID();
+}
+
+/**
+ * Extracts the secret handle from a {{ secret "handle" }} placeholder string.
+ * Returns null if the value is not a placeholder.
+ */
+export function extractSecretHandle(placeholder: string): string | null {
+  const match = placeholder.match(/\{\{\s*secret\s+"([^"]+)"\s*\}\}/);
+  return match ? match[1] : null;
 }
