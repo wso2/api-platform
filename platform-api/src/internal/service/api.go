@@ -273,11 +273,6 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 		return nil, constants.ErrAPINotFound
 	}
 
-	// DP-originated artifacts are read-only in the control plane.
-	if err := ensureOriginMutable(existingAPIModel.Origin); err != nil {
-		return nil, err
-	}
-
 	// Apply updates using shared helper
 	updatedAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgUUID)
 	if err != nil {
@@ -288,6 +283,22 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	updatedAPIModel := s.apiUtil.RESTAPIToModel(updatedAPI, orgUUID)
 	updatedAPIModel.ID = apiUUID // Ensure UUID remains unchanged
 	updatedAPIModel.UpdatedBy = updatedBy
+	// Carry over identity fields that are not user-editable so the runtime-artifact
+	// diff below compares like-for-like (RESTAPIToModel derives these from the request
+	// and defaults the origin to control_plane).
+	updatedAPIModel.Handle = existingAPIModel.Handle
+	updatedAPIModel.ProjectID = existingAPIModel.ProjectID
+	updatedAPIModel.Kind = existingAPIModel.Kind
+	updatedAPIModel.Origin = existingAPIModel.Origin
+
+	// A DP-originated (gateway_api) artifact is read-only in the control plane only for
+	// changes that alter the gateway runtime artifact. Allow edits that leave the
+	// deployment YAML unchanged (e.g. description, lifecycle status) by diffing the
+	// artifact the stored vs updated model produces.
+	if err := s.ensureRESTRuntimeArtifactUnchanged(existingAPIModel, updatedAPIModel); err != nil {
+		return nil, err
+	}
+
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
 	}
@@ -297,6 +308,28 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	_ = s.auditRepo.Record("UPDATE", apiUUID, "rest_api", orgUUID, updatedBy)
 
 	return s.modelToRESTAPI(updatedAPIModel)
+}
+
+// ensureRESTRuntimeArtifactUnchanged rejects an edit to a DP-originated REST API when it
+// would change the gateway runtime artifact. It builds the deployment YAML both the
+// stored and updated models produce (via BuildAPIDeploymentYAML, the same builder used
+// at deploy time) and compares them. It is a no-op for control-plane artifacts. When the
+// stored artifact cannot be rebuilt the edit cannot be proven harmless, so it is kept
+// read-only; a build failure on the proposed model is a genuine validation error and is
+// surfaced as-is.
+func (s *APIService) ensureRESTRuntimeArtifactUnchanged(existing, updated *model.API) error {
+	if existing.Origin != constants.OriginDP {
+		return nil
+	}
+	existingArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(existing)
+	if err != nil {
+		return constants.ErrArtifactRuntimeImmutable
+	}
+	updatedArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(updated)
+	if err != nil {
+		return err
+	}
+	return compareRuntimeArtifacts(existing.Origin, existingArtifact, updatedArtifact)
 }
 
 // DeleteAPI deletes an API

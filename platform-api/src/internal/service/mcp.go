@@ -276,10 +276,6 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if existing == nil {
 		return nil, constants.ErrMCPProxyNotFound
 	}
-	// DP-originated artifacts are read-only in the control plane.
-	if err := ensureOriginMutable(existing.Origin); err != nil {
-		return nil, err
-	}
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
 	if s.secretService != nil {
@@ -294,6 +290,12 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 
 	// Store existing upstream config for auth preservation
 	existingUpstreamConfig := existing.Configuration.Upstream
+
+	// Snapshot the gateway-owned runtime fields so a DP-originated proxy can preserve them
+	// (only the description is control-plane editable — restored below).
+	origName := existing.Name
+	origVersion := existing.Version
+	origConfiguration := existing.Configuration
 
 	// Update fields
 	existing.Name = req.DisplayName
@@ -314,6 +316,16 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	// Preserve existing upstream auth credential if not provided in update request
 	// (the auth value is redacted in GET responses, so clients send empty value on updates)
 	existing.Configuration.Upstream = *preserveMCPUpstreamAuthValue(&existingUpstreamConfig, &existing.Configuration.Upstream)
+
+	// The gateway owns the runtime configuration of a DP-originated proxy: preserve it
+	// verbatim and keep only the control-plane-editable description from the request.
+	// This keeps the gateway runtime artifact unchanged without depending on the update
+	// payload round-tripping the (masked) upstream credential.
+	if existing.Origin == constants.OriginDP {
+		existing.Name = origName
+		existing.Version = origVersion
+		existing.Configuration = origConfiguration
+	}
 
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
