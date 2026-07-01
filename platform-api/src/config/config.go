@@ -310,8 +310,8 @@ func LoadConfig(configPath string) (*Server, error) {
 			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
 		}
 		cfg.Auth.JWT.SecretKey = key
-		slog.Warn("JWT_SIGNING_SECRET not set — generated an ephemeral demo key (restart will invalidate all sessions)",
-			slog.String("JWT_SIGNING_SECRET", key))
+		slog.Warn("AUTH_JWT_SECRET_KEY not set — generated an ephemeral demo key (restart will invalidate all sessions)",
+			slog.String("AUTH_JWT_SECRET_KEY", key))
 	}
 
 	// SecretEncryptionKey is optional when the shared DATABASE_ENCRYPTION_KEY is configured;
