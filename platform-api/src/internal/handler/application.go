@@ -455,17 +455,17 @@ func (h *ApplicationHandler) RegisterRoutes(mux *http.ServeMux) {
 	base := constants.APIBasePath + "/applications"
 	mux.HandleFunc("GET "+base, h.ListApplications)
 	mux.HandleFunc("POST "+base, h.CreateApplication)
-	mux.HandleFunc("GET "+base+"/{id}", h.GetApplication)
-	mux.HandleFunc("PUT "+base+"/{id}", h.UpdateApplication)
-	mux.HandleFunc("DELETE "+base+"/{id}", h.DeleteApplication)
+	mux.HandleFunc("GET "+base+"/{applicationId}", h.GetApplication)
+	mux.HandleFunc("PUT "+base+"/{applicationId}", h.UpdateApplication)
+	mux.HandleFunc("DELETE "+base+"/{applicationId}", h.DeleteApplication)
 
-	mux.HandleFunc("GET "+base+"/{id}/api-keys", h.ListApplicationAPIKeys)
-	mux.HandleFunc("POST "+base+"/{id}/api-keys", h.AddApplicationAPIKeys)
-	mux.HandleFunc("DELETE "+base+"/{id}/api-keys/{apiKeyId}", h.RemoveApplicationAPIKey)
-	mux.HandleFunc("GET "+base+"/{id}/associations", h.ListApplicationAssociations)
-	mux.HandleFunc("POST "+base+"/{id}/associations", h.AddApplicationAssociations)
-	mux.HandleFunc("GET "+base+"/{id}/associations/{associationId}/api-keys", h.ListApplicationAssociationAPIKeys)
-	mux.HandleFunc("DELETE "+base+"/{id}/associations/{associationId}", h.RemoveApplicationAssociation)
+	mux.HandleFunc("GET "+base+"/{applicationId}/api-keys", h.ListApplicationAPIKeys)
+	mux.HandleFunc("POST "+base+"/{applicationId}/api-keys", h.AddApplicationAPIKeys)
+	mux.HandleFunc("DELETE "+base+"/{applicationId}/api-keys/{apiKeyId}", h.RemoveApplicationAPIKey)
+	mux.HandleFunc("GET "+base+"/{applicationId}/associations", h.ListApplicationAssociations)
+	mux.HandleFunc("POST "+base+"/{applicationId}/associations", h.AddApplicationAssociations)
+	mux.HandleFunc("GET "+base+"/{applicationId}/associations/{associationId}/api-keys", h.ListApplicationAssociationAPIKeys)
+	mux.HandleFunc("DELETE "+base+"/{applicationId}/associations/{associationId}", h.RemoveApplicationAssociation)
 }
 
 func (h *ApplicationHandler) resolveRequesterUserID(r *http.Request) string {
