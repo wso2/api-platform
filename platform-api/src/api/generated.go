@@ -74,14 +74,6 @@ const (
 	CreateSubscriptionPlanRequestStatusINACTIVE CreateSubscriptionPlanRequestStatus = "INACTIVE"
 )
 
-// Defines values for CreateSubscriptionPlanRequestThrottleLimitUnit.
-const (
-	CreateSubscriptionPlanRequestThrottleLimitUnitDay   CreateSubscriptionPlanRequestThrottleLimitUnit = "Day"
-	CreateSubscriptionPlanRequestThrottleLimitUnitHour  CreateSubscriptionPlanRequestThrottleLimitUnit = "Hour"
-	CreateSubscriptionPlanRequestThrottleLimitUnitMin   CreateSubscriptionPlanRequestThrottleLimitUnit = "Min"
-	CreateSubscriptionPlanRequestThrottleLimitUnitMonth CreateSubscriptionPlanRequestThrottleLimitUnit = "Month"
-)
-
 // Defines values for CreateSubscriptionRequestStatus.
 const (
 	CreateSubscriptionRequestStatusACTIVE   CreateSubscriptionRequestStatus = "ACTIVE"
@@ -123,57 +115,11 @@ const (
 	GatewayArtifactTypeRESTAPI    GatewayArtifactType = "REST_API"
 )
 
-// Defines values for GatewayEndpointProtocol.
-const (
-	GatewayEndpointProtocolHttp  GatewayEndpointProtocol = "http"
-	GatewayEndpointProtocolHttps GatewayEndpointProtocol = "https"
-	GatewayEndpointProtocolWs    GatewayEndpointProtocol = "ws"
-	GatewayEndpointProtocolWss   GatewayEndpointProtocol = "wss"
-)
-
 // Defines values for GatewayResponseFunctionalityType.
 const (
 	GatewayResponseFunctionalityTypeAi      GatewayResponseFunctionalityType = "ai"
 	GatewayResponseFunctionalityTypeEvent   GatewayResponseFunctionalityType = "event"
 	GatewayResponseFunctionalityTypeRegular GatewayResponseFunctionalityType = "regular"
-)
-
-// Defines values for GitRepoBranchesRequestProvider.
-const (
-	GitRepoBranchesRequestProviderBitbucket GitRepoBranchesRequestProvider = "bitbucket"
-	GitRepoBranchesRequestProviderGithub    GitRepoBranchesRequestProvider = "github"
-	GitRepoBranchesRequestProviderGitlab    GitRepoBranchesRequestProvider = "gitlab"
-)
-
-// Defines values for GitRepoContentRequestProvider.
-const (
-	GitRepoContentRequestProviderBitbucket GitRepoContentRequestProvider = "bitbucket"
-	GitRepoContentRequestProviderGithub    GitRepoContentRequestProvider = "github"
-	GitRepoContentRequestProviderGitlab    GitRepoContentRequestProvider = "gitlab"
-)
-
-// Defines values for GitRepoItemType.
-const (
-	Blob GitRepoItemType = "blob"
-	EOF  GitRepoItemType = "EOF"
-	Tree GitRepoItemType = "tree"
-)
-
-// Defines values for ImportAPIProjectRequestApiLifeCycleStatus.
-const (
-	ImportAPIProjectRequestApiLifeCycleStatusBLOCKED    ImportAPIProjectRequestApiLifeCycleStatus = "BLOCKED"
-	ImportAPIProjectRequestApiLifeCycleStatusCREATED    ImportAPIProjectRequestApiLifeCycleStatus = "CREATED"
-	ImportAPIProjectRequestApiLifeCycleStatusDEPRECATED ImportAPIProjectRequestApiLifeCycleStatus = "DEPRECATED"
-	ImportAPIProjectRequestApiLifeCycleStatusPUBLISHED  ImportAPIProjectRequestApiLifeCycleStatus = "PUBLISHED"
-	ImportAPIProjectRequestApiLifeCycleStatusRETIRED    ImportAPIProjectRequestApiLifeCycleStatus = "RETIRED"
-	ImportAPIProjectRequestApiLifeCycleStatusSTAGED     ImportAPIProjectRequestApiLifeCycleStatus = "STAGED"
-)
-
-// Defines values for ImportAPIProjectRequestProvider.
-const (
-	ImportAPIProjectRequestProviderBitbucket ImportAPIProjectRequestProvider = "bitbucket"
-	ImportAPIProjectRequestProviderGithub    ImportAPIProjectRequestProvider = "github"
-	ImportAPIProjectRequestProviderGitlab    ImportAPIProjectRequestProvider = "gitlab"
 )
 
 // Defines values for LLMAccessControlMode.
@@ -221,16 +167,6 @@ const (
 	Pending  MCPProxyListItemStatus = "pending"
 )
 
-// Defines values for OpenAPIValidationResponseApiLifeCycleStatus.
-const (
-	OpenAPIValidationResponseApiLifeCycleStatusBLOCKED    OpenAPIValidationResponseApiLifeCycleStatus = "BLOCKED"
-	OpenAPIValidationResponseApiLifeCycleStatusCREATED    OpenAPIValidationResponseApiLifeCycleStatus = "CREATED"
-	OpenAPIValidationResponseApiLifeCycleStatusDEPRECATED OpenAPIValidationResponseApiLifeCycleStatus = "DEPRECATED"
-	OpenAPIValidationResponseApiLifeCycleStatusPUBLISHED  OpenAPIValidationResponseApiLifeCycleStatus = "PUBLISHED"
-	OpenAPIValidationResponseApiLifeCycleStatusRETIRED    OpenAPIValidationResponseApiLifeCycleStatus = "RETIRED"
-	OpenAPIValidationResponseApiLifeCycleStatusSTAGED     OpenAPIValidationResponseApiLifeCycleStatus = "STAGED"
-)
-
 // Defines values for OperationPolicyPathMethods.
 const (
 	OperationPolicyPathMethodsAsterisk OperationPolicyPathMethods = "*"
@@ -254,13 +190,6 @@ const (
 	OperationRequestMethodPUT     OperationRequestMethod = "PUT"
 )
 
-// Defines values for PublishRESTAPIInfoVisibility.
-const (
-	Private    PublishRESTAPIInfoVisibility = "private"
-	Public     PublishRESTAPIInfoVisibility = "public"
-	Restricted PublishRESTAPIInfoVisibility = "restricted"
-)
-
 // Defines values for RESTAPILifeCycleStatus.
 const (
 	RESTAPILifeCycleStatusBLOCKED    RESTAPILifeCycleStatus = "BLOCKED"
@@ -273,9 +202,9 @@ const (
 
 // Defines values for RESTAPIDeploymentDetailsStatus.
 const (
-	RESTAPIDeploymentDetailsStatusAPPROVED RESTAPIDeploymentDetailsStatus = "APPROVED"
-	RESTAPIDeploymentDetailsStatusCREATED  RESTAPIDeploymentDetailsStatus = "CREATED"
-	RESTAPIDeploymentDetailsStatusREJECTED RESTAPIDeploymentDetailsStatus = "REJECTED"
+	APPROVED RESTAPIDeploymentDetailsStatus = "APPROVED"
+	CREATED  RESTAPIDeploymentDetailsStatus = "CREATED"
+	REJECTED RESTAPIDeploymentDetailsStatus = "REJECTED"
 )
 
 // Defines values for RESTAPIGatewayResponseFunctionalityType.
@@ -285,23 +214,13 @@ const (
 	Regular RESTAPIGatewayResponseFunctionalityType = "regular"
 )
 
-// Defines values for RESTAPIProjectValidationResponseApiLifeCycleStatus.
-const (
-	RESTAPIProjectValidationResponseApiLifeCycleStatusBLOCKED    RESTAPIProjectValidationResponseApiLifeCycleStatus = "BLOCKED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusCREATED    RESTAPIProjectValidationResponseApiLifeCycleStatus = "CREATED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusDEPRECATED RESTAPIProjectValidationResponseApiLifeCycleStatus = "DEPRECATED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusPUBLISHED  RESTAPIProjectValidationResponseApiLifeCycleStatus = "PUBLISHED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusRETIRED    RESTAPIProjectValidationResponseApiLifeCycleStatus = "RETIRED"
-	RESTAPIProjectValidationResponseApiLifeCycleStatusSTAGED     RESTAPIProjectValidationResponseApiLifeCycleStatus = "STAGED"
-)
-
 // Defines values for RateLimitResetWindowUnit.
 const (
-	RateLimitResetWindowUnitDay    RateLimitResetWindowUnit = "day"
-	RateLimitResetWindowUnitHour   RateLimitResetWindowUnit = "hour"
-	RateLimitResetWindowUnitMinute RateLimitResetWindowUnit = "minute"
-	RateLimitResetWindowUnitMonth  RateLimitResetWindowUnit = "month"
-	RateLimitResetWindowUnitWeek   RateLimitResetWindowUnit = "week"
+	Day    RateLimitResetWindowUnit = "day"
+	Hour   RateLimitResetWindowUnit = "hour"
+	Minute RateLimitResetWindowUnit = "minute"
+	Month  RateLimitResetWindowUnit = "month"
+	Week   RateLimitResetWindowUnit = "week"
 )
 
 // Defines values for RouteExceptionMethods.
@@ -352,6 +271,21 @@ const (
 	SubscriptionPlanStatusINACTIVE SubscriptionPlanStatus = "INACTIVE"
 )
 
+// Defines values for SubscriptionPlanLimitLimitType.
+const (
+	BANDWIDTH       SubscriptionPlanLimitLimitType = "BANDWIDTH"
+	REQUESTCOUNT    SubscriptionPlanLimitLimitType = "REQUEST_COUNT"
+	TOTALTOKENCOUNT SubscriptionPlanLimitLimitType = "TOTAL_TOKEN_COUNT"
+)
+
+// Defines values for SubscriptionPlanLimitTimeUnit.
+const (
+	DAY    SubscriptionPlanLimitTimeUnit = "DAY"
+	HOUR   SubscriptionPlanLimitTimeUnit = "HOUR"
+	MINUTE SubscriptionPlanLimitTimeUnit = "MINUTE"
+	MONTH  SubscriptionPlanLimitTimeUnit = "MONTH"
+)
+
 // Defines values for TimeUnit.
 const (
 	Days    TimeUnit = "days"
@@ -374,27 +308,6 @@ const (
 	UpdateAPIKeyResponseStatusSuccess UpdateAPIKeyResponseStatus = "success"
 )
 
-// Defines values for UpdateSubscriptionPlanRequestStatus.
-const (
-	UpdateSubscriptionPlanRequestStatusACTIVE   UpdateSubscriptionPlanRequestStatus = "ACTIVE"
-	UpdateSubscriptionPlanRequestStatusINACTIVE UpdateSubscriptionPlanRequestStatus = "INACTIVE"
-)
-
-// Defines values for UpdateSubscriptionPlanRequestThrottleLimitUnit.
-const (
-	Day   UpdateSubscriptionPlanRequestThrottleLimitUnit = "Day"
-	Hour  UpdateSubscriptionPlanRequestThrottleLimitUnit = "Hour"
-	Min   UpdateSubscriptionPlanRequestThrottleLimitUnit = "Min"
-	Month UpdateSubscriptionPlanRequestThrottleLimitUnit = "Month"
-)
-
-// Defines values for UpdateSubscriptionRequestStatus.
-const (
-	UpdateSubscriptionRequestStatusACTIVE   UpdateSubscriptionRequestStatus = "ACTIVE"
-	UpdateSubscriptionRequestStatusINACTIVE UpdateSubscriptionRequestStatus = "INACTIVE"
-	UpdateSubscriptionRequestStatusREVOKED  UpdateSubscriptionRequestStatus = "REVOKED"
-)
-
 // Defines values for UpstreamAuthType.
 const (
 	ApiKey UpstreamAuthType = "api-key"
@@ -414,67 +327,6 @@ const (
 	Active  UserAPIKeyItemStatus = "active"
 	Expired UserAPIKeyItemStatus = "expired"
 	Revoked UserAPIKeyItemStatus = "revoked"
-)
-
-// Defines values for ValidateAPIProjectRequestProvider.
-const (
-	ValidateAPIProjectRequestProviderBitbucket ValidateAPIProjectRequestProvider = "bitbucket"
-	ValidateAPIProjectRequestProviderGithub    ValidateAPIProjectRequestProvider = "github"
-	ValidateAPIProjectRequestProviderGitlab    ValidateAPIProjectRequestProvider = "gitlab"
-)
-
-// Defines values for WebBrokerAPIBrokerType.
-const (
-	Kafka WebBrokerAPIBrokerType = "kafka"
-)
-
-// Defines values for WebBrokerAPILifeCycleStatus.
-const (
-	WebBrokerAPILifeCycleStatusCREATED    WebBrokerAPILifeCycleStatus = "CREATED"
-	WebBrokerAPILifeCycleStatusDEPRECATED WebBrokerAPILifeCycleStatus = "DEPRECATED"
-	WebBrokerAPILifeCycleStatusPUBLISHED  WebBrokerAPILifeCycleStatus = "PUBLISHED"
-	WebBrokerAPILifeCycleStatusRETIRED    WebBrokerAPILifeCycleStatus = "RETIRED"
-)
-
-// Defines values for WebBrokerAPIReceiverType.
-const (
-	Websocket WebBrokerAPIReceiverType = "websocket"
-)
-
-// Defines values for WebBrokerAPITransport.
-const (
-	WebBrokerAPITransportHttp  WebBrokerAPITransport = "http"
-	WebBrokerAPITransportHttps WebBrokerAPITransport = "https"
-)
-
-// Defines values for WebBrokerAPIListItemLifeCycleStatus.
-const (
-	WebBrokerAPIListItemLifeCycleStatusCREATED    WebBrokerAPIListItemLifeCycleStatus = "CREATED"
-	WebBrokerAPIListItemLifeCycleStatusDEPRECATED WebBrokerAPIListItemLifeCycleStatus = "DEPRECATED"
-	WebBrokerAPIListItemLifeCycleStatusPUBLISHED  WebBrokerAPIListItemLifeCycleStatus = "PUBLISHED"
-	WebBrokerAPIListItemLifeCycleStatusRETIRED    WebBrokerAPIListItemLifeCycleStatus = "RETIRED"
-)
-
-// Defines values for WebSubAPILifeCycleStatus.
-const (
-	WebSubAPILifeCycleStatusCREATED    WebSubAPILifeCycleStatus = "CREATED"
-	WebSubAPILifeCycleStatusDEPRECATED WebSubAPILifeCycleStatus = "DEPRECATED"
-	WebSubAPILifeCycleStatusPUBLISHED  WebSubAPILifeCycleStatus = "PUBLISHED"
-	WebSubAPILifeCycleStatusRETIRED    WebSubAPILifeCycleStatus = "RETIRED"
-)
-
-// Defines values for WebSubAPITransport.
-const (
-	Http  WebSubAPITransport = "http"
-	Https WebSubAPITransport = "https"
-)
-
-// Defines values for WebSubAPIListItemLifeCycleStatus.
-const (
-	WebSubAPIListItemLifeCycleStatusCREATED    WebSubAPIListItemLifeCycleStatus = "CREATED"
-	WebSubAPIListItemLifeCycleStatusDEPRECATED WebSubAPIListItemLifeCycleStatus = "DEPRECATED"
-	WebSubAPIListItemLifeCycleStatusPUBLISHED  WebSubAPIListItemLifeCycleStatus = "PUBLISHED"
-	WebSubAPIListItemLifeCycleStatusRETIRED    WebSubAPIListItemLifeCycleStatus = "RETIRED"
 )
 
 // Defines values for ArtifactTypeQ.
@@ -637,7 +489,8 @@ type AddApplicationAssociationsRequest struct {
 
 // AddGatewayToRESTAPIRequest defines model for AddGatewayToRESTAPIRequest.
 type AddGatewayToRESTAPIRequest struct {
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayId Handle (URL-friendly slug) of the gateway to associate with the REST API
+	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // Application defines model for Application.
@@ -650,14 +503,14 @@ type Application struct {
 	// Description Description of the application
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable name for the application
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Application handle/identifier
 	Id string `binding:"required" json:"id" yaml:"id"`
 
-	// Name Name of the application
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// ProjectId UUID of the project this application belongs to
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this application belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// Type Type of the application
 	Type      ApplicationType `json:"type" yaml:"type"`
@@ -669,20 +522,17 @@ type ApplicationAssociation struct {
 	// CreatedAt Timestamp when the association was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// DisplayName Human-readable name for the associated target
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Handle/ID of the associated target
 	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// Kind Type of associated target
 	Kind string `binding:"required" json:"kind" yaml:"kind"`
 
-	// Name Display name of the associated target
-	Name string `binding:"required" json:"name" yaml:"name"`
-
 	// UpdatedAt Timestamp when the association was updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid UUID of the associated target
-	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
 
 	// Version Version of the associated target
 	Version string `binding:"required" json:"version" yaml:"version"`
@@ -733,8 +583,8 @@ type AssociatedGateway struct {
 	// Configurations Per-gateway configuration overrides for this artifact. This is a free-form object; the supported keys depend on the deployed artifact type.
 	Configurations *map[string]interface{} `json:"configurations,omitempty" yaml:"configurations,omitempty"`
 
-	// Name Name of the gateway this artifact can be deployed to
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Handle of the gateway this artifact can be deployed to
+	Id string `binding:"required" json:"id" yaml:"id"`
 }
 
 // Channel Defines a single channel within the Async API
@@ -764,18 +614,6 @@ type ChannelRequest struct {
 // ChannelRequestMethod Async method for the channel
 type ChannelRequestMethod string
 
-// CommonResponse defines model for CommonResponse.
-type CommonResponse struct {
-	// Message Response message
-	Message string `binding:"required" json:"message" yaml:"message"`
-
-	// Success Whether the operation was successful
-	Success bool `binding:"required" json:"success" yaml:"success"`
-
-	// Timestamp Timestamp of the response
-	Timestamp time.Time `binding:"required" json:"timestamp" yaml:"timestamp"`
-}
-
 // CostRateLimitDimension defines model for CostRateLimitDimension.
 type CostRateLimitDimension struct {
 	// Amount Maximum cost in the reset window.
@@ -791,8 +629,8 @@ type CreateAPIKeyRequest struct {
 	// ApiKey The plain text API key value that will be hashed before storage
 	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
 
-	// DisplayName Display name of the API key
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	// DisplayName Human-readable name for the API key
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time          `json:"expiresAt" yaml:"expiresAt"`
@@ -801,12 +639,12 @@ type CreateAPIKeyRequest struct {
 	// ExternalRefId Optional reference ID for tracing purposes (from external platforms)
 	ExternalRefId *string `json:"externalRefId" yaml:"externalRefId"`
 
+	// Id Unique identifier for this API key within the API (optional; if omitted,
+	// generated from displayName)
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
 	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
 	Issuer *string `json:"issuer" yaml:"issuer"`
-
-	// Name Unique identifier for this API key within the API (optional; if omitted,
-	// generated from displayName)
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
 // CreateAPIKeyResponse defines model for CreateAPIKeyResponse.
@@ -832,14 +670,14 @@ type CreateApplicationRequest struct {
 	// Description Description of the application
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable name for the application
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle/identifier for the application. Can be provided during creation or auto-generated.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Name Name of the application
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// ProjectId UUID of the project this application belongs to.
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this application belongs to.
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// Type Type of the application
 	Type ApplicationType `json:"type" yaml:"type"`
@@ -854,17 +692,17 @@ type CreateGatewayRequest struct {
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Endpoints Network endpoints exposed by this gateway
-	Endpoints []GatewayEndpoint `binding:"required" json:"endpoints" yaml:"endpoints"`
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints []string `binding:"required" json:"endpoints" yaml:"endpoints"`
 
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType CreateGatewayRequestFunctionalityType `binding:"required" json:"functionalityType" yaml:"functionalityType"`
 
+	// Id Handle (URL-friendly slug) for the gateway. Immutable after creation.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
-
-	// Name URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -882,17 +720,17 @@ type CreateLLMProviderAPIKeyRequest struct {
 	// Use 'ALL' to allow all targets (default).
 	AllowedTargets *string `json:"allowedTargets" yaml:"allowedTargets"`
 
-	// DisplayName User-friendly name for the API key
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	// DisplayName Human-readable name for the API key
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
 
+	// Id Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
 	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
 	Issuer *string `json:"issuer" yaml:"issuer"`
-
-	// Name Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
 // CreateLLMProviderAPIKeyResponse defines model for CreateLLMProviderAPIKeyResponse.
@@ -900,8 +738,8 @@ type CreateLLMProviderAPIKeyResponse struct {
 	// ApiKey The generated API key value (shown only once, 64 hexadecimal characters)
 	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
 
-	// KeyId Unique identifier of the generated key
-	KeyId string `binding:"required" json:"keyId" yaml:"keyId"`
+	// Id Unique identifier of the generated key
+	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// Message Detailed message about the operation result
 	Message string `binding:"required" json:"message" yaml:"message"`
@@ -917,12 +755,12 @@ type CreateLLMProviderTemplateVersionRequest struct {
 	// Description Description of the LLM provider template
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM Template name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// ManagedBy Identifies who manages the template. Custom templates default to 'customer'.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-
-	// Name Human-readable LLM Template name
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
@@ -945,17 +783,17 @@ type CreateLLMProxyAPIKeyRequest struct {
 	// Use 'ALL' to allow all targets (default).
 	AllowedTargets *string `json:"allowedTargets" yaml:"allowedTargets"`
 
-	// DisplayName User-friendly name for the API key
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	// DisplayName Human-readable name for the API key
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
 
+	// Id Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
 	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
 	Issuer *string `json:"issuer" yaml:"issuer"`
-
-	// Name Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
 // CreateLLMProxyAPIKeyResponse defines model for CreateLLMProxyAPIKeyResponse.
@@ -963,8 +801,8 @@ type CreateLLMProxyAPIKeyResponse struct {
 	// ApiKey The generated API key value (shown only once, 64 hexadecimal characters)
 	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
 
-	// KeyId Unique identifier of the generated key
-	KeyId string `binding:"required" json:"keyId" yaml:"keyId"`
+	// Id Unique identifier of the generated key
+	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// Message Detailed message about the operation result
 	Message string `binding:"required" json:"message" yaml:"message"`
@@ -979,11 +817,11 @@ type CreateProjectRequest struct {
 	// Description Description of the project
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id UUID of the project
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// DisplayName Human-readable name for the project
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Name Name of the project
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (URL-friendly slug) for the project. Auto-generated from displayName if not provided.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 }
 
 // CreateRESTAPIRequest defines model for CreateRESTAPIRequest.
@@ -999,7 +837,10 @@ type CreateRESTAPIRequest struct {
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Kind Kind of the API based on its communication protocol or architectural style
@@ -1008,17 +849,14 @@ type CreateRESTAPIRequest struct {
 	// LifeCycleStatus Current lifecycle status of the API
 	LifeCycleStatus *CreateRESTAPIRequestLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 
-	// Name Display name of the API
-	Name string `binding:"required" json:"name" yaml:"name"`
-
 	// Operations List of operations exposed by this API
 	Operations *[]Operation `json:"operations,omitempty" yaml:"operations,omitempty"`
 
 	// Policies List of policies to be applied on the API
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
-	// ProjectId ID of the project this API belongs to
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -1046,35 +884,29 @@ type CreateSubscriptionPlanRequest struct {
 	// BillingPlan Billing plan type (e.g. Free, Commercial)
 	BillingPlan *string `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
 
+	// DisplayName Human-readable name for the subscription plan
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// ExpiryTime Optional plan expiry time (RFC3339)
 	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
-	// PlanName Name of the subscription plan
-	PlanName string                               `binding:"required" json:"planName" yaml:"planName"`
-	Status   *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	// Id Handle (URL-friendly slug) for the plan. Immutable after creation.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// StopOnQuotaReach Whether to block requests when quota is exhausted
-	StopOnQuotaReach *bool `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
-
-	// ThrottleLimitCount Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
-	ThrottleLimitCount *int `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
-
-	// ThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
-	ThrottleLimitUnit *CreateSubscriptionPlanRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+	// Limits Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored.
+	Limits *[]SubscriptionPlanLimit             `json:"limits,omitempty" yaml:"limits,omitempty"`
+	Status *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // CreateSubscriptionPlanRequestStatus defines model for CreateSubscriptionPlanRequest.Status.
 type CreateSubscriptionPlanRequestStatus string
-
-// CreateSubscriptionPlanRequestThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
-type CreateSubscriptionPlanRequestThrottleLimitUnit string
 
 // CreateSubscriptionRequest defines model for CreateSubscriptionRequest.
 type CreateSubscriptionRequest struct {
 	// ApiId API handle or UUID (REST API identifier)
 	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
 
-	// ApplicationId Application ID (from DevPortal/STS). Optional in token-based subscriptions.
+	// ApplicationId Handle (ID) of the application this subscription belongs to. Optional in token-based subscriptions.
 	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 
 	// Status Subscription status (default ACTIVE)
@@ -1083,7 +915,7 @@ type CreateSubscriptionRequest struct {
 	// SubscriberId Unique subscriber identifier for the subscription (required)
 	SubscriberId string `binding:"required" json:"subscriberId" yaml:"subscriberId"`
 
-	// SubscriptionPlanId Subscription plan UUID. Links the subscription to rate limit and billing configuration.
+	// SubscriptionPlanId Handle (slug) of the subscription plan. Links the subscription to rate limit and billing configuration.
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 }
 
@@ -1120,8 +952,8 @@ type DeployRequest struct {
 	// Base The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
 	Base string `binding:"required" json:"base" yaml:"base"`
 
-	// GatewayId The target gateway UUID for this deployment
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
+	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
 	// Metadata Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -1150,8 +982,8 @@ type DeploymentResponse struct {
 	// DeploymentId Unique identifier for the deployment
 	DeploymentId openapi_types.UUID `binding:"required" json:"deploymentId" yaml:"deploymentId"`
 
-	// GatewayId UUID of the gateway
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayId Handle (URL-friendly slug) of the gateway
+	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
 	// Metadata Metadata associated with the deployment
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -1183,15 +1015,6 @@ type DeploymentResponse struct {
 // - FAILED: Deployment or undeployment failed (see statusReason for error code)
 // - ARCHIVED: Historical deployment, can be rolled back
 type DeploymentResponseStatus string
-
-// EndPoints Production and sandbox endpoints
-type EndPoints struct {
-	// ProductionURL Production endpoint URL
-	ProductionURL *string `json:"productionURL,omitempty" yaml:"productionURL,omitempty"`
-
-	// SandboxURL Sandbox endpoint URL
-	SandboxURL *string `json:"sandboxURL,omitempty" yaml:"sandboxURL,omitempty"`
-}
 
 // Error defines model for Error.
 type Error struct {
@@ -1265,24 +1088,6 @@ type GatewayArtifactListResponse struct {
 	Pagination Pagination        `json:"pagination" yaml:"pagination"`
 }
 
-// GatewayEndpoint defines model for GatewayEndpoint.
-type GatewayEndpoint struct {
-	// Context Context path for the endpoint
-	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
-
-	// Host Hostname of the endpoint
-	Host string `binding:"required" json:"host" yaml:"host"`
-
-	// Port Port number
-	Port int `binding:"required" json:"port" yaml:"port"`
-
-	// Protocol Protocol used by the endpoint
-	Protocol GatewayEndpointProtocol `binding:"required" json:"protocol" yaml:"protocol"`
-}
-
-// GatewayEndpointProtocol Protocol used by the endpoint
-type GatewayEndpointProtocol string
-
 // GatewayListResponse defines model for GatewayListResponse.
 type GatewayListResponse struct {
 	// Count Number of items in current response
@@ -1320,16 +1125,16 @@ type GatewayResponse struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable gateway name
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Endpoints Network endpoints exposed by this gateway
-	Endpoints *[]GatewayEndpoint `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints *[]string `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
 
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *GatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// Id Handle (URL-friendly slug) for the gateway
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
@@ -1337,11 +1142,8 @@ type GatewayResponse struct {
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
 
-	// Name URL-friendly gateway identifier
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// OrganizationId UUID of the organization this gateway belongs to
-	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this gateway belongs to
+	OrganizationId *string `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -1366,209 +1168,15 @@ type GatewayStatusListResponse struct {
 
 // GatewayStatusResponse Lightweight gateway status information optimized for frequent polling
 type GatewayStatusResponse struct {
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// Id Handle (URL-friendly slug) for the gateway
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
-
-	// Name URL-friendly gateway identifier
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
-
-// GitRepoBranch defines model for GitRepoBranch.
-type GitRepoBranch struct {
-	// IsDefault Whether this branch is the default branch
-	IsDefault string `binding:"required" json:"isDefault" yaml:"isDefault"`
-
-	// Name Name of the branch
-	Name string `binding:"required" json:"name" yaml:"name"`
-}
-
-// GitRepoBranchesRequest defines model for GitRepoBranchesRequest.
-type GitRepoBranchesRequest struct {
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *GitRepoBranchesRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository to fetch branches from
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// GitRepoBranchesRequestProvider Git provider (optional - will be auto-detected if not provided)
-type GitRepoBranchesRequestProvider string
-
-// GitRepoBranchesResponse defines model for GitRepoBranchesResponse.
-type GitRepoBranchesResponse struct {
-	Branches []GitRepoBranch `binding:"required" json:"branches" yaml:"branches"`
-
-	// RepoUrl URL of the repository that was fetched
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// GitRepoContentRequest defines model for GitRepoContentRequest.
-type GitRepoContentRequest struct {
-	// Branch Branch of the repository to fetch content from
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *GitRepoContentRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository to fetch content from
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// GitRepoContentRequestProvider Git provider (optional - will be auto-detected if not provided)
-type GitRepoContentRequestProvider string
-
-// GitRepoContentResponse defines model for GitRepoContentResponse.
-type GitRepoContentResponse struct {
-	// Branch Branch of the repository that was fetched
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Items List of files and directories in the repository
-	Items []GitRepoItem `binding:"required" json:"items" yaml:"items"`
-
-	// MaxDepth Maximum depth level that was actually traversed
-	MaxDepth int `binding:"required" json:"maxDepth" yaml:"maxDepth"`
-
-	// RepoUrl URL of the repository that was fetched
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-
-	// RequestedDepth Requested depth level (0 = unlimited)
-	RequestedDepth int `binding:"required" json:"requestedDepth" yaml:"requestedDepth"`
-
-	// TotalItems Total number of items returned
-	TotalItems int `binding:"required" json:"totalItems" yaml:"totalItems"`
-}
-
-// GitRepoError defines model for GitRepoError.
-type GitRepoError struct {
-	// Code Specific error code for programmatic handling
-	Code string `binding:"required" json:"code" yaml:"code"`
-
-	// Error High-level error type
-	Error string `binding:"required" json:"error" yaml:"error"`
-
-	// Message Human-readable error message
-	Message string `binding:"required" json:"message" yaml:"message"`
-}
-
-// GitRepoItem defines model for GitRepoItem.
-type GitRepoItem struct {
-	Children []GitRepoItem `binding:"required" json:"children" yaml:"children"`
-
-	// Path Full path of the item within the repository
-	Path string `binding:"required" json:"path" yaml:"path"`
-
-	// SubPath Name of the item (file or directory)
-	SubPath string `binding:"required" json:"subPath" yaml:"subPath"`
-
-	// Type Type of the item (file or directory)
-	Type GitRepoItemType `binding:"required" json:"type" yaml:"type"`
-}
-
-// GitRepoItemType Type of the item (file or directory)
-type GitRepoItemType string
-
-// ImportAPIProjectRequest defines model for ImportAPIProjectRequest.
-type ImportAPIProjectRequest struct {
-	Api struct {
-		// Channels List of channels exposed by this API
-		Channels *[]Channel `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context  string     `binding:"required" json:"context" yaml:"context"`
-
-		// CreatedAt Timestamp when the api was created
-		CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-		// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
-		CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-		// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
-		Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-		// Kind Kind of the API based on its communication protocol or architectural style
-		Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-		// LifeCycleStatus Current lifecycle status of the API
-		LifeCycleStatus *ImportAPIProjectRequestApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-		// Name Display name of the API
-		Name string `binding:"required" json:"name" yaml:"name"`
-
-		// Operations List of operations exposed by this API
-		Operations *[]Operation `json:"operations,omitempty" yaml:"operations,omitempty"`
-
-		// Policies List of policies to be applied on the API
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-
-		// ProjectId ID of the project this API belongs to
-		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
-
-		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
-		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-		// When set, only these plans can be used when subscribing to the API.
-		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-		// Transport Supported transports for the API (http and/or https)
-		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
-
-		// UpdatedAt Timestamp when the api was last updated
-		UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-		// Upstream Upstream backend configuration with main and sandbox endpoints
-		Upstream Upstream `json:"upstream" yaml:"upstream"`
-		Version  string   `binding:"required" json:"version" yaml:"version"`
-	} `binding:"required" json:"api" yaml:"api"`
-
-	// Branch Branch of the repository to import from
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Path Path within the repository where the API project is located
-	Path string `binding:"required" json:"path" yaml:"path"`
-
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *ImportAPIProjectRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// ImportAPIProjectRequestApiLifeCycleStatus Current lifecycle status of the API
-type ImportAPIProjectRequestApiLifeCycleStatus string
-
-// ImportAPIProjectRequestProvider Git provider (optional - will be auto-detected if not provided)
-type ImportAPIProjectRequestProvider string
-
-// ImportOpenAPIRequest Multipart form data request for importing OpenAPI definition. All fields are provided as form data.
-// Either 'url' or 'definition' must be provided to specify the OpenAPI source, and 'api' is required
-// to provide the API details for creation. If the OpenAPI definition is valid and successfully imported,
-// and the api details are valid an API will be created.
-type ImportOpenAPIRequest struct {
-	// Api Form field containing JSON-encoded API details for the imported OpenAPI.
-	// This must be a JSON string containing the API configuration.
-	// Required fields within the JSON: name, context, version, projectId.
-	Api string `binding:"required" json:"api" yaml:"api"`
-
-	// Definition Form field for OpenAPI definition file upload (YAML or JSON).
-	// This should be provided as a file upload in the multipart form.
-	Definition *openapi_types.File `json:"definition,omitempty" yaml:"definition,omitempty"`
-
-	// Url Form field containing URL to fetch the OpenAPI definition from.
-	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
-	union json.RawMessage
-}
-
-// ImportOpenAPIRequest0 defines model for .
-type ImportOpenAPIRequest0 = interface{}
-
-// ImportOpenAPIRequest1 defines model for .
-type ImportOpenAPIRequest1 = interface{}
 
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
@@ -1587,30 +1195,32 @@ type LLMModel struct {
 	// Description Model description
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id Unique model identifier
-	Id string `binding:"required" json:"id" yaml:"id"`
+	// DisplayName Human-readable model name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Name Human-readable model name
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+	// Id Unique model identifier
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 }
 
 // LLMModelProvider defines model for LLMModelProvider.
 type LLMModelProvider struct {
+	// DisplayName Human-readable model provider name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique model provider identifier
-	Id string `binding:"required" json:"id" yaml:"id"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Models Models under this model provider
 	Models *[]LLMModel `json:"models,omitempty" yaml:"models,omitempty"`
-
-	// Name Human-readable model provider name
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
 // LLMPolicy defines model for LLMPolicy.
 type LLMPolicy struct {
-	Name    string          `binding:"required" json:"name" yaml:"name"`
-	Paths   []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version string          `binding:"required" json:"version" yaml:"version"`
+	Name  string          `binding:"required" json:"name" yaml:"name"`
+	Paths []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMPolicyPath defines model for LLMPolicyPath.
@@ -1644,17 +1254,17 @@ type LLMProvider struct {
 	// Description Description of the LLM provider
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM Provider name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
 
 	// Id Unique handle for the provider
-	Id string `binding:"required" json:"id" yaml:"id"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// ModelProviders List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureaifoundry).
 	ModelProviders *[]LLMModelProvider `json:"modelProviders,omitempty" yaml:"modelProviders,omitempty"`
-
-	// Name Human-readable LLM Provider name
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Openapi OpenAPI specification (JSON or YAML) for the provider endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
@@ -1705,8 +1315,10 @@ type LLMProviderListItem struct {
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
-	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Name        *string    `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// DisplayName Human-readable name for the LLM provider
+	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
+	Id          *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly  *bool                      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -1739,10 +1351,13 @@ type LLMProviderTemplate struct {
 	// Description Description of the LLM provider template
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM Template name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Enabled Whether this version is offered when creating providers. Disabled
 	// versions stay in the catalog but are hidden from the provider picker.
 	// Response-only: create/update default new versions to enabled; toggle
-	// via PATCH /llm-provider-templates/{id}/versions/{version}.
+	// via PATCH /llm-provider-templates/{llmProviderTemplateId}/versions/{version}.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
 	// GroupId Stable identifier shared by every version of a template family
@@ -1750,7 +1365,7 @@ type LLMProviderTemplate struct {
 	GroupId *string `json:"groupId,omitempty" yaml:"groupId,omitempty"`
 
 	// Id Unique handle for the template
-	Id string `binding:"required" json:"id" yaml:"id"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsLatest Whether this is the latest version of the template.
 	IsLatest *bool `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
@@ -1761,9 +1376,6 @@ type LLMProviderTemplate struct {
 	// omitted, so a request/YAML without a managedBy is accepted.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-
-	// Name Human-readable LLM Template name
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
@@ -1788,7 +1400,7 @@ type LLMProviderTemplate struct {
 	// Version Content version, e.g. v1.0. Required. A new template starts at v1.0;
 	// editing updates that version in place. Supply a new unique version
 	// only when creating a new version via
-	// POST /llm-provider-templates/{id}/versions.
+	// POST /llm-provider-templates/{llmProviderTemplateId}/versions.
 	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
@@ -1810,6 +1422,9 @@ type LLMProviderTemplateListItem struct {
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable name for the LLM provider template
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Enabled Whether this version is offered when creating providers.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
@@ -1826,7 +1441,6 @@ type LLMProviderTemplateListItem struct {
 
 	// ManagedBy Who manages the template ('wso2' for built-in, otherwise custom-defined).
 	ManagedBy *string `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
-	Name      *string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -1892,14 +1506,14 @@ type LLMProxy struct {
 	// Description Description of the LLM proxy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable LLM proxy name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
 
 	// Id Unique handle for the proxy
-	Id string `binding:"required" json:"id" yaml:"id"`
-
-	// Name Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `binding:"required" json:"name" yaml:"name"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
@@ -1947,8 +1561,10 @@ type LLMProxyListItem struct {
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
-	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Name        *string    `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// DisplayName Human-readable name for the LLM proxy
+	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
+	Id          *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
@@ -2009,17 +1625,17 @@ type MCPProxy struct {
 	// Description Description of the MCP proxy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable MCP proxy name
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
 	// Id Unique handle for the proxy
-	Id string `binding:"required" json:"id" yaml:"id"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// McpSpecVersion MCP specification version supported by this proxy
 	McpSpecVersion *MCPProxyMcpSpecVersion `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
-
-	// Name Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Policies List of policies to be applied
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -2061,13 +1677,15 @@ type MCPProxyCapabilities struct {
 // MCPProxyListItem defines model for MCPProxyListItem.
 type MCPProxyListItem struct {
 	// Context Context path where the proxy is exposed
-	Context        *string    `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt      *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy      *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description    *string    `json:"description,omitempty" yaml:"description,omitempty"`
-	Id             *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	McpSpecVersion *string    `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
-	Name           *string    `json:"name,omitempty" yaml:"name,omitempty"`
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the MCP proxy
+	DisplayName    string  `binding:"required" json:"displayName" yaml:"displayName"`
+	Id             *string `json:"id,omitempty" yaml:"id,omitempty"`
+	McpSpecVersion *string `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
@@ -2151,69 +1769,6 @@ type MappedAPIKeyListResponse struct {
 	Pagination Pagination     `json:"pagination" yaml:"pagination"`
 }
 
-// OpenAPIValidationResponse defines model for OpenAPIValidationResponse.
-type OpenAPIValidationResponse struct {
-	Api *struct {
-		// Channels List of channels exposed by this API
-		Channels *[]Channel `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context  string     `binding:"required" json:"context" yaml:"context"`
-
-		// CreatedAt Timestamp when the api was created
-		CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-		// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
-		CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-		// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
-		Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-		// Kind Kind of the API based on its communication protocol or architectural style
-		Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-		// LifeCycleStatus Current lifecycle status of the API
-		LifeCycleStatus *OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-		// Name Display name of the API
-		Name string `binding:"required" json:"name" yaml:"name"`
-
-		// Operations List of operations exposed by this API
-		Operations []Operation `json:"operations" yaml:"operations"`
-
-		// Policies List of policies to be applied on the API
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-
-		// ProjectId ID of the project this API belongs to
-		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
-
-		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
-		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-		// When set, only these plans can be used when subscribing to the API.
-		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-		// Transport Supported transports for the API (http and/or https)
-		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
-
-		// UpdatedAt Timestamp when the api was last updated
-		UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-		// Upstream Upstream backend configuration with main and sandbox endpoints
-		Upstream Upstream `json:"upstream" yaml:"upstream"`
-		Version  string   `binding:"required" json:"version" yaml:"version"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-
-	// Errors List of validation errors encountered
-	Errors *[]string `json:"errors,omitempty" yaml:"errors,omitempty"`
-
-	// IsRESTAPIDefinitionValid Indicates if the API definition file is valid
-	IsRESTAPIDefinitionValid bool `binding:"required" json:"isRESTAPIDefinitionValid" yaml:"isRESTAPIDefinitionValid"`
-}
-
-// OpenAPIValidationResponseApiLifeCycleStatus Current lifecycle status of the API
-type OpenAPIValidationResponseApiLifeCycleStatus string
-
 // Operation Defines a single operation (resource) within the API
 type Operation struct {
 	// Description Description of the operation
@@ -2232,7 +1787,9 @@ type OperationPolicy struct {
 	ExecutionCondition *string               `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
 	Name               string                `binding:"required" json:"name" yaml:"name"`
 	Paths              []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version            string                `binding:"required" json:"version" yaml:"version"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // OperationPolicyPath defines model for OperationPolicyPath.
@@ -2267,65 +1824,17 @@ type Organization struct {
 	// CreatedAt Timestamp when the organization was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Handle URL-friendly unique handle for the organization
-	Handle string `binding:"required" json:"handle" yaml:"handle"`
+	// DisplayName Human-readable name for the organization
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Id Unique identifier for the organization
-	Id *openapi_types.UUID `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
-
-	// Name Display name of the organization
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (URL-friendly slug) for the organization
+	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Region Geographic region where the organization operates
 	Region string `binding:"required" json:"region" yaml:"region"`
 
 	// UpdatedAt Timestamp when the organization was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-}
-
-// OrganizationQuota defines model for OrganizationQuota.
-type OrganizationQuota struct {
-	// Limit Maximum resources allowed, null when no limit is configured
-	Limit *int `json:"limit" yaml:"limit"`
-
-	// Remaining Remaining resources before limit is reached, null when no limit is configured
-	Remaining *int `json:"remaining" yaml:"remaining"`
-
-	// Used Number of currently used resources
-	Used int `binding:"required" json:"used" yaml:"used"`
-}
-
-// OrganizationSubscription defines model for OrganizationSubscription.
-type OrganizationSubscription struct {
-	// Plan Effective subscription plan for the organization
-	Plan   string                         `binding:"required" json:"plan" yaml:"plan"`
-	Quotas OrganizationSubscriptionQuotas `json:"quotas" yaml:"quotas"`
-}
-
-// OrganizationSubscriptionQuotas defines model for OrganizationSubscriptionQuotas.
-type OrganizationSubscriptionQuotas struct {
-	Apis         OrganizationQuota  `json:"apis" yaml:"apis"`
-	Applications OrganizationQuota  `json:"applications" yaml:"applications"`
-	Gateways     OrganizationQuota  `json:"gateways" yaml:"gateways"`
-	LlmProviders OrganizationQuota  `json:"llmProviders" yaml:"llmProviders"`
-	LlmProxies   OrganizationQuota  `json:"llmProxies" yaml:"llmProxies"`
-	McpProxies   OrganizationQuota  `json:"mcpProxies" yaml:"mcpProxies"`
-	WebsubApis   *OrganizationQuota `json:"websubApis,omitempty" yaml:"websubApis,omitempty"`
-}
-
-// Owners API ownership information
-type Owners struct {
-	// BusinessOwner Business owner of the API
-	BusinessOwner *string `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
-
-	// BusinessOwnerEmail Email of the business owner
-	BusinessOwnerEmail *string `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
-
-	// TechnicalOwner Technical owner of the API
-	TechnicalOwner *string `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
-
-	// TechnicalOwnerEmail Email of the technical owner
-	TechnicalOwnerEmail *string `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
 }
 
 // Pagination defines model for Pagination.
@@ -2351,7 +1860,7 @@ type Policy struct {
 	// Params Key-value pairs of parameters for the policy
 	Params *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
 
-	// Version Semantic version of the policy
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
 	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
@@ -2363,14 +1872,14 @@ type Project struct {
 	// Description Description of the project
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id Unique identifier for the project
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// DisplayName Human-readable name for the project
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Name Name of the project
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (URL-friendly slug) for the project
+	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
-	// OrganizationId UUID of the organization this project belongs to
-	OrganizationId *openapi_types.UUID `binding:"required" json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this project belongs to
+	OrganizationId *string `binding:"required" json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
 	// UpdatedAt Timestamp when the project was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -2382,51 +1891,6 @@ type ProjectListResponse struct {
 	Count      int        `binding:"required" json:"count" yaml:"count"`
 	List       []Project  `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
-}
-
-// PublishRESTAPIInfo User-overridable API metadata for publishing
-type PublishRESTAPIInfo struct {
-	// ApiDescription Description of the API
-	ApiDescription *string `json:"apiDescription,omitempty" yaml:"apiDescription,omitempty"`
-
-	// ApiName Name of the API
-	ApiName *string `json:"apiName,omitempty" yaml:"apiName,omitempty"`
-
-	// ApiType Type of the API
-	ApiType *string `json:"apiType,omitempty" yaml:"apiType,omitempty"`
-
-	// Labels Labels for the API
-	Labels *[]string `json:"labels,omitempty" yaml:"labels,omitempty"`
-
-	// Owners API ownership information
-	Owners *Owners `json:"owners,omitempty" yaml:"owners,omitempty"`
-
-	// Tags Tags for the API
-	Tags *[]string `json:"tags,omitempty" yaml:"tags,omitempty"`
-
-	// Visibility Visibility of the API
-	Visibility *PublishRESTAPIInfoVisibility `json:"visibility,omitempty" yaml:"visibility,omitempty"`
-
-	// VisibleGroups Groups that can see the API
-	VisibleGroups *[]string `json:"visibleGroups,omitempty" yaml:"visibleGroups,omitempty"`
-}
-
-// PublishRESTAPIInfoVisibility Visibility of the API
-type PublishRESTAPIInfoVisibility string
-
-// PublishRESTAPIResponse defines model for PublishRESTAPIResponse.
-type PublishRESTAPIResponse struct {
-	// ApiId Platform-api API identifier
-	ApiId openapi_types.UUID `binding:"required" json:"apiId" yaml:"apiId"`
-
-	// DevPortalRefId DevPortal reference ID for the published API
-	DevPortalRefId string `binding:"required" json:"devPortalRefId" yaml:"devPortalRefId"`
-
-	// Message Human-readable success message
-	Message string `binding:"required" json:"message" yaml:"message"`
-
-	// PublishedAt Timestamp of publication
-	PublishedAt time.Time `binding:"required" json:"publishedAt" yaml:"publishedAt"`
 }
 
 // RESTAPI defines model for RESTAPI.
@@ -2442,7 +1906,10 @@ type RESTAPI struct {
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Kind Kind of the API based on its communication protocol or architectural style
@@ -2451,17 +1918,14 @@ type RESTAPI struct {
 	// LifeCycleStatus Current lifecycle status of the API
 	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 
-	// Name Display name of the API
-	Name string `binding:"required" json:"name" yaml:"name"`
-
 	// Operations List of operations exposed by this API
 	Operations *[]Operation `json:"operations,omitempty" yaml:"operations,omitempty"`
 
 	// Policies List of policies to be applied on the API
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
-	// ProjectId ID of the project this API belongs to
-	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+	// ProjectId Handle (URL-friendly slug) of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -2521,16 +1985,16 @@ type RESTAPIGatewayResponse struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable gateway name
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Endpoints Network endpoints exposed by this gateway
-	Endpoints *[]GatewayEndpoint `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints *[]string `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
 
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *RESTAPIGatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// Id Handle (URL-friendly slug) for the gateway
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
@@ -2541,11 +2005,8 @@ type RESTAPIGatewayResponse struct {
 	// IsDeployed Whether the API is currently deployed to this gateway
 	IsDeployed bool `json:"isDeployed" yaml:"isDeployed"`
 
-	// Name URL-friendly gateway identifier
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// OrganizationId UUID of the organization this gateway belongs to
-	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this gateway belongs to
+	OrganizationId *string `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -2566,90 +2027,6 @@ type RESTAPIListResponse struct {
 	Count      int        `binding:"required" json:"count" yaml:"count"`
 	List       []RESTAPI  `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
-}
-
-// RESTAPIProjectValidationResponse defines model for RESTAPIProjectValidationResponse.
-type RESTAPIProjectValidationResponse struct {
-	Api *struct {
-		// Channels List of channels exposed by this API
-		Channels *[]Channel `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context  string     `binding:"required" json:"context" yaml:"context"`
-
-		// CreatedAt Timestamp when the api was created
-		CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-		// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
-		CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description string  `json:"description" yaml:"description"`
-
-		// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated.
-		Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-		// Kind Kind of the API based on its communication protocol or architectural style
-		Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-		// LifeCycleStatus Current lifecycle status of the API
-		LifeCycleStatus *RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-		// Name Display name of the API
-		Name string `binding:"required" json:"name" yaml:"name"`
-
-		// Operations List of operations exposed by this API
-		Operations []Operation `json:"operations" yaml:"operations"`
-
-		// Policies List of policies to be applied on the API
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-
-		// ProjectId ID of the project this API belongs to
-		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
-
-		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
-		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-		// When set, only these plans can be used when subscribing to the API.
-		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-		// Transport Supported transports for the API (http and/or https)
-		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
-
-		// UpdatedAt Timestamp when the api was last updated
-		UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-		// Upstream Upstream backend configuration with main and sandbox endpoints
-		Upstream Upstream `json:"upstream" yaml:"upstream"`
-		Version  string   `binding:"required" json:"version" yaml:"version"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-
-	// Errors List of validation errors encountered
-	Errors *[]string `json:"errors,omitempty" yaml:"errors,omitempty"`
-
-	// IsAPIConfigValid Indicates if the API configuration file is valid
-	IsAPIConfigValid bool `binding:"required" json:"isAPIConfigValid" yaml:"isAPIConfigValid"`
-
-	// IsRESTAPIDefinitionValid Indicates if the API definition file is valid
-	IsRESTAPIDefinitionValid bool `binding:"required" json:"isRESTAPIDefinitionValid" yaml:"isRESTAPIDefinitionValid"`
-
-	// IsRESTAPIProjectValid Indicates if the API project structure is valid
-	IsRESTAPIProjectValid bool `binding:"required" json:"isRESTAPIProjectValid" yaml:"isRESTAPIProjectValid"`
-}
-
-// RESTAPIProjectValidationResponseApiLifeCycleStatus Current lifecycle status of the API
-type RESTAPIProjectValidationResponseApiLifeCycleStatus string
-
-// RESTAPIValidationResponse defines model for RESTAPIValidationResponse.
-type RESTAPIValidationResponse struct {
-	// Error Error details if validation fails
-	Error *struct {
-		// Code Error code indicating the type of validation failure
-		Code string `json:"code" yaml:"code"`
-
-		// Message Human-readable error message
-		Message string `json:"message" yaml:"message"`
-	} `binding:"required" json:"error" yaml:"error"`
-
-	// Valid Whether the API identifier or name-version combination is valid (not already in use) in the organization
-	Valid bool `binding:"required" json:"valid" yaml:"valid"`
 }
 
 // RateLimitResetWindow defines model for RateLimitResetWindow.
@@ -2731,11 +2108,11 @@ type RouteExceptionMethods string
 type SecretCreateRequest struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Handle Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
-	Handle string `binding:"required" json:"handle" yaml:"handle"`
+	// DisplayName Human-readable name for the secret
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// Name Human-readable display name for list views
-	Name string                   `binding:"required" json:"name" yaml:"name"`
+	// Id Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
+	Id   *string                  `json:"id,omitempty" yaml:"id,omitempty"`
 	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
 
 	// Value Plaintext secret value — encrypted at rest, never returned in any response
@@ -2764,9 +2141,11 @@ type SecretListResponse struct {
 // SecretResponse Returned on create (201) and rotate (200). The plaintext value is never included.
 type SecretResponse struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Handle    *string    `json:"handle,omitempty" yaml:"handle,omitempty"`
-	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// DisplayName Human-readable name for the secret
+	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`
+	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// Uuid UUID of the secret
 	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
@@ -2774,11 +2153,13 @@ type SecretResponse struct {
 
 // SecretSummary Secret metadata — never includes the plaintext value.
 type SecretSummary struct {
-	CreatedAt   *time.Time             `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
-	Handle      *string                `json:"handle,omitempty" yaml:"handle,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the secret
+	DisplayName string                 `binding:"required" json:"displayName" yaml:"displayName"`
 	Hash        *string                `json:"hash,omitempty" yaml:"hash,omitempty"`
-	Name        *string                `json:"name,omitempty" yaml:"name,omitempty"`
+	Id          *string                `json:"id,omitempty" yaml:"id,omitempty"`
 	Provider    *SecretSummaryProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
 	Status      *SecretSummaryStatus   `json:"status,omitempty" yaml:"status,omitempty"`
 	Type        *SecretSummaryType     `json:"type,omitempty" yaml:"type,omitempty"`
@@ -2801,8 +2182,11 @@ type SecretSummaryType string
 type SecretUpdateRequest struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Name Updated display name
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+	// DisplayName Human-readable name for the secret
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Secret handle — if provided, must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Value New plaintext secret value — re-encrypted at rest
 	Value string `binding:"required" json:"value" yaml:"value"`
@@ -2822,21 +2206,18 @@ type Subscription struct {
 	// ApiId REST API UUID
 	ApiId *openapi_types.UUID `json:"apiId,omitempty" yaml:"apiId,omitempty"`
 
-	// ApplicationId Application ID (optional for token-based subscriptions)
+	// ApplicationId Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
 	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Id Subscription UUID
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-
-	// OrganizationId Organization UUID
-	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	// OrganizationId Handle (URL-friendly slug) of the organization this subscription belongs to
+	OrganizationId *string             `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	Status         *SubscriptionStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
 	// SubscriberId Unique subscriber identifier for this API (required)
 	SubscriberId *string `json:"subscriberId,omitempty" yaml:"subscriberId,omitempty"`
 
-	// SubscriptionPlanId Subscription plan UUID
+	// SubscriptionPlanId Handle (slug) of the subscription plan
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 
 	// SubscriptionPlanName Subscription plan display name (e.g. Bronze, Gold)
@@ -2845,6 +2226,9 @@ type Subscription struct {
 	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
 	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Subscription UUID
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SubscriptionStatus defines model for Subscription.Status.
@@ -2860,21 +2244,54 @@ type SubscriptionListResponse struct {
 
 // SubscriptionPlan defines model for SubscriptionPlan.
 type SubscriptionPlan struct {
-	BillingPlan        *string                 `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
-	CreatedAt          *time.Time              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	ExpiryTime         *time.Time              `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
-	Id                 *openapi_types.UUID     `json:"id,omitempty" yaml:"id,omitempty"`
-	OrganizationId     *openapi_types.UUID     `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
-	PlanName           *string                 `json:"planName,omitempty" yaml:"planName,omitempty"`
-	Status             *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	StopOnQuotaReach   *bool                   `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
-	ThrottleLimitCount *int                    `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
-	ThrottleLimitUnit  *string                 `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
-	UpdatedAt          *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	BillingPlan *string    `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// DisplayName Human-readable name for the subscription plan
+	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`
+	ExpiryTime  *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+
+	// Id Handle (slug) for the subscription plan
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Limits Throttling limits configured for the plan. Only one entry is currently supported and returned, even though the underlying storage allows multiple.
+	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
+
+	// OrganizationId Handle (URL-friendly slug) of the organization this plan belongs to
+	OrganizationId *string                 `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	Status         *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt      *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
 type SubscriptionPlanStatus string
+
+// SubscriptionPlanLimit defines model for SubscriptionPlanLimit.
+type SubscriptionPlanLimit struct {
+	// LimitCount Number of requests (or units, for BANDWIDTH/TOTAL_TOKEN_COUNT) allowed in the throttle window
+	LimitCount int `binding:"required" json:"limitCount" yaml:"limitCount"`
+
+	// LimitCountUnit Unit for limitCount when limitType is BANDWIDTH (e.g. MB, GB)
+	LimitCountUnit *string `json:"limitCountUnit,omitempty" yaml:"limitCountUnit,omitempty"`
+
+	// LimitType Kind of quota this limit enforces. Only REQUEST_COUNT is currently enforced; other values are accepted by the schema for forward compatibility but are rejected by the API today.
+	LimitType *SubscriptionPlanLimitLimitType `json:"limitType,omitempty" yaml:"limitType,omitempty"`
+
+	// StopOnQuotaReach Whether to block requests when this limit's quota is exhausted
+	StopOnQuotaReach *bool `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+
+	// TimeAmount Number of timeUnit windows the limit applies over (e.g. 2 with timeUnit=HOUR means "per 2 hours")
+	TimeAmount *int `json:"timeAmount,omitempty" yaml:"timeAmount,omitempty"`
+
+	// TimeUnit Throttle window unit
+	TimeUnit SubscriptionPlanLimitTimeUnit `binding:"required" json:"timeUnit" yaml:"timeUnit"`
+}
+
+// SubscriptionPlanLimitLimitType Kind of quota this limit enforces. Only REQUEST_COUNT is currently enforced; other values are accepted by the schema for forward compatibility but are rejected by the API today.
+type SubscriptionPlanLimitLimitType string
+
+// SubscriptionPlanLimitTimeUnit Throttle window unit
+type SubscriptionPlanLimitTimeUnit string
 
 // SubscriptionPlanListResponse defines model for SubscriptionPlanListResponse.
 type SubscriptionPlanListResponse struct {
@@ -2928,25 +2345,13 @@ type TokenRotationResponse struct {
 	Token *string `json:"token,omitempty" yaml:"token,omitempty"`
 }
 
-// UnpublishRESTAPIResponse defines model for UnpublishRESTAPIResponse.
-type UnpublishRESTAPIResponse struct {
-	// ApiId Platform-api API identifier
-	ApiId openapi_types.UUID `binding:"required" json:"apiId" yaml:"apiId"`
-
-	// Message Human-readable success message
-	Message string `binding:"required" json:"message" yaml:"message"`
-
-	// UnpublishedAt Timestamp when API was unpublished
-	UnpublishedAt time.Time `binding:"required" json:"unpublishedAt" yaml:"unpublishedAt"`
-}
-
 // UpdateAPIKeyRequest defines model for UpdateAPIKeyRequest.
 type UpdateAPIKeyRequest struct {
 	// ApiKey The new plain text API key value that will be hashed before storage
 	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
 
-	// DisplayName Display name of the API key
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	// DisplayName Human-readable name for the API key
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time          `json:"expiresAt" yaml:"expiresAt"`
@@ -2977,18 +2382,6 @@ type UpdateAPIKeyResponse struct {
 // UpdateAPIKeyResponseStatus Status of the operation
 type UpdateAPIKeyResponseStatus string
 
-// UpdateApplicationRequest defines model for UpdateApplicationRequest.
-type UpdateApplicationRequest struct {
-	// Description Description of the application
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// Name Name of the application
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Type Type of the application
-	Type *ApplicationType `json:"type,omitempty" yaml:"type,omitempty"`
-}
-
 // UpdateGatewayRequest defines model for UpdateGatewayRequest.
 type UpdateGatewayRequest struct {
 	// Description Description of the gateway
@@ -2997,8 +2390,8 @@ type UpdateGatewayRequest struct {
 	// DisplayName Human-readable gateway name
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
-	// Endpoints Network endpoints exposed by this gateway
-	Endpoints *[]GatewayEndpoint `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints *[]string `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
@@ -3006,48 +2399,6 @@ type UpdateGatewayRequest struct {
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
-
-// UpdateProjectRequest defines model for UpdateProjectRequest.
-type UpdateProjectRequest struct {
-	// Description Description of the project
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// Name Name of the project
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-}
-
-// UpdateRESTAPIRequest defines model for UpdateRESTAPIRequest.
-type UpdateRESTAPIRequest = RESTAPI
-
-// UpdateSubscriptionPlanRequest defines model for UpdateSubscriptionPlanRequest.
-type UpdateSubscriptionPlanRequest struct {
-	BillingPlan      *string                              `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
-	ExpiryTime       *time.Time                           `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
-	PlanName         *string                              `json:"planName,omitempty" yaml:"planName,omitempty"`
-	Status           *UpdateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	StopOnQuotaReach *bool                                `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
-
-	// ThrottleLimitCount Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
-	ThrottleLimitCount *int `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
-
-	// ThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
-	ThrottleLimitUnit *UpdateSubscriptionPlanRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
-}
-
-// UpdateSubscriptionPlanRequestStatus defines model for UpdateSubscriptionPlanRequest.Status.
-type UpdateSubscriptionPlanRequestStatus string
-
-// UpdateSubscriptionPlanRequestThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
-type UpdateSubscriptionPlanRequestThrottleLimitUnit string
-
-// UpdateSubscriptionRequest defines model for UpdateSubscriptionRequest.
-type UpdateSubscriptionRequest struct {
-	// Status New subscription status
-	Status *UpdateSubscriptionRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// UpdateSubscriptionRequestStatus New subscription status
-type UpdateSubscriptionRequestStatus string
 
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {
@@ -3143,369 +2494,14 @@ type UserAPIKeyListResponse struct {
 	Items []UserAPIKeyItem `binding:"required" json:"items" yaml:"items"`
 }
 
-// ValidateAPIProjectRequest defines model for ValidateAPIProjectRequest.
-type ValidateAPIProjectRequest struct {
-	// Branch Branch of the repository to import from
-	Branch string `binding:"required" json:"branch" yaml:"branch"`
-
-	// Path Path within the repository where the API project is located
-	Path string `binding:"required" json:"path" yaml:"path"`
-
-	// Provider Git provider (optional - will be auto-detected if not provided)
-	Provider *ValidateAPIProjectRequestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-
-	// RepoUrl URL of the public Git repository
-	RepoUrl string `binding:"required" json:"repoUrl" yaml:"repoUrl"`
-}
-
-// ValidateAPIProjectRequestProvider Git provider (optional - will be auto-detected if not provided)
-type ValidateAPIProjectRequestProvider string
-
-// ValidateOpenAPIRequest Request for validating OpenAPI definition. Can include either a URL, a file upload,
-// or both. If both are provided, the validation service can choose which to prioritize.
-type ValidateOpenAPIRequest struct {
-	// Definition OpenAPI definition file upload (YAML or JSON)
-	Definition *openapi_types.File `json:"definition,omitempty" yaml:"definition,omitempty"`
-
-	// Url URL to fetch the OpenAPI definition from
-	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
-	union json.RawMessage
-}
-
-// ValidateOpenAPIRequest0 defines model for .
-type ValidateOpenAPIRequest0 = interface{}
-
-// ValidateOpenAPIRequest1 defines model for .
-type ValidateOpenAPIRequest1 = interface{}
-
-// WebBrokerAPI defines model for WebBrokerAPI.
-type WebBrokerAPI struct {
-	// AllChannels Policies applied to all channels, organized by event type.
-	AllChannels *WebBrokerAllChannelPolicies `json:"allChannels,omitempty" yaml:"allChannels,omitempty"`
-
-	// Broker Message broker configuration
-	Broker struct {
-		Name       string                  `json:"name" yaml:"name"`
-		Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
-		Type       WebBrokerAPIBrokerType  `json:"type" yaml:"type"`
-	} `binding:"required" json:"broker" yaml:"broker"`
-
-	// Channels Per-channel configuration keyed by channel name. Each key is a channel name and defines policies and topics for that channel.
-	Channels map[string]WebBrokerChannel `binding:"required" json:"channels" yaml:"channels"`
-
-	// Context Base path for the API (must start with /)
-	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-	// CreatedBy Username of the creator
-	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// Id Unique handle for the WebBroker API
-	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-	// Kind Kind of the WebBroker API
-	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-	// LifeCycleStatus Lifecycle status of the WebBroker API
-	LifeCycleStatus *WebBrokerAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-	// Name Human-readable name for the WebBroker API
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// ProjectId UUID of the project this API belongs to
-	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
-
-	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-	// Receiver WebSocket receiver configuration
-	Receiver struct {
-		Name       string                   `json:"name" yaml:"name"`
-		Properties *map[string]interface{}  `json:"properties,omitempty" yaml:"properties,omitempty"`
-		Type       WebBrokerAPIReceiverType `json:"type" yaml:"type"`
-	} `binding:"required" json:"receiver" yaml:"receiver"`
-
-	// SubscriptionPlans List of subscription plan IDs
-	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-	// Transport Supported transport protocols
-	Transport *[]WebBrokerAPITransport `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Version Semantic version of the WebBroker API
-	Version string `binding:"required" json:"version" yaml:"version"`
-}
-
-// WebBrokerAPIBrokerType defines model for WebBrokerAPI.Broker.Type.
-type WebBrokerAPIBrokerType string
-
-// WebBrokerAPILifeCycleStatus Lifecycle status of the WebBroker API
-type WebBrokerAPILifeCycleStatus string
-
-// WebBrokerAPIReceiverType defines model for WebBrokerAPI.Receiver.Type.
-type WebBrokerAPIReceiverType string
-
-// WebBrokerAPITransport defines model for WebBrokerAPI.Transport.
-type WebBrokerAPITransport string
-
-// WebBrokerAPIListItem defines model for WebBrokerAPIListItem.
-type WebBrokerAPIListItem struct {
-	Context         *string                              `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt       *time.Time                           `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Id              *string                              `json:"id,omitempty" yaml:"id,omitempty"`
-	LifeCycleStatus *WebBrokerAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            *string                              `json:"name,omitempty" yaml:"name,omitempty"`
-	ProjectId       *string                              `json:"projectId,omitempty" yaml:"projectId,omitempty"`
-
-	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version   *string    `json:"version,omitempty" yaml:"version,omitempty"`
-}
-
-// WebBrokerAPIListItemLifeCycleStatus defines model for WebBrokerAPIListItem.LifeCycleStatus.
-type WebBrokerAPIListItemLifeCycleStatus string
-
-// WebBrokerAPIListResponse defines model for WebBrokerAPIListResponse.
-type WebBrokerAPIListResponse struct {
-	Count      int                    `binding:"required" json:"count" yaml:"count"`
-	List       []WebBrokerAPIListItem `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination             `json:"pagination" yaml:"pagination"`
-}
-
-// WebBrokerAllChannelPolicies Policies applied to all channels, organized by event type.
-type WebBrokerAllChannelPolicies struct {
-	// OnConnectionInit Policies for a single event type.
-	OnConnectionInit *WebBrokerEventPolicies `json:"on_connection_init,omitempty" yaml:"on_connection_init,omitempty"`
-
-	// OnConsume Policies for a single event type.
-	OnConsume *WebBrokerEventPolicies `json:"on_consume,omitempty" yaml:"on_consume,omitempty"`
-
-	// OnProduce Policies for a single event type.
-	OnProduce *WebBrokerEventPolicies `json:"on_produce,omitempty" yaml:"on_produce,omitempty"`
-}
-
-// WebBrokerChannel A single channel definition with topic mappings and optional per-channel policy overrides.
-type WebBrokerChannel struct {
-	// ConsumeFrom Kafka topic to consume messages from
-	ConsumeFrom *struct {
-		Topic *string `json:"topic,omitempty" yaml:"topic,omitempty"`
-	} `json:"consumeFrom,omitempty" yaml:"consumeFrom,omitempty"`
-
-	// OnConnectionInit Policies for a single event type.
-	OnConnectionInit *WebBrokerEventPolicies `json:"on_connection_init,omitempty" yaml:"on_connection_init,omitempty"`
-
-	// OnConsume Policies for a single event type.
-	OnConsume *WebBrokerEventPolicies `json:"on_consume,omitempty" yaml:"on_consume,omitempty"`
-
-	// OnProduce Policies for a single event type.
-	OnProduce *WebBrokerEventPolicies `json:"on_produce,omitempty" yaml:"on_produce,omitempty"`
-
-	// ProduceTo Kafka topic to produce messages to
-	ProduceTo *struct {
-		Topic *string `json:"topic,omitempty" yaml:"topic,omitempty"`
-	} `json:"produceTo,omitempty" yaml:"produceTo,omitempty"`
-}
-
-// WebBrokerEventPolicies Policies for a single event type.
-type WebBrokerEventPolicies struct {
-	// Policies List of policies applied for this event type.
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
-
-// WebSubAPI defines model for WebSubAPI.
-type WebSubAPI struct {
-	// AllChannels Policies applied to all channels, organized by event type.
-	AllChannels *WebSubAllChannelPolicies `json:"allChannels,omitempty" yaml:"allChannels,omitempty"`
-
-	// Channels Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
-	Channels map[string]WebSubChannel `binding:"required" json:"channels" yaml:"channels"`
-
-	// Context Base path for the API (must start with /)
-	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-	// CreatedBy Username of the creator
-	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// Id Unique handle for the WebSub API
-	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-	// Kind Kind of the WebSub API
-	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-	// LifeCycleStatus Lifecycle status of the WebSub API
-	LifeCycleStatus *WebSubAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
-	// Name Human-readable name for the WebSub API
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// ProjectId UUID of the project this API belongs to
-	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
-
-	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-
-	// SubscriptionPlans List of subscription plan IDs
-	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-
-	// Transport Supported transport protocols
-	Transport *[]WebSubAPITransport `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt *time.Time            `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Upstream Upstream backend configuration with main and sandbox endpoints
-	Upstream Upstream `json:"upstream" yaml:"upstream"`
-
-	// Version Semantic version of the WebSub API
-	Version string `binding:"required" json:"version" yaml:"version"`
-}
-
-// WebSubAPILifeCycleStatus Lifecycle status of the WebSub API
-type WebSubAPILifeCycleStatus string
-
-// WebSubAPITransport defines model for WebSubAPI.Transport.
-type WebSubAPITransport string
-
-// WebSubAPIHmacSecretCreationResponse defines model for WebSubAPIHmacSecretCreationResponse.
-type WebSubAPIHmacSecretCreationResponse struct {
-	// Message Human-readable confirmation message.
-	Message string `binding:"required" json:"message" yaml:"message"`
-
-	// Secret The plaintext HMAC secret value. This is returned **once** at creation/regeneration time
-	// and is never stored unencrypted — save it immediately.
-	Secret        string                   `binding:"required" json:"secret" yaml:"secret"`
-	WebhookSecret *WebSubAPIHmacSecretInfo `json:"webhookSecret,omitempty" yaml:"webhookSecret,omitempty"`
-}
-
-// WebSubAPIHmacSecretInfo defines model for WebSubAPIHmacSecretInfo.
-type WebSubAPIHmacSecretInfo struct {
-	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-
-	// DisplayName Human-readable label.
-	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
-
-	// Name URL-safe slug derived from the display name.
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// Status Status of the HMAC secret.
-	Status    string    `binding:"required" json:"status" yaml:"status"`
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-
-	// Uuid Unique identifier for the HMAC secret.
-	Uuid string `binding:"required" json:"uuid" yaml:"uuid"`
-}
-
-// WebSubAPIHmacSecretListResponse defines model for WebSubAPIHmacSecretListResponse.
-type WebSubAPIHmacSecretListResponse struct {
-	Secrets []WebSubAPIHmacSecretInfo `binding:"required" json:"secrets" yaml:"secrets"`
-}
-
-// WebSubAPIHmacSecretRegenerateRequest defines model for WebSubAPIHmacSecretRegenerateRequest.
-type WebSubAPIHmacSecretRegenerateRequest struct {
-	// Secret Optional. If provided, this value is used as the new HMAC secret instead of auto-generating one.
-	// Must be at least 32 characters long.
-	Secret *string `json:"secret,omitempty" yaml:"secret,omitempty"`
-}
-
-// WebSubAPIHmacSecretRequest defines model for WebSubAPIHmacSecretRequest.
-type WebSubAPIHmacSecretRequest struct {
-	// DisplayName Human-readable label for the HMAC secret (used to derive the URL-safe name/slug).
-	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
-
-	// Secret Optional. If provided, this value is used as the HMAC secret instead of auto-generating one.
-	// Must be at least 32 characters long.
-	Secret *string `json:"secret,omitempty" yaml:"secret,omitempty"`
-}
-
-// WebSubAPIListItem defines model for WebSubAPIListItem.
-type WebSubAPIListItem struct {
-	Context         *string                           `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt       *time.Time                        `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Id              *string                           `json:"id,omitempty" yaml:"id,omitempty"`
-	LifeCycleStatus *WebSubAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            *string                           `json:"name,omitempty" yaml:"name,omitempty"`
-	ProjectId       *string                           `json:"projectId,omitempty" yaml:"projectId,omitempty"`
-
-	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
-	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version   *string    `json:"version,omitempty" yaml:"version,omitempty"`
-}
-
-// WebSubAPIListItemLifeCycleStatus defines model for WebSubAPIListItem.LifeCycleStatus.
-type WebSubAPIListItemLifeCycleStatus string
-
-// WebSubAPIListResponse defines model for WebSubAPIListResponse.
-type WebSubAPIListResponse struct {
-	Count      int                 `binding:"required" json:"count" yaml:"count"`
-	List       []WebSubAPIListItem `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination          `json:"pagination" yaml:"pagination"`
-}
-
-// WebSubAllChannelPolicies Policies applied to all channels, organized by event type.
-type WebSubAllChannelPolicies struct {
-	// OnMessageDelivery Policies for a single event type.
-	OnMessageDelivery *WebSubEventPolicies `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
-
-	// OnMessageReceived Policies for a single event type.
-	OnMessageReceived *WebSubEventPolicies `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
-
-	// OnSubscription Policies for a single event type.
-	OnSubscription *WebSubEventPolicies `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
-
-	// OnUnsubscription Policies for a single event type.
-	OnUnsubscription *WebSubEventPolicies `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
-}
-
-// WebSubChannel A single channel definition with optional per-channel policy overrides.
-type WebSubChannel struct {
-	// OnMessageDelivery Policies for a single event type.
-	OnMessageDelivery *WebSubEventPolicies `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
-
-	// OnMessageReceived Policies for a single event type.
-	OnMessageReceived *WebSubEventPolicies `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
-
-	// OnSubscription Policies for a single event type.
-	OnSubscription *WebSubEventPolicies `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
-
-	// OnUnsubscription Policies for a single event type.
-	OnUnsubscription *WebSubEventPolicies `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
-}
-
-// WebSubEventPolicies Policies for a single event type.
-type WebSubEventPolicies struct {
-	// Policies List of policies applied for this event type.
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
-
-// ArtifactTypeQ defines model for ArtifactType-Q.
-type ArtifactTypeQ string
-
-// GatewayID defines model for GatewayID.
-type GatewayID = openapi_types.UUID
-
-// ProjectID defines model for ProjectID.
-type ProjectID = openapi_types.UUID
-
-// TokenID defines model for TokenID.
-type TokenID = openapi_types.UUID
-
-// ApiIdentifierQ defines model for api-identifier-Q.
-type ApiIdentifierQ = string
-
-// ApiNameQ defines model for api-name-Q.
-type ApiNameQ = string
-
-// ApiVersionQ defines model for api-version-Q.
-type ApiVersionQ = string
-
 // ApiId defines model for apiId.
 type ApiId = string
 
 // AppId defines model for appId.
 type AppId = string
+
+// ArtifactTypeQ defines model for artifactType-Q.
+type ArtifactTypeQ string
 
 // AssociationId defines model for associationId.
 type AssociationId = string
@@ -3513,32 +2509,29 @@ type AssociationId = string
 // DeploymentId defines model for deploymentId.
 type DeploymentId = openapi_types.UUID
 
-// DeploymentIdQ defines model for deploymentId-Q.
-type DeploymentIdQ = string
-
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
-
-// DepthQ defines model for depth-Q.
-type DepthQ = int
 
 // EntityIDQ defines model for entityID-Q.
 type EntityIDQ = string
 
+// GatewayId defines model for gatewayId.
+type GatewayId = string
+
 // GatewayIdQ defines model for gatewayId-Q.
 type GatewayIdQ = string
-
-// KeyId defines model for keyId.
-type KeyId = openapi_types.UUID
 
 // MappedKeyId defines model for mappedKeyId.
 type MappedKeyId = string
 
-// OrganizationId defines model for organizationId.
-type OrganizationId = openapi_types.UUID
+// ProjectId defines model for projectId.
+type ProjectId = string
 
 // ProjectIdQ defines model for projectId-Q.
-type ProjectIdQ = openapi_types.UUID
+type ProjectIdQ = string
+
+// TokenId defines model for tokenId.
+type TokenId = openapi_types.UUID
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -3563,7 +2556,7 @@ type Unauthorized = Error
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of applications to return
@@ -3626,16 +2619,6 @@ type GetGatewayArtifactsParams struct {
 
 // GetGatewayArtifactsParamsArtifactType defines parameters for GetGatewayArtifacts.
 type GetGatewayArtifactsParamsArtifactType string
-
-// FetchGitRepoContentParams defines parameters for FetchGitRepoContent.
-type FetchGitRepoContentParams struct {
-	// Depth Limits the depth of directory traversal when fetching Git repository content.
-	// - `0` or omitted: Returns all content (unlimited depth)
-	// - `1`: Returns only root-level files and directories
-	// - `2`: Returns content within two levels from the root
-	// - Maximum allowed depth is 10 for performance reasons
-	Depth *DepthQ `form:"depth,omitempty" json:"depth,omitempty" yaml:"depth,omitempty"`
-}
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
@@ -3712,7 +2695,7 @@ type ListLLMProxiesByProviderParams struct {
 
 // ListLLMProxiesParams defines parameters for ListLLMProxies.
 type ListLLMProxiesParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of LLM proxies to return
@@ -3748,7 +2731,7 @@ type UndeployLLMProxyDeploymentParams struct {
 
 // ListMCPProxiesParams defines parameters for ListMCPProxies.
 type ListMCPProxiesParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of MCP proxies to return
@@ -3772,13 +2755,13 @@ type GetMCPProxyDeploymentsParamsStatus string
 
 // RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
 type RestoreMCPProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployMCPProxyDeploymentParams defines parameters for UndeployMCPProxyDeployment.
 type UndeployMCPProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
@@ -3794,16 +2777,8 @@ type ListUserAPIKeysParamsType string
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
-
-	// Name **API Name** to check for existence within the organization.
-	// Must be used together with 'version' parameter if 'identifier' is not provided.
-	Name *ApiNameQ `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Version **API Version** to check for existence within the organization.
-	// Must be used together with 'name' parameter if 'identifier' is not provided.
-	Version *ApiVersionQ `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // GetDeploymentsParams defines parameters for GetDeployments.
@@ -3820,13 +2795,13 @@ type GetDeploymentsParamsStatus string
 
 // RestoreDeploymentParams defines parameters for RestoreDeployment.
 type RestoreDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployDeploymentParams defines parameters for UndeployDeployment.
 type UndeployDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
@@ -3872,75 +2847,17 @@ type DeleteSubscriptionParams struct {
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
 
-// GetSubscriptionParams defines parameters for GetSubscription.
-type GetSubscriptionParams struct {
-	// SubscriberId Subscriber ID; must match the subscription's subscriberId.
-	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
-}
-
 // UpdateSubscriptionParams defines parameters for UpdateSubscription.
 type UpdateSubscriptionParams struct {
 	// SubscriberId Subscriber ID; must match the subscription's subscriberId.
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
 
-// ListWebBrokerAPIsParams defines parameters for ListWebBrokerAPIs.
-type ListWebBrokerAPIsParams struct {
-	ProjectId string `form:"projectId" json:"projectId" yaml:"projectId"`
-	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
-	Offset    *int   `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
-}
-
-// GetWebBrokerAPIDeploymentsParams defines parameters for GetWebBrokerAPIDeployments.
-type GetWebBrokerAPIDeploymentsParams struct {
-	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
-	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// RestoreWebBrokerAPIDeploymentParams defines parameters for RestoreWebBrokerAPIDeployment.
-type RestoreWebBrokerAPIDeploymentParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployWebBrokerAPIParams defines parameters for UndeployWebBrokerAPI.
-type UndeployWebBrokerAPIParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
-type ListWebSubAPIsParams struct {
-	ProjectId string `form:"projectId" json:"projectId" yaml:"projectId"`
-	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
-	Offset    *int   `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
-}
-
-// GetWebSubAPIDeploymentsParams defines parameters for GetWebSubAPIDeployments.
-type GetWebSubAPIDeploymentsParams struct {
-	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
-	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// RestoreWebSubAPIDeploymentParams defines parameters for RestoreWebSubAPIDeployment.
-type RestoreWebSubAPIDeploymentParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployWebSubAPIParams defines parameters for UndeployWebSubAPI.
-type UndeployWebSubAPIParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// ImportAPIProjectJSONRequestBody defines body for ImportAPIProject for application/json ContentType.
-type ImportAPIProjectJSONRequestBody = ImportAPIProjectRequest
-
-// ValidateAPIProjectJSONRequestBody defines body for ValidateAPIProject for application/json ContentType.
-type ValidateAPIProjectJSONRequestBody = ValidateAPIProjectRequest
-
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest
 
 // UpdateApplicationJSONRequestBody defines body for UpdateApplication for application/json ContentType.
-type UpdateApplicationJSONRequestBody = UpdateApplicationRequest
+type UpdateApplicationJSONRequestBody = Application
 
 // AddApplicationAPIKeysJSONRequestBody defines body for AddApplicationAPIKeys for application/json ContentType.
 type AddApplicationAPIKeysJSONRequestBody = AddApplicationAPIKeysRequest
@@ -3952,13 +2869,7 @@ type AddApplicationAssociationsJSONRequestBody = AddApplicationAssociationsReque
 type CreateGatewayJSONRequestBody = CreateGatewayRequest
 
 // UpdateGatewayJSONRequestBody defines body for UpdateGateway for application/json ContentType.
-type UpdateGatewayJSONRequestBody = UpdateGatewayRequest
-
-// FetchGitRepoContentJSONRequestBody defines body for FetchGitRepoContent for application/json ContentType.
-type FetchGitRepoContentJSONRequestBody = GitRepoContentRequest
-
-// FetchGitRepoBranchesJSONRequestBody defines body for FetchGitRepoBranches for application/json ContentType.
-type FetchGitRepoBranchesJSONRequestBody = GitRepoBranchesRequest
+type UpdateGatewayJSONRequestBody = GatewayResponse
 
 // CreateLLMProviderTemplateJSONRequestBody defines body for CreateLLMProviderTemplate for application/json ContentType.
 type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
@@ -4015,19 +2926,13 @@ type RegisterOrganizationJSONRequestBody = Organization
 type CreateProjectJSONRequestBody = CreateProjectRequest
 
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
-type UpdateProjectJSONRequestBody = UpdateProjectRequest
+type UpdateProjectJSONRequestBody = Project
 
 // CreateRESTAPIJSONRequestBody defines body for CreateRESTAPI for application/json ContentType.
 type CreateRESTAPIJSONRequestBody = CreateRESTAPIRequest
 
-// ImportOpenAPIMultipartRequestBody defines body for ImportOpenAPI for multipart/form-data ContentType.
-type ImportOpenAPIMultipartRequestBody = ImportOpenAPIRequest
-
-// ValidateOpenAPIMultipartRequestBody defines body for ValidateOpenAPI for multipart/form-data ContentType.
-type ValidateOpenAPIMultipartRequestBody = ValidateOpenAPIRequest
-
 // UpdateRESTAPIJSONRequestBody defines body for UpdateRESTAPI for application/json ContentType.
-type UpdateRESTAPIJSONRequestBody = UpdateRESTAPIRequest
+type UpdateRESTAPIJSONRequestBody = RESTAPI
 
 // CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
 type CreateAPIKeyJSONRequestBody = CreateAPIKeyRequest
@@ -4051,171 +2956,13 @@ type RotateSecretMultipartRequestBody = SecretUpdateRequest
 type CreateSubscriptionPlanJSONRequestBody = CreateSubscriptionPlanRequest
 
 // UpdateSubscriptionPlanJSONRequestBody defines body for UpdateSubscriptionPlan for application/json ContentType.
-type UpdateSubscriptionPlanJSONRequestBody = UpdateSubscriptionPlanRequest
+type UpdateSubscriptionPlanJSONRequestBody = SubscriptionPlan
 
 // CreateSubscriptionJSONRequestBody defines body for CreateSubscription for application/json ContentType.
 type CreateSubscriptionJSONRequestBody = CreateSubscriptionRequest
 
 // UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
-type UpdateSubscriptionJSONRequestBody = UpdateSubscriptionRequest
-
-// CreateWebBrokerAPIJSONRequestBody defines body for CreateWebBrokerAPI for application/json ContentType.
-type CreateWebBrokerAPIJSONRequestBody = WebBrokerAPI
-
-// UpdateWebBrokerAPIJSONRequestBody defines body for UpdateWebBrokerAPI for application/json ContentType.
-type UpdateWebBrokerAPIJSONRequestBody = WebBrokerAPI
-
-// CreateWebBrokerAPIKeyJSONRequestBody defines body for CreateWebBrokerAPIKey for application/json ContentType.
-type CreateWebBrokerAPIKeyJSONRequestBody = CreateAPIKeyRequest
-
-// UpdateWebBrokerAPIKeyJSONRequestBody defines body for UpdateWebBrokerAPIKey for application/json ContentType.
-type UpdateWebBrokerAPIKeyJSONRequestBody = UpdateAPIKeyRequest
-
-// DeployWebBrokerAPIJSONRequestBody defines body for DeployWebBrokerAPI for application/json ContentType.
-type DeployWebBrokerAPIJSONRequestBody = DeployRequest
-
-// CreateWebSubAPIJSONRequestBody defines body for CreateWebSubAPI for application/json ContentType.
-type CreateWebSubAPIJSONRequestBody = WebSubAPI
-
-// UpdateWebSubAPIJSONRequestBody defines body for UpdateWebSubAPI for application/json ContentType.
-type UpdateWebSubAPIJSONRequestBody = WebSubAPI
-
-// CreateWebSubAPIKeyJSONRequestBody defines body for CreateWebSubAPIKey for application/json ContentType.
-type CreateWebSubAPIKeyJSONRequestBody = CreateAPIKeyRequest
-
-// UpdateWebSubAPIKeyJSONRequestBody defines body for UpdateWebSubAPIKey for application/json ContentType.
-type UpdateWebSubAPIKeyJSONRequestBody = UpdateAPIKeyRequest
-
-// DeployWebSubAPIJSONRequestBody defines body for DeployWebSubAPI for application/json ContentType.
-type DeployWebSubAPIJSONRequestBody = DeployRequest
-
-// CreateWebSubAPISecretJSONRequestBody defines body for CreateWebSubAPISecret for application/json ContentType.
-type CreateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRequest
-
-// RegenerateWebSubAPISecretJSONRequestBody defines body for RegenerateWebSubAPISecret for application/json ContentType.
-type RegenerateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRegenerateRequest
-
-// AsImportOpenAPIRequest0 returns the union data inside the ImportOpenAPIRequest as a ImportOpenAPIRequest0
-func (t ImportOpenAPIRequest) AsImportOpenAPIRequest0() (ImportOpenAPIRequest0, error) {
-	var body ImportOpenAPIRequest0
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromImportOpenAPIRequest0 overwrites any union data inside the ImportOpenAPIRequest as the provided ImportOpenAPIRequest0
-func (t *ImportOpenAPIRequest) FromImportOpenAPIRequest0(v ImportOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeImportOpenAPIRequest0 performs a merge with any union data inside the ImportOpenAPIRequest, using the provided ImportOpenAPIRequest0
-func (t *ImportOpenAPIRequest) MergeImportOpenAPIRequest0(v ImportOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsImportOpenAPIRequest1 returns the union data inside the ImportOpenAPIRequest as a ImportOpenAPIRequest1
-func (t ImportOpenAPIRequest) AsImportOpenAPIRequest1() (ImportOpenAPIRequest1, error) {
-	var body ImportOpenAPIRequest1
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromImportOpenAPIRequest1 overwrites any union data inside the ImportOpenAPIRequest as the provided ImportOpenAPIRequest1
-func (t *ImportOpenAPIRequest) FromImportOpenAPIRequest1(v ImportOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeImportOpenAPIRequest1 performs a merge with any union data inside the ImportOpenAPIRequest, using the provided ImportOpenAPIRequest1
-func (t *ImportOpenAPIRequest) MergeImportOpenAPIRequest1(v ImportOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t ImportOpenAPIRequest) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	object := make(map[string]json.RawMessage)
-	if t.union != nil {
-		err = json.Unmarshal(b, &object)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	object["api"], err = json.Marshal(t.Api)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling 'api': %w", err)
-	}
-
-	if t.Definition != nil {
-		object["definition"], err = json.Marshal(t.Definition)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'definition': %w", err)
-		}
-	}
-
-	if t.Url != nil {
-		object["url"], err = json.Marshal(t.Url)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'url': %w", err)
-		}
-	}
-	b, err = json.Marshal(object)
-	return b, err
-}
-
-func (t *ImportOpenAPIRequest) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	if err != nil {
-		return err
-	}
-	object := make(map[string]json.RawMessage)
-	err = json.Unmarshal(b, &object)
-	if err != nil {
-		return err
-	}
-
-	if raw, found := object["api"]; found {
-		err = json.Unmarshal(raw, &t.Api)
-		if err != nil {
-			return fmt.Errorf("error reading 'api': %w", err)
-		}
-	}
-
-	if raw, found := object["definition"]; found {
-		err = json.Unmarshal(raw, &t.Definition)
-		if err != nil {
-			return fmt.Errorf("error reading 'definition': %w", err)
-		}
-	}
-
-	if raw, found := object["url"]; found {
-		err = json.Unmarshal(raw, &t.Url)
-		if err != nil {
-			return fmt.Errorf("error reading 'url': %w", err)
-		}
-	}
-
-	return err
-}
+type UpdateSubscriptionJSONRequestBody = Subscription
 
 // AsRateLimitingScopeConfig0 returns the union data inside the RateLimitingScopeConfig as a RateLimitingScopeConfig0
 func (t RateLimitingScopeConfig) AsRateLimitingScopeConfig0() (RateLimitingScopeConfig0, error) {
@@ -4438,116 +3185,6 @@ func (t *UpstreamDefinition) UnmarshalJSON(b []byte) error {
 		err = json.Unmarshal(raw, &t.Ref)
 		if err != nil {
 			return fmt.Errorf("error reading 'ref': %w", err)
-		}
-	}
-
-	if raw, found := object["url"]; found {
-		err = json.Unmarshal(raw, &t.Url)
-		if err != nil {
-			return fmt.Errorf("error reading 'url': %w", err)
-		}
-	}
-
-	return err
-}
-
-// AsValidateOpenAPIRequest0 returns the union data inside the ValidateOpenAPIRequest as a ValidateOpenAPIRequest0
-func (t ValidateOpenAPIRequest) AsValidateOpenAPIRequest0() (ValidateOpenAPIRequest0, error) {
-	var body ValidateOpenAPIRequest0
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromValidateOpenAPIRequest0 overwrites any union data inside the ValidateOpenAPIRequest as the provided ValidateOpenAPIRequest0
-func (t *ValidateOpenAPIRequest) FromValidateOpenAPIRequest0(v ValidateOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeValidateOpenAPIRequest0 performs a merge with any union data inside the ValidateOpenAPIRequest, using the provided ValidateOpenAPIRequest0
-func (t *ValidateOpenAPIRequest) MergeValidateOpenAPIRequest0(v ValidateOpenAPIRequest0) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsValidateOpenAPIRequest1 returns the union data inside the ValidateOpenAPIRequest as a ValidateOpenAPIRequest1
-func (t ValidateOpenAPIRequest) AsValidateOpenAPIRequest1() (ValidateOpenAPIRequest1, error) {
-	var body ValidateOpenAPIRequest1
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromValidateOpenAPIRequest1 overwrites any union data inside the ValidateOpenAPIRequest as the provided ValidateOpenAPIRequest1
-func (t *ValidateOpenAPIRequest) FromValidateOpenAPIRequest1(v ValidateOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeValidateOpenAPIRequest1 performs a merge with any union data inside the ValidateOpenAPIRequest, using the provided ValidateOpenAPIRequest1
-func (t *ValidateOpenAPIRequest) MergeValidateOpenAPIRequest1(v ValidateOpenAPIRequest1) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t ValidateOpenAPIRequest) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	object := make(map[string]json.RawMessage)
-	if t.union != nil {
-		err = json.Unmarshal(b, &object)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if t.Definition != nil {
-		object["definition"], err = json.Marshal(t.Definition)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'definition': %w", err)
-		}
-	}
-
-	if t.Url != nil {
-		object["url"], err = json.Marshal(t.Url)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling 'url': %w", err)
-		}
-	}
-	b, err = json.Marshal(object)
-	return b, err
-}
-
-func (t *ValidateOpenAPIRequest) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	if err != nil {
-		return err
-	}
-	object := make(map[string]json.RawMessage)
-	err = json.Unmarshal(b, &object)
-	if err != nil {
-		return err
-	}
-
-	if raw, found := object["definition"]; found {
-		err = json.Unmarshal(raw, &t.Definition)
-		if err != nil {
-			return fmt.Errorf("error reading 'definition': %w", err)
 		}
 	}
 
