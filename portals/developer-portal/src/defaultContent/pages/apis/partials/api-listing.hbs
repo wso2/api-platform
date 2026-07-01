@@ -62,6 +62,11 @@
       <div class="apilist-empty-body">
         <div class="apilist-empty-title">No APIs available yet</div>
         <p class="apilist-empty-desc">There are no published APIs in this developer portal right now. Once APIs are published, they'll appear here for you to explore and subscribe to.</p>
+        {{#if demoEnabled}}
+        <button class="dp-btn dp-btn--primary" id="apilist-seed-samples-btn" type="button" style="margin-top:16px;">
+          <i class="bi bi-box-seam"></i> Import Sample APIs
+        </button>
+        {{/if}}
       </div>
     </div>
     {{else}}
@@ -203,6 +208,43 @@
           if(href){ window.location.href = href; }
         }
       }, false);
+    })();
+
+    /* ── Import sample APIs (demo mode only, public empty-state trigger) ── */
+    (function(){
+      var btn = document.getElementById('apilist-seed-samples-btn');
+      if(!btn) return;
+      var baseUrl = '{{baseUrl}}';
+      var originalHtml = btn.innerHTML;
+      btn.addEventListener('click', async function(){
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing…';
+        try {
+          var res = await fetch(baseUrl + '/apis/seed-samples', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          });
+          var data = await res.json().catch(function(){ return {}; });
+          if (res.ok) {
+            if (typeof showAlert === 'function') {
+              var detail = [];
+              if (data.deployed) detail.push(data.deployed + ' deployed');
+              if (data.skipped)  detail.push(data.skipped + ' already existed');
+              if (data.failed)   detail.push(data.failed + ' failed');
+              await showAlert('Sample APIs imported' + (detail.length ? ' — ' + detail.join(', ') + '.' : '. Nothing new to import.'), 'success');
+            }
+            window.location.reload();
+          } else {
+            if (typeof showAlert === 'function') await showAlert('Failed: ' + (data.error || res.statusText), 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+          }
+        } catch (e) {
+          if (typeof showAlert === 'function') await showAlert('Error: ' + e.message, 'error');
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      });
     })();
   </script>
 </section>
