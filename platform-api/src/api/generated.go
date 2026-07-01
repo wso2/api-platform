@@ -1216,9 +1216,11 @@ type LLMModelProvider struct {
 
 // LLMPolicy defines model for LLMPolicy.
 type LLMPolicy struct {
-	Name    string          `binding:"required" json:"name" yaml:"name"`
-	Paths   []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version string          `binding:"required" json:"version" yaml:"version"`
+	Name  string          `binding:"required" json:"name" yaml:"name"`
+	Paths []LLMPolicyPath `binding:"required" json:"paths" yaml:"paths"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMPolicyPath defines model for LLMPolicyPath.
@@ -1785,7 +1787,9 @@ type OperationPolicy struct {
 	ExecutionCondition *string               `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
 	Name               string                `binding:"required" json:"name" yaml:"name"`
 	Paths              []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-	Version            string                `binding:"required" json:"version" yaml:"version"`
+
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // OperationPolicyPath defines model for OperationPolicyPath.
@@ -1833,6 +1837,14 @@ type Organization struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
+// OrganizationListResponse defines model for OrganizationListResponse.
+type OrganizationListResponse struct {
+	// Count Number of items in current response
+	Count      int            `binding:"required" json:"count" yaml:"count"`
+	List       []Organization `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination     `json:"pagination" yaml:"pagination"`
+}
+
 // Pagination defines model for Pagination.
 type Pagination struct {
 	// Limit Maximum number of items returned per page
@@ -1856,7 +1868,7 @@ type Policy struct {
 	// Params Key-value pairs of parameters for the policy
 	Params *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
 
-	// Version Semantic version of the policy
+	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
 	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
@@ -2752,6 +2764,15 @@ type ListUserAPIKeysParams struct {
 
 // ListUserAPIKeysParamsType defines parameters for ListUserAPIKeys.
 type ListUserAPIKeysParamsType string
+
+// ListOrganizationsParams defines parameters for ListOrganizations.
+type ListOrganizationsParams struct {
+	// Limit Maximum number of organizations to return per page.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first organization to return.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {

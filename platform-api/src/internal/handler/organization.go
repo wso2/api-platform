@@ -22,6 +22,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -151,39 +153,47 @@ func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http
 	httputil.WriteJSON(w, http.StatusOK, org)
 }
 
-// GetOrganization handles GET /api/v0.9/organizations
-func (h *OrganizationHandler) GetOrganization(w http.ResponseWriter, r *http.Request) {
-	orgID, exists := middleware.GetOrganizationFromRequest(r)
-	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+// ListOrganizations handles GET /api/v0.9/organizations
+func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	if limit > 100 {
+		limit = 100
 	}
 
-	org, err := h.orgService.GetOrganizationByUUID(orgID)
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			offset = parsed
+		}
+	}
+
+	orgs, err := h.orgService.ListOrganizations(limit, offset)
 	if err != nil {
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Organization not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrMultipleOrganizations) {
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Data integrity error: multiple organizations found"))
-			return
-		}
-		h.slogger.Error("Failed to get organization", "error", err)
+		h.slogger.Error("Failed to list organizations", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get organization"))
+			"Failed to list organizations"))
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, org)
+	httputil.WriteJSON(w, http.StatusOK, api.OrganizationListResponse{
+		Count: len(orgs),
+		List:  orgs,
+		Pagination: api.Pagination{
+			Total:  len(orgs),
+			Offset: offset,
+			Limit:  limit,
+		},
+	})
 }
 
 func (h *OrganizationHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/organizations", h.RegisterOrganization)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", h.GetOrganization)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", h.ListOrganizations)
 	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{organizationId}", h.HeadOrganization)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{organizationId}", h.GetOrganizationByID)
 }

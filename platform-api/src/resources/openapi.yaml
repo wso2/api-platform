@@ -74,28 +74,44 @@ paths:
             $ref: '#/components/responses/InternalServerError'
 
     get:
-      summary: Get current user's organization
+      summary: List organizations
       description: |
-        Retrieves the organization details for the organization specified in the JWT token's 
-        `organization` claim.
-      operationId: GetOrganization
+        Retrieves the list of organizations. Results are returned in a paginated
+        collection envelope.
+      operationId: ListOrganizations
       security:
         - OAuth2Security:
             - ap:organization:read
             - ap:organization:manage
       tags:
         - Organizations
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of organizations to return per page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          description: Zero-based index of the first organization to return.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
-          description: Organization retrieved successfully
+          description: Organizations retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Organization'
+                $ref: '#/components/schemas/OrganizationListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6201,6 +6217,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Project'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    OrganizationListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
         pagination:
           $ref: '#/components/schemas/Pagination'
 
