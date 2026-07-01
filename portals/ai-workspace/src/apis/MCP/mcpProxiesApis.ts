@@ -18,6 +18,7 @@
 
 import { get, post, put, del } from '../../clients/choreoApiClient';
 import { logger } from '../../utils/logger';
+import { BFF_COMPOSITE_BASE_URL } from '../../config.env';
 
 import type {
   MCPServer,
@@ -41,13 +42,15 @@ import type {
 export async function createMCPServer(
   mcpServer: CreateMCPServerRequest,
   organizationId: string,
-  baseUrl: string
+  _baseUrl: string
 ): Promise<MCPServer> {
   try {
+    // Routed through the BFF composite endpoint so the BFF can compensate by
+    // deleting the pre-created secret if the MCP server creation fails.
     const response = await post<MCPServer>(
       `/mcp-proxies?organizationId=${encodeURIComponent(organizationId)}`,
       mcpServer,
-      baseUrl
+      BFF_COMPOSITE_BASE_URL
     );
     return response;
   } catch (error) {

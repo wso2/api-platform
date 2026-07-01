@@ -133,7 +133,8 @@ export const post = <T>(
  * POST with multipart/form-data body (e.g. for the secrets endpoint).
  * Omits Content-Type so the browser sets it with the correct boundary.
  */
-export const postForm = async <T>(
+const sendForm = async <T>(
+  method: 'POST' | 'PUT',
   path: string,
   form: FormData,
   baseUrl?: string,
@@ -144,7 +145,7 @@ export const postForm = async <T>(
   // the bearer token; we only add the CSRF header for this state-mutating call.
   const headers: Record<string, string> = { Accept: 'application/json', [CSRF_HEADER]: CSRF_VALUE };
 
-  const res = await fetch(url, { method: 'POST', credentials: 'include', headers, body: form });
+  const res = await fetch(url, { method, credentials: 'include', headers, body: form });
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
@@ -152,11 +153,19 @@ export const postForm = async <T>(
       const body = await res.json();
       message = body?.description ?? body?.message ?? body?.error ?? message;
     } catch { /* body not JSON */ }
-    throw new Error(message);
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
 
   return res.json() as Promise<T>;
 };
+
+export const postForm = <T>(path: string, form: FormData, baseUrl?: string): Promise<T> =>
+  sendForm<T>('POST', path, form, baseUrl);
+
+export const putForm = <T>(path: string, form: FormData, baseUrl?: string): Promise<T> =>
+  sendForm<T>('PUT', path, form, baseUrl);
 
 export const put = <T>(
   path: string,

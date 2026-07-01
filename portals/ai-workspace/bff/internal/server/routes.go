@@ -35,6 +35,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/auth/login", s.handleOIDCLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleOIDCCallback)
 
+	// Composite BFF endpoints — orchestrate two Platform API calls with
+	// server-side compensation on failure. Must be registered before the
+	// catch-all proxy so these paths are not forwarded upstream as-is.
+	mux.HandleFunc("POST /api/bff/llm-providers", s.handleCreateLLMProvider)
+	mux.HandleFunc("POST /api/bff/mcp-servers", s.handleCreateMCPServer)
+
 	// Same-origin reverse proxy to the Platform API. The proxy's Rewrite hook
 	// strips the prefix before forwarding, so we register the subtree directly.
 	mux.HandleFunc(s.cfg.ProxyPrefix+"/", s.handleProxy)

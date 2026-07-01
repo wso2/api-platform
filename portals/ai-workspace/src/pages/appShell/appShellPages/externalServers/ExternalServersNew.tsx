@@ -253,7 +253,6 @@ export default function ExternalServersNew(): JSX.Element {
             value: resolvedAuthValue,
             type: 'GENERIC',
           },
-          PLATFORM_API_BASE_URL
         );
         resolvedAuthValue = buildSecretPlaceholder(secretResponse.handle);
       } catch (err) {

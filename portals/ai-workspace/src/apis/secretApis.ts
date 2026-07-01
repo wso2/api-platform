@@ -16,13 +16,14 @@
  * under the License.
  */
 
-import { postForm } from '../clients/choreoApiClient';
+import { get, del, postForm, putForm } from '../clients/choreoApiClient';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type SecretType = 'GENERIC' | 'CERTIFICATE';
+export type SecretStatus = 'ACTIVE' | 'DEPRECATED';
 
 export interface CreateSecretRequest {
   handle: string;
@@ -32,12 +33,45 @@ export interface CreateSecretRequest {
   type?: SecretType;
 }
 
-export interface CreateSecretResponse {
+export interface UpdateSecretRequest {
+  value: string;
+  name?: string;
+  description?: string;
+}
+
+export interface SecretMetadata {
   uuid: string;
   handle: string;
   name: string;
+  description?: string;
+  type: SecretType;
+  provider: string;
+  status: SecretStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateSecretResponse extends SecretMetadata {}
+export interface UpdateSecretResponse extends SecretMetadata {}
+
+export interface ListSecretsResponse {
+  list: SecretMetadata[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}
+
+export interface SecretReference {
+  type: string;
+  handle: string;
+  name: string;
+}
+
+export interface DeleteSecretConflict {
+  error: string;
+  references: SecretReference[];
 }
 
 // ============================================================================
@@ -45,16 +79,11 @@ export interface CreateSecretResponse {
 // ============================================================================
 
 /**
- * Creates an encrypted secret in the Platform API.
+ * Creates an encrypted secret via the BFF proxy.
  * Sent as multipart/form-data; the API never returns the plaintext value.
- *
- * @param request - Secret creation payload
- * @param baseUrl - Platform API base URL
- * @returns The created secret metadata
  */
 export async function createSecret(
   request: CreateSecretRequest,
-  baseUrl: string
 ): Promise<CreateSecretResponse> {
   const form = new FormData();
   form.append('handle', request.handle);
@@ -62,7 +91,47 @@ export async function createSecret(
   if (request.description) form.append('description', request.description);
   form.append('value', request.value);
   if (request.type) form.append('type', request.type);
-  return postForm<CreateSecretResponse>('/secrets', form, baseUrl);
+  return postForm<CreateSecretResponse>('/secrets', form);
+}
+
+/**
+ * Lists all secrets in the organization (metadata only — values are never returned).
+ */
+export async function listSecrets(
+  params?: { limit?: number; offset?: number },
+): Promise<ListSecretsResponse> {
+  return get<ListSecretsResponse>('/secrets', params);
+}
+
+/**
+ * Returns metadata for a single secret by handle.
+ */
+export async function getSecret(handle: string): Promise<SecretMetadata> {
+  return get<SecretMetadata>(`/secrets/${handle}`);
+}
+
+/**
+ * Rotates a secret's value. All {{ secret "handle" }} references remain valid —
+ * the gateway picks up the new value on its next sync cycle.
+ * Sent as multipart/form-data; the new plaintext value is never returned.
+ */
+export async function updateSecret(
+  handle: string,
+  request: UpdateSecretRequest,
+): Promise<UpdateSecretResponse> {
+  const form = new FormData();
+  form.append('value', request.value);
+  if (request.name) form.append('name', request.name);
+  if (request.description) form.append('description', request.description);
+  return putForm<UpdateSecretResponse>(`/secrets/${handle}`, form);
+}
+
+/**
+ * Soft-deletes a secret (sets status to DEPRECATED).
+ * Returns 409 with a DeleteSecretConflict body if the secret is still referenced.
+ */
+export async function deleteSecret(handle: string): Promise<void> {
+  return del<void>(`/secrets/${handle}`);
 }
 
 /**

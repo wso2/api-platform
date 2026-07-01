@@ -33,6 +33,7 @@ import type {
 import * as llmProviderApis from '../../apis/llmProviderApis';
 import {
   createSecret,
+  updateSecret,
   buildSecretPlaceholder,
   generateSecretHandle,
 } from '../../apis/secretApis';
@@ -159,7 +160,6 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
               value: authValue,
               type: 'GENERIC',
             },
-            PLATFORM_API_BASE_URL
           );
           logger.info('Created secret for LLM provider', {
             secretHandle: secretResponse.handle,
@@ -186,6 +186,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           organizationId,
           PLATFORM_API_BASE_URL
         );
+
         setProvidersResponse((prev) => ({
           ...prev,
           count: prev.count + 1,
@@ -228,20 +229,27 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
 
         if (authValue && !isAlreadyPlaceholder) {
           const secretHandle = generateSecretHandle(providerId, 'api-key');
-          const secretResponse = await createSecret(
-            {
+          let secretResponse;
+          try {
+            secretResponse = await updateSecret(secretHandle, {
+              value: authValue,
+              name: `${providerId} API Key`,
+              description: `Auto-generated secret for LLM provider ${providerId}`,
+            });
+            logger.info('Rotated secret for LLM provider update', { secretHandle, providerId });
+          } catch (updateErr) {
+            const status = (updateErr as Error & { status?: number }).status;
+            if (status !== 404) throw updateErr;
+            // Secret does not exist yet (first-time provider create via update path)
+            secretResponse = await createSecret({
               handle: secretHandle,
               name: `${providerId} API Key`,
               description: `Auto-generated secret for LLM provider ${providerId}`,
               value: authValue,
               type: 'GENERIC',
-            },
-            PLATFORM_API_BASE_URL
-          );
-          logger.info('Rotated/created secret for LLM provider update', {
-            secretHandle: secretResponse.handle,
-            providerId,
-          });
+            });
+            logger.info('Created new secret for LLM provider update', { secretHandle, providerId });
+          }
 
           const currentProvider = providersResponse.list.find(
             (p) => p.id === providerId
