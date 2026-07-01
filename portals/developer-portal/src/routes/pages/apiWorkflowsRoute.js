@@ -17,7 +17,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const apiFlowsController = require('../../controllers/apiFlowsController');
+const apiWorkflowsController = require('../../controllers/apiWorkflowsController');
 const registerPartials = require('../../middlewares/registerPartials');
 const util = require('../../utils/util');
 
@@ -27,7 +27,7 @@ router.get('/:orgName/views/:viewName/api-workflows', (req, res, next) => {
         return res.status(404).send('Not Found');
     }
     next();
-}, registerPartials, util.enforcePortalMode, apiFlowsController.loadAPIFlows);
+}, registerPartials, util.enforcePortalMode, apiWorkflowsController.loadAPIWorkflows);
 
 // Get all published workflows as Markdown
 router.get('/:orgName/views/:viewName/api-workflows.md', (req, res, next) => {
@@ -35,7 +35,7 @@ router.get('/:orgName/views/:viewName/api-workflows.md', (req, res, next) => {
         return res.status(404).send('Not Found');
     }
     next();
-}, apiFlowsController.getAllPublishedFlowsMD);
+}, apiWorkflowsController.getAllPublishedFlowsMD);
 
 // Get raw Arazzo specification as JSON
 router.get('/:orgName/views/:viewName/api-workflows/:handle/arazzo.json', (req, res, next) => {
@@ -43,7 +43,7 @@ router.get('/:orgName/views/:viewName/api-workflows/:handle/arazzo.json', (req, 
         return res.status(404).send('Not Found');
     }
     next();
-}, apiFlowsController.getWorkflowArazzoSpec);
+}, apiWorkflowsController.getWorkflowArazzoSpec);
 
 // API to get workflow prompt as JSON
 router.get('/:orgName/views/:viewName/api-workflows/:handle/prompt', (req, res, next) => {
@@ -51,7 +51,7 @@ router.get('/:orgName/views/:viewName/api-workflows/:handle/prompt', (req, res, 
         return res.status(404).send('Not Found');
     }
     next();
-}, apiFlowsController.getFlowPromptJSON);
+}, apiWorkflowsController.getFlowPromptJSON);
 
 // Get workflow detail as Markdown
 router.get('/:orgName/views/:viewName/api-workflows/:handle.md', (req, res, next) => {
@@ -59,7 +59,7 @@ router.get('/:orgName/views/:viewName/api-workflows/:handle.md', (req, res, next
         return res.status(404).send('Not Found');
     }
     next();
-}, apiFlowsController.getWorkflowDetailMd);
+}, apiWorkflowsController.getWorkflowDetailMd);
 
 // API Workflow detail page (generic :handle route - must be last)
 router.get('/:orgName/views/:viewName/api-workflows/:handle', (req, res, next) => {
@@ -67,7 +67,7 @@ router.get('/:orgName/views/:viewName/api-workflows/:handle', (req, res, next) =
         return res.status(404).send('Not Found');
     }
     next();
-}, registerPartials, util.enforcePortalMode, apiFlowsController.loadAPIFlowDetail);
+}, registerPartials, util.enforcePortalMode, apiWorkflowsController.loadAPIWorkflowDetail);
 
 // Generate agent prompt from metadata
 router.post('/:orgName/views/:viewName/api-workflows/generate-prompt', (req, res, next) => {
@@ -75,6 +75,6 @@ router.post('/:orgName/views/:viewName/api-workflows/generate-prompt', (req, res
         return res.status(404).send('Not Found');
     }
     next();
-}, apiFlowsController.generatePrompt);
+}, apiWorkflowsController.generatePrompt);
 
 module.exports = router;

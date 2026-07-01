@@ -26,7 +26,7 @@ const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
-const apiFlowService = require('../services/apiFlowService');
+const apiWorkflowService = require('../services/apiWorkflowService');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 const { config } = require('../config/configLoader');
@@ -56,8 +56,8 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.orgId = orgId;
 
         const viewId = await viewDao.getId(orgId, viewName);
-        const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgId, viewId);
-        templateContent.apiFlows = apiFlows;
+        const apiWorkflows = await apiWorkflowService.getAllAPIWorkflowsFromDB(orgId, viewId);
+        templateContent.apiWorkflows = apiWorkflows;
 
         const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
         templateContent.orgAPIs = allAPIs.map(api => ({

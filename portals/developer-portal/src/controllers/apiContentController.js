@@ -36,7 +36,7 @@ const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
 const { seedSampleAPIs, seedSampleMCPs } = require('../services/sampleSeederService');
-const apiFlowService = require('../services/apiFlowService');
+const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
 const generateArray = (length) => Array.from({ length });
@@ -1176,8 +1176,8 @@ async function buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, config
     }
 
     const viewId = await viewDao.getId(orgId, viewName);
-    const allApiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgId, viewId);
-    const allPublishedWorkflows = allApiFlows.filter(flow => flow.status === 'PUBLISHED');
+    const allApiWorkflows = await apiWorkflowService.getAllAPIWorkflowsFromDB(orgId, viewId);
+    const allPublishedWorkflows = allApiWorkflows.filter(flow => flow.status === 'PUBLISHED');
     const publishedWorkflows = allPublishedWorkflows.filter(flow => flow.agentVisibility !== 'HIDDEN');
     const hiddenWorkflowCount = allPublishedWorkflows.length - publishedWorkflows.length;
 

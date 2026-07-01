@@ -105,14 +105,14 @@ Base URLs:
 - [Generate an OAuth access token](application-keys.md#generate-an-oauth-access-token)
 - [Remove an OAuth client_id mapping](application-keys.md#remove-an-oauth-clientid-mapping)
 
-### [API Flows](api-flows.md)
+### [API Workflows](api-workflows.md)
 
-- [Create an API flow](api-flows.md#create-an-api-flow)
-- [List API flows](api-flows.md#list-api-flows)
-- [Get an API flow](api-flows.md#get-an-api-flow)
-- [Update an API flow](api-flows.md#update-an-api-flow)
-- [Delete an API flow](api-flows.md#delete-an-api-flow)
-- [Generate an API flow agent prompt](api-flows.md#generate-an-api-flow-agent-prompt)
+- [Create an API workflow](api-workflows.md#create-an-api-workflow)
+- [List API workflows](api-workflows.md#list-api-workflows)
+- [Get an API workflow](api-workflows.md#get-an-api-workflow)
+- [Update an API workflow](api-workflows.md#update-an-api-workflow)
+- [Delete an API workflow](api-workflows.md#delete-an-api-workflow)
+- [Generate an API workflow agent prompt](api-workflows.md#generate-an-api-workflow-agent-prompt)
 
 ### [Utilities](utilities.md)
 

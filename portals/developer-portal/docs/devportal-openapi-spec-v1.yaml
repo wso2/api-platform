@@ -48,7 +48,7 @@ tags:
   - name: API Keys
   - name: Views
   - name: Application Keys
-  - name: API Flows
+  - name: API Workflows
   - name: Utilities
   - name: Authentication
   - name: Key Managers
@@ -1479,22 +1479,22 @@ paths:
       security:
         - OAuth2Security:
             - dp:app_key_revoke
-  /devportal/v1/views/{viewName}/api-flows:
+  /devportal/v1/views/{viewName}/api-workflows:
     parameters:
       - $ref: "#/components/parameters/viewName"
     post:
       tags:
-        - API Flows
-      operationId: createApiFlow
-      summary: Create an API flow
+        - API Workflows
+      operationId: createApiWorkflow
+      summary: Create an API workflow
       description: >-
-        Creates an API flow in the selected view. If `handle` is omitted, the service generates one from the name.
+        Creates an API workflow in the selected view. If `handle` is omitted, the service generates one from the name.
         `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
       requestBody:
-        $ref: "#/components/requestBodies/APIFlowCreateBody"
+        $ref: "#/components/requestBodies/APIWorkflowCreateBody"
       responses:
         "201":
-          $ref: "#/components/responses/APIFlowCreateResponse"
+          $ref: "#/components/responses/APIWorkflowCreateResponse"
         "400":
           $ref: "#/components/responses/MessageResponse"
         "409":
@@ -1503,55 +1503,55 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_create
-            - dp:api_flow_manage
+            - dp:api_workflow_create
+            - dp:api_workflow_manage
     get:
       tags:
-        - API Flows
-      operationId: getAllApiFlows
-      summary: List API flows
-      description: Lists all API flows for the selected organization view.
+        - API Workflows
+      operationId: getAllApiWorkflows
+      summary: List API workflows
+      description: Lists all API workflows for the selected organization view.
       parameters:
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
         "200":
-          $ref: "#/components/responses/APIFlowListResponse"
+          $ref: "#/components/responses/APIWorkflowListResponse"
         "500":
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_read
-            - dp:api_flow_manage
-  /devportal/v1/views/{viewName}/api-flows/{apiFlowId}:
+            - dp:api_workflow_read
+            - dp:api_workflow_manage
+  /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}:
     parameters:
       - $ref: "#/components/parameters/viewName"
-      - $ref: "#/components/parameters/apiFlowId"
+      - $ref: "#/components/parameters/apiWorkflowId"
     get:
       tags:
-        - API Flows
-      operationId: getApiFlow
-      summary: Get an API flow
-      description: Retrieves a single API flow by ID from the selected view.
+        - API Workflows
+      operationId: getApiWorkflow
+      summary: Get an API workflow
+      description: Retrieves a single API workflow by ID from the selected view.
       responses:
         "200":
-          $ref: "#/components/responses/APIFlowResponse"
+          $ref: "#/components/responses/APIWorkflowResponse"
         "404":
           $ref: "#/components/responses/MessageResponse"
         "500":
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_read
-            - dp:api_flow_manage
+            - dp:api_workflow_read
+            - dp:api_workflow_manage
     put:
       tags:
-        - API Flows
-      operationId: updateApiFlow
-      summary: Update an API flow
-      description: Updates API flow metadata and content for the selected view. Duplicate handles return a conflict.
+        - API Workflows
+      operationId: updateApiWorkflow
+      summary: Update an API workflow
+      description: Updates API workflow metadata and content for the selected view. Duplicate handles return a conflict.
       requestBody:
-        $ref: "#/components/requestBodies/APIFlowUpdateBody"
+        $ref: "#/components/requestBodies/APIWorkflowUpdateBody"
       responses:
         "200":
           $ref: "#/components/responses/MessageResponse"
@@ -1565,14 +1565,14 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_update
-            - dp:api_flow_manage
+            - dp:api_workflow_update
+            - dp:api_workflow_manage
     delete:
       tags:
-        - API Flows
-      operationId: deleteApiFlow
-      summary: Delete an API flow
-      description: Deletes an API flow from the selected view.
+        - API Workflows
+      operationId: deleteApiWorkflow
+      summary: Delete an API workflow
+      description: Deletes an API workflow from the selected view.
       responses:
         "200":
           $ref: "#/components/responses/MessageResponse"
@@ -1582,30 +1582,30 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_delete
-            - dp:api_flow_manage
-  /devportal/v1/views/{viewName}/api-flows/generate-prompt:
+            - dp:api_workflow_delete
+            - dp:api_workflow_manage
+  /devportal/v1/views/{viewName}/api-workflows/generate-prompt:
     parameters:
       - $ref: "#/components/parameters/viewName"
     post:
       tags:
-        - API Flows
+        - API Workflows
       operationId: generatePrompt
-      summary: Generate an API flow agent prompt
+      summary: Generate an API workflow agent prompt
       description: >-
-        Generates the default agent prompt text for a proposed API flow using the supplied name, description, APIs, and
+        Generates the default agent prompt text for a proposed API workflow using the supplied name, description, APIs, and
         view context.
       requestBody:
-        $ref: "#/components/requestBodies/APIFlowPromptBody"
+        $ref: "#/components/requestBodies/APIWorkflowPromptBody"
       responses:
         "200":
-          $ref: "#/components/responses/APIFlowPromptResponse"
+          $ref: "#/components/responses/APIWorkflowPromptResponse"
         "500":
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_create
-            - dp:api_flow_manage
+            - dp:api_workflow_create
+            - dp:api_workflow_manage
   /temp-arazzo-file:
     post:
       tags:
@@ -2073,11 +2073,11 @@ components:
             dp:app_key_update: Update application keys.
             dp:app_key_revoke: Revoke application keys.
             dp:app_key_manage: Manage application keys.
-            dp:api_flow_read: Read API flows.
-            dp:api_flow_create: Create or generate API flows.
-            dp:api_flow_update: Update API flows.
-            dp:api_flow_delete: Delete API flows.
-            dp:api_flow_manage: Manage API flows.
+            dp:api_workflow_read: Read API workflows.
+            dp:api_workflow_create: Create or generate API workflows.
+            dp:api_workflow_update: Update API workflows.
+            dp:api_workflow_delete: Delete API workflows.
+            dp:api_workflow_manage: Manage API workflows.
             dp:event_read: Read webhook events and delivery details.
             dp:utility_create: Create temporary utility files.
             dp:utility_manage: Manage utility operations.
@@ -2173,13 +2173,13 @@ components:
       schema:
         type: string
         example: default
-    apiFlowId:
-      name: apiFlowId
+    apiWorkflowId:
+      name: apiWorkflowId
       in: path
       required: true
       schema:
         type: string
-        example: flow-12345
+        example: workflow-12345
     apiContentTypeQuery:
       name: type
       in: query
@@ -2670,56 +2670,56 @@ components:
                 type: string
                 format: binary
                 description: KeyManager YAML file with partial update fields.
-    APIFlowCreateBody:
+    APIWorkflowCreateBody:
       required: true
       description: >-
-        API flow creation payload. Use `contentType` `ARAZZO` for JSON/YAML workflow content or `MD` for Markdown flow
-        content.
+        API workflow creation payload. Use `contentType` `ARAZZO` for JSON/YAML workflow content or `MD` for Markdown
+        workflow content.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/APIFlowCreateRequest"
+            $ref: "#/components/schemas/APIWorkflowCreateRequest"
           examples:
-            arazzoFlow:
-              summary: Create an Arazzo API flow
+            arazzoWorkflow:
+              summary: Create an Arazzo API workflow
               value:
                 name: Weather onboarding
                 handle: weather-onboarding
                 description: Guides users through the Weather API onboarding workflow.
                 contentType: ARAZZO
-                apiFlowDefinition:
+                apiWorkflowDefinition:
                   arazzo: 1.0.1
                   info:
                     title: Weather onboarding
                     version: 1.0.0
                   workflows: []
-            markdownFlow:
-              summary: Create a Markdown API flow
+            markdownWorkflow:
+              summary: Create a Markdown API workflow
               value:
                 name: Weather guide
                 description: Human-readable guide for Weather API users.
                 contentType: MD
                 markdownContent: |-
                   # Weather guide
-                  Use this flow to onboard Weather API users.
-    APIFlowUpdateBody:
+                  Use this workflow to onboard Weather API users.
+    APIWorkflowUpdateBody:
       required: true
-      description: API flow update payload. Include only the fields that should change.
+      description: API workflow update payload. Include only the fields that should change.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/APIFlowUpdateRequest"
+            $ref: "#/components/schemas/APIWorkflowUpdateRequest"
           example:
             name: Weather onboarding v2
             status: PUBLISHED
             agentVisibility: VISIBLE
-    APIFlowPromptBody:
+    APIWorkflowPromptBody:
       required: true
-      description: API flow prompt-generation payload.
+      description: API workflow prompt-generation payload.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/APIFlowPromptRequest"
+            $ref: "#/components/schemas/APIWorkflowPromptRequest"
           example:
             name: Weather onboarding
             description: Guides users through the Weather API onboarding workflow.
@@ -3428,24 +3428,24 @@ components:
               - $ref: "#/components/schemas/GenericObject"
           example:
             message: Operation completed successfully
-    APIFlowCreateResponse:
-      description: Created API flow summary.
+    APIWorkflowCreateResponse:
+      description: Created API workflow summary.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/APIFlowCreateResponse"
+            $ref: "#/components/schemas/APIWorkflowCreateResponse"
           example:
-            apiFlowId: flow-12345
+            apiWorkflowId: workflow-12345
             name: Weather onboarding
             status: PUBLISHED
-    APIFlowResponse:
-      description: API flow DTO.
+    APIWorkflowResponse:
+      description: API workflow DTO.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/APIFlowResponse"
+            $ref: "#/components/schemas/APIWorkflowResponse"
           example:
-            apiFlowId: flow-12345
+            apiWorkflowId: workflow-12345
             name: Weather onboarding
             handle: weather-onboarding
             description: Guides users through the Weather API onboarding workflow.
@@ -3453,12 +3453,12 @@ components:
             status: PUBLISHED
             agentVisibility: VISIBLE
             contentType: ARAZZO
-            apiFlowDefinition: "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}"
+            apiWorkflowDefinition: "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}"
             markdownContent: null
             createdAt: May 7, 2026
             updatedAt: "2026-05-07T08:30:00Z"
-    APIFlowListResponse:
-      description: List of API flow DTOs.
+    APIWorkflowListResponse:
+      description: List of API workflow DTOs.
       content:
         application/json:
           schema:
@@ -3467,15 +3467,15 @@ components:
               list:
                 type: array
                 items:
-                  $ref: "#/components/schemas/APIFlowResponse"
+                  $ref: "#/components/schemas/APIWorkflowResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
-    APIFlowPromptResponse:
-      description: Generated API flow agent prompt.
+    APIWorkflowPromptResponse:
+      description: Generated API workflow agent prompt.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/APIFlowPromptResponse"
+            $ref: "#/components/schemas/APIWorkflowPromptResponse"
           example:
             agentPrompt: You are an API workflow assistant. Help the user complete Weather onboarding.
     TempArazzoFileResponse:
@@ -4677,12 +4677,12 @@ components:
           example:
             - weather.read
       additionalProperties: true
-    APIFlowCreateResponse:
+    APIWorkflowCreateResponse:
       type: object
       properties:
-        apiFlowId:
+        apiWorkflowId:
           type: string
-          example: flow-12345
+          example: workflow-12345
         name:
           type: string
           example: Weather onboarding
@@ -4693,12 +4693,12 @@ components:
             - PUBLISHED
           example: PUBLISHED
       additionalProperties: false
-    APIFlowResponse:
+    APIWorkflowResponse:
       type: object
       properties:
-        apiFlowId:
+        apiWorkflowId:
           type: string
-          example: flow-12345
+          example: workflow-12345
         name:
           type: string
           example: Weather onboarding
@@ -4726,7 +4726,7 @@ components:
           enum:
             - ARAZZO
             - MD
-        apiFlowDefinition:
+        apiWorkflowDefinition:
           type: string
           nullable: true
         markdownContent:
@@ -4739,7 +4739,7 @@ components:
           type: string
           nullable: true
       additionalProperties: false
-    APIFlowPromptResponse:
+    APIWorkflowPromptResponse:
       type: object
       properties:
         agentPrompt:
@@ -4752,7 +4752,7 @@ components:
           type: string
           example: /tmp/arazzo-abc123/workflow.arazzo.yaml
       additionalProperties: false
-    APIFlowCreateRequest:
+    APIWorkflowCreateRequest:
       type: object
       required:
         - name
@@ -4790,7 +4790,7 @@ components:
             - ARAZZO
             - MD
           default: ARAZZO
-        apiFlowDefinition:
+        apiWorkflowDefinition:
           oneOf:
             - type: object
               additionalProperties: true
@@ -4799,7 +4799,7 @@ components:
         markdownContent:
           type: string
           description: Markdown content when `contentType` is `MD`.
-    APIFlowUpdateRequest:
+    APIWorkflowUpdateRequest:
       type: object
       properties:
         name:
@@ -4830,14 +4830,14 @@ components:
           enum:
             - ARAZZO
             - MD
-        apiFlowDefinition:
+        apiWorkflowDefinition:
           oneOf:
             - type: object
               additionalProperties: true
             - type: string
         markdownContent:
           type: string
-    APIFlowPromptRequest:
+    APIWorkflowPromptRequest:
       type: object
       required:
         - name

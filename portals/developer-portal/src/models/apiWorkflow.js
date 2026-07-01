@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
-const APIFlow = sequelize.define('dp_api_workflow', {
+const APIWorkflow = sequelize.define('dp_api_workflow', {
     uuid: {
         type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
@@ -100,11 +100,11 @@ const APIFlow = sequelize.define('dp_api_workflow', {
     ]
 });
 
-APIFlow.belongsTo(Organization, { foreignKey: 'org_uuid' });
-Organization.hasMany(APIFlow, { foreignKey: 'org_uuid', onDelete: 'CASCADE' });
+APIWorkflow.belongsTo(Organization, { foreignKey: 'org_uuid' });
+Organization.hasMany(APIWorkflow, { foreignKey: 'org_uuid', onDelete: 'CASCADE' });
 
 const View = require('./view');
-APIFlow.belongsTo(View, { foreignKey: 'view_uuid' });
-View.hasMany(APIFlow, { foreignKey: 'view_uuid', onDelete: 'CASCADE' });
+APIWorkflow.belongsTo(View, { foreignKey: 'view_uuid' });
+View.hasMany(APIWorkflow, { foreignKey: 'view_uuid', onDelete: 'CASCADE' });
 
-module.exports = { APIFlow };
+module.exports = { APIWorkflow };

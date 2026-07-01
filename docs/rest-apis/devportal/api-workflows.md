@@ -1,16 +1,16 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-api-flows">API Flows</h1>
+<h1 id="wso2-api-developer-portal-core-devportal-routes-api-workflows">API Workflows</h1>
 
-## Create an API flow
+## Create an API workflow
 
-<a id="opIdcreateApiFlow"></a>
+<a id="opIdcreateApiWorkflow"></a>
 
-`POST /devportal/v1/views/{viewName}/api-flows`
+`POST /devportal/v1/views/{viewName}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api
 
 ```
 
-Creates an API flow in the selected view. If `handle` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
+Creates an API workflow in the selected view. If `handle` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
 
 > Payload
 
@@ -29,7 +29,7 @@ Creates an API flow in the selected view. If `handle` is omitted, the service ge
   "handle": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {
+  "apiWorkflowDefinition": {
     "arazzo": "1.0.1",
     "info": {
       "title": "Weather onboarding",
@@ -47,11 +47,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="create-an-api-flow-parameters">Parameters</h3>
+<h3 id="create-an-api-workflow-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[APIFlowCreateRequest](schemas.md#schemaapiflowcreaterequest)|true|API flow creation payload. Use `contentType` `ARAZZO` for JSON/YAML workflow content or `MD` for Markdown flow content.|
+|body|body|[APIWorkflowCreateRequest](schemas.md#schemaapiworkflowcreaterequest)|true|API workflow creation payload. Use `contentType` `ARAZZO` for JSON/YAML workflow content or `MD` for Markdown workflow content.|
 |viewName|path|string|true|none|
 
 > Example responses
@@ -60,7 +60,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiFlowId": "flow-12345",
+  "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
   "status": "PUBLISHED"
 }
@@ -74,33 +74,33 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="create-an-api-flow-responses">Responses</h3>
+<h3 id="create-an-api-workflow-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created API flow summary.|[APIFlowCreateResponse](schemas.md#schemaapiflowcreateresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created API workflow summary.|[APIWorkflowCreateResponse](schemas.md#schemaapiworkflowcreateresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 
-## List API flows
+## List API workflows
 
-<a id="opIdgetAllApiFlows"></a>
+<a id="opIdgetAllApiWorkflows"></a>
 
-`GET /devportal/v1/views/{viewName}/api-flows`
+`GET /devportal/v1/views/{viewName}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists all API flows for the selected organization view.
+Lists all API workflows for the selected organization view.
 
 ### Authentication
 
@@ -109,7 +109,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="list-api-flows-parameters">Parameters</h3>
+<h3 id="list-api-workflows-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -125,7 +125,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "apiFlowId": "flow-12345",
+      "apiWorkflowId": "workflow-12345",
       "name": "Weather onboarding",
       "handle": "weather-onboarding",
       "description": "string",
@@ -133,7 +133,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "status": "PUBLISHED",
       "agentVisibility": "VISIBLE",
       "contentType": "ARAZZO",
-      "apiFlowDefinition": "string",
+      "apiWorkflowDefinition": "string",
       "markdownContent": "string",
       "createdAt": "May 7, 2026",
       "updatedAt": "string"
@@ -147,21 +147,21 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="list-api-flows-responses">Responses</h3>
+<h3 id="list-api-workflows-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API flow DTOs.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API workflow DTOs.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 
-<h3 id="list-api-flows-responseschema">Response Schema</h3>
+<h3 id="list-api-workflows-responseschema">Response Schema</h3>
 
 Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[APIFlowResponse](schemas.md#schemaapiflowresponse)]|false|none|none|
-|»» apiFlowId|string|false|none|none|
+|» list|[[APIWorkflowResponse](schemas.md#schemaapiworkflowresponse)]|false|none|none|
+|»» apiWorkflowId|string|false|none|none|
 |»» name|string|false|none|none|
 |»» handle|string|false|none|none|
 |»» description|string|false|none|none|
@@ -169,7 +169,7 @@ Status Code **200**
 |»» status|string|false|none|none|
 |»» agentVisibility|string|false|none|none|
 |»» contentType|string|false|none|none|
-|»» apiFlowDefinition|string¦null|false|none|none|
+|»» apiWorkflowDefinition|string¦null|false|none|none|
 |»» markdownContent|string¦null|false|none|none|
 |»» createdAt|string|false|none|none|
 |»» updatedAt|string¦null|false|none|none|
@@ -189,24 +189,24 @@ Status Code **200**
 |contentType|ARAZZO|
 |contentType|MD|
 
-## Get an API flow
+## Get an API workflow
 
-<a id="opIdgetApiFlow"></a>
+<a id="opIdgetApiWorkflow"></a>
 
-`GET /devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
+`GET /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single API flow by ID from the selected view.
+Retrieves a single API workflow by ID from the selected view.
 
 ### Authentication
 
@@ -215,12 +215,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="get-an-api-flow-parameters">Parameters</h3>
+<h3 id="get-an-api-workflow-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |viewName|path|string|true|none|
-|apiFlowId|path|string|true|none|
+|apiWorkflowId|path|string|true|none|
 
 > Example responses
 
@@ -228,7 +228,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiFlowId": "flow-12345",
+  "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
   "handle": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
@@ -236,7 +236,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}",
+  "apiWorkflowDefinition": "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}",
   "markdownContent": null,
   "createdAt": "May 7, 2026",
   "updatedAt": "2026-05-07T08:30:00Z"
@@ -251,25 +251,25 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="get-an-api-flow-responses">Responses</h3>
+<h3 id="get-an-api-workflow-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API flow DTO.|[APIFlowResponse](schemas.md#schemaapiflowresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API workflow DTO.|[APIWorkflowResponse](schemas.md#schemaapiworkflowresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 
-## Update an API flow
+## Update an API workflow
 
-<a id="opIdupdateApiFlow"></a>
+<a id="opIdupdateApiWorkflow"></a>
 
-`PUT /devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
+`PUT /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -278,7 +278,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-
 
 ```
 
-Updates API flow metadata and content for the selected view. Duplicate handles return a conflict.
+Updates API workflow metadata and content for the selected view. Duplicate handles return a conflict.
 
 > Payload
 
@@ -291,7 +291,7 @@ Updates API flow metadata and content for the selected view. Duplicate handles r
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {},
+  "apiWorkflowDefinition": {},
   "markdownContent": "string"
 }
 ```
@@ -303,13 +303,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="update-an-api-flow-parameters">Parameters</h3>
+<h3 id="update-an-api-workflow-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[APIFlowUpdateRequest](schemas.md#schemaapiflowupdaterequest)|true|API flow update payload. Include only the fields that should change.|
+|body|body|[APIWorkflowUpdateRequest](schemas.md#schemaapiworkflowupdaterequest)|true|API workflow update payload. Include only the fields that should change.|
 |viewName|path|string|true|none|
-|apiFlowId|path|string|true|none|
+|apiWorkflowId|path|string|true|none|
 
 > Example responses
 
@@ -321,7 +321,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="update-an-api-flow-responses">Responses</h3>
+<h3 id="update-an-api-workflow-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -331,24 +331,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 
-## Delete an API flow
+## Delete an API workflow
 
-<a id="opIddeleteApiFlow"></a>
+<a id="opIddeleteApiWorkflow"></a>
 
-`DELETE /devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
+`DELETE /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes an API flow from the selected view.
+Deletes an API workflow from the selected view.
 
 ### Authentication
 
@@ -357,12 +357,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="delete-an-api-flow-parameters">Parameters</h3>
+<h3 id="delete-an-api-workflow-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |viewName|path|string|true|none|
-|apiFlowId|path|string|true|none|
+|apiWorkflowId|path|string|true|none|
 
 > Example responses
 
@@ -374,7 +374,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="delete-an-api-flow-responses">Responses</h3>
+<h3 id="delete-an-api-workflow-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -382,17 +382,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 
-## Generate an API flow agent prompt
+## Generate an API workflow agent prompt
 
 <a id="opIdgeneratePrompt"></a>
 
-`POST /devportal/v1/views/{viewName}/api-flows/generate-prompt`
+`POST /devportal/v1/views/{viewName}/api-workflows/generate-prompt`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-flows/generate-prompt \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/generate-prompt \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -401,7 +401,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api
 
 ```
 
-Generates the default agent prompt text for a proposed API flow using the supplied name, description, APIs, and view context.
+Generates the default agent prompt text for a proposed API workflow using the supplied name, description, APIs, and view context.
 
 > Payload
 
@@ -425,11 +425,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="generate-an-api-flow-agent-prompt-parameters">Parameters</h3>
+<h3 id="generate-an-api-workflow-agent-prompt-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[APIFlowPromptRequest](schemas.md#schemaapiflowpromptrequest)|true|API flow prompt-generation payload.|
+|body|body|[APIWorkflowPromptRequest](schemas.md#schemaapiworkflowpromptrequest)|true|API workflow prompt-generation payload.|
 |viewName|path|string|true|none|
 
 > Example responses
@@ -450,9 +450,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="generate-an-api-flow-agent-prompt-responses">Responses</h3>
+<h3 id="generate-an-api-workflow-agent-prompt-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Generated API flow agent prompt.|[APIFlowPromptResponse](schemas.md#schemaapiflowpromptresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Generated API workflow agent prompt.|[APIWorkflowPromptResponse](schemas.md#schemaapiworkflowpromptresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|

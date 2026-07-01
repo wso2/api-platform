@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const apiFlowDao = require('../dao/apiFlowDao');
+const apiWorkflowDao = require('../dao/apiWorkflowDao');
 const viewDao = require('../dao/viewDao');
 const orgDao = require('../dao/organizationDao');
 const sequelize = require('../db/sequelizeConfig');
@@ -58,13 +58,13 @@ const normalizeToJSON = (content) => {
  * Generates a minimal, LLM-ready agent prompt that references the workflow definition.
  * The workflow (llms.txt) contains all execution details, API associations, and instructions.
  * The prompt provides execution guidance for two personas: execution agents and app builder agents.
- * @param {string} name - APIFlow name
- * @param {string} description - APIFlow description
+ * @param {string} name - API Workflow name
+ * @param {string} description - API Workflow description
  * @param {Array} apis - Array of API metadata (unused, kept for backward compatibility)
  * @param {string} orgHandle - Organization handle for building workflow URL
  * @param {string} viewName - View name
  * @param {string} baseUrl - Base URL of the portal
- * @param {string} handle - APIFlow handle for constructing the workflow detail URL
+ * @param {string} handle - API Workflow handle for constructing the workflow detail URL
  * @returns {string} Agent prompt with two sections (execution and app building)
  */
 const generateAgentPrompt = (name, description, apis = [], orgHandle = '', viewName = 'default', baseUrl = '', handle = '') => {
@@ -168,31 +168,31 @@ const generateHandle = (name) =>
         .replace(/-+/g, '-')
         .substring(0, 100);
 
-const createAPIFlow = async (req, res) => {
+const createAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
     const viewName = req.params.viewName;
     const userId = util.resolveActor(req);
-    const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
+    const { name, handle, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
     let resolvedHandle = (handle && handle.trim()) ? handle.trim() : generateHandle(name);
     if (!resolvedHandle) {
         const suffix = Math.random().toString(36).slice(2, 10);
-        resolvedHandle = `flow-${suffix}`;
+        resolvedHandle = `workflow-${suffix}`;
     }
-    const resolvedContentType = contentType || constants.API_FLOW_CONTENT_TYPE.ARAZZO;
-    if (!Object.values(constants.API_FLOW_CONTENT_TYPE).includes(resolvedContentType)) {
-        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_FLOW_CONTENT_TYPE).join(', ')}.` });
+    const resolvedContentType = contentType || constants.API_WORKFLOW_CONTENT_TYPE.ARAZZO;
+    if (!Object.values(constants.API_WORKFLOW_CONTENT_TYPE).includes(resolvedContentType)) {
+        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_WORKFLOW_CONTENT_TYPE).join(', ')}.` });
     }
-    if (status && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
-        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_FLOW_STATUS).join(', ')}.` });
+    if (status && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.` });
     }
     if (agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
         return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
     }
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent || null)
-        : normalizeToJSON(apiFlowDefinition);
+        : normalizeToJSON(apiWorkflowDefinition);
     if (resolvedContentType !== 'MD' && resolvedContent === null) {
-        return res.status(400).json({ message: 'Invalid API flow definition: content could not be parsed as valid JSON or YAML.' });
+        return res.status(400).json({ message: 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.' });
     }
     let t;
     try {
@@ -203,134 +203,134 @@ const createAPIFlow = async (req, res) => {
             ? agentPrompt.trim()
             : generateAgentPrompt(name, description, [], orgDetails.idp_ref_id || '', viewName, '', resolvedHandle);
 
-        const apiFlow = await apiFlowDao.create(orgId, viewId, {
+        const apiWorkflow = await apiWorkflowDao.create(orgId, viewId, {
             name,
             handle: resolvedHandle,
             description,
             agentPrompt: resolvedPrompt,
-            status: status || constants.API_FLOW_STATUS.PUBLISHED,
+            status: status || constants.API_WORKFLOW_STATUS.PUBLISHED,
             agentVisibility: agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
-            apiFlowDefinition: resolvedContent,
+            apiWorkflowDefinition: resolvedContent,
             contentType: resolvedContentType
         }, userId, t);
 
         await t.commit();
-        logger.info('APIFlow created', { apiFlowId: apiFlow.uuid, orgId, viewId });
+        logger.info('API Workflow created', { apiWorkflowId: apiWorkflow.uuid, orgId, viewId });
         res.status(201).json({
-            apiFlowId: apiFlow.uuid,
-            name: apiFlow.name,
-            status: apiFlow.status
+            apiWorkflowId: apiWorkflow.uuid,
+            name: apiWorkflow.name,
+            status: apiWorkflow.status
         });
     } catch (error) {
         if (t) await t.rollback();
         if (error instanceof UniqueConstraintError) {
             return res.status(409).json({ message: 'An API workflow with this handle already exists. Please use a different handle.' });
         }
-        logger.error('Error creating APIFlow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_FLOW_CREATE_ERROR });
+        logger.error('Error creating API Workflow', { error: error.message, stack: error.stack });
+        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_CREATE_ERROR });
     }
 };
 
-const updateAPIFlow = async (req, res) => {
+const updateAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiFlowId, viewName } = req.params;
+    const { apiWorkflowId, viewName } = req.params;
     const userId = util.resolveActor(req);
-    const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
-    if (status !== undefined && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
-        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_FLOW_STATUS).join(', ')}.` });
+    const { name, handle, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
+    if (status !== undefined && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.` });
     }
     if (agentVisibility !== undefined && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
         return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
     }
-    if (contentType !== undefined && !Object.values(constants.API_FLOW_CONTENT_TYPE).includes(contentType)) {
-        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_FLOW_CONTENT_TYPE).join(', ')}.` });
+    if (contentType !== undefined && !Object.values(constants.API_WORKFLOW_CONTENT_TYPE).includes(contentType)) {
+        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_WORKFLOW_CONTENT_TYPE).join(', ')}.` });
     }
     const resolvedContentType = contentType;
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent !== undefined ? markdownContent : undefined)
-        : (apiFlowDefinition !== undefined ? normalizeToJSON(apiFlowDefinition) : undefined);
-    if (resolvedContentType !== 'MD' && apiFlowDefinition !== undefined && resolvedContent === null) {
-        return res.status(400).json({ message: 'Invalid API flow definition: content could not be parsed as valid JSON or YAML.' });
+        : (apiWorkflowDefinition !== undefined ? normalizeToJSON(apiWorkflowDefinition) : undefined);
+    if (resolvedContentType !== 'MD' && apiWorkflowDefinition !== undefined && resolvedContent === null) {
+        return res.status(400).json({ message: 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.' });
     }
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const [count] = await apiFlowDao.update(orgId, viewId, apiFlowId, {
+        const [count] = await apiWorkflowDao.update(orgId, viewId, apiWorkflowId, {
             name,
             handle,
             description,
             agentPrompt,
             status,
             agentVisibility,
-            apiFlowDefinition: resolvedContent,
+            apiWorkflowDefinition: resolvedContent,
             contentType: resolvedContentType
         }, userId, t);
 
         if (count === 0) {
             await t.rollback();
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_FLOW_NOT_FOUND });
+            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
         }
 
         await t.commit();
-        logger.info('APIFlow updated', { apiFlowId, orgId, viewId });
-        res.status(200).json({ message: 'APIFlow updated successfully' });
+        logger.info('API Workflow updated', { apiWorkflowId, orgId, viewId });
+        res.status(200).json({ message: 'API Workflow updated successfully' });
     } catch (error) {
         await t.rollback();
         if (error instanceof UniqueConstraintError) {
             return res.status(409).json({ message: 'An API workflow with this handle already exists. Please use a different handle.' });
         }
-        logger.error('Error updating APIFlow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_FLOW_UPDATE_ERROR });
+        logger.error('Error updating API Workflow', { error: error.message, stack: error.stack });
+        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_UPDATE_ERROR });
     }
 };
 
-const deleteAPIFlow = async (req, res) => {
+const deleteAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiFlowId, viewName } = req.params;
+    const { apiWorkflowId, viewName } = req.params;
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const count = await apiFlowDao.delete(orgId, viewId, apiFlowId, t);
+        const count = await apiWorkflowDao.delete(orgId, viewId, apiWorkflowId, t);
         if (count === 0) {
             await t.rollback();
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_FLOW_NOT_FOUND });
+            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
         }
         await t.commit();
-        logger.info('APIFlow deleted', { apiFlowId, orgId, viewId });
-        res.status(200).json({ message: 'APIFlow deleted successfully' });
+        logger.info('API Workflow deleted', { apiWorkflowId, orgId, viewId });
+        res.status(200).json({ message: 'API Workflow deleted successfully' });
     } catch (error) {
         await t.rollback();
-        logger.error('Error deleting APIFlow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_FLOW_DELETE_ERROR });
+        logger.error('Error deleting API Workflow', { error: error.message, stack: error.stack });
+        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_DELETE_ERROR });
     }
 };
 
-const getAPIFlow = async (req, res) => {
+const getAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
-    const { apiFlowId, viewName } = req.params;
+    const { apiWorkflowId, viewName } = req.params;
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const apiFlow = await apiFlowDao.get(orgId, viewId, apiFlowId);
-        if (!apiFlow) {
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_FLOW_NOT_FOUND });
+        const apiWorkflow = await apiWorkflowDao.get(orgId, viewId, apiWorkflowId);
+        if (!apiWorkflow) {
+            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
         }
-        res.status(200).json(toAPIFlowDTO(apiFlow));
+        res.status(200).json(toAPIWorkflowDTO(apiWorkflow));
     } catch (error) {
-        logger.error('Error fetching APIFlow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_FLOW_RETRIEVE_ERROR });
+        logger.error('Error fetching API Workflow', { error: error.message, stack: error.stack });
+        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_RETRIEVE_ERROR });
     }
 };
 
-const getAllAPIFlows = async (req, res) => {
+const getAllAPIWorkflows = async (req, res) => {
     const orgId = req.orgId;
     const { viewName } = req.params;
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const apiFlows = await apiFlowDao.list(orgId, viewId);
-        res.status(200).json(util.toPaginatedList(apiFlows.map(toAPIFlowDTO), req));
+        const apiWorkflows = await apiWorkflowDao.list(orgId, viewId);
+        res.status(200).json(util.toPaginatedList(apiWorkflows.map(toAPIWorkflowDTO), req));
     } catch (error) {
-        logger.error('Error fetching APIFlows', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_FLOW_RETRIEVE_ERROR });
+        logger.error('Error fetching API Workflows', { error: error.message, stack: error.stack });
+        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_RETRIEVE_ERROR });
     }
 };
 
@@ -347,9 +347,9 @@ const generatePrompt = async (req, res) => {
 };
 
 // Internal utility used by settingsController
-const getAllAPIFlowsFromDB = async (orgId, viewId) => {
-    const apiFlows = await apiFlowDao.list(orgId, viewId);
-    return apiFlows.map(toAPIFlowDTO);
+const getAllAPIWorkflowsFromDB = async (orgId, viewId) => {
+    const apiWorkflows = await apiWorkflowDao.list(orgId, viewId);
+    return apiWorkflows.map(toAPIWorkflowDTO);
 };
 
 const parseFileContent = (raw) => {
@@ -358,33 +358,33 @@ const parseFileContent = (raw) => {
     try { return JSON.stringify(JSON.parse(str), null, 2); } catch { return str; }
 };
 
-const toAPIFlowDTO = (apiFlow) => {
-    const fileContent = parseFileContent(apiFlow.file_content);
+const toAPIWorkflowDTO = (apiWorkflow) => {
+    const fileContent = parseFileContent(apiWorkflow.file_content);
     return {
-    apiFlowId: apiFlow.uuid,
-    name: apiFlow.name,
-    handle: apiFlow.handle,
-    description: apiFlow.description,
-    agentPrompt: apiFlow.agent_prompt,
-    status: apiFlow.status,
-    agentVisibility: apiFlow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE,
-    contentType: apiFlow.content_type || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
-    apiFlowDefinition: (apiFlow.content_type || constants.API_FLOW_CONTENT_TYPE.ARAZZO) === constants.API_FLOW_CONTENT_TYPE.ARAZZO ? fileContent : null,
-    markdownContent: apiFlow.content_type === 'MD' ? fileContent : null,
-    createdAt: apiFlow.created_at ? new Date(apiFlow.created_at).toLocaleDateString('en-US', {
+    apiWorkflowId: apiWorkflow.uuid,
+    name: apiWorkflow.name,
+    handle: apiWorkflow.handle,
+    description: apiWorkflow.description,
+    agentPrompt: apiWorkflow.agent_prompt,
+    status: apiWorkflow.status,
+    agentVisibility: apiWorkflow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE,
+    contentType: apiWorkflow.content_type || constants.API_WORKFLOW_CONTENT_TYPE.ARAZZO,
+    apiWorkflowDefinition: (apiWorkflow.content_type || constants.API_WORKFLOW_CONTENT_TYPE.ARAZZO) === constants.API_WORKFLOW_CONTENT_TYPE.ARAZZO ? fileContent : null,
+    markdownContent: apiWorkflow.content_type === 'MD' ? fileContent : null,
+    createdAt: apiWorkflow.created_at ? new Date(apiWorkflow.created_at).toLocaleDateString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric'
     }) : '',
-    updatedAt: apiFlow.updated_at
+    updatedAt: apiWorkflow.updated_at
     };
 };
 
 module.exports = {
-    createAPIFlow,
-    updateAPIFlow,
-    deleteAPIFlow,
-    getAPIFlow,
-    getAllAPIFlows,
+    createAPIWorkflow,
+    updateAPIWorkflow,
+    deleteAPIWorkflow,
+    getAPIWorkflow,
+    getAllAPIWorkflows,
     generatePrompt,
-    getAllAPIFlowsFromDB,
+    getAllAPIWorkflowsFromDB,
     generateAgentPrompt
 };

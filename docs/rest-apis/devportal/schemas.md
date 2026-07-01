@@ -1687,16 +1687,16 @@ Access token response proxied from the key manager's token endpoint. Field names
 |validityTime|integer¦null|false|none|Token lifetime in seconds, as reported by the key manager (`expires_in`).|
 |tokenScopes|[string]|false|none|none|
 
-<h2 id="tocS_APIFlowCreateResponse">APIFlowCreateResponse</h2>
+<h2 id="tocS_APIWorkflowCreateResponse">APIWorkflowCreateResponse</h2>
 
-<a id="schemaapiflowcreateresponse"></a>
-<a id="schema_APIFlowCreateResponse"></a>
-<a id="tocSapiflowcreateresponse"></a>
-<a id="tocsapiflowcreateresponse"></a>
+<a id="schemaapiworkflowcreateresponse"></a>
+<a id="schema_APIWorkflowCreateResponse"></a>
+<a id="tocSapiworkflowcreateresponse"></a>
+<a id="tocsapiworkflowcreateresponse"></a>
 
 ```json
 {
-  "apiFlowId": "flow-12345",
+  "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
   "status": "PUBLISHED"
 }
@@ -1707,7 +1707,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiFlowId|string|false|none|none|
+|apiWorkflowId|string|false|none|none|
 |name|string|false|none|none|
 |status|string|false|none|none|
 
@@ -1718,16 +1718,16 @@ Access token response proxied from the key manager's token endpoint. Field names
 |status|DRAFT|
 |status|PUBLISHED|
 
-<h2 id="tocS_APIFlowResponse">APIFlowResponse</h2>
+<h2 id="tocS_APIWorkflowResponse">APIWorkflowResponse</h2>
 
-<a id="schemaapiflowresponse"></a>
-<a id="schema_APIFlowResponse"></a>
-<a id="tocSapiflowresponse"></a>
-<a id="tocsapiflowresponse"></a>
+<a id="schemaapiworkflowresponse"></a>
+<a id="schema_APIWorkflowResponse"></a>
+<a id="tocSapiworkflowresponse"></a>
+<a id="tocsapiworkflowresponse"></a>
 
 ```json
 {
-  "apiFlowId": "flow-12345",
+  "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
   "handle": "weather-onboarding",
   "description": "string",
@@ -1735,7 +1735,7 @@ Access token response proxied from the key manager's token endpoint. Field names
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": "string",
+  "apiWorkflowDefinition": "string",
   "markdownContent": "string",
   "createdAt": "May 7, 2026",
   "updatedAt": "string"
@@ -1747,7 +1747,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiFlowId|string|false|none|none|
+|apiWorkflowId|string|false|none|none|
 |name|string|false|none|none|
 |handle|string|false|none|none|
 |description|string|false|none|none|
@@ -1755,7 +1755,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |status|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|string¦null|false|none|none|
+|apiWorkflowDefinition|string¦null|false|none|none|
 |markdownContent|string¦null|false|none|none|
 |createdAt|string|false|none|none|
 |updatedAt|string¦null|false|none|none|
@@ -1771,12 +1771,12 @@ Access token response proxied from the key manager's token endpoint. Field names
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowPromptResponse">APIFlowPromptResponse</h2>
+<h2 id="tocS_APIWorkflowPromptResponse">APIWorkflowPromptResponse</h2>
 
-<a id="schemaapiflowpromptresponse"></a>
-<a id="schema_APIFlowPromptResponse"></a>
-<a id="tocSapiflowpromptresponse"></a>
-<a id="tocsapiflowpromptresponse"></a>
+<a id="schemaapiworkflowpromptresponse"></a>
+<a id="schema_APIWorkflowPromptResponse"></a>
+<a id="tocSapiworkflowpromptresponse"></a>
+<a id="tocsapiworkflowpromptresponse"></a>
 
 ```json
 {
@@ -1811,12 +1811,12 @@ Access token response proxied from the key manager's token endpoint. Field names
 |---|---|---|---|---|
 |path|string|false|none|none|
 
-<h2 id="tocS_APIFlowCreateRequest">APIFlowCreateRequest</h2>
+<h2 id="tocS_APIWorkflowCreateRequest">APIWorkflowCreateRequest</h2>
 
-<a id="schemaapiflowcreaterequest"></a>
-<a id="schema_APIFlowCreateRequest"></a>
-<a id="tocSapiflowcreaterequest"></a>
-<a id="tocsapiflowcreaterequest"></a>
+<a id="schemaapiworkflowcreaterequest"></a>
+<a id="schema_APIWorkflowCreateRequest"></a>
+<a id="tocSapiworkflowcreaterequest"></a>
+<a id="tocsapiworkflowcreaterequest"></a>
 
 ```json
 {
@@ -1827,7 +1827,7 @@ Access token response proxied from the key manager's token endpoint. Field names
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {},
+  "apiWorkflowDefinition": {},
   "markdownContent": "string"
 }
 
@@ -1844,7 +1844,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |status|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
+|apiWorkflowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
 
 oneOf
 
@@ -1875,12 +1875,12 @@ continued
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowUpdateRequest">APIFlowUpdateRequest</h2>
+<h2 id="tocS_APIWorkflowUpdateRequest">APIWorkflowUpdateRequest</h2>
 
-<a id="schemaapiflowupdaterequest"></a>
-<a id="schema_APIFlowUpdateRequest"></a>
-<a id="tocSapiflowupdaterequest"></a>
-<a id="tocsapiflowupdaterequest"></a>
+<a id="schemaapiworkflowupdaterequest"></a>
+<a id="schema_APIWorkflowUpdateRequest"></a>
+<a id="tocSapiworkflowupdaterequest"></a>
+<a id="tocsapiworkflowupdaterequest"></a>
 
 ```json
 {
@@ -1891,7 +1891,7 @@ continued
   "status": "PUBLISHED",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {},
+  "apiWorkflowDefinition": {},
   "markdownContent": "string"
 }
 
@@ -1908,7 +1908,7 @@ continued
 |status|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|any|false|none|none|
+|apiWorkflowDefinition|any|false|none|none|
 
 oneOf
 
@@ -1939,12 +1939,12 @@ continued
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowPromptRequest">APIFlowPromptRequest</h2>
+<h2 id="tocS_APIWorkflowPromptRequest">APIWorkflowPromptRequest</h2>
 
-<a id="schemaapiflowpromptrequest"></a>
-<a id="schema_APIFlowPromptRequest"></a>
-<a id="tocSapiflowpromptrequest"></a>
-<a id="tocsapiflowpromptrequest"></a>
+<a id="schemaapiworkflowpromptrequest"></a>
+<a id="schema_APIWorkflowPromptRequest"></a>
+<a id="tocSapiworkflowpromptrequest"></a>
+<a id="tocsapiworkflowpromptrequest"></a>
 
 ```json
 {

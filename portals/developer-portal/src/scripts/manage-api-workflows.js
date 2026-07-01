@@ -5,7 +5,7 @@
 // Data Initialization
 // ─────────────────────────────────────────────
 
-let apiFlowsData = [];
+let apiWorkflowsData = [];
 let currentOrgId = '';
 let currentViewName = '';
 let csrfToken = '';
@@ -32,19 +32,19 @@ function activateTab(activeBtn) {
     if (activeBtn?.id === 'workflows-tab-btn') arazoEditor?.refresh();
 }
 
-function initializeApiFlowsData() {
+function initializeApiWorkflowsData() {
     try {
-        const dataContainer = document.getElementById('apiFlowsDataContainer');
+        const dataContainer = document.getElementById('apiWorkflowsDataContainer');
         if (dataContainer) {
-            apiFlowsData = JSON.parse(dataContainer.textContent) || [];
+            apiWorkflowsData = JSON.parse(dataContainer.textContent) || [];
         }
     } catch (e) {
-        console.error('Failed to parse apiFlowsData:', e);
-        apiFlowsData = [];
+        console.error('Failed to parse apiWorkflowsData:', e);
+        apiWorkflowsData = [];
     }
 
     try {
-        const contextContainer = document.getElementById('apiFlowsContextData');
+        const contextContainer = document.getElementById('apiWorkflowsContextData');
         if (contextContainer) {
             const context = JSON.parse(contextContainer.textContent);
             currentOrgId = context.orgId || '';
@@ -52,7 +52,7 @@ function initializeApiFlowsData() {
             csrfToken = context.csrfToken || '';
         }
     } catch (e) {
-        console.error('Failed to parse apiFlows context:', e);
+        console.error('Failed to parse apiWorkflows context:', e);
     }
 }
 
@@ -71,12 +71,12 @@ function generateHandle(name) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    initializeApiFlowsData();
+    initializeApiWorkflowsData();
 
-    const listSection = document.getElementById('apiFlowList');
-    const formSection = document.getElementById('apiFlowForm');
-    const createBtn = document.getElementById('createApiFlowBtn');
-    const createBtnEmpty = document.getElementById('createApiFlowBtnEmpty');
+    const listSection = document.getElementById('apiWorkflowList');
+    const formSection = document.getElementById('apiWorkflowForm');
+    const createBtn = document.getElementById('createApiWorkflowBtn');
+    const createBtnEmpty = document.getElementById('createApiWorkflowBtnEmpty');
 
     function showForm() {
         listSection.style.display = 'none';
@@ -86,17 +86,17 @@ document.addEventListener('DOMContentLoaded', function () {
     function showList() {
         listSection.style.display = 'block';
         formSection.style.display = 'none';
-        resetApiFlowForm();
+        resetApiWorkflowForm();
         // Switch to the API Workflows tab when returning to the list.
         const wfBtn = document.getElementById('workflows-tab-btn');
         if (wfBtn) activateTab(wfBtn);
     }
 
     function handleCreateClick() {
-        resetApiFlowForm();
-        const titleEl = document.getElementById('apiFlowFormTitle');
-        if (titleEl) titleEl.textContent = 'Create API Flow';
-        document.getElementById('editingApiFlowId').value = '';
+        resetApiWorkflowForm();
+        const titleEl = document.getElementById('apiWorkflowFormTitle');
+        if (titleEl) titleEl.textContent = 'Create API Workflow';
+        document.getElementById('editingApiWorkflowId').value = '';
         updatePromptFromForm();
         showForm();
     }
@@ -104,8 +104,8 @@ document.addEventListener('DOMContentLoaded', function () {
     createBtn?.addEventListener('click', handleCreateClick);
     createBtnEmpty?.addEventListener('click', handleCreateClick);
 
-    document.getElementById('cancelApiFlowBtn')?.addEventListener('click', showList);
-    document.getElementById('cancelApiFlowBtn2')?.addEventListener('click', showList);
+    document.getElementById('cancelApiWorkflowBtn')?.addEventListener('click', showList);
+    document.getElementById('cancelApiWorkflowBtn2')?.addEventListener('click', showList);
     document.getElementById('afBackToListBtn')?.addEventListener('click', (e) => { e.preventDefault(); showList(); });
 
     // Debounced prompt update on name/description change
@@ -114,19 +114,19 @@ document.addEventListener('DOMContentLoaded', function () {
         clearTimeout(promptDebounce);
         promptDebounce = setTimeout(updatePromptFromForm, 600);
     };
-    document.getElementById('apiFlowName')?.addEventListener('input', debouncePromptUpdate);
-    document.getElementById('apiFlowDescription')?.addEventListener('input', debouncePromptUpdate);
+    document.getElementById('apiWorkflowName')?.addEventListener('input', debouncePromptUpdate);
+    document.getElementById('apiWorkflowDescription')?.addEventListener('input', debouncePromptUpdate);
 
     // Form action buttons
     document.getElementById('regeneratePromptBtn')?.addEventListener('click', regenerateAgentPrompt);
     document.getElementById('copyFieldPromptBtn')?.addEventListener('click', copyFieldPrompt);
 
     // Agent visibility radios
-    document.querySelectorAll('input[name="apiFlowAgentVisibility"]').forEach(radio => {
+    document.querySelectorAll('input[name="apiWorkflowAgentVisibility"]').forEach(radio => {
         radio.addEventListener('change', () => {
             syncAgentPromptTab(radio.value === 'HIDDEN' && radio.checked);
             if (radio.value === 'VISIBLE' && radio.checked) {
-                document.querySelectorAll('.api-flow-api-checkbox:checked').forEach(cb => {
+                document.querySelectorAll('.api-workflow-api-checkbox:checked').forEach(cb => {
                     if (cb.dataset.agentVisibility !== 'VISIBLE') cb.checked = false;
                 });
             }
@@ -153,32 +153,32 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Save buttons
-    document.getElementById('saveApiFlowBtn')?.addEventListener('click', function() {
-        saveApiFlow(currentOrgId, currentViewName, this.dataset.status);
+    document.getElementById('saveApiWorkflowBtn')?.addEventListener('click', function() {
+        saveApiWorkflow(currentOrgId, currentViewName, this.dataset.status);
     });
     document.getElementById('saveDraftBtn')?.addEventListener('click', function() {
-        saveApiFlow(currentOrgId, currentViewName, this.dataset.status);
+        saveApiWorkflow(currentOrgId, currentViewName, this.dataset.status);
     });
 
     // List view action buttons
-    document.querySelectorAll('.api-flow-view-prompt-btn').forEach(btn => {
+    document.querySelectorAll('.api-workflow-view-prompt-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            openPromptModal(btn.dataset.apiFlowId);
+            openPromptModal(btn.dataset.apiWorkflowId);
         });
     });
 
-    document.querySelectorAll('.api-flow-edit-btn').forEach(btn => {
+    document.querySelectorAll('.api-workflow-edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            openEditApiFlow(btn.dataset.apiFlowId);
+            openEditApiWorkflow(btn.dataset.apiWorkflowId);
         });
     });
 
-    document.querySelectorAll('.api-flow-delete-btn').forEach(btn => {
+    document.querySelectorAll('.api-workflow-delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            openDeleteApiFlowModal(currentOrgId, currentViewName, btn.dataset.apiFlowId);
+            openDeleteApiWorkflowModal(currentOrgId, currentViewName, btn.dataset.apiWorkflowId);
         });
     });
 
@@ -192,8 +192,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Section summaries
-    document.getElementById('apiFlowName')?.addEventListener('input', updateSectionSummaries);
-    document.querySelectorAll('input[name="apiFlowAgentVisibility"]').forEach(r => r.addEventListener('change', updateSectionSummaries));
+    document.getElementById('apiWorkflowName')?.addEventListener('input', updateSectionSummaries);
+    document.querySelectorAll('input[name="apiWorkflowAgentVisibility"]').forEach(r => r.addEventListener('change', updateSectionSummaries));
 
     initApiCardPicker();
     initCodeMirrorEditor();
@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function () {
     initAccessMatrix();
 
     // Keep access matrix in sync when radios change by other means
-    document.querySelectorAll('input[name="apiFlowAgentVisibility"]').forEach(r => r.addEventListener('change', syncAccessMatrixFromRadios));
+    document.querySelectorAll('input[name="apiWorkflowAgentVisibility"]').forEach(r => r.addEventListener('change', syncAccessMatrixFromRadios));
 });
 
 // ─────────────────────────────────────────────
@@ -272,7 +272,7 @@ function switchCreateFormat(format) {
     });
 
     // Show/hide the right editor pane
-    document.getElementById('apiFlowDefinitionWrapper')?.classList.toggle('d-none', format !== 'arazzo');
+    document.getElementById('apiWorkflowDefinitionWrapper')?.classList.toggle('d-none', format !== 'arazzo');
     document.getElementById('markdownContentWrapper')?.classList.toggle('d-none', format !== 'markdown');
     if (format === 'arazzo') setTimeout(() => arazoEditor?.refresh(), 50);
 
@@ -344,8 +344,8 @@ function handleBringBackFile(file) {
         const targetFormat = isMarkdown ? 'markdown' : 'arazzo';
         const targetContentType = isMarkdown ? 'MD' : 'ARAZZO';
 
-        const editingApiFlowId = document.getElementById('editingApiFlowId')?.value || '';
-        if (editingApiFlowId) {
+        const editingApiWorkflowId = document.getElementById('editingApiWorkflowId')?.value || '';
+        if (editingApiWorkflowId) {
             if (currentContentType !== targetContentType) {
                 showBringBackFeedback(
                     `Cannot import: this flow uses ${currentContentType === 'MD' ? 'Markdown' : 'Arazzo'} format, but the uploaded file is ${targetContentType === 'MD' ? 'Markdown' : 'Arazzo'}.`,
@@ -372,10 +372,10 @@ function handleBringBackFile(file) {
                 arazoEditor.setValue(content);
                 setTimeout(() => arazoEditor.refresh(), 50);
             } else {
-                const field = document.getElementById('apiFlowDefinition');
+                const field = document.getElementById('apiWorkflowDefinition');
                 if (field) field.value = content;
             }
-            const filenameEl = document.querySelector('#apiFlowDefinitionWrapper .af-editor-filename');
+            const filenameEl = document.querySelector('#apiWorkflowDefinitionWrapper .af-editor-filename');
             if (filenameEl) filenameEl.textContent = file.name;
             updateArazzoEditorUI(content);
         }
@@ -482,7 +482,7 @@ async function handleArazzoUpload(content) {
     if (arazoEditor) {
         arazoEditor.setValue(content);
     } else {
-        const field = document.getElementById('apiFlowDefinition');
+        const field = document.getElementById('apiWorkflowDefinition');
         if (field) field.value = content;
     }
 
@@ -510,7 +510,7 @@ async function handleMarkdownUpload(content) {
 
     // Clear arazzo
     if (arazoEditor) arazoEditor.setValue('');
-    const arazoField = document.getElementById('apiFlowDefinition');
+    const arazoField = document.getElementById('apiWorkflowDefinition');
     if (arazoField) arazoField.value = '';
 
     // Update type badge
@@ -545,12 +545,12 @@ function setUploadTypeBadge(type) {
 }
 
 function showUploadedContentEditor() {
-    const arazoWrapper = document.getElementById('apiFlowDefinitionWrapper');
+    const arazoWrapper = document.getElementById('apiWorkflowDefinitionWrapper');
     const mdWrapper = document.getElementById('markdownContentWrapper');
     const card = document.getElementById('specEditorCard');
     const hasArazzo = arazoEditor
         ? arazoEditor.getValue().trim().length > 0
-        : (document.getElementById('apiFlowDefinition')?.value?.trim().length > 0);
+        : (document.getElementById('apiWorkflowDefinition')?.value?.trim().length > 0);
     const hasMd = (document.getElementById('markdownContent')?.value?.trim().length > 0);
 
     // Hide format tabs in upload mode — they're create-only
@@ -577,7 +577,7 @@ function showUploadedContentEditor() {
 
 function clearUploadedFile() {
     if (arazoEditor) arazoEditor.setValue('');
-    const arazoField = document.getElementById('apiFlowDefinition');
+    const arazoField = document.getElementById('apiWorkflowDefinition');
     if (arazoField) arazoField.value = '';
     const mdField = document.getElementById('markdownContent');
     if (mdField) mdField.value = '';
@@ -585,7 +585,7 @@ function clearUploadedFile() {
     currentContentType = 'ARAZZO';
 
     document.getElementById('uploadValidationPanel')?.classList.add('d-none');
-    document.getElementById('apiFlowDefinitionWrapper')?.classList.add('d-none');
+    document.getElementById('apiWorkflowDefinitionWrapper')?.classList.add('d-none');
     document.getElementById('markdownContentWrapper')?.classList.add('d-none');
     document.getElementById('specEditorCard')?.classList.add('d-none');
     document.getElementById('arazzoDropZone')?.classList.remove('d-none');
@@ -704,7 +704,7 @@ function renderSdItem(name, url, type, status, statusCode) {
         missing:      { cls: 'af-sd-status--invalid',       icon: 'bi-exclamation-circle-fill', label: 'No URL' },
     };
     const s = statusMap[status] || statusMap.checking;
-    const typeBadge = type ? `<span class="api-flow-type-pill ms-1">${sanitizeInput(type)}</span>` : '';
+    const typeBadge = type ? `<span class="api-workflow-type-pill ms-1">${sanitizeInput(type)}</span>` : '';
     const urlText = url ? `<span class="af-sd-item-url">${sanitizeInput(url)}</span>` : '<span class="af-sd-item-url text-muted">No URL defined</span>';
     return `
         <div class="af-sd-item">
@@ -727,7 +727,7 @@ function initCreatePathButtons() {
 }
 
 function updateGenerateButtonsState() {
-    const count = document.querySelectorAll('.api-flow-api-checkbox:checked').length;
+    const count = document.querySelectorAll('.api-workflow-api-checkbox:checked').length;
     const hasAPIs = count > 0;
     const tip = document.getElementById('specActionsTip');
 
@@ -752,8 +752,8 @@ function copySpecPrompt() {
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
     const viewName = pathParts[3] || 'default';
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const description = document.getElementById('apiFlowDescription')?.value?.trim() || '';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
 
     const apiContext = apis.map(a => {
         const url = `${window.location.origin}/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
@@ -842,8 +842,8 @@ function generateMarkdownWithClaude() {
 }
 
 function buildPromptContext() {
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const description = document.getElementById('apiFlowDescription')?.value?.trim() || '';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
@@ -869,13 +869,13 @@ async function openInVSCode() {
 
     generateArazzoSpec();
 
-    const content = arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiFlowDefinition')?.value || '');
+    const content = arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiWorkflowDefinition')?.value || '');
     if (!content.trim()) {
         showAlert('Generate a template first or select some APIs', 'warning');
         return;
     }
 
-    const name = document.getElementById('apiFlowName')?.value?.trim() || 'workflow';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || 'workflow';
     const filename = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.arazzo.yaml';
 
     const btn = document.getElementById('openInVSCodeBtn');
@@ -973,13 +973,13 @@ async function openInVSCode() {
 // Form state helpers
 // ─────────────────────────────────────────────
 
-function resetApiFlowForm() {
-    document.getElementById('editingApiFlowId').value = '';
-    const nameField = document.getElementById('apiFlowName');
+function resetApiWorkflowForm() {
+    document.getElementById('editingApiWorkflowId').value = '';
+    const nameField = document.getElementById('apiWorkflowName');
     if (nameField) { nameField.value = ''; nameField.readOnly = false; nameField.classList.remove('af-field-readonly'); }
 
-    document.getElementById('apiFlowDescription').value = '';
-    document.getElementById('apiFlowDefinition').value = '';
+    document.getElementById('apiWorkflowDescription').value = '';
+    document.getElementById('apiWorkflowDefinition').value = '';
     document.getElementById('markdownContent').value = '';
     document.getElementById('agentPromptField').value = '';
     currentContentType = 'ARAZZO';
@@ -1052,7 +1052,7 @@ function syncAgentPromptTab(isHidden) {
 }
 
 function getSelectedAPIs() {
-    return [...document.querySelectorAll('.api-flow-api-checkbox:checked')].map(cb => ({
+    return [...document.querySelectorAll('.api-workflow-api-checkbox:checked')].map(cb => ({
         API_ID: cb.value,        apiId: cb.value,
         API_NAME: cb.dataset.apiName,       apiName: cb.dataset.apiName,
         API_HANDLE: cb.dataset.apiHandle,   apiHandle: cb.dataset.apiHandle,
@@ -1126,7 +1126,7 @@ function renderApiCards(query) {
     const grid = document.getElementById('apiCardGrid');
     if (!grid) return;
 
-    const checkboxes = [...document.querySelectorAll('.api-flow-api-checkbox')];
+    const checkboxes = [...document.querySelectorAll('.api-workflow-api-checkbox')];
     const q = query.toLowerCase();
     const FILTER_FNS = {
         aiReady:      cb => cb.dataset.agentVisibility === 'VISIBLE',
@@ -1147,7 +1147,7 @@ function renderApiCards(query) {
         return;
     }
 
-    const workflowVisibleToAgents = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value === 'VISIBLE';
+    const workflowVisibleToAgents = document.querySelector('input[name="apiWorkflowAgentVisibility"]:checked')?.value === 'VISIBLE';
 
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
@@ -1181,7 +1181,7 @@ function renderApiCards(query) {
                 <div class="af-api-card-body">
                     <div class="d-flex align-items-center gap-2 mb-1">
                         <span class="fw-semibold small af-api-card-name" title="${sanitizeInput(cb.dataset.apiName)}">${sanitizeInput(cb.dataset.apiName)}</span>
-                        <span class="api-flow-type-pill flex-shrink-0">${sanitizeInput(cb.dataset.apiType || '')}</span>
+                        <span class="api-workflow-type-pill flex-shrink-0">${sanitizeInput(cb.dataset.apiType || '')}</span>
                         ${agentBadge}
                     </div>
                 </div>
@@ -1192,7 +1192,7 @@ function renderApiCards(query) {
 
     grid.querySelectorAll('.af-api-card').forEach(card => {
         function toggle() {
-            const cb = document.querySelector(`.api-flow-api-checkbox[value="${card.dataset.apiId}"]`);
+            const cb = document.querySelector(`.api-workflow-api-checkbox[value="${card.dataset.apiId}"]`);
             if (!cb || card.classList.contains('af-api-card--disabled')) return;
             cb.checked = !cb.checked;
             renderApiCards(document.getElementById('apiCardSearch')?.value.trim() || '');
@@ -1217,7 +1217,7 @@ function updateApiSelectedCount() {
 }
 
 function setPickerSelection(apiIds) {
-    document.querySelectorAll('.api-flow-api-checkbox').forEach(cb => {
+    document.querySelectorAll('.api-workflow-api-checkbox').forEach(cb => {
         cb.checked = apiIds.includes(cb.value);
     });
     renderApiCards(document.getElementById('apiCardSearch')?.value.trim() || '');
@@ -1228,14 +1228,14 @@ function setPickerSelection(apiIds) {
 // ─────────────────────────────────────────────
 
 async function updatePromptFromForm() {
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const description = document.getElementById('apiFlowDescription')?.value?.trim() || '';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
     const pathParts = window.location.pathname.split('/');
     const orgName = pathParts[1] || '';
     const viewName = pathParts[3] || 'default';
-    const editingId = document.getElementById('editingApiFlowId')?.value || '';
-    const editingFlow = editingId ? (window.apiFlowsData || []).find(f => String(f.apiFlowId) === String(editingId)) : null;
+    const editingId = document.getElementById('editingApiWorkflowId')?.value || '';
+    const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(editingId)) : null;
     const handle = editingFlow?.handle || generateHandle(name);
 
     try {
@@ -1265,8 +1265,8 @@ function updateWorkflowMdPreview() {
     const el = document.getElementById('afWorkflowMdPreview');
     if (!el) return;
 
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const desc = document.getElementById('apiFlowDescription')?.value?.trim() || '';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const desc = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
     const isMarkdown = createPathFormat === 'markdown';
 
@@ -1278,8 +1278,8 @@ function updateWorkflowMdPreview() {
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
     const viewName = pathParts[3] || 'default';
-    const editingId = document.getElementById('editingApiFlowId')?.value;
-    const editingFlow = editingId ? (window.apiFlowsData || []).find(f => String(f.apiFlowId) === editingId) : null;
+    const editingId = document.getElementById('editingApiWorkflowId')?.value;
+    const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === editingId) : null;
     const handle = editingFlow?.handle || generateHandle(name);
     const flowStatus = (editingFlow?.status || 'PUBLISHED').toUpperCase();
 
@@ -1307,8 +1307,8 @@ function updateWorkflowMdPreview() {
         md += workflowDesc || '_No workflow description defined yet._';
         md += '\n';
     } else {
-        const spec = arazoEditor ? arazoEditor.getValue().trim() : (document.getElementById('apiFlowDefinition')?.value?.trim() || '');
-        md += `\n## API Flow Specification\n\n`;
+        const spec = arazoEditor ? arazoEditor.getValue().trim() : (document.getElementById('apiWorkflowDefinition')?.value?.trim() || '');
+        md += `\n## API Workflow Specification\n\n`;
         md += `[arazzo.json](/${orgHandle}/views/${viewName}/api-workflows/${handle}/arazzo.json)\n\n`;
         if (spec) {
             md += '``````\n' + spec + '\n``````\n'; // Use 6 backticks so rendering holds even if the spec contains up to 5
@@ -1325,7 +1325,7 @@ function updateWorkflowMdPreview() {
 // ─────────────────────────────────────────────
 
 function setSaveButtonMode(mode, currentStatus) {
-    const mainBtn = document.getElementById('saveApiFlowBtn');
+    const mainBtn = document.getElementById('saveApiWorkflowBtn');
     const badge = document.getElementById('editingFlowStatusBadge');
     if (!mainBtn) return;
 
@@ -1333,11 +1333,11 @@ function setSaveButtonMode(mode, currentStatus) {
         mainBtn.innerHTML = '<i class="bi bi-check2 me-1"></i> Update Flow';
         if (badge && currentStatus) {
             badge.textContent = currentStatus;
-            badge.className = `api-flow-status-badge api-flow-status-${currentStatus.toLowerCase()}`;
+            badge.className = `api-workflow-status-badge api-workflow-status-${currentStatus.toLowerCase()}`;
         }
     } else {
         mainBtn.innerHTML = '<i class="bi bi-send me-1"></i> Publish Flow';
-        if (badge) badge.className = 'api-flow-status-badge d-none';
+        if (badge) badge.className = 'api-workflow-status-badge d-none';
     }
 }
 
@@ -1345,32 +1345,32 @@ function setSaveButtonMode(mode, currentStatus) {
 // Save (Create or Update)
 // ─────────────────────────────────────────────
 
-async function saveApiFlow(orgId, viewName, status) {
+async function saveApiWorkflow(orgId, viewName, status) {
     if (arazoEditor) {
-        document.getElementById('apiFlowDefinition').value = arazoEditor.getValue();
+        document.getElementById('apiWorkflowDefinition').value = arazoEditor.getValue();
     }
 
-    const name = document.getElementById('apiFlowName').value.trim();
-    const description = document.getElementById('apiFlowDescription').value.trim();
+    const name = document.getElementById('apiWorkflowName').value.trim();
+    const description = document.getElementById('apiWorkflowDescription').value.trim();
     const agentPrompt = document.getElementById('agentPromptField').value.trim();
     const contentType = currentContentType || 'ARAZZO';
-    const apiFlowDefinition = contentType === 'ARAZZO' ? document.getElementById('apiFlowDefinition').value.trim() : '';
+    const apiWorkflowDefinition = contentType === 'ARAZZO' ? document.getElementById('apiWorkflowDefinition').value.trim() : '';
     const markdownContent = contentType === 'MD' ? document.getElementById('markdownContent').value.trim() : '';
-    const apiFlowId = document.getElementById('editingApiFlowId').value;
-    const agentVisibility = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value || 'VISIBLE';
+    const apiWorkflowId = document.getElementById('editingApiWorkflowId').value;
+    const agentVisibility = document.querySelector('input[name="apiWorkflowAgentVisibility"]:checked')?.value || 'VISIBLE';
     let valid = true;
     const fieldsToValidate = [
-        ['apiFlowName', name],
-        ['apiFlowDescription', description],
+        ['apiWorkflowName', name],
+        ['apiWorkflowDescription', description],
     ];
     if (agentVisibility !== 'HIDDEN') fieldsToValidate.push(['agentPromptField', agentPrompt]);
-    if (contentType === 'ARAZZO') fieldsToValidate.push(['apiFlowDefinition', apiFlowDefinition]);
+    if (contentType === 'ARAZZO') fieldsToValidate.push(['apiWorkflowDefinition', apiWorkflowDefinition]);
     if (contentType === 'MD') fieldsToValidate.push(['markdownContent', markdownContent]);
 
     fieldsToValidate.forEach(([id, val]) => {
-        if (id === 'apiFlowDefinition' && arazoEditor) {
+        if (id === 'apiWorkflowDefinition' && arazoEditor) {
             const host = document.getElementById('arazoEditorHost');
-            const feedback = document.getElementById('apiFlowDefinitionInvalid');
+            const feedback = document.getElementById('apiWorkflowDefinitionInvalid');
             if (!val) {
                 host?.classList.add('af-cm-invalid');
                 if (feedback) feedback.style.display = 'block';
@@ -1392,15 +1392,15 @@ async function saveApiFlow(orgId, viewName, status) {
     if (!valid) return;
 
     const handle = generateHandle(name);
-    const payload = { name, handle, description, agentPrompt, status, agentVisibility, contentType, apiFlowDefinition, markdownContent };
-    const isEdit = !!apiFlowId;
+    const payload = { name, handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
+    const isEdit = !!apiWorkflowId;
     const url = isEdit
-        ? devportalApi.org(`/views/${viewName}/api-flows/${apiFlowId}`)
-        : devportalApi.org(`/views/${viewName}/api-flows`);
+        ? devportalApi.org(`/views/${viewName}/api-workflows/${apiWorkflowId}`)
+        : devportalApi.org(`/views/${viewName}/api-workflows`);
     const method = isEdit ? 'PUT' : 'POST';
 
-    const groupBtns = document.querySelectorAll('#saveApiFlowGroup button');
-    const mainBtn = document.getElementById('saveApiFlowBtn');
+    const groupBtns = document.querySelectorAll('#saveApiWorkflowGroup button');
+    const mainBtn = document.getElementById('saveApiWorkflowBtn');
     groupBtns.forEach(b => b.disabled = true);
     mainBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Saving…';
 
@@ -1412,7 +1412,7 @@ async function saveApiFlow(orgId, viewName, status) {
             credentials: 'same-origin'
         });
         if (response.ok) {
-            window.location.href = window.location.pathname + '#apiflows';
+            window.location.href = window.location.pathname + '#apiworkflows';
             window.location.reload();
         } else {
             const err = await response.json().catch(() => ({ message: 'Save failed' }));
@@ -1431,24 +1431,24 @@ async function saveApiFlow(orgId, viewName, status) {
 // Delete
 // ─────────────────────────────────────────────
 
-function openDeleteApiFlowModal(orgId, viewName, apiFlowId) {
-    const flow = (apiFlowsData || []).find(f => String(f.apiFlowId) === String(apiFlowId));
-    const flowName = flow?.name || 'API Flow';
+function openDeleteApiWorkflowModal(orgId, viewName, apiWorkflowId) {
+    const flow = (apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
+    const flowName = flow?.name || 'API Workflow';
 
-    document.getElementById('deleteApiFlowModalTitle').textContent = 'Delete API Flow';
-    const messageEl = document.getElementById('deleteApiFlowModalMessage');
+    document.getElementById('deleteApiWorkflowModalTitle').textContent = 'Delete API Workflow';
+    const messageEl = document.getElementById('deleteApiWorkflowModalMessage');
     messageEl.textContent = `Are you sure you want to delete "${flowName}"? This action cannot be undone.`;
 
-    const confirmBtn = document.getElementById('deleteApiFlowConfirmBtn');
+    const confirmBtn = document.getElementById('deleteApiWorkflowConfirmBtn');
     confirmBtn.disabled = false;
     confirmBtn.innerHTML = 'Confirm';
-    confirmBtn.onclick = () => deleteApiFlow(orgId, viewName, apiFlowId);
-    const modal = new bootstrap.Modal(document.getElementById('deleteApiFlowModal'));
+    confirmBtn.onclick = () => deleteApiWorkflow(orgId, viewName, apiWorkflowId);
+    const modal = new bootstrap.Modal(document.getElementById('deleteApiWorkflowModal'));
     modal.show();
 }
 
-async function deleteApiFlow(orgId, viewName, apiFlowId) {
-    const confirmBtn = document.getElementById('deleteApiFlowConfirmBtn');
+async function deleteApiWorkflow(orgId, viewName, apiWorkflowId) {
+    const confirmBtn = document.getElementById('deleteApiWorkflowConfirmBtn');
     confirmBtn.disabled = true;
     confirmBtn.style.backgroundColor = 'var(--danger-color)';
     confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Deleting…';
@@ -1460,7 +1460,7 @@ async function deleteApiFlow(orgId, viewName, apiFlowId) {
     };
 
     try {
-        const response = await fetch(devportalApi.org(`/views/${viewName}/api-flows/${apiFlowId}`), {
+        const response = await fetch(devportalApi.org(`/views/${viewName}/api-workflows/${apiWorkflowId}`), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': csrfToken },
             credentials: 'same-origin'
@@ -1469,11 +1469,11 @@ async function deleteApiFlow(orgId, viewName, apiFlowId) {
             window.location.reload();
         } else {
             resetBtn();
-            showAlert('Failed to delete API Flow', 'error');
+            showAlert('Failed to delete API Workflow', 'error');
         }
     } catch (error) {
         resetBtn();
-        showAlert(`Failed to delete API Flow: ${error.message}`, 'error');
+        showAlert(`Failed to delete API Workflow: ${error.message}`, 'error');
     }
 }
 
@@ -1482,11 +1482,11 @@ async function deleteApiFlow(orgId, viewName, apiFlowId) {
 // ─────────────────────────────────────────────
 
 function inferApiIdsFromContent(data) {
-    const checkboxes = [...document.querySelectorAll('.api-flow-api-checkbox')];
+    const checkboxes = [...document.querySelectorAll('.api-workflow-api-checkbox')];
     if (!checkboxes.length) return [];
     const contentType = data.contentType || 'ARAZZO';
-    if (contentType === 'ARAZZO' && data.apiFlowDefinition) {
-        return inferApiIdsFromArazzo(data.apiFlowDefinition, checkboxes);
+    if (contentType === 'ARAZZO' && data.apiWorkflowDefinition) {
+        return inferApiIdsFromArazzo(data.apiWorkflowDefinition, checkboxes);
     }
     if (contentType === 'MD' && data.markdownContent) {
         return inferApiIdsFromMarkdown(data.markdownContent, checkboxes);
@@ -1529,23 +1529,23 @@ function inferApiIdsFromMarkdown(mdContent, checkboxes) {
         .map(cb => cb.value);
 }
 
-function openEditApiFlow(apiFlowId) {
-    const data = (window.apiFlowsData || apiFlowsData || []).find(f => String(f.apiFlowId) === String(apiFlowId));
+function openEditApiWorkflow(apiWorkflowId) {
+    const data = (window.apiWorkflowsData || apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
     if (!data) return;
-    resetApiFlowForm();
-    const titleEl = document.getElementById('apiFlowFormTitle');
-    if (titleEl) titleEl.textContent = 'Edit API Flow';
-    document.getElementById('editingApiFlowId').value = apiFlowId;
-    const nameField = document.getElementById('apiFlowName');
+    resetApiWorkflowForm();
+    const titleEl = document.getElementById('apiWorkflowFormTitle');
+    if (titleEl) titleEl.textContent = 'Edit API Workflow';
+    document.getElementById('editingApiWorkflowId').value = apiWorkflowId;
+    const nameField = document.getElementById('apiWorkflowName');
     if (nameField) { nameField.value = data.name || ''; nameField.readOnly = true; nameField.classList.add('af-field-readonly'); }
 
-    document.getElementById('apiFlowDescription').value = data.description || '';
+    document.getElementById('apiWorkflowDescription').value = data.description || '';
 
     currentContentType = data.contentType || 'ARAZZO';
     createPathFormat = currentContentType === 'MD' ? 'markdown' : 'arazzo';
 
-    const arazoVal = data.apiFlowDefinition || '';
-    document.getElementById('apiFlowDefinition').value = arazoVal;
+    const arazoVal = data.apiWorkflowDefinition || '';
+    document.getElementById('apiWorkflowDefinition').value = arazoVal;
     if (arazoEditor) arazoEditor.setValue(arazoVal);
     updateCopyArazzoBtn(arazoVal.trim().length > 0);
 
@@ -1556,7 +1556,7 @@ function openEditApiFlow(apiFlowId) {
     document.getElementById('agentPromptField').value = data.agentPrompt || '';
     setSaveButtonMode('edit', data.status);
 
-    const agentVisibilityRadio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${data.agentVisibility || 'VISIBLE'}"]`);
+    const agentVisibilityRadio = document.querySelector(`input[name="apiWorkflowAgentVisibility"][value="${data.agentVisibility || 'VISIBLE'}"]`);
     if (agentVisibilityRadio) agentVisibilityRadio.checked = true;
     syncAccessMatrixFromRadios();
     syncAgentPromptTab(data.agentVisibility === 'HIDDEN');
@@ -1578,8 +1578,8 @@ function openEditApiFlow(apiFlowId) {
     updateSectionSummaries();
     updateStep1Preview();
 
-    const listSection = document.getElementById('apiFlowList');
-    const formSection = document.getElementById('apiFlowForm');
+    const listSection = document.getElementById('apiWorkflowList');
+    const formSection = document.getElementById('apiWorkflowForm');
     listSection.style.display = 'none';
     formSection.style.display = 'block';
 }
@@ -1588,8 +1588,8 @@ function openEditApiFlow(apiFlowId) {
 // Agent Prompt modal
 // ─────────────────────────────────────────────
 
-function openPromptModal(apiFlowId) {
-    const data = (window.apiFlowsData || apiFlowsData || []).find(f => String(f.apiFlowId) === String(apiFlowId));
+function openPromptModal(apiWorkflowId) {
+    const data = (window.apiWorkflowsData || apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
     if (!data) return;
     document.getElementById('agentPromptFlowName').textContent = data.name;
     document.getElementById('agentPromptContent').textContent = data.agentPrompt || '';
@@ -1697,8 +1697,8 @@ function generateArazzoSpec() {
         return;
     }
 
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const description = document.getElementById('apiFlowDescription')?.value?.trim() || '';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
@@ -1709,19 +1709,19 @@ function generateArazzoSpec() {
     if (arazoEditor) {
         arazoEditor.setValue(spec);
     } else {
-        const field = document.getElementById('apiFlowDefinition');
+        const field = document.getElementById('apiWorkflowDefinition');
         if (field) field.value = spec;
     }
 
-    document.getElementById('apiFlowDefinitionWrapper')?.classList.remove('d-none');
+    document.getElementById('apiWorkflowDefinitionWrapper')?.classList.remove('d-none');
     document.getElementById('specEditorCard')?.classList.remove('d-none');
     setTimeout(() => arazoEditor?.refresh(), 50);
     updateCopyArazzoBtn(spec.trim().length > 0);
 }
 
 function generateMarkdownTemplate() {
-    const name = document.getElementById('apiFlowName')?.value?.trim() || 'My Workflow';
-    const description = document.getElementById('apiFlowDescription')?.value?.trim() || '';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || 'My Workflow';
+    const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
 
     const apiSection = apis.length > 0
@@ -1769,7 +1769,7 @@ _Describe what a successful execution produces for the caller._
 }
 
 function copyArazzoSpec() {
-    const content = arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiFlowDefinition')?.value || '');
+    const content = arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiWorkflowDefinition')?.value || '');
     navigator.clipboard.writeText(content).then(() => showAlert('Arazzo spec copied to clipboard', 'success'));
 }
 
@@ -1782,7 +1782,7 @@ function initCodeMirrorEditor() {
     if (!host || !window.CodeMirror) return;
 
     arazoEditor = CodeMirror(host, {
-        value: document.getElementById('apiFlowDefinition')?.value || '',
+        value: document.getElementById('apiWorkflowDefinition')?.value || '',
         mode: 'yaml',
         lineNumbers: true,
         tabSize: 2,
@@ -1833,7 +1833,7 @@ function updateArazzoEditorUI(content) {
 
 function updateCopyArazzoBtn(hasContent) {
     const content = hasContent
-        ? (arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiFlowDefinition')?.value || ''))
+        ? (arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiWorkflowDefinition')?.value || ''))
         : '';
     updateArazzoEditorUI(content);
 }
@@ -1852,7 +1852,7 @@ function updateEditorFooter(format) {
         const status = document.getElementById('editorStatusText');
         if (status) status.textContent = mdContent.trim() ? `${mdContent.split('\n').length} lines` : 'Editor is empty';
     } else {
-        const content = arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiFlowDefinition')?.value || '');
+        const content = arazoEditor ? arazoEditor.getValue() : (document.getElementById('apiWorkflowDefinition')?.value || '');
         updateArazzoEditorUI(content);
     }
 }
@@ -1891,8 +1891,8 @@ function expandAllSections() {
 // ─────────────────────────────────────────────
 
 function updateSectionSummaries() {
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const agentVis = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value || 'VISIBLE';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const agentVis = document.querySelector('input[name="apiWorkflowAgentVisibility"]:checked')?.value || 'VISIBLE';
     const s1 = document.getElementById('af-summary-1');
     if (s1) {
         s1.textContent = name
@@ -1904,7 +1904,7 @@ function updateSectionSummaries() {
     if (s2) {
         const hasArazzo = arazoEditor
             ? arazoEditor.getValue().trim().length > 0
-            : (document.getElementById('apiFlowDefinition')?.value?.trim().length > 0);
+            : (document.getElementById('apiWorkflowDefinition')?.value?.trim().length > 0);
         const hasMd = (document.getElementById('markdownContent')?.value?.trim().length > 0);
         const hasContent = currentContentType === 'MD' ? hasMd : hasArazzo;
         const fmtLabel = currentContentType === 'MD' ? 'Markdown' : 'Arazzo';
@@ -1947,7 +1947,7 @@ function updateMarkdownWordCount() {
 function updateApiChips() {
     const chips = document.getElementById('apiSelectedChips');
     if (!chips) return;
-    const selected = [...document.querySelectorAll('.api-flow-api-checkbox:checked')];
+    const selected = [...document.querySelectorAll('.api-workflow-api-checkbox:checked')];
     if (selected.length === 0) {
         chips.innerHTML = '';
         chips.style.display = 'none';
@@ -1983,13 +1983,13 @@ function initWizard() {
     updateStep3Readiness();
 
     // Live preview updates + clear validation errors on input
-    document.getElementById('apiFlowName')?.addEventListener('input', (e) => {
+    document.getElementById('apiWorkflowName')?.addEventListener('input', (e) => {
         if (e.target.value.trim()) e.target.classList.remove('is-invalid');
         updateStep1Preview();
         updateStep3Readiness();
         updateWorkflowMdPreview();
     });
-    document.getElementById('apiFlowDescription')?.addEventListener('input', (e) => {
+    document.getElementById('apiWorkflowDescription')?.addEventListener('input', (e) => {
         if (e.target.value.trim()) e.target.classList.remove('is-invalid');
         updateStep1Preview();
         updateStep3Readiness();
@@ -2009,8 +2009,8 @@ function goToStep(n) {
 
 function validateWizardStep(step) {
     if (step === 1) {
-        const name = document.getElementById('apiFlowName');
-        const desc = document.getElementById('apiFlowDescription');
+        const name = document.getElementById('apiWorkflowName');
+        const desc = document.getElementById('apiWorkflowDescription');
         let valid = true;
         if (!name?.value.trim()) { name?.classList.add('is-invalid'); valid = false; } else name?.classList.remove('is-invalid');
         if (!desc?.value.trim()) { desc?.classList.add('is-invalid'); valid = false; } else desc?.classList.remove('is-invalid');
@@ -2020,7 +2020,7 @@ function validateWizardStep(step) {
         const isMarkdown = currentContentType === 'MD';
         const hasContent = isMarkdown
             ? document.getElementById('markdownContent')?.value?.trim().length > 0
-            : arazoEditor ? arazoEditor.getValue().trim().length > 0 : document.getElementById('apiFlowDefinition')?.value?.trim().length > 0;
+            : arazoEditor ? arazoEditor.getValue().trim().length > 0 : document.getElementById('apiWorkflowDefinition')?.value?.trim().length > 0;
         if (!hasContent) {
             showAlert('Add an API workflow spec before continuing', 'warning');
             return false;
@@ -2060,7 +2060,7 @@ function updateWizardUI() {
     if (backBtn) backBtn.classList.toggle('d-none', currentStep === 1);
     const continueBtn = document.getElementById('afContinueBtn');
     if (continueBtn) continueBtn.classList.toggle('d-none', currentStep === 3);
-    const saveGroup = document.getElementById('saveApiFlowGroup');
+    const saveGroup = document.getElementById('saveApiWorkflowGroup');
     if (saveGroup) saveGroup.classList.toggle('d-none', currentStep !== 3);
 }
 
@@ -2069,8 +2069,8 @@ function updateWizardUI() {
 // ─────────────────────────────────────────────
 
 function updateStep1Preview() {
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const desc = document.getElementById('apiFlowDescription')?.value?.trim() || '';
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const desc = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
 
     // Preview card
     const nameEl = document.getElementById('afPreviewName');
@@ -2139,9 +2139,9 @@ function setChecklistItem(id, state) {
 // ─────────────────────────────────────────────
 
 function updateStep3Readiness() {
-    const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const desc = document.getElementById('apiFlowDescription')?.value?.trim() || '';
-    const hasArazzo = arazoEditor ? arazoEditor.getValue().trim().length > 0 : (document.getElementById('apiFlowDefinition')?.value?.trim().length > 0);
+    const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
+    const desc = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
+    const hasArazzo = arazoEditor ? arazoEditor.getValue().trim().length > 0 : (document.getElementById('apiWorkflowDefinition')?.value?.trim().length > 0);
     const hasMd = document.getElementById('markdownContent')?.value?.trim().length > 0;
     const hasSpec = hasArazzo || hasMd;
     const hasPrompt = document.getElementById('agentPromptField')?.value?.trim().length > 0;
@@ -2182,14 +2182,14 @@ function initAccessMatrix() {
 }
 
 function setAccessValue(type, value) {
-    const radio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${value}"]`);
+    const radio = document.querySelector(`input[name="apiWorkflowAgentVisibility"][value="${value}"]`);
     if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
     syncAccessMatrixFromRadios();
     updateStep1Preview();
 }
 
 function syncAccessMatrixFromRadios() {
-    const agentVis = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value || 'VISIBLE';
+    const agentVis = document.querySelector('input[name="apiWorkflowAgentVisibility"]:checked')?.value || 'VISIBLE';
 
     const agentVisible = document.getElementById('agentVisibleCard');
     const agentHidden = document.getElementById('agentHiddenCard');
@@ -2338,7 +2338,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const workflowsBtn = document.getElementById('workflows-tab-btn');
 
     function syncTabFromHash() {
-        if (window.location.hash === '#apiflows' && workflowsBtn) activateTab(workflowsBtn);
+        if (window.location.hash === '#apiworkflows' && workflowsBtn) activateTab(workflowsBtn);
         else if (llmsBtn) activateTab(llmsBtn);
     }
 

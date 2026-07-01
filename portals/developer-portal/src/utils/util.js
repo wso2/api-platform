@@ -711,7 +711,7 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/api-keys-page.js' defer></script>",
             '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
             "<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>",
-            "<script src='/technical-scripts/api-flow-detail.js' defer></script>",
+            "<script src='/technical-scripts/api-workflow-detail.js' defer></script>",
             "<script src='/technical-scripts/api-workflows.js' defer></script>",
             "<script src='/technical-scripts/api-agent-prompt.js' defer></script>",
             '<script src="/technical-scripts/home-discover.js" defer></script>',
@@ -727,8 +727,8 @@ function validateScripts(strContent) {
             "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgId for on-demand fetches\n                        window.__subscriptionOrgId = \"{{@root.orgId}}\";\n                    })();\n                </script>",
             // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
-            // API flows JSON data island (pages/api-workflows/page.hbs)
-            "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
+            // API workflows JSON data island (pages/api-workflows/page.hbs)
+            "<script type=\"application/json\" id=\"apiWorkflowsDataContainer\">{{{json apiWorkflows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
             "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"handle\":\"{{apiMetadata.handle}}\"}</script>",
             // Home discover data island (pages/home/page.hbs)

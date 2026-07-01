@@ -56,11 +56,11 @@ module.exports = {
         PUBLISHED: "PUBLISHED",
         DEPRECATED: "DEPRECATED"
     },
-    API_FLOW_STATUS: {
+    API_WORKFLOW_STATUS: {
         DRAFT: "DRAFT",
         PUBLISHED: "PUBLISHED",
     },
-    API_FLOW_CONTENT_TYPE: {
+    API_WORKFLOW_CONTENT_TYPE: {
         ARAZZO: "ARAZZO",
         MD: "MD",
     },
@@ -312,6 +312,11 @@ module.exports = {
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",
         API_NOT_FOUND: "Requested API not found",
+        API_WORKFLOW_CREATE_ERROR: "Error while creating API workflow",
+        API_WORKFLOW_UPDATE_ERROR: "Error while updating API workflow",
+        API_WORKFLOW_DELETE_ERROR: "Error while deleting API workflow",
+        API_WORKFLOW_RETRIEVE_ERROR: "Error while fetching API workflow",
+        API_WORKFLOW_NOT_FOUND: "API workflow not found",
         COMMON_AUTH_ERROR_MESSAGE: "User is not authenticated to perform this request",
         COMMON_ERROR_MESSAGE: "Oops! Something went wrong",
         COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE: "Requested page not found!"

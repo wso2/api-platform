@@ -35,7 +35,7 @@ const Handlebars = require('handlebars');
 const constants = require("./utils/constants");
 const designRoute = require('./routes/pages/designModeRoute');
 const settingsRoute = require('./routes/pages/settingsRoute');
-const apiFlowsRoute = require('./routes/pages/apiWorkflowsRoute');
+const apiWorkflowsRoute = require('./routes/pages/apiWorkflowsRoute');
 const { v4: uuidv4 } = require('uuid');
 const util = require('./utils/util');
 const sessionStore = require('./db/sessionStoreConfig');
@@ -172,7 +172,7 @@ if (config.designMode?.enabled) {
     app.use(constants.ROUTE.DEFAULT, applicationContent);
     app.use(constants.ROUTE.DEFAULT, orgContent);
     app.use(constants.ROUTE.DEFAULT, settingsRoute);
-    app.use(constants.ROUTE.DEFAULT, apiFlowsRoute);
+    app.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     app.use(constants.ROUTE.DEFAULT, subscriptionsContent);
     app.use(constants.ROUTE.DEFAULT, customContent);
 }

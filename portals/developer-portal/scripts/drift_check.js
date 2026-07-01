@@ -195,17 +195,15 @@ const SAMPLES = [
         message: "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.",
     }],
 
-    // API Flows — apiFlowService.createAPIFlow res.status(201).json({apiFlowId, name, status});
-    // getAllAPIFlows wraps toAPIFlowDTO(...) items via util.toPaginatedList.
-    // NB: operationIds are createApiFlow/getAllApiFlows (lowercase "pi") — the
-    // previous PascalCase ids here silently SKIPped these checks.
-    ['createApiFlow', 201, { apiFlowId: 'f1', name: 'flow1', status: 'PUBLISHED' }],
-    ['getAllApiFlows', 200, {
+    // API Workflows — apiWorkflowService.createAPIWorkflow res.status(201).json({apiWorkflowId, name, status});
+    // getAllAPIWorkflows wraps toAPIWorkflowDTO(...) items via util.toPaginatedList.
+    ['createApiWorkflow', 201, { apiWorkflowId: 'w1', name: 'workflow1', status: 'PUBLISHED' }],
+    ['getAllApiWorkflows', 200, {
         list: [{
-            apiFlowId: 'f1', name: 'flow1', handle: 'flow-1', description: 'desc',
+            apiWorkflowId: 'w1', name: 'workflow1', handle: 'workflow-1', description: 'desc',
             agentPrompt: 'prompt', status: 'PUBLISHED',
             agentVisibility: 'VISIBLE', contentType: 'ARAZZO',
-            apiFlowDefinition: '{}', markdownContent: null,
+            apiWorkflowDefinition: '{}', markdownContent: null,
             createdAt: 'May 7, 2026', updatedAt: '2026-05-07T08:30:00Z',
         }],
         pagination: { total: 1, limit: 20, offset: 0 },

@@ -1,7 +1,7 @@
 <!--
  * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
- * API Flow Detail Page
+ * API Workflow Detail Page
  -->
 {{#pageHead}}
     <link rel="stylesheet" href="/technical-styles/agent-prompt.css">
@@ -68,7 +68,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-0">
-                    <div class="api-flow-prompt-toolbar">
+                    <div class="api-workflow-prompt-toolbar">
                         <span class="small text-muted">Use this prompt to let your AI agent execute the workflow—handling API calls, dependencies, and errors automatically</span>
                         <div class="prompt-modal-toolbar">
                             <button type="button" class="btn-run-prompt" id="btnRunClaude">
@@ -76,7 +76,7 @@
                             </button>
                         </div>
                     </div>
-                    <div class="api-flow-prompt-pre-wrapper">
+                    <div class="api-workflow-prompt-pre-wrapper">
                         <div class="prompt-pre-actions">
                             <button type="button" class="prompt-tool-btn" id="btnDownloadPrompt" title="Download as .txt">
                                 <i class="bi bi-download"></i>
@@ -86,7 +86,7 @@
                                 <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                             </button>
                         </div>
-                        <pre id="modalAgentPromptText" class="api-flow-prompt-pre">{{flow.agentPrompt}}</pre>
+                        <pre id="modalAgentPromptText" class="api-workflow-prompt-pre">{{flow.agentPrompt}}</pre>
                     </div>
                 </div>
             </div>
@@ -97,5 +97,5 @@
     <textarea id="specContent" style="display: none;">{{flow.content}}</textarea>
 </div>
 {{#pageScripts}}
-<script src='/technical-scripts/api-flow-detail.js' defer></script>
+<script src='/technical-scripts/api-workflow-detail.js' defer></script>
 {{/pageScripts}}
