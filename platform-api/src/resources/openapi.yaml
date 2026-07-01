@@ -7557,6 +7557,7 @@ components:
           minItems: 1
           items:
             type: string
+            maxLength: 255
           example:
             - "https://api.example.com:8443/api/v1"
             - "wss://events.example.com:8444"
@@ -7705,6 +7706,7 @@ components:
           minItems: 1
           items:
             type: string
+            maxLength: 255
           example:
             - "https://api.example.com:8443/api/v1"
             - "wss://events.example.com:8444"
@@ -7764,6 +7766,7 @@ components:
           minItems: 1
           items:
             type: string
+            maxLength: 255
           example:
             - "https://api.example.com:8443/api/v1"
 
