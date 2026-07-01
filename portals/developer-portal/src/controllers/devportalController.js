@@ -150,7 +150,7 @@ const revokeAppKeyMappings = async (orgId, appId) => {
  * previously-associated key. Must be called only after the application row (and its
  * app_uuid references) have actually been deleted — best-effort, never throws.
  */
-const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete, affectedKeyIds) => {
+const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete, affectedKeys) => {
     try {
         await sequelize.transaction(async (t) => {
             if (appToDelete) {
@@ -159,8 +159,10 @@ const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete
                     { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: applicationId }
                 );
             }
-            for (const keyId of affectedKeyIds) {
-                await apiKeyService.publishKeyApplicationUpdated(orgId, keyId, null, t);
+            for (const key of affectedKeys) {
+                const meta = key.dp_api_metadata;
+                const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
+                await apiKeyService.publishKeyApplicationUpdated(orgId, key.uuid, key.name, api, null, t);
             }
         });
     } catch (pubErr) {
@@ -169,20 +171,19 @@ const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete
 };
 
 /**
- * Snapshots the app name + currently-associated key IDs and deletes the application row,
+ * Snapshots the app name + currently-associated keys and deletes the application row,
  * all inside one transaction — so the snapshot exactly matches what's actually deleted,
  * with no race window for a concurrent associate/dissociate call to go unnoticed.
  */
 const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) => {
     let appToDelete = null;
-    let affectedKeyIds = [];
+    let affectedKeys = [];
     await sequelize.transaction(async (t) => {
         appToDelete = await appDao.get(orgId, applicationId, userId, t);
-        const associatedKeys = await apiKeyService.list(orgId, { appId: applicationId }, t);
-        affectedKeyIds = associatedKeys.map((k) => k.uuid);
+        affectedKeys = await apiKeyService.list(orgId, { appId: applicationId }, t);
         await appDao.delete(orgId, applicationId, userId, t);
     });
-    return { appToDelete, affectedKeyIds };
+    return { appToDelete, affectedKeys };
 };
 
 const getApplication = async (req, res) => {
@@ -212,16 +213,16 @@ const deleteApplication = async (req, res) => {
         }
         try {
             await revokeAppKeyMappings(orgId, applicationId);
-            const { appToDelete, affectedKeyIds } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
+            const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
             trackAppDeletion({ orgId: orgId, appId: applicationId, idpId: userId }, req);
-            await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeyIds);
+            await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
             res.status(200).send("Resource Deleted Successfully");
         } catch (error) {
             if (error.statusCode === 404) {
                 await revokeAppKeyMappings(orgId, applicationId);
-                const { appToDelete, affectedKeyIds } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
+                const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
                 trackAppDeletion({ orgId: orgId, appId: applicationId, idpId: userId }, req);
-                await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeyIds);
+                await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
                 return res.status(200).send("Resource Deleted Successfully");
             }
             logger.error('Error occurred while deleting the application', { orgId: orgId, appId: applicationId, error: error.message, stack: error.stack });

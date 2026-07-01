@@ -121,12 +121,12 @@ function applicationOf(key) {
 }
 
 /**
- * Publish apikey.application_updated for a single key — { key_id, application }.
+ * Publish apikey.application_updated for a single key — { key_id, name, api, application }.
  * `application` is { id, name } when associated, or null when cleared.
  */
-async function publishKeyApplicationUpdated(orgId, keyId, application, transaction) {
+async function publishKeyApplicationUpdated(orgId, keyId, name, api, application, transaction) {
     await publish('apikey.application_updated',
-        { key_id: keyId, application },
+        { key_id: keyId, name, api, application },
         { transaction, orgId, aggregateType: 'apikey', aggregateId: keyId }
     );
 }
@@ -140,7 +140,9 @@ async function notifyApplicationKeysChanged(orgId, appId, application, transacti
     if (!appId) return;
     const keys = await apiKeyDao.list(orgId, { appId }, transaction);
     for (const key of keys) {
-        await publishKeyApplicationUpdated(orgId, key.uuid, application, transaction);
+        const meta = key.dp_api_metadata;
+        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
+        await publishKeyApplicationUpdated(orgId, key.uuid, key.name, api, application, transaction);
     }
 }
 
@@ -189,7 +191,9 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
             );
 
             if (application) {
-                await publishKeyApplicationUpdated(orgId, keyId, application, t);
+                await publishKeyApplicationUpdated(orgId, keyId, normalizedName,
+                    { name: api.name, version: api.version, ref_id: api.refId },
+                    application, t);
             }
         });
     } catch (err) {
@@ -299,7 +303,9 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
         const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, actor, t, { activeOnly: true });
         if (!updated) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-        await publishKeyApplicationUpdated(orgId, keyId, application, t);
+        const meta = existing.dp_api_metadata;
+        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
+        await publishKeyApplicationUpdated(orgId, keyId, existing.name, api, application, t);
     });
 
     logger.info('API key associated to application', { keyId, orgId, appId: application.id, actor });
@@ -321,7 +327,9 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
 
     await sequelize.transaction(async (t) => {
         await apiKeyDao.setApplication(orgId, keyId, null, actor, t);
-        await publishKeyApplicationUpdated(orgId, keyId, null, t);
+        const meta = existing.dp_api_metadata;
+        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
+        await publishKeyApplicationUpdated(orgId, keyId, existing.name, api, null, t);
     });
 
     logger.info('API key application association removed', { keyId, orgId, actor });
