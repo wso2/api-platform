@@ -170,7 +170,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateProjectRequest'
             example:
-              name: "My Project"
+              displayName: "My Project"
       responses:
         '201':
           description: Project created successfully
@@ -331,8 +331,6 @@ paths:
         - REST APIs
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - $ref: '#/components/parameters/api-name-Q'
-        - $ref: '#/components/parameters/api-version-Q'
       responses:
         '200':
           description: REST APIs retrieved successfully
@@ -1427,7 +1425,7 @@ paths:
               $ref: '#/components/schemas/LLMProvider'
             example:
               id: wso2-openai-provider
-              name: WSO2 OpenAI Provider
+              displayName: WSO2 OpenAI Provider
               version: v1.0
               template: openai
               upstream:
@@ -4521,13 +4519,6 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: subscriberId
-          in: query
-          required: true
-          description: Subscriber ID; must match the subscription's subscriberId.
-          schema:
-            type: string
-            minLength: 1
       responses:
         '200':
           description: Subscription details
@@ -4695,8 +4686,8 @@ paths:
             schema:
               $ref: '#/components/schemas/SecretCreateRequest'
             example:
-              handle: wso2-openai-key
-              name: WSO2 OpenAI API Key
+              id: wso2-openai-key
+              displayName: WSO2 OpenAI API Key
               description: API key for WSO2 OpenAI integration
               value: sk-xxx
               type: GENERIC
@@ -4831,7 +4822,7 @@ paths:
               $ref: '#/components/schemas/SecretUpdateRequest'
             example:
               value: sk-new-rotated-value
-              name: WSO2 OpenAI API Key (rotated)
+              displayName: WSO2 OpenAI API Key (rotated)
       responses:
         '200':
           description: Secret rotated successfully.
@@ -6543,11 +6534,20 @@ components:
     CreateSubscriptionPlanRequest:
       type: object
       required:
-        - planName
+        - id
+        - displayName
       properties:
-        planName:
+        id:
           type: string
-          description: Name of the subscription plan
+          description: Handle (URL-friendly slug) for the plan. Immutable after creation.
+          minLength: 1
+          maxLength: 63
+          example: "gold"
+        displayName:
+          type: string
+          description: Human-readable name for the subscription plan
+          minLength: 1
+          maxLength: 128
           example: "Gold"
         billingPlan:
           type: string
@@ -6565,8 +6565,8 @@ components:
         throttleLimitUnit:
           type: string
           description: Throttle window unit (must be paired with throttleLimitCount)
-          enum: [Min, Hour, Day, Month]
-          example: "Hour"
+          enum: [MINUTE, HOUR, DAY, MONTH]
+          example: "HOUR"
         expiryTime:
           type: string
           format: date-time
@@ -6585,8 +6585,11 @@ components:
     UpdateSubscriptionPlanRequest:
       type: object
       properties:
-        planName:
+        displayName:
           type: string
+          description: Human-readable name for the subscription plan
+          minLength: 1
+          maxLength: 128
         billingPlan:
           type: string
         stopOnQuotaReach:
@@ -6598,7 +6601,7 @@ components:
         throttleLimitUnit:
           type: string
           description: Throttle window unit (must be paired with throttleLimitCount)
-          enum: [Min, Hour, Day, Month]
+          enum: [MINUTE, HOUR, DAY, MONTH]
         expiryTime:
           type: string
           format: date-time
@@ -9120,7 +9123,6 @@ components:
       type: object
       required:
         - id
-        - displayName
         - value
       properties:
         id:

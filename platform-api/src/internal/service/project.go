@@ -259,7 +259,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	}
 
 	for _, guard := range s.deletionGuards {
-		if err := guard.CheckProjectDeletion(orgId, projectId); err != nil {
+		if err := guard.CheckProjectDeletion(orgId, project.ID); err != nil {
 			return err
 		}
 	}
