@@ -146,7 +146,12 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 		return
 	}
 
-	resp, err := s.platformDo(r.Context(), jwt, http.MethodPost, apiBasePath+resourcePath, r.Header, body)
+	// Preserve any query parameters forwarded by the client (e.g. organizationId).
+	path := apiBasePath + resourcePath
+	if q := r.URL.RawQuery; q != "" {
+		path += "?" + q
+	}
+	resp, err := s.platformDo(r.Context(), jwt, http.MethodPost, path, r.Header, body)
 	if err != nil {
 		slog.Error("bff: platform API call failed", "path", resourcePath, "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})

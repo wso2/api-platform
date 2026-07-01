@@ -39,7 +39,7 @@ func (s *Server) routes() http.Handler {
 	// server-side compensation on failure. Must be registered before the
 	// catch-all proxy so these paths are not forwarded upstream as-is.
 	mux.HandleFunc("POST /api/bff/llm-providers", s.handleCreateLLMProvider)
-	mux.HandleFunc("POST /api/bff/mcp-servers", s.handleCreateMCPServer)
+	mux.HandleFunc("POST /api/bff/mcp-proxies", s.handleCreateMCPServer)
 
 	// Same-origin reverse proxy to the Platform API. The proxy's Rewrite hook
 	// strips the prefix before forwarding, so we register the subtree directly.
