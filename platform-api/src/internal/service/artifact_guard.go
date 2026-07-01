@@ -62,7 +62,12 @@ func ensureOriginMutable(origin string) error {
 // compareRuntimeArtifacts fingerprints two already-generated runtime artifacts and
 // defers to ensureRuntimeArtifactUnchanged. It is the common tail shared by the
 // per-kind guards once each has produced the stored and proposed artifact structs.
+// Control-plane artifacts are always mutable, so it returns immediately for any
+// non-DP origin and only fingerprints when the origin is DP.
 func compareRuntimeArtifacts(origin string, existing, proposed any) error {
+	if origin != constants.OriginDP {
+		return nil
+	}
 	existingFP, err := runtimeArtifactFingerprint(existing)
 	if err != nil {
 		return err

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/repository"
@@ -269,6 +270,7 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 		nil, // gatewayEventsService unused on create
 		newTestLogger(),
 		&noopAuditRepo{},
+		&config.Server{},
 	)
 
 	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
@@ -310,6 +312,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 		nil, // gatewayEventsService unused on create
 		newTestLogger(),
 		&noopAuditRepo{},
+		&config.Server{},
 	)
 
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{

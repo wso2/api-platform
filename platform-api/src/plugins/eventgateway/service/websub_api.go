@@ -26,6 +26,7 @@ import (
 	"log/slog"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -42,6 +43,7 @@ type WebSubAPIService struct {
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 // NewWebSubAPIService creates a new WebSubAPIService instance
@@ -53,6 +55,7 @@ func NewWebSubAPIService(
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
+	cfg *config.Server,
 ) *WebSubAPIService {
 	return &WebSubAPIService{
 		repo:                 repo,
@@ -62,6 +65,7 @@ func NewWebSubAPIService(
 		apiUtil:              apiUtil,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -102,12 +106,12 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		return nil, constants.ErrWebSubAPIExists
 	}
 
-	// Check org limit
+	// Enforce the per-organization WebSub API limit (unlimited when not configured).
 	count, err := s.repo.Count(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count existing WebSub APIs: %w", err)
 	}
-	if count >= constants.MaxWebSubAPIsPerOrganization {
+	if config.LimitReached(count, s.cfg.ArtifactLimits.MaxWebSubAPIsPerOrg) {
 		return nil, constants.ErrWebSubAPILimitReached
 	}
 
@@ -138,7 +142,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
-		Origin: constants.OriginCP,
+		Origin:           constants.OriginCP,
 		Configuration: model.WebSubAPIConfiguration{
 			Name:              req.DisplayName,
 			Version:           req.Version,

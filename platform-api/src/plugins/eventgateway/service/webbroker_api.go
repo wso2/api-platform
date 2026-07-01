@@ -26,6 +26,7 @@ import (
 	"log/slog"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -42,6 +43,7 @@ type WebBrokerAPIService struct {
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 // NewWebBrokerAPIService creates a new WebBrokerAPIService instance
@@ -53,6 +55,7 @@ func NewWebBrokerAPIService(
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
+	cfg *config.Server,
 ) *WebBrokerAPIService {
 	return &WebBrokerAPIService{
 		repo:                 repo,
@@ -62,6 +65,7 @@ func NewWebBrokerAPIService(
 		apiUtil:              apiUtil,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -102,12 +106,12 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		return nil, constants.ErrWebBrokerAPIExists
 	}
 
-	// Check org limit
+	// Enforce the per-organization WebBroker API limit (unlimited when not configured).
 	count, err := s.repo.Count(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count existing WebBroker APIs: %w", err)
 	}
-	if count >= constants.MaxWebBrokerAPIsPerOrganization {
+	if config.LimitReached(count, s.cfg.ArtifactLimits.MaxWebBrokerAPIsPerOrg) {
 		return nil, constants.ErrWebBrokerAPILimitReached
 	}
 

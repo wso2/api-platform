@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -55,6 +56,7 @@ type LLMProviderService struct {
 	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 type LLMProxyService struct {
@@ -66,6 +68,7 @@ type LLMProxyService struct {
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository) *LLMProviderTemplateService {
@@ -82,6 +85,7 @@ func NewLLMProviderService(
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
+	cfg *config.Server,
 ) *LLMProviderService {
 	return &LLMProviderService{
 		repo:                 repo,
@@ -93,6 +97,7 @@ func NewLLMProviderService(
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -111,6 +116,7 @@ func NewLLMProxyService(
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
+	cfg *config.Server,
 ) *LLMProxyService {
 	return &LLMProxyService{
 		repo:                 repo,
@@ -121,6 +127,7 @@ func NewLLMProxyService(
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -718,7 +725,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err != nil {
 		return nil, fmt.Errorf("failed to count providers: %w", err)
 	}
-	if err := validateLLMResourceLimit(providerCount, constants.MaxLLMProvidersPerOrganization, constants.ErrLLMProviderLimitReached); err != nil {
+	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, constants.ErrLLMProviderLimitReached); err != nil {
 		return nil, err
 	}
 	if !tpl.Enabled {
@@ -1076,7 +1083,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to count proxies: %w", err)
 	}
-	if err := validateLLMResourceLimit(proxyCount, constants.MaxLLMProxiesPerOrganization, constants.ErrLLMProxyLimitReached); err != nil {
+	if err := validateLLMResourceLimit(proxyCount, s.cfg.ArtifactLimits.MaxLLMProxiesPerOrg, constants.ErrLLMProxyLimitReached); err != nil {
 		return nil, err
 	}
 
@@ -1475,8 +1482,10 @@ func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *mode
 	return updated
 }
 
+// validateLLMResourceLimit returns limitErr when the org has reached maxAllowed.
+// A maxAllowed <= 0 means unlimited (see config.LimitReached), so it never errors.
 func validateLLMResourceLimit(currentCount int, maxAllowed int, limitErr error) error {
-	if currentCount >= maxAllowed {
+	if config.LimitReached(currentCount, maxAllowed) {
 		return limitErr
 	}
 	return nil

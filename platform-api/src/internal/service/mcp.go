@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -51,12 +52,14 @@ type MCPProxyService struct {
 	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 // NewMCPProxyService creates a new MCPProxyService instance
 func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo repository.ProjectRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository) *MCPProxyService {
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository,
+	cfg *config.Server) *MCPProxyService {
 	return &MCPProxyService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
@@ -65,6 +68,7 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -123,12 +127,12 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 	req.Id = &handle
 
-	// Temporary check for maximum MCP proxy limit per organization before creation
+	// Enforce the per-organization MCP proxy limit (unlimited when not configured).
 	proxyCount, err := s.repo.Count(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count existing MCP proxies: %w", err)
 	}
-	if proxyCount >= constants.MaxMCPProxiesPerOrganization {
+	if config.LimitReached(proxyCount, s.cfg.ArtifactLimits.MaxMCPProxiesPerOrg) {
 		return nil, constants.ErrMCPProxyLimitReached
 	}
 
