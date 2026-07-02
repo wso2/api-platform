@@ -114,20 +114,6 @@ const (
 	APISubTypeSOAP      = "SOAP"
 )
 
-// Artifact Type Constants
-const (
-	ArtifactTypeAPI        = "API"
-	ArtifactTypeMCP        = "MCP"
-	ArtifactTypeAPIProduct = "API_PRODUCT"
-)
-
-// ValidArtifactTypes Valid artifact types deployed to gateways
-var ValidArtifactTypes = map[string]bool{
-	ArtifactTypeAPI:        true,
-	ArtifactTypeMCP:        true,
-	ArtifactTypeAPIProduct: true,
-}
-
 // Constants for association types
 const (
 	AssociationTypeGateway = "gateway"
@@ -142,19 +128,13 @@ const AdminRole = "admin"
 // Deployment limit constants
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement
-	DeploymentLimitBuffer = 5
-
-	// MaxLLMProvidersPerOrganization is the maximum number of LLM providers allowed per organization.
-	MaxLLMProvidersPerOrganization = 5
-	// MaxLLMProxiesPerOrganization is the maximum number of LLM proxies allowed per organization.
-	MaxLLMProxiesPerOrganization = 5
-	// MaxMCPProxiesPerOrganization is the maximum number of MCP proxies allowed per organization.
-	MaxMCPProxiesPerOrganization = 5
-	// MaxWebSubAPIsPerOrganization is the maximum number of WebSub APIs allowed per organization.
-	MaxWebSubAPIsPerOrganization = 5
-	// MaxWebBrokerAPIsPerOrganization is the maximum number of WebBroker APIs allowed per organization.
-	MaxWebBrokerAPIsPerOrganization = 5
+	DeploymentLimitBuffer = 100
 )
+
+// Per-organization artifact creation limits are no longer hardcoded here. They are
+// configured via config.ArtifactLimits (config file keys artifact_limits.max_* or
+// env vars ARTIFACT_LIMITS_MAX_*) and default to unlimited. Enforcement uses
+// config.LimitReached, which treats a limit <= 0 as "no limit".
 
 // Gateway artifact apiVersion (the `apiVersion:` field on deployment artifacts).
 // GatewayApiVersionV1Alpha1 is the legacy value for gateways < 1.2.0 — use it only
@@ -170,8 +150,8 @@ const (
 // axis from GatewayApiVersion* (the gateway artifact apiVersion) — the two are
 // governed independently and currently hold different values ("v0.9" vs "v1").
 const (
-    APIVersion  = "v0.9"
-    APIBasePath = "/api/" + APIVersion
+	APIVersion  = "v0.9"
+	APIBasePath = "/api/" + APIVersion
 )
 
 // Custom Policy ManagedBy constants

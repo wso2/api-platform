@@ -52,10 +52,10 @@ func NewWebSubAPIHmacSecretHandler(secretService *egservice.WebSubAPIHmacSecretS
 
 // RegisterRoutes registers the HMAC secret routes.
 func (h *WebSubAPIHmacSecretHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/websub-apis/{apiId}/secrets", h.CreateHmacSecret)
-	mux.HandleFunc("GET /api/v1/websub-apis/{apiId}/secrets", h.ListHmacSecrets)
-	mux.HandleFunc("DELETE /api/v1/websub-apis/{apiId}/secrets/{secretName}", h.DeleteHmacSecret)
-	mux.HandleFunc("POST /api/v1/websub-apis/{apiId}/secrets/{secretName}/regenerate", h.RegenerateHmacSecret)
+	mux.HandleFunc("POST /api/v1/websub-apis/{webSubApiId}/secrets", h.CreateHmacSecret)
+	mux.HandleFunc("GET /api/v1/websub-apis/{webSubApiId}/secrets", h.ListHmacSecrets)
+	mux.HandleFunc("DELETE /api/v1/websub-apis/{webSubApiId}/secrets/{secretName}", h.DeleteHmacSecret)
+	mux.HandleFunc("POST /api/v1/websub-apis/{webSubApiId}/secrets/{secretName}/regenerate", h.RegenerateHmacSecret)
 }
 
 func (h *WebSubAPIHmacSecretHandler) featureUnavailable(w http.ResponseWriter) bool {
@@ -78,7 +78,7 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(w http.ResponseWriter, r *
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("webSubApiId")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -129,7 +129,7 @@ func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(w http.ResponseWriter, r *h
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("webSubApiId")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -159,7 +159,7 @@ func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(w http.ResponseWriter, r *
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("webSubApiId")
 	secretName := r.PathValue("secretName")
 	if apiHandle == "" || secretName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))
@@ -185,7 +185,7 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(w http.ResponseWriter,
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("webSubApiId")
 	secretName := r.PathValue("secretName")
 	if apiHandle == "" || secretName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))

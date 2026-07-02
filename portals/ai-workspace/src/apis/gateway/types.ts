@@ -61,7 +61,8 @@ export type GatewayConfigs = GatewayConfig | GatewayConfig[];
  */
 export interface RegisterGatewayRequest {
   displayName: string;
-  name: string;
+  /** Handle (URL-friendly slug) for the gateway. Immutable after creation. If omitted, generated from displayName. */
+  id?: string;
   vhost: string;
   functionalityType: string;
   description?: string;
@@ -82,7 +83,6 @@ export interface RegisterGatewayResponse extends Gateway {
  */
 export interface UpdateGatewayRequest {
   displayName: string;
-  name: string;
   vhost: string;
   functionalityType: string;
   description?: string;

@@ -51,6 +51,10 @@ import { logger } from '../../../../utils/logger';
 import type { Gateway } from '../../../../apis/gatewayTypes';
 import type { DeploymentResponse } from '../../../../utils/types';
 import { FormattedMessage } from 'react-intl';
+import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
 
 interface GatewayWithDeployment extends Gateway {
   deployment?: DeploymentResponse;
@@ -66,6 +70,7 @@ export default function LLMProxyDeploymentsCard() {
   const [generatingKey, setGeneratingKey] = useState(false);
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
   const apiKeyLocation = proxy?.security?.apiKey?.in ?? 'header';
   const apiKeyName = proxy?.security?.apiKey?.key ?? 'X-API-Key';
 
@@ -144,6 +149,7 @@ export default function LLMProxyDeploymentsCard() {
   }, [currentOrganization?.uuid, proxy?.id]);
 
   const handleGenerateAPIKey = async () => {
+    if (isReadOnlyProxy) return;
     if (!currentOrganization?.uuid || !proxy?.id) {
       return;
     }
@@ -160,7 +166,7 @@ export default function LLMProxyDeploymentsCard() {
         proxy.id,
         currentOrganization.uuid,
         {
-          name: `key-${Date.now()}`,
+          id: `key-${Date.now()}`,
           displayName: `API Key - ${new Date().toLocaleString()}`,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',
@@ -367,41 +373,47 @@ export default function LLMProxyDeploymentsCard() {
                     />
                   </Typography>
                 </Box>
-                <Tooltip
-                  title={
-                    deployedGateways.length === 0
-                      ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
-                      : ''
-                  }
-                  placement="top"
+                <DisabledActionTooltip
+                  disabled={isReadOnlyProxy}
+                  title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                 >
-                  <span>
-                    <Button
-                      variant="contained"
-                      size="medium"
-                      onClick={handleGenerateAPIKey}
-                      disabled={
-                        generatingKey ||
-                        deployedGateways.length === 0
-                      }
-                    >
-                      {generatingKey ? (
-                        <>
-                          <CircularProgress size={16} sx={{ mr: 1 }} />
+                  <Tooltip
+                    title={
+                      !isReadOnlyProxy && deployedGateways.length === 0
+                        ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
+                        : ''
+                    }
+                    placement="top"
+                  >
+                    <span>
+                      <Button
+                        variant="contained"
+                        size="medium"
+                        onClick={handleGenerateAPIKey}
+                        disabled={
+                          isReadOnlyProxy ||
+                          generatingKey ||
+                          deployedGateways.length === 0
+                        }
+                      >
+                        {generatingKey ? (
+                          <>
+                            <CircularProgress size={16} sx={{ mr: 1 }} />
+                            <FormattedMessage
+                              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploymentsCard.generating"
+                              defaultMessage={'Generating...'}
+                            />
+                          </>
+                        ) : (
                           <FormattedMessage
-                            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploymentsCard.generating"
-                            defaultMessage={'Generating...'}
+                            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploymentsCard.generate.api.key"
+                            defaultMessage={'Generate API Key'}
                           />
-                        </>
-                      ) : (
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploymentsCard.generate.api.key"
-                          defaultMessage={'Generate API Key'}
-                        />
-                      )}
-                    </Button>
-                  </span>
-                </Tooltip>
+                        )}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </DisabledActionTooltip>
               </Stack>
 
               {keyError && (

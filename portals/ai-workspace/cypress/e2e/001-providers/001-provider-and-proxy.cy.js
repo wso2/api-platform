@@ -60,7 +60,8 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
       })
       .then((response) => {
         expect(response.status).to.eq(200);
-        organizationId = response.body?.id ?? '';
+        const orgs = response.body?.list ?? [];
+        organizationId = orgs[0]?.id ?? ''; 
         expect(organizationId).to.not.equal('');
       });
   });
@@ -245,7 +246,7 @@ function deleteProjectByName(authToken, targetProjectName, fallbackProjectName) 
 
     const projects = response.body?.list ?? [];
     const targetProject = projects.find(
-      (project) => project.name === targetProjectName
+      (project) => project.displayName === targetProjectName
     );
 
     if (!targetProject?.id) {
@@ -267,7 +268,7 @@ function ensureFallbackProject(authToken, fallbackProjectName) {
     method: 'POST',
     url: '/api/proxy/api/v0.9/projects',
     body: {
-      name: fallbackProjectName,
+      displayName: fallbackProjectName,
       description: 'Reserved project to satisfy E2E cleanup invariants.',
     },
     failOnStatusCode: false,

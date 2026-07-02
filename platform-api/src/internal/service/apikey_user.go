@@ -59,7 +59,8 @@ func (s *APIKeyUserService) ListAPIKeysByUser(
 	items := make([]api.UserAPIKeyItem, 0, len(keys))
 	for _, k := range keys {
 		item := api.UserAPIKeyItem{
-			Name:           k.Name,
+			Id:             &k.Name,
+			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.UserAPIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,

@@ -112,6 +112,7 @@ export default function EditExternalServer() {
   const [version, setVersion] = useState('');
   const [context, setContext] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isReadOnlyServer = Boolean(server?.readOnly);
 
   useEffect(() => {
     if (!serverId || !organizationId) return;
@@ -121,12 +122,11 @@ export default function EditExternalServer() {
         setIsLoading(true);
         const response = await mcpProxiesApis.getMCPServer(
           serverId,
-          organizationId,
           apimBaseUrl
         );
         if (!cancelled) {
           setServer(response);
-          setName(response.name || '');
+          setName(response.displayName || '');
           setDescription(response.description || '');
           setVersion(response.version || '');
           setContext(response.context || '');
@@ -159,13 +159,16 @@ export default function EditExternalServer() {
   };
 
   const handleSubmit = async () => {
+    // Allowed even for gateway-created MCP proxies: name/version/context stay locked
+    // (part of the runtime artifact), so only the description can change, which the
+    // control plane accepts without altering the gateway runtime artifact.
     if (!serverId || !server) return;
 
     setIsSubmitting(true);
     try {
       const fullPayload = {
         ...server,
-        name,
+        displayName: name,
         description: description || undefined,
         version: version || undefined,
         context: context || undefined,
@@ -177,7 +180,6 @@ export default function EditExternalServer() {
       await mcpProxiesApis.updateMCPServer(
         serverId,
         fullPayload,
-        organizationId,
         apimBaseUrl
       );
 
@@ -258,6 +260,13 @@ export default function EditExternalServer() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyServer ? (
+              <Alert severity="info">
+                This MCP proxy was created from a gateway. The name, version and
+                context are part of the gateway runtime configuration and are
+                read-only here; only the description can be edited.
+              </Alert>
+            ) : null}
             {isContextOrVersionChanged && (
               <Alert severity="warning">
                 You have modified the context or version of this MCP Proxy.
@@ -272,6 +281,7 @@ export default function EditExternalServer() {
                   fullWidth
                   required
                   value={name}
+                  disabled={isReadOnlyServer}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter server name"
                   error={name.length > MAX_NAME_LENGTH}
@@ -288,6 +298,7 @@ export default function EditExternalServer() {
                 <TextField
                   fullWidth
                   value={version}
+                  disabled={isReadOnlyServer}
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="e.g., 1.0"
                   error={version.length > MAX_VERSION_LENGTH}
@@ -323,6 +334,7 @@ export default function EditExternalServer() {
               <TextField
                 fullWidth
                 value={context}
+                disabled={isReadOnlyServer}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Enter context path"
                 error={context.length > MAX_CONTEXT_LENGTH}

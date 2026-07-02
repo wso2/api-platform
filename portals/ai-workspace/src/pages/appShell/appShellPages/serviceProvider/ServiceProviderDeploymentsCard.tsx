@@ -54,6 +54,10 @@ import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { UserAPIKey } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
+import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
 
 type ServiceProviderDeploymentsCardProps = {
   isGatewaysLoading: boolean;
@@ -122,6 +126,7 @@ export default function ServiceProviderDeploymentsCard({
 
   const apiKeyLocation = provider?.security?.apiKey?.in ?? 'header';
   const apiKeyName = provider?.security?.apiKey?.key ?? 'X-API-Key';
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
 
   const deployedGateways = useMemo(() => {
     if (!deployments?.list || deployments.list.length === 0) return [];
@@ -218,7 +223,7 @@ export default function ServiceProviderDeploymentsCard({
         provider.id,
         currentOrganization.uuid,
         {
-          name: keyName,
+          id: keyName,
           displayName: apiKeyDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',
@@ -296,7 +301,7 @@ export default function ServiceProviderDeploymentsCard({
       setIsDeletingKey(true);
       await deleteProviderAPIKey(deleteTargetKeyName);
       setApiKeys((prev) =>
-        prev.filter((key) => (key.name || '').trim() !== deleteTargetKeyName)
+        prev.filter((key) => (key.id || '').trim() !== deleteTargetKeyName)
       );
 
       if (latestGeneratedKeyName === deleteTargetKeyName) {
@@ -456,25 +461,16 @@ export default function ServiceProviderDeploymentsCard({
                     />
                   </Typography>
                 </Box>
-                <Tooltip
-                  title={
-                    gateways.length === 0
-                      ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
-                      : ''
-                  }
-                  placement="top"
-                >
-                  <span>
-                    <Button
-                      variant="contained"
-                      size="medium"
-                      onClick={handleOpenApiKeyModal}
-                      disabled={gateways.length === 0}
-                    >
-                      Generate API Key
-                    </Button>
-                  </span>
-                </Tooltip>
+                <DisabledActionTooltip disabled={false}>
+                  <Button
+                    variant="contained"
+                    size="medium"
+                    onClick={handleOpenApiKeyModal}
+                    disabled={gateways.length === 0}
+                  >
+                    Generate API Key
+                  </Button>
+                </DisabledActionTooltip>
               </Stack>
 
               {keyError && (
@@ -527,12 +523,12 @@ export default function ServiceProviderDeploymentsCard({
                     <ListingTable.Body>
                       {apiKeys.map((key) => (
                         <ListingTable.Row
-                          key={`${key.name || key.maskedApiKey || 'api-key'}-${
+                          key={`${key.id || key.maskedApiKey || 'api-key'}-${
                             key.expiresAt || ''
                           }`}
                         >
                           <ListingTable.Cell>
-                            {key.name || '-'}
+                            {key.displayName || key.id || '-'}
                           </ListingTable.Cell>
                           <ListingTable.Cell>
                             {key.maskedApiKey || '-'}
@@ -551,9 +547,9 @@ export default function ServiceProviderDeploymentsCard({
                           <ListingTable.Cell align="right">
                             <Tooltip
                               title={
-                                key.name
+                                key.id
                                   ? 'Delete API key'
-                                  : 'Unable to delete key without a name'
+                                  : 'Unable to delete key without an identifier'
                               }
                             >
                               <span>
@@ -562,10 +558,10 @@ export default function ServiceProviderDeploymentsCard({
                                   color="error"
                                   onClick={() =>
                                     setDeleteTargetKeyName(
-                                      key.name?.trim() || null
+                                      key.id?.trim() || null
                                     )
                                   }
-                                  disabled={!key.name || isDeletingKey}
+                                  disabled={!key.id || isDeletingKey}
                                 >
                                   <Trash2 size={16} />
                                 </IconButton>

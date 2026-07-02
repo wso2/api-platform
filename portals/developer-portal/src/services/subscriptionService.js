@@ -50,17 +50,19 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
             name: apiMetadata ? apiMetadata.name : null,
             version: apiMetadata ? apiMetadata.version : null,
             ref_id: apiMetadata ? (apiMetadata.ref_id || '') : '',
+            type: apiMetadata ? (apiMetadata.type || null) : null,
         },
     };
 }
 
 function formatSubscriptionResponse(sub) {
     const plan = sub.dp_subscription_plan || {};
+    const api = sub.dp_api_metadata || {};
     return {
         subscriptionId: sub.uuid,
         subscriptionToken: sub.token,
         status: sub.status,
-        apiId: sub.api_uuid,
+        apiId: api.handle || sub.api_uuid,
         subscriptionPlanName: plan.name || null,
         createdBy: sub.created_by || null,
         createdAt: sub.created_at || null,
@@ -69,10 +71,22 @@ function formatSubscriptionResponse(sub) {
 
 const createSubscription = async (req, res) => {
     const orgId = req.orgId;
-    const { apiId, subscriptionPlanId: reqPlanId } = req.body;
+    const { apiId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
     const createdBy = req.user.sub;
 
+    if (!apiHandle || typeof apiHandle !== 'string' || !apiHandle.trim()) {
+        return res.status(400).json({
+            code: '400', message: 'Bad Request', description: 'apiId is required',
+        });
+    }
+
     try {
+        const apiId = await apiDao.getId(orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).json({
+                code: '404', message: 'Not Found', description: 'API not found',
+            });
+        }
         const apiMetadataResponse = await apiDao.get(orgId, apiId);
         if (!apiMetadataResponse || apiMetadataResponse.length === 0) {
             return res.status(404).json({
@@ -90,7 +104,7 @@ const createSubscription = async (req, res) => {
             });
         }
 
-        const matchedPlan = plans.find(p => p.uuid === reqPlanId);
+        const matchedPlan = plans.find(p => p.handle === reqPlanHandle);
         if (!matchedPlan) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request',
@@ -132,12 +146,13 @@ const createSubscription = async (req, res) => {
 
 const listSubscriptions = async (req, res) => {
     const orgId = req.orgId;
-    const apiId = req.query.apiId;
+    const apiHandle = req.query.apiId;
+    let apiId;
 
     try {
-        if (apiId) {
-            const apiMetadataResponse = await apiDao.get(orgId, apiId);
-            if (!apiMetadataResponse || apiMetadataResponse.length === 0) {
+        if (apiHandle) {
+            apiId = await apiDao.getId(orgId, apiHandle);
+            if (!apiId) {
                 return res.status(404).json({
                     code: '404', message: 'Not Found', description: 'API not found',
                 });
@@ -218,7 +233,7 @@ const updateSubscription = async (req, res) => {
 const changePlan = async (req, res) => {
     const orgId = req.orgId;
     const subscriptionId = req.params.subId;
-    const { planId: reqPlanId } = req.body;
+    const { apiId: reqApiHandle, planId: reqPlanHandle } = req.body;
 
     try {
         const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
@@ -228,10 +243,16 @@ const changePlan = async (req, res) => {
             });
         }
 
-        const apiId = existing.dp_api_metadata ? existing.dp_api_metadata.uuid : null;
+        const apiId = existing.api_uuid || (existing.dp_api_metadata ? existing.dp_api_metadata.uuid : null) || null;
         if (!apiId) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request', description: 'API not found for this subscription',
+            });
+        }
+        const apiHandle = existing.dp_api_metadata ? existing.dp_api_metadata.handle : null;
+        if (reqApiHandle && reqApiHandle !== apiHandle) {
+            return res.status(400).json({
+                code: '400', message: 'Bad Request', description: 'apiId does not match this subscription',
             });
         }
 
@@ -243,17 +264,18 @@ const changePlan = async (req, res) => {
         }
         const apiMetadata = apiMetadataResponse[0];
         const plans = apiMetadata.dp_subscription_plans || [];
-        const newPlan = plans.find(p => p.uuid === reqPlanId);
+        const newPlan = plans.find(p => p.handle === reqPlanHandle);
         if (!newPlan) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request', description: 'Subscription plan not found for this API',
             });
         }
+        const planId = newPlan.uuid;
 
         const previousPlan = existing.dp_subscription_plan;
 
         await sequelize.transaction(async (t) => {
-            const updated = await subDao.updatePlan(orgId, subscriptionId, reqPlanId, req.user.sub, t);
+            const updated = await subDao.updatePlan(orgId, subscriptionId, planId, req.user.sub, t);
             if (!updated) {
                 const err = new Error('Subscription not found');
                 err.status = 404;
@@ -271,7 +293,7 @@ const changePlan = async (req, res) => {
             });
         });
 
-        logUserAction('SUBSCRIPTION_PLAN_CHANGED', req, { orgId, subscriptionId, planId: reqPlanId });
+        logUserAction('SUBSCRIPTION_PLAN_CHANGED', req, { orgId, subscriptionId, planId });
         const updated = await subDao.get(orgId, subscriptionId, req.user.sub);
         return res.status(200).json(formatSubscriptionResponse(updated));
     } catch (error) {

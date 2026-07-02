@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -150,20 +151,21 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := strings.TrimSpace(req.GatewayId)
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
+	gatewayID := gateway.ID
 
 	websubAPI, err := s.websubAPIRepo.GetByUUID(apiUUID, orgID)
 	if err != nil {
@@ -251,6 +253,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -351,6 +354,7 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -430,6 +434,7 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
@@ -461,6 +466,7 @@ func (s *WebSubAPIDeploymentService) getWebSubAPIDeployment(apiUUID, deploymentI
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -509,6 +515,7 @@ func (s *WebSubAPIDeploymentService) getWebSubAPIDeployments(apiUUID, orgID stri
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		mapped, err := toAPIDeploymentResponse(
+			s.gatewayRepo,
 			d.DeploymentID,
 			d.Name,
 			d.GatewayID,

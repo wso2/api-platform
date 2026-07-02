@@ -348,6 +348,11 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `TLS_CERT_DIR` | `./data/certs` | Directory for TLS certificates |
 | `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
 | `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
+| `ARTIFACT_LIMITS_MAX_LLM_PROVIDERS_PER_ORG` | _unlimited_ | Max LLM providers per organization (`0` or unset = unlimited) |
+| `ARTIFACT_LIMITS_MAX_LLM_PROXIES_PER_ORG` | _unlimited_ | Max LLM proxies per organization (`0` or unset = unlimited) |
+| `ARTIFACT_LIMITS_MAX_MCP_PROXIES_PER_ORG` | _unlimited_ | Max MCP proxies per organization (`0` or unset = unlimited) |
+| `ARTIFACT_LIMITS_MAX_WEBSUB_APIS_PER_ORG` | _unlimited_ | Max WebSub APIs per organization (`0` or unset = unlimited) |
+| `ARTIFACT_LIMITS_MAX_WEBBROKER_APIS_PER_ORG` | _unlimited_ | Max WebBroker APIs per organization (`0` or unset = unlimited) |
 | `GATEWAY_ENABLE_VERSION_VERIFICATION` | `false` | Reject gateway connections with mismatched versions |
 | `API_KEY_HASHING_ALGORITHMS` | `sha256` | Comma-separated hash algorithms for API key storage |
 

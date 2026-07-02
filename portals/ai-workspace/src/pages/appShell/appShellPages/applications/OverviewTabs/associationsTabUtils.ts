@@ -23,7 +23,7 @@ export const ROWS_PER_PAGE_OPTIONS = [5, 10, 25];
 
 export type DrawerEntity = {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
 };
 
@@ -93,7 +93,7 @@ export function getVisibleKeys(
     .filter(
       (mappedKey) =>
         !entityKeys.some(
-          (entityKey) => (entityKey.name ?? '') === mappedKey.keyId
+          (entityKey) => (entityKey.id ?? '') === mappedKey.keyId
         )
     )
     .map((mappedKey) => ({

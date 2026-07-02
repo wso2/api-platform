@@ -23,7 +23,7 @@ class APIDocDTO {
     constructor(doc) {
         this.type = this.getDocType(doc.type);
         if (this.type !== constants.DOC_TYPES.DOCS.API_DEFINITION) {
-            this.names = doc.file_name;
+            this.names = doc.file_names;
         }
     }
 

@@ -146,7 +146,7 @@ function getLatestSelectableKey(
 ): UserAPIKey | null {
   return getLatestActiveKey(
     keys.filter((key) => {
-      const keyName = key.name ?? '';
+      const keyName = key.id ?? '';
       return Boolean(keyName) && !unavailableKeyNames.has(keyName);
     })
   );
@@ -302,7 +302,7 @@ function buildDisabledKeyStateByEntity(
     const disabledReasons = new Map<string, string>();
 
     keys.forEach((key) => {
-      const keyName = key.name ?? '';
+      const keyName = key.id ?? '';
       if (!keyName || !unavailableKeyNames.has(keyName)) {
         return;
       }
@@ -343,7 +343,7 @@ async function loadEntityKeys({
         updateMapSelection(
           prev,
           entityId,
-          latestKey?.name ? new Set([latestKey.name]) : new Set()
+          latestKey?.id ? new Set([latestKey.id]) : new Set()
         )
       );
     }
@@ -367,7 +367,7 @@ async function loadEntityKeys({
         updateMapSelection(
           prev,
           entityId,
-          latestKey?.name ? new Set([latestKey.name]) : new Set()
+          latestKey?.id ? new Set([latestKey.id]) : new Set()
         )
       );
     }
@@ -514,7 +514,7 @@ export default function AssociationsTab() {
     : reservedKeysLoadError;
 
   useEffect(() => {
-    if (!applicationId || !currentOrganization?.uuid) {
+    if (!applicationId || !currentOrganization?.uuid || !currentProject?.id) {
       setReservedKeyOwners(new Map());
       setReservedKeysLoadError(null);
       setIsReservedKeysLoading(false);
@@ -535,10 +535,9 @@ export default function AssociationsTab() {
 
         while (hasMoreApplications) {
           const applicationsResponse = await applicationApis.getApplications(
-            currentOrganization.uuid,
+            currentProject.id,
             apimBaseUrl,
             {
-              projectId: currentProject?.id || undefined,
               limit: pageSize,
               offset,
             }
@@ -561,7 +560,6 @@ export default function AssociationsTab() {
             application,
             keysResponse: await applicationApis.getApplicationAPIKeys(
               application.id,
-              currentOrganization.uuid,
               apimBaseUrl
             ),
           }))
@@ -577,7 +575,7 @@ export default function AssociationsTab() {
           }
 
           const ownerName =
-            result.value.application.name || result.value.application.id;
+            result.value.application.displayName || result.value.application.id;
 
           (result.value.keysResponse.list ?? []).forEach((key) => {
             if (!key.keyId) return;
@@ -723,9 +721,8 @@ export default function AssociationsTab() {
   const filteredAssociations = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
     if (!query) return allAssociations;
-
     return allAssociations.filter((association) => {
-      const haystack = [association.id, association.name, association.kind]
+      const haystack = [association.id, association.displayName, association.kind]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -1108,11 +1105,13 @@ export default function AssociationsTab() {
 
       if (mappedKeys.length > 0) {
         await Promise.all(
-          mappedKeys.map((key) =>
-            removeAPIKey(resolveMappedKeyId(key), {
-              entityID: resolveEntityId(key),
-            })
-          )
+          mappedKeys
+            .filter((key) => Boolean(resolveEntityId(key)))
+            .map((key) =>
+              removeAPIKey(resolveMappedKeyId(key), {
+                entityID: resolveEntityId(key) as string,
+              })
+            )
         );
       }
 
@@ -1228,11 +1227,15 @@ export default function AssociationsTab() {
   const handleRemoveKey = async (associationId: string, key: MappedAPIKey) => {
     const mappedKeyId = resolveMappedKeyId(key);
     if (removingKeyIds.has(mappedKeyId)) return;
-
+    const entityID = resolveEntityId(key);
+    if (!entityID) {
+      showSnackbar('Associated entity id is missing.', 'error');
+      return;
+    }
     setRemovingKeyIds((prev) => new Set(prev).add(mappedKeyId));
 
     try {
-      await removeAPIKey(mappedKeyId, { entityID: resolveEntityId(key) });
+      await removeAPIKey(mappedKeyId, { entityID });
       setApiKeysMap((prev) => {
         const next = new Map(prev);
         const currentKeys = next.get(associationId) ?? [];
@@ -1285,14 +1288,14 @@ export default function AssociationsTab() {
       filterItemsByQuery(
         orgProviders,
         providerDrawerSearch,
-        (provider) => [provider.name, provider.description, provider.template]
+        (provider) => [provider.displayName, provider.description, provider.template]
       ),
     [orgProviders, providerDrawerSearch]
   );
   const filteredOrgProxies = useMemo(
     () =>
       filterItemsByQuery(orgProxies, proxyDrawerSearch, (proxy) => [
-        proxy.name,
+        proxy.displayName,
         proxy.description,
         proxy.version,
         proxy.context,
@@ -1351,7 +1354,7 @@ export default function AssociationsTab() {
     () =>
       new Set(
         managedAvailableKeys
-          .map((key) => key.name ?? '')
+          .map((key) => key.id ?? '')
           .filter(
             (keyName) => Boolean(keyName) && unavailableKeyNames.has(keyName)
           )
@@ -1375,9 +1378,9 @@ export default function AssociationsTab() {
   );
   const hasAddableManagedKeys = managedAvailableKeys.some(
     (key) =>
-      key.name &&
-      !managedMappedKeyStatusMap.has(key.name) &&
-      !managedDisabledKeyNames.has(key.name)
+      key.id &&
+      !managedMappedKeyStatusMap.has(key.id) &&
+      !managedDisabledKeyNames.has(key.id)
   );
 
   return (
@@ -1599,9 +1602,9 @@ export default function AssociationsTab() {
                 >
                   {getInitials(
                     (managedIsProvider
-                      ? managedProvider?.name
-                      : managedProxy?.name) ||
-                      manageKeysDrawerTarget.name ||
+                      ? managedProvider?.displayName
+                      : managedProxy?.displayName) ||
+                      manageKeysDrawerTarget.displayName ||
                       ''
                   )}
                 </Avatar>
@@ -1614,9 +1617,9 @@ export default function AssociationsTab() {
                   >
                     <Typography variant="body2" fontWeight={600} noWrap>
                       {(managedIsProvider
-                        ? managedProvider?.name
-                        : managedProxy?.name) ||
-                        manageKeysDrawerTarget.name ||
+                        ? managedProvider?.displayName
+                        : managedProxy?.displayName) ||
+                        manageKeysDrawerTarget.displayName ||
                         '—'}
                     </Typography>
                     {managedIsProvider && managedProviderTemplate ? (
@@ -1773,7 +1776,7 @@ export default function AssociationsTab() {
         <DialogContent>
           <DialogContentText>
             Are you sure you want to remove{' '}
-            <strong>{deleteTarget?.name || deleteTarget?.id}</strong> from this
+            <strong>{deleteTarget?.displayName || deleteTarget?.id}</strong> from this
             application?
           </DialogContentText>
         </DialogContent>

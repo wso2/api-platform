@@ -55,7 +55,7 @@ function AddNewProjectForm() {
     try {
       setIsSubmitting(true);
       await createProject({
-        name: trimmedName,
+        displayName: trimmedName,
         ...(description.trim() ? { description: description.trim() } : {}),
       });
       showSnackbar('Project created successfully.', 'success');

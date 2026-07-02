@@ -17,6 +17,7 @@
  */
 const { APIMetadata, APILabels, APITags } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
+const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
 const APIContent = require('../models/apiContent');
 const Labels = require('../models/label');
 const Tags = require('../models/tag');
@@ -152,7 +153,8 @@ const get = async (orgId, apiId, t) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
@@ -205,7 +207,8 @@ const getByCondition = async (condition, t, tags) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             tagsInclude
             ],
@@ -239,7 +242,8 @@ const list = async (orgId, viewName, t) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
@@ -287,7 +291,8 @@ const listFromAllViews = async (orgId, t) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
@@ -348,7 +353,7 @@ const searchFallback = async (orgId, searchTerm, viewName, t) => {
         },
         include: [
             { model: APIContent, where: { type: constants.DOC_TYPES.IMAGES }, required: false },
-            { model: SubscriptionPlan, through: { attributes: [] }, required: false },
+            { model: SubscriptionPlan, through: { attributes: [] }, required: false, include: [{ model: SubscriptionPlanLimit, as: 'limits' }] },
             {
                 model: Labels,
                 attributes: ['name'],
@@ -399,6 +404,51 @@ const getId = async (orgId, apiHandle) => {
             where: {
                 handle: apiHandle,
                 org_uuid: orgId
+            }
+        })
+        return api?.uuid;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+// Same as getId, but also constrains the match to a specific `type` (e.g. 'MCP') in a
+// single query — used by resource families that only manage one API type.
+const getIdByType = async (orgId, apiHandle, type) => {
+
+    try {
+        const api = await APIMetadata.findOne({
+            attributes: ['uuid'],
+            where: {
+                handle: apiHandle,
+                org_uuid: orgId,
+                type
+            }
+        })
+        return api?.uuid;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+// Inverse of getIdByType — matches any type EXCEPT the excluded one. Used by /apis/*
+// once a type gets its own dedicated resource family (e.g. MCP via /mcp-servers), so
+// /apis/* stops resolving handles that belong to that dedicated family.
+const getIdExcludingType = async (orgId, apiHandle, excludedType) => {
+
+    try {
+        const api = await APIMetadata.findOne({
+            attributes: ['uuid'],
+            where: {
+                handle: apiHandle,
+                org_uuid: orgId,
+                type: { [Op.ne]: excludedType }
             }
         })
         return api?.uuid;
@@ -513,6 +563,8 @@ module.exports = {
     search,
     searchFallback,
     getId,
+    getIdByType,
+    getIdExcludingType,
     getHandle,
     getIdByRef,
     getSpecs,

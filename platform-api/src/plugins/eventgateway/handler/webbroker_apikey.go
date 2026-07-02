@@ -54,9 +54,9 @@ func NewWebBrokerAPIKeyHandler(webbrokerAPIService *egservice.WebBrokerAPIServic
 
 // RegisterRoutes registers WebBroker API key routes
 func (h *WebBrokerAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys/{keyName}", h.UpdateAPIKey)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys/{keyName}", h.DeleteAPIKey)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/api-keys", h.CreateAPIKey)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/api-keys/{apiKeyId}", h.UpdateAPIKey)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/api-keys/{apiKeyId}", h.DeleteAPIKey)
 }
 
 // CreateAPIKey handles POST /api/v0.9/webbroker-apis/:apiId/api-keys
@@ -67,7 +67,7 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("webBrokerApiId")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -93,23 +93,16 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 	}
 
 	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
 	} else {
-		displayName := ""
-		if req.DisplayName != nil {
-			displayName = *req.DisplayName
-		}
-		generatedName, err := utils.GenerateHandle(displayName, nil)
+		generatedName, err := utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Failed to generate API key name"))
 			return
 		}
 		name = generatedName
-		req.Name = &name
-	}
-	if req.DisplayName == nil || *req.DisplayName == "" {
-		req.DisplayName = &name
+		req.Id = &name
 	}
 
 	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, orgID, userId, &req); err != nil {
@@ -128,7 +121,7 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 
 	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
 		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Name,
+		KeyId:   req.Id,
 		Message: "API key created and broadcasted to gateways successfully",
 	})
 }
@@ -141,13 +134,13 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
+	apiHandle := r.PathValue("webBrokerApiId")
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
 	}
 
-	keyName := r.PathValue("keyName")
+	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Key name is required"))
 		return
@@ -211,8 +204,8 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiHandle := r.PathValue("apiId")
-	keyName := r.PathValue("keyName")
+	apiHandle := r.PathValue("webBrokerApiId")
+	keyName := r.PathValue("apiKeyId")
 
 	if apiHandle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))

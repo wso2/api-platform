@@ -49,7 +49,6 @@ type SelectableProject = {
   id: string;
   name: string;
   description?: string;
-  handler?: string;
 };
 
 type Props = {

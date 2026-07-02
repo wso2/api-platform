@@ -57,8 +57,8 @@
       </a>
         {{/unless}}
       {{/if}}
-      {{#in apiMetadata.type values="REST,WS,WEBSUB,GRAPHQL,MCP"}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.handle}}/docs/specification">
+      {{#in apiMetadata.type values="RestApi,WS,WebSubApi,GRAPHQL,Mcp"}}
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.id}}/docs/specification">
         <i class="bi bi-book"></i> Documentation
       </a>
       {{else}}
@@ -74,7 +74,7 @@
       {{/unless}}
       {{/if}}
       {{#if showApiKeysNav}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.handle}}/api-keys">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.id}}/api-keys">
         <i class="bi bi-key"></i> API Keys
       </a>
       {{/if}}

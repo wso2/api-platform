@@ -106,7 +106,7 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
 	}
 
 	createdBy, _ := middleware.GetUserIDFromRequest(r)
-	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
+	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Id, req.DisplayName, description, req.Endpoints,
 		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
 		errMsg := err.Error()
@@ -247,7 +247,6 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract UUID path parameter
 	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -255,14 +254,26 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req api.UpdateGatewayRequest
+	var req api.GatewayResponse
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
+	if req.Id != nil && *req.Id != gatewayId {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway id is immutable and cannot be changed"))
+		return
+	}
+
+	if req.DisplayName == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"displayName is required"))
+		return
+	}
+
 	updatedBy, _ := middleware.GetUserIDFromRequest(r)
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties)
+	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)
@@ -455,51 +466,6 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"message": "Token revoked successfully"})
 }
 
-// GetGatewayArtifacts handles GET /api/v0.9/gateways/{gatewayId}/live-proxy-artifacts
-func (h *GatewayHandler) GetGatewayArtifacts(w http.ResponseWriter, r *http.Request) {
-	orgId, exists := middleware.GetOrganizationFromRequest(r)
-	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	gatewayId := r.PathValue("gatewayId")
-	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Gateway ID is required"))
-		return
-	}
-
-	// Parse artifact type filter parameter
-	artifactType := r.URL.Query().Get("artifactType")
-	// Validate artifactType if provided
-	if artifactType != "" {
-		if !constants.ValidArtifactTypes[artifactType] {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid artifact type. Valid values are: "+constants.ArtifactTypeAPI+", "+constants.ArtifactTypeMCP+
-					", "+constants.ArtifactTypeAPIProduct))
-			return
-		}
-	}
-
-	// Get paginated artifacts for the gateway
-	artifactListResponse, err := h.gatewayService.GetGatewayArtifacts(gatewayId, orgId, artifactType)
-	if err != nil {
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
-			return
-		}
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get gateway artifacts"))
-		return
-	}
-
-	// Return paginated artifact list
-	httputil.WriteJSON(w, http.StatusOK, artifactListResponse)
-}
-
 // GetGatewayManifest handles GET /api/v0.9/gateways/{gatewayId}/manifest
 // Called by APIM to retrieve the manifest pushed by the gateway controller on connect.
 func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Request) {
@@ -596,7 +562,7 @@ func (h *GatewayHandler) GetCustomPolicy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	policyUUID := r.PathValue("customPolicyUuid")
+	policyUUID := r.PathValue("gatewayCustomPolicyId")
 	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -632,7 +598,7 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	policyUUID := r.PathValue("customPolicyUuid")
+	policyUUID := r.PathValue("gatewayCustomPolicyId")
 	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -695,11 +661,10 @@ func (h *GatewayHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.ListTokens)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.RotateToken)
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{gatewayId}/tokens/{tokenId}", h.RevokeToken)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/live-proxy-artifacts", h.GetGatewayArtifacts)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/manifest", h.GetGatewayManifest)
 
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies", h.ListCustomPolicies)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateway-custom-policies/sync", h.SyncCustomPolicy)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.GetCustomPolicy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.DeleteCustomPolicy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies/{gatewayCustomPolicyId}/versions/{version}", h.GetCustomPolicy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateway-custom-policies/{gatewayCustomPolicyId}/versions/{version}", h.DeleteCustomPolicy)
 }

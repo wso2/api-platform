@@ -26,6 +26,7 @@ import (
 	"log/slog"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -42,6 +43,7 @@ type WebBrokerAPIService struct {
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 // NewWebBrokerAPIService creates a new WebBrokerAPIService instance
@@ -53,6 +55,7 @@ func NewWebBrokerAPIService(
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
+	cfg *config.Server,
 ) *WebBrokerAPIService {
 	return &WebBrokerAPIService{
 		repo:                 repo,
@@ -62,6 +65,7 @@ func NewWebBrokerAPIService(
 		apiUtil:              apiUtil,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -70,7 +74,7 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if utils.ValueOrEmpty(req.Id) == "" || req.Name == "" || req.Version == "" {
+	if utils.ValueOrEmpty(req.Id) == "" || req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if req.ProjectId == "" {
@@ -102,12 +106,12 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		return nil, constants.ErrWebBrokerAPIExists
 	}
 
-	// Check org limit
+	// Enforce the per-organization WebBroker API limit (unlimited when not configured).
 	count, err := s.repo.Count(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count existing WebBroker APIs: %w", err)
 	}
-	if count >= constants.MaxWebBrokerAPIsPerOrganization {
+	if config.LimitReached(count, s.cfg.ArtifactLimits.MaxWebBrokerAPIsPerOrg) {
 		return nil, constants.ErrWebBrokerAPILimitReached
 	}
 
@@ -133,13 +137,13 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		Handle:           handle,
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
-		Name:             req.Name,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
 		Configuration: model.WebBrokerAPIConfiguration{
-			Name:              req.Name,
+			Name:              req.DisplayName,
 			Version:           req.Version,
 			Context:           req.Context,
 			Transport:         transport,
@@ -222,9 +226,9 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		return nil, constants.ErrInvalidInput
 	}
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
-		return nil, constants.ErrInvalidInput
+		return nil, constants.ErrHandleImmutable
 	}
-	if req.Name == "" || req.Version == "" {
+	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	// Get existing
@@ -258,13 +262,13 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	existing.Name = req.Name
+	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.UpdatedBy = updatedBy
 	existing.LifeCycleStatus = lifeCycleStatus
 	existing.Configuration = model.WebBrokerAPIConfiguration{
-		Name:              req.Name,
+		Name:              req.DisplayName,
 		Version:           req.Version,
 		Context:           req.Context,
 		Transport:         transport,
@@ -377,7 +381,7 @@ func mapWebBrokerAPIModelToAPI(m *model.WebBrokerAPI, apiUtil *utils.APIUtil) *a
 
 	result := &api.WebBrokerAPI{
 		Id:                utils.StringPtrIfNotEmpty(m.Handle),
-		Name:              m.Name,
+		DisplayName:       m.Name,
 		Version:           m.Version,
 		ProjectId:         m.ProjectUUID,
 		Description:       &desc,
@@ -587,7 +591,7 @@ func mapWebBrokerAPIModelToListItem(m *model.WebBrokerAPI) *api.WebBrokerAPIList
 
 	return &api.WebBrokerAPIListItem{
 		Id:              utils.StringPtrIfNotEmpty(m.Handle),
-		Name:            utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:     m.Name,
 		Version:         utils.StringPtrIfNotEmpty(m.Version),
 		ProjectId:       utils.StringPtrIfNotEmpty(m.ProjectUUID),
 		Context:         m.Configuration.Context,

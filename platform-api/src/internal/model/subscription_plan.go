@@ -32,12 +32,14 @@ const (
 type SubscriptionPlanUpdate struct {
 	Handle             *string
 	Name               *string
-	BillingPlan        *string
 	StopOnQuotaReach   *bool
 	ThrottleLimitCount *int
 	ThrottleLimitUnit  *string
-	ExpiryTime         *time.Time
-	Status             *SubscriptionPlanStatus
+	// ClearLimit removes the plan's throttling limit entirely. Set when the caller
+	// submits an explicit empty "limits" array. Ignored if ThrottleLimitCount is set.
+	ClearLimit bool
+	ExpiryTime *time.Time
+	Status     *SubscriptionPlanStatus
 }
 
 // SubscriptionPlan represents an organization-scoped subscription plan
@@ -51,7 +53,6 @@ type SubscriptionPlan struct {
 	UUID               string                 `json:"id" db:"uuid"`
 	Handle             string                 `json:"handle" db:"handle"`
 	Name               string                 `json:"name" db:"name"`
-	BillingPlan        string                 `json:"billingPlan,omitempty" db:"billing_plan"`
 	StopOnQuotaReach   bool                   `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`

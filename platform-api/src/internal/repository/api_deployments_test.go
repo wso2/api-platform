@@ -135,12 +135,12 @@ func createTestGateway(t *testing.T, db *database.DB, gatewayUUID, orgUUID strin
 
 	// Create gateway directly (organization should already exist from createTestAPI)
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, vhost,
+		INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties,
 			is_critical, gateway_functionality_type, is_active, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	_, err := db.Exec(query, gatewayUUID, orgUUID, "test-gateway-"+gatewayUUID, "Test Gateway",
-		"", "{}", "api.example.com", false, "regular", false)
+		"", "{}", false, "regular", false)
 	if err != nil {
 		t.Fatalf("Failed to create test gateway: %v", err)
 	}

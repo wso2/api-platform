@@ -71,7 +71,7 @@
           {{#if hasSubscription}}<div class="api-card-ribbon-wrap"><div class="api-card-ribbon-label">Subscribed</div></div>{{/if}}
 
           <!-- Top: icon + name + version + type badge -->
-          <div class="api-card-top" data-href="{{../baseUrl}}/mcp/{{handle}}" style="cursor:pointer;">
+          <div class="api-card-top" data-href="{{../baseUrl}}/mcp/{{id}}" style="cursor:pointer;">
             {{#if apiImageMetadata.api-icon}}
             <img src="{{apiImageMetadata.api-icon}}" class="api-card-img" alt="{{or apiTitle name}}" />
             {{else}}
@@ -91,7 +91,7 @@
           </div>
 
           <!-- Description -->
-          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/mcp/{{handle}}" style="cursor:pointer;">{{description}}</p>
+          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/mcp/{{id}}" style="cursor:pointer;">{{description}}</p>
 
           <!-- Tags -->
           <div class="api-card-tags">
@@ -104,16 +104,16 @@
           {{#if subscriptionPlans.length}}
           <div class="api-card-footer">
             <div class="api-card-footer-left">
-              <a href="{{../baseUrl}}/mcp/{{handle}}#subscriptionPlans" class="api-plans-link">
+              <a href="{{../baseUrl}}/mcp/{{id}}#subscriptionPlans" class="api-plans-link">
                 <i class="bi bi-tag"></i> {{subscriptionPlans.length}} plans
               </a>
             </div>
             {{#if hasSubscription}}
-            <a href="{{../baseUrl}}/mcp/{{handle}}#subscriptionPlans" class="api-card-view-sub-btn">
+            <a href="{{../baseUrl}}/mcp/{{id}}#subscriptionPlans" class="api-card-view-sub-btn">
               <i class="bi bi-check-circle"></i> View subscription
             </a>
             {{else}}
-            <a href="{{../baseUrl}}/mcp/{{handle}}#subscriptionPlans"
+            <a href="{{../baseUrl}}/mcp/{{id}}#subscriptionPlans"
                class="dp-btn dp-btn--primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
             {{/if}}

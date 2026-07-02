@@ -156,6 +156,10 @@ export default function LLMProxyDefinitionTab() {
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [updateSpecModalOpen, setUpdateSpecModalOpen] = useState(false);
   const showSnackbar = useAIWorkspaceSnackbar();
+  // The OpenAPI definition is control-plane-only metadata: it is NOT part of the
+  // gateway runtime artifact (the proxy deployment spec carries no OpenAPI), so it
+  // stays editable even for gateway-created (read-only) proxies.
+  const isReadOnlyProxy = false;
 
   useEffect(() => {
     setEditorText(proxy?.openapi || '');
@@ -178,15 +182,18 @@ export default function LLMProxyDefinitionTab() {
   const hasDefinition = editorText.trim().length > 0;
 
   const updateEditorText = (nextText: string) => {
+    if (isReadOnlyProxy) return;
     setEditorText(nextText);
     setLocalProxy((prev) => (prev ? { ...prev, openapi: nextText } : prev));
   };
 
   const handleUploadClick = () => {
+    if (isReadOnlyProxy) return;
     fileInputRef.current?.click();
   };
 
   const applySpecificationFromText = (text: string, sourceName?: string) => {
+    if (isReadOnlyProxy) return;
     const parsed = parseOpenApiSpec(text);
     const nextValidationError = validateOpenApiText(text, parsed);
     if (nextValidationError) {
@@ -202,6 +209,7 @@ export default function LLMProxyDefinitionTab() {
   };
 
   const handleFetchAndClose = async (url: string) => {
+    if (isReadOnlyProxy) return;
     const nextUrl = url.trim();
     if (!nextUrl) {
       showSnackbar('Enter a valid OpenAPI URL first.', 'error');
@@ -227,6 +235,7 @@ export default function LLMProxyDefinitionTab() {
   };
 
   const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    if (isReadOnlyProxy) return;
     const file = e.target.files?.[0];
     if (!file) return;
 

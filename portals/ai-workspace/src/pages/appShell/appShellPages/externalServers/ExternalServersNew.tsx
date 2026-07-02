@@ -243,19 +243,17 @@ export default function ExternalServersNew(): JSX.Element {
     let resolvedAuthValue = authHeaderValue.trim();
     if (authHeaderName.trim() && resolvedAuthValue && !resolvedAuthValue.includes('{{ secret ')) {
       try {
-        const serverId = generateServerId(serverName);
-        const secretHandle = generateSecretHandle(serverId, 'auth');
+        const secretHandle = generateSecretHandle();
         const secretResponse = await createSecret(
           {
-            handle: secretHandle,
-            name: `${serverName.trim()} upstream auth`,
+            id: secretHandle,
+            displayName: `${serverName.trim()} upstream auth`,
             description: `Auto-generated secret for MCP server ${serverName.trim()}`,
             value: resolvedAuthValue,
             type: 'GENERIC',
           },
-          PLATFORM_API_BASE_URL
         );
-        resolvedAuthValue = buildSecretPlaceholder(secretResponse.handle);
+        resolvedAuthValue = buildSecretPlaceholder(secretResponse.id);
       } catch (err) {
         showSnackbar('Failed to encrypt upstream auth credential', 'error');
         return;
@@ -264,7 +262,7 @@ export default function ExternalServersNew(): JSX.Element {
 
     const payload: CreateMCPServerRequest = {
       id: generateServerId(serverName),
-      name: serverName.trim(),
+      displayName: serverName.trim(),
       description: serverDescription.trim() || undefined,
       version: normalizeVersion(serverVersion.trim()),
       projectId: effectiveProject.id,
@@ -308,8 +306,7 @@ export default function ExternalServersNew(): JSX.Element {
 
     try {
       setIsCreating(true);
-      const organizationId = currentOrganization?.uuid ?? '';
-      const created = await mcpProxiesApis.createMCPServer(payload, organizationId, PLATFORM_API_BASE_URL);
+      const created = await mcpProxiesApis.createMCPServer(payload, PLATFORM_API_BASE_URL);
       showSnackbar('Successfully created MCP Proxy.', 'success');
       navigate(
         buildProjectPath(

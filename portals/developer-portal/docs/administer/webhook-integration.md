@@ -133,6 +133,7 @@ All events share this top-level shape:
 
 - `org.ref_id` is the control-plane reference for the organisation; falls back to the internal org UUID when the org has not yet been linked to the control plane.
 - `encrypted_fields` lists the names of fields within `data` that carry an encrypted envelope. Always present — empty (`[]`) for events with no sensitive fields.
+- `data.api.type` uses the same Kind naming as the control plane: `RestApi`, `Mcp`, `WebSubApi`, `SOAP`, `WS`, or `GRAPHQL`.
 
 The `data` field varies by event type and is described below.
 
@@ -158,7 +159,8 @@ Fired when a developer generates a new API key for an API.
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "subscription": {
       "ref_id": "sub-uuid",
@@ -167,7 +169,8 @@ Fired when a developer generates a new API key for an API.
     },
     "application": {
       "id": "app-uuid",
-      "name": "My Mobile App"
+      "display_name": "My Mobile App",
+      "handle": "my-mobile-app"
     },
     "key": {
       "wrappedKey": "<base64>",
@@ -198,7 +201,8 @@ Fired when a developer rotates an existing key. The `key_id` and `name` are unch
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "key": {
       "wrappedKey": "<base64>",
@@ -226,7 +230,8 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "subscription": {
       "ref_id": "sub-uuid",
@@ -241,7 +246,7 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
 
 ### `apikey.application_updated`
 
-Fired whenever a single key's application association changes: the key is associated with an app, dissociated, or its app is renamed or deleted. This is a **per-key** event — like `apikey.generated`/`apikey.regenerated`/`apikey.revoked`, `key_id` identifies the one key affected. The association is optional and exists for analytics attribution only — it has no effect on key validity or authorization.
+Fired whenever a single key's application association changes: the key is associated with an app, dissociated, or its app is deleted. This is a **per-key** event — like `apikey.generated`/`apikey.regenerated`/`apikey.revoked`, `key_id` identifies the one key affected. The association is optional and exists for analytics attribution only — it has no effect on key validity or authorization.
 
 ```json
 {
@@ -253,18 +258,20 @@ Fired whenever a single key's application association changes: the key is associ
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "application": {
       "id": "app-uuid",
-      "name": "My App"
+      "display_name": "My App",
+      "handle": "my-app"
     }
   }
 }
 ```
 
 - `application` is `null` when the key's association was removed, or when the key's app was deleted
-- Renaming an app fires this event once per key currently associated with it, each with the app's new `name`
+- Renaming an app does **not** fire this event — the key-to-application association is unchanged, only the app's own `display_name`/`handle` change; see [`application.updated`](#applicationupdated)
 - Deleting an app fires this event once per key currently associated with it, each with `application: null` — there is no separate "deleted" variant
 
 ### `subscription.created`
@@ -285,7 +292,8 @@ Fired when a developer subscribes to an API. The subscription token is delivered
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "token": {
       "wrappedKey": "<base64>",
@@ -319,7 +327,8 @@ Fired when a subscription's status changes (ACTIVE ↔ INACTIVE). No encrypted f
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "status": "INACTIVE"
   }
@@ -348,7 +357,8 @@ Fired when a developer switches their subscription to a different plan. The subs
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     }
   }
 }
@@ -375,7 +385,8 @@ Fired when a developer regenerates a subscription token. The old token is immedi
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     },
     "token": {
       "wrappedKey": "<base64>",
@@ -409,7 +420,8 @@ Fired when a developer unsubscribes. Your subscriber should revoke access for th
     "api": {
       "name": "Order API",
       "version": "v1.0",
-      "ref_id": "cp-api-uuid"
+      "ref_id": "cp-api-uuid",
+      "type": "RestApi"
     }
   }
 }
@@ -427,11 +439,15 @@ Fired when a developer creates an application.
   "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
-    "name": "My Mobile App",
-    "description": "Application used to call Weather APIs."
+    "display_name": "My Mobile App",
+    "handle": "my-mobile-app",
+    "description": "Application used to call Weather APIs.",
+    "type": "web"
   }
 }
 ```
+
+`type` is always `"web"` — applications no longer have a configurable type.
 
 ### `application.updated`
 
@@ -443,13 +459,17 @@ Fired when a developer renames an application or changes its details. `data` car
   "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
-    "name": "My Mobile App (renamed)",
-    "description": "Application used to call Weather APIs."
+    "display_name": "My Mobile App (renamed)",
+    "handle": "my-mobile-app",
+    "description": "Application used to call Weather APIs.",
+    "type": "web"
   }
 }
 ```
 
-If the application has API keys associated with it (see [`apikey.application_updated`](#apikeyapplication_updated)), one such event is fired per associated key with the new name, alongside this event.
+`type` is always `"web"` — applications no longer have a configurable type.
+
+Unlike `application.deleted`, this does **not** fan out to a per-key `apikey.application_updated` event — the key-to-application association is unchanged by a rename, so a subscriber that keys its own records off `application_id` can pick up the new name from this single event.
 
 ### `application.deleted`
 
@@ -461,7 +481,8 @@ Fired when a developer deletes an application, after the application has been re
   "encrypted_fields": [],
   "data": {
     "application_id": "app-uuid",
-    "name": "My Mobile App"
+    "display_name": "My Mobile App",
+    "handle": "my-mobile-app"
   }
 }
 ```

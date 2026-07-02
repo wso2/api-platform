@@ -517,11 +517,31 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
+func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, description string, endpoints []string, isCritical bool,
 	functionalityType, version, createdBy string, properties map[string]interface{}) (*api.GatewayResponse, error) {
+	// Determine handle: use provided id or auto-generate from displayName
+	var name string
+	if id != nil && strings.TrimSpace(*id) != "" {
+		name = strings.TrimSpace(*id)
+	} else {
+		var err error
+		name, err = utils.GenerateHandle(displayName, func(h string) bool {
+			existing, _ := s.gatewayRepo.GetByHandleAndOrgID(h, orgID)
+			return existing != nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate gateway handle: %w", err)
+		}
+	}
+
 	// 1. Validate inputs
-	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
+	if err := s.validateGatewayInput(orgID, name, displayName, endpoints, functionalityType); err != nil {
 		return nil, err
+	}
+
+	normalizedEndpoints := make([]string, len(endpoints))
+	for i, endpoint := range endpoints {
+		normalizedEndpoints[i] = strings.TrimSpace(endpoint)
 	}
 
 	version = strings.TrimSpace(version)
@@ -571,7 +591,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Name:              displayName,
 		Description:       description,
 		Properties:        properties,
-		Vhost:             vhost,
+		Endpoints:         normalizedEndpoints,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
 		Version:           version,
@@ -591,7 +611,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 	}
 
 	// 7. Return GatewayResponse
-	return gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway), nil
 }
 
 // ListGateways retrieves all gateways with constitution-compliant envelope structure
@@ -613,7 +633,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*api.GatewayListResponse, 
 	// Convert to API types
 	responses := make([]api.GatewayResponse, 0, len(gateways))
 	for _, gw := range gateways {
-		if resp := gatewayModelToAPI(gw); resp != nil {
+		if resp := s.gatewayModelToAPI(gw); resp != nil {
 			responses = append(responses, *resp)
 		}
 	}
@@ -632,12 +652,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*api.GatewayListResponse, 
 
 // GetGateway retrieves a gateway by ID
 func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayResponse, error) {
-	// Validate UUID format
-	if _, err := uuid.Parse(gatewayId); err != nil {
-		return nil, errors.New("invalid UUID format")
-	}
-
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
@@ -646,39 +661,32 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 		return nil, errors.New("gateway not found")
 	}
 
-	if gateway.OrganizationID != orgId {
-		return nil, errors.New("gateway not found")
-	}
-
-	return gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway), nil
 }
 
 // UpdateGateway updates gateway details
-func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, description, displayName *string,
-	isCritical *bool, properties *map[string]interface{}) (*api.GatewayResponse, error) {
-	// Get existing gateway
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *api.GatewayResponse) (*api.GatewayResponse, error) {
+	// Get existing gateway by handle
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, err
 	}
 	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
-	if gateway.OrganizationID != orgId {
-		return nil, constants.ErrGatewayNotFound
-	}
 
-	if description != nil {
-		gateway.Description = *description
+	gateway.Name = req.DisplayName
+	if req.Description != nil {
+		gateway.Description = *req.Description
 	}
-	if displayName != nil {
-		gateway.Name = *displayName
+	if req.Endpoints != nil {
+		gateway.Endpoints = *req.Endpoints
 	}
-	if isCritical != nil {
-		gateway.IsCritical = *isCritical
+	if req.IsCritical != nil {
+		gateway.IsCritical = *req.IsCritical
 	}
-	if properties != nil {
-		gateway.Properties = *properties
+	if req.Properties != nil {
+		gateway.Properties = *req.Properties
 	}
 	gateway.UpdatedBy = updatedBy
 	gateway.UpdatedAt = time.Now()
@@ -692,37 +700,28 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, descr
 		_ = s.auditRepo.Record("UPDATE", gateway.ID, "gateway", orgId, updatedBy)
 	}
 
-	return gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway), nil
 }
 
 // DeleteGateway deletes a gateway and all associated tokens (CASCADE)
 func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error {
-	// Validate UUID format
-	if _, err := uuid.Parse(gatewayID); err != nil {
-		return errors.New("invalid UUID format")
-	}
-
-	// Verify gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	// Verify gateway exists and belongs to organization (gatewayID is now the handle)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgID)
 	if err != nil {
 		return err
 	}
 	if gateway == nil {
 		return constants.ErrGatewayNotFound
 	}
-	if gateway.OrganizationID != orgID {
-		// Return same error for both "not found" and "wrong organization" (security through obscurity)
-		return constants.ErrGatewayNotFound
-	}
 
-	// Delete gateway (FK CASCADE will automatically remove tokens and deployments; association_mappings cleanup is handled by the repository)
-	err = s.gatewayRepo.Delete(gatewayID, orgID)
+	// Delete gateway by UUID (FK CASCADE will automatically remove tokens and deployments; association_mappings cleanup is handled by the repository)
+	err = s.gatewayRepo.Delete(gateway.ID, orgID)
 	if err != nil {
 		return err
 	}
 
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", gatewayID, "gateway", orgID, deletedBy)
+		_ = s.auditRepo.Record("DELETE", gateway.ID, "gateway", orgID, deletedBy)
 	}
 
 	return nil
@@ -758,18 +757,15 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 
 // ListTokens retrieves all active tokens for a gateway
 func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoResponse, error) {
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
 		return nil, errors.New("gateway not found")
 	}
-	if gateway.OrganizationID != orgId {
-		return nil, errors.New("gateway not found")
-	}
 
-	activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gatewayId)
+	activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gateway.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tokens: %w", err)
 	}
@@ -797,19 +793,16 @@ func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoRes
 // RotateToken generates a new token for a gateway (max 2 active tokens)
 func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.TokenRotationResponse, error) {
 	// 1. Validate gateway exists
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
 		return nil, errors.New("gateway not found")
 	}
-	if gateway.OrganizationID != orgId {
-		return nil, errors.New("gateway not found")
-	}
 
 	// 2. Count active tokens
-	activeCount, err := s.gatewayRepo.CountActiveTokens(gatewayId)
+	activeCount, err := s.gatewayRepo.CountActiveTokens(gateway.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count active tokens: %w", err)
 	}
@@ -835,7 +828,7 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 	}
 	gatewayToken := &model.GatewayToken{
 		ID:        tokenId,
-		GatewayID: gatewayId,
+		GatewayID: gateway.ID,
 		TokenHash: tokenHash,
 		Salt:      "",
 		Status:    constants.GatewayTokenStatusActive,
@@ -855,14 +848,11 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 
 // RevokeToken revokes a specific token for a gateway
 func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string) error {
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return errors.New("gateway not found")
-	}
-	if gateway.OrganizationID != orgId {
 		return errors.New("gateway not found")
 	}
 
@@ -873,7 +863,7 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 	if token == nil {
 		return errors.New("token not found")
 	}
-	if token.GatewayID != gatewayId {
+	if token.GatewayID != gateway.ID {
 		return errors.New("token not found")
 	}
 
@@ -894,17 +884,13 @@ func (s *GatewayService) GetGatewayStatus(orgID string, gatewayId *string) (*api
 	var gateways []*model.Gateway
 	var err error
 
-	// If gatewayId is provided, get specific gateway
+	// If gatewayId is provided, get specific gateway by handle
 	if gatewayId != nil && *gatewayId != "" {
-		gateway, err := s.gatewayRepo.GetByUUID(*gatewayId)
+		gateway, err := s.gatewayRepo.GetByHandleAndOrgID(*gatewayId, orgID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get gateway: %w", err)
 		}
 		if gateway == nil {
-			return nil, errors.New("gateway not found")
-		}
-		// Check organization access
-		if gateway.OrganizationID != orgID {
 			return nil, errors.New("gateway not found")
 		}
 		gateways = []*model.Gateway{gateway}
@@ -941,66 +927,8 @@ func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bo
 	return s.gatewayRepo.UpdateActiveStatus(gatewayId, isActive)
 }
 
-// GetGatewayArtifacts retrieves all artifacts (APIs) deployed to a specific gateway with pagination and optional type filtering
-func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType string) (*api.GatewayArtifactListResponse, error) {
-	// First validate that the gateway exists and belongs to the organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
-	if err != nil {
-		return nil, err
-	}
-	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
-	}
-	if gateway.OrganizationID != orgID {
-		return nil, constants.ErrGatewayNotFound
-	}
-
-	// Get all APIs deployed to this gateway
-	// TODO(RakhithaRR): In future, when MCP and API_PRODUCT are supported, this method should be updated to query those artifacts as well,
-	//  and apply type filtering at the database level for efficiency
-	apis, err := s.apiRepo.GetDeployedAPIsByGatewayUUID(gatewayID, orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert APIs to GatewayArtifact API types and apply type filtering
-	artifacts := make([]api.GatewayArtifact, 0)
-	var subType *api.GatewayArtifactSubType
-
-	for _, apiModel := range apis {
-		// Skip if artifactType filter is specified and doesn't match "API"
-		if artifactType != "" && artifactType != constants.ArtifactTypeAPI {
-			continue
-		}
-
-		sub := api.GatewayArtifactSubType(constants.APISubTypeHTTP)
-		subType = &sub
-		artifactTypeEnum := api.GatewayArtifactType(constants.ArtifactTypeAPI)
-
-		if artifact := gatewayArtifactModelToAPI(apiModel, artifactTypeEnum, subType); artifact != nil {
-			artifacts = append(artifacts, *artifact)
-		}
-	}
-
-	// If filtering by MCP or API_PRODUCT, return empty list for now (future implementation)
-	if artifactType != "" && (artifactType == constants.ArtifactTypeMCP || artifactType == constants.ArtifactTypeAPIProduct) {
-		// For future implementation when MCP and API_PRODUCT are supported
-		artifacts = []api.GatewayArtifact{}
-	}
-
-	return &api.GatewayArtifactListResponse{
-		Count: len(artifacts),
-		List:  artifacts,
-		Pagination: api.Pagination{
-			Total:  len(artifacts),
-			Offset: 0,
-			Limit:  len(artifacts),
-		},
-	}, nil
-}
-
 // validateGatewayInput validates gateway registration inputs
-func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, functionalityType string) error {
+func (s *GatewayService) validateGatewayInput(orgID, name, displayName string, endpoints []string, functionalityType string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
 		return errors.New("organization ID is required")
@@ -1041,10 +969,18 @@ func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, f
 		return errors.New("display name must not exceed 128 characters")
 	}
 
-	// VHost validation
-	vhost = strings.TrimSpace(vhost)
-	if vhost == "" {
-		return errors.New("vhost is required")
+	// Endpoints validation
+	if len(endpoints) == 0 {
+		return errors.New("at least one endpoint is required")
+	}
+	for _, endpoint := range endpoints {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return errors.New("endpoint must not be empty")
+		}
+		if len(endpoint) > 255 {
+			return errors.New("endpoint must not exceed 255 characters")
+		}
 	}
 
 	// Gateway type validation
@@ -1084,29 +1020,24 @@ func hashToken(plainToken string) string {
 // Mapping functions
 
 // gatewayModelToAPI converts a Gateway model to GatewayResponse API type
-func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
+func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 	if gateway == nil {
 		return nil
 	}
 
-	gatewayID, err := uuid.Parse(gateway.ID)
-	if err != nil {
-		return nil
-	}
-	orgID, err := uuid.Parse(gateway.OrganizationID)
-	if err != nil {
-		return nil
+	orgHandle := ""
+	if org, err := s.orgRepo.GetOrganizationByUUID(gateway.OrganizationID); err == nil && org != nil {
+		orgHandle = org.Handle
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
 	return &api.GatewayResponse{
-		Id:                &gatewayID,
-		OrganizationId:    &orgID,
-		Name:              &gateway.Name,
-		DisplayName:       &gateway.Handle,
+		Id:                &gateway.Handle,
+		OrganizationId:    &orgHandle,
+		DisplayName:       gateway.Name,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
-		Vhost:             &gateway.Vhost,
+		Endpoints:         &gateway.Endpoints,
 		IsCritical:        &gateway.IsCritical,
 		FunctionalityType: &functionalityType,
 		Version:           &gateway.Version,
@@ -1122,14 +1053,8 @@ func gatewayStatusModelToAPI(gateway *model.Gateway) *api.GatewayStatusResponse 
 		return nil
 	}
 
-	gatewayID, err := uuid.Parse(gateway.ID)
-	if err != nil {
-		return nil
-	}
-
 	return &api.GatewayStatusResponse{
-		Id:         &gatewayID,
-		Name:       &gateway.Name,
+		Id:         &gateway.Handle,
 		IsActive:   &gateway.IsActive,
 		IsCritical: &gateway.IsCritical,
 	}
@@ -1148,21 +1073,5 @@ func tokenRotationModelToAPI(tokenID string, token string, createdAt time.Time) 
 		Token:     &token,
 		CreatedAt: &createdAt,
 		Message:   &message,
-	}
-}
-
-// gatewayArtifactModelToAPI converts an API model to GatewayArtifact API type
-func gatewayArtifactModelToAPI(apiModel *model.API, artifactType api.GatewayArtifactType, subType *api.GatewayArtifactSubType) *api.GatewayArtifact {
-	if apiModel == nil {
-		return nil
-	}
-
-	return &api.GatewayArtifact{
-		Id:        apiModel.Handle,
-		Name:      apiModel.Name,
-		Type:      artifactType,
-		SubType:   subType,
-		CreatedAt: apiModel.CreatedAt,
-		UpdatedAt: apiModel.UpdatedAt,
 	}
 }

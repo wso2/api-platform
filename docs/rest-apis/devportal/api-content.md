@@ -53,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
@@ -196,7 +196,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
@@ -325,7 +325,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -445,8 +445,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
-|fileName|query|string|false|File name selector used by file retrieval and organization content deletion.|
-|apiId|path|string|true|none|
+|fileName|query|string|false|File name selector used to delete a single stored API content file.|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -515,72 +515,3 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|
 |status|error|
 |status|error|
-
-## List API document file names
-
-<a id="opIdlistApiDocs"></a>
-
-`GET /devportal/v1/apis/{apiId}/docs`
-
-> Code samples
-
-```shell
-
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/docs \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
-
-```
-
-Returns the file names of all documents uploaded for an API via the wizard.
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="list-api-document-file-names-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|apiId|path|string|true|none|
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "fileName": "string"
-  }
-]
-```
-
-> 500 Response
-
-```json
-{
-  "status": "error",
-  "code": "INTERNAL_SERVER_ERROR",
-  "message": "An unexpected error occurred."
-}
-```
-
-<h3 id="list-api-document-file-names-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of document file names|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="list-api-document-file-names-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» fileName|string|false|none|none|

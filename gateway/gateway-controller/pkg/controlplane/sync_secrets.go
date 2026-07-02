@@ -20,6 +20,8 @@ package controlplane
 
 import (
 	"log/slog"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 // syncSecrets pulls secrets from the Platform API and upserts them into local
@@ -155,4 +157,65 @@ func (c *Client) syncSecretsIncremental() {
 		slog.Int("skipped", skipped),
 		slog.Int("failed", failed),
 	)
+}
+
+// syncSecretRefsFromYAML extracts {{ secret "handle" }} placeholders from the
+// supplied YAML, then fetches and upserts any handle that is not already in the
+// local hash cache. This is called from deployment event handlers so that secrets
+// created after the last startup/reconnect sync are available for template
+// rendering when the artifact arrives.
+func (c *Client) syncSecretRefsFromYAML(yamlData []byte, correlationID string) {
+	if c.apiUtilsService == nil || c.secretSyncer == nil {
+		return
+	}
+
+	matches := constants.SecretPlaceholderRe.FindAllSubmatch(yamlData, -1)
+	if len(matches) == 0 {
+		return
+	}
+
+	// Deduplicate handles.
+	seen := make(map[string]struct{}, len(matches))
+	for _, m := range matches {
+		if len(m) >= 2 {
+			seen[string(m[1])] = struct{}{}
+		}
+	}
+
+	for handle := range seen {
+		// Skip handles that were already synced (present in the hash cache).
+		if _, cached := c.secretHashCache.Load(handle); cached {
+			continue
+		}
+
+		c.logger.Info("Fetching secret referenced in artifact",
+			slog.String("secret_handle", handle),
+			slog.String("correlation_id", correlationID),
+		)
+
+		plaintext, err := c.apiUtilsService.FetchPlatformSecretValue(handle)
+		if err != nil {
+			c.logger.Error("Failed to fetch secret value for artifact",
+				slog.String("secret_handle", handle),
+				slog.String("correlation_id", correlationID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		if err := c.secretSyncer.UpsertFromPlatform(handle, handle, plaintext); err != nil {
+			c.logger.Error("Failed to upsert secret for artifact",
+				slog.String("secret_handle", handle),
+				slog.String("correlation_id", correlationID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		// Store a sentinel in the cache so subsequent events don't re-fetch.
+		// The real hash is unknown here (we fetched by handle, not via list);
+		// store an empty string so the incremental sync will still refresh it
+		// on the next reconnect if the value changes.
+		c.secretHashCache.Store(handle, "")
+	}
 }

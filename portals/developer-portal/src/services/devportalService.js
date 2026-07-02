@@ -35,12 +35,11 @@ const getOrganization = async (req, res) => {
 const getOrganizationDetails = async (orgId) => {
     const organization = await orgDao.get(orgId);
     return {
-        id: organization.uuid,
+        id: organization.handle,
         name: organization.name,
         businessOwner: organization.business_owner,
         businessOwnerContact: organization.business_owner_contact,
         businessOwnerEmail: organization.business_owner_email,
-        handle: organization.handle,
         idpRefId: organization.idp_ref_id,
         cpRefId: organization.cp_ref_id,
         configuration: organization.configuration,
@@ -50,7 +49,7 @@ const getOrganizationDetails = async (orgId) => {
 const getOrgContent = async (req, res) => {
     try {
         if (req.query.fileType && req.query.fileName) {
-            const asset = await adminService.getOrgContent(req.orgId, req.params.viewName, req.query.fileType, req.query.fileName, req.query.filePath);
+            const asset = await adminService.getOrgContent(req.orgId, req.params.viewId, req.query.fileType, req.query.fileName, req.query.filePath);
             if (asset) {
                 const contentType = asset ? retrieveContentType(asset.file_name, asset.file_type) : "";
                 res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
@@ -59,7 +58,7 @@ const getOrgContent = async (req, res) => {
                 return res.status(404).send('Not Found');
             }
         } else if (req.params.fileType) {
-            const assets = await adminService.getOrgContent(req.orgId, req.params.viewName, req.params.fileType);
+            const assets = await adminService.getOrgContent(req.orgId, req.params.viewId, req.params.fileType);
             const results = [];
             for (const asset of assets) {
                 const resp = {
@@ -78,7 +77,7 @@ const getOrgContent = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId: req.orgId,
-            viewName: req.params.viewName
+            viewId: req.params.viewId
         });
         res.status(404).send(error.message);
     }

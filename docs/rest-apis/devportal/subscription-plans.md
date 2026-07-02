@@ -41,7 +41,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "id": "string",
-      "handle": "string",
       "name": "string",
       "description": "string",
       "requestCount": "string",
@@ -114,8 +113,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
-|»» id|string|false|none|none|
-|»» handle|string|false|none|none|
+|»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |»» name|string|false|none|none|
 |»» description|string|false|none|none|
 |»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
@@ -158,9 +156,8 @@ Creates one subscription plan when the request body is an object, or multiple su
 
 ```json
 {
-  "id": "string",
+  "id": "Gold",
   "refId": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "type": "requestcount",
@@ -170,9 +167,8 @@ Creates one subscription plan when the request body is an object, or multiple su
 ```
 
 ```yaml
-id: string
+id: Gold
 refId: string
-handle: string
 name: string
 description: string
 type: requestcount
@@ -300,9 +296,8 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 
 ```json
 {
-  "id": "string",
+  "id": "Gold",
   "refId": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "type": "requestcount",
@@ -312,9 +307,8 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 ```
 
 ```yaml
-id: string
+id: Gold
 refId: string
-handle: string
 name: string
 description: string
 type: requestcount
@@ -343,7 +337,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "requestCount": "string",
@@ -464,7 +457,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|planId|path|string|true|none|
+|planId|path|string|true|The subscription plan's handle (unique per org).|
 
 > Example responses
 
@@ -473,7 +466,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "requestCount": "string",
@@ -582,7 +574,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|planId|path|string|true|none|
+|planId|path|string|true|The subscription plan's handle (unique per org).|
 
 > Example responses
 

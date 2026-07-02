@@ -64,12 +64,10 @@ func (s *ProjectService) RegisterDeletionGuard(guard ProjectDeletionGuard) {
 }
 
 func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error) {
-	// Validate project name
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidProjectName
 	}
 
-	// Check if organization exists
 	org, err := s.orgRepo.GetOrganizationByUUID(organizationID)
 	if err != nil {
 		return nil, err
@@ -78,89 +76,93 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	// Check if project name already exists in the organization
+	// Determine handle: use provided id or auto-generate from displayName
+	var handle string
+	if req.Id != nil && *req.Id != "" {
+		handle = *req.Id
+		existing, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, organizationID)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return nil, constants.ErrProjectExists
+		}
+	} else {
+		handle, err = utils.GenerateHandle(req.DisplayName, func(h string) bool {
+			existing, _ := s.projectRepo.GetProjectByHandleAndOrgID(h, organizationID)
+			return existing != nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate project handle: %w", err)
+		}
+	}
+
+	// Check for duplicate displayName
 	existingProjects, err := s.projectRepo.GetProjectsByOrganizationID(organizationID)
 	if err != nil {
 		return nil, err
 	}
-
-	// Generate new project ID or use provided one
-	var projectID string
-	if req.Id != nil {
-		projectID = utils.OpenAPIUUIDToString(*req.Id)
-	} else {
-		projectID, err = utils.GenerateUUID()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate project ID: %w", err)
-		}
-	}
-
-	for _, existingProject := range existingProjects {
-		if existingProject.Name == req.Name || (req.Id != nil && existingProject.ID == projectID) {
+	for _, p := range existingProjects {
+		if p.Name == req.DisplayName {
 			return nil, constants.ErrProjectExists
 		}
 	}
 
-	orgUUID, err := utils.ParseOpenAPIUUID(organizationID)
+	projectID, err := utils.GenerateUUID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate project ID: %w", err)
 	}
 
-	projectUUID, err := utils.ParseOpenAPIUUID(projectID)
-	if err != nil {
-		return nil, err
+	var description *string
+	if req.Description != nil {
+		description = req.Description
 	}
 
 	project := &api.Project{
-		Id:             projectUUID,
-		Name:           req.Name,
-		OrganizationId: orgUUID,
-		Description:    req.Description,
-		CreatedAt:      utils.TimePtrIfNotZero(time.Now()),
-		UpdatedAt:      utils.TimePtrIfNotZero(time.Now()),
+		Id:          &handle,
+		DisplayName: req.DisplayName,
+		Description: description,
+		CreatedAt:   utils.TimePtrIfNotZero(time.Now()),
+		UpdatedAt:   utils.TimePtrIfNotZero(time.Now()),
 	}
 
 	projectModel := s.apiToModel(project)
+	projectModel.ID = projectID
+	projectModel.Handle = handle
+	projectModel.OrganizationID = organizationID
 	projectModel.CreatedBy = actor
 	projectModel.UpdatedBy = actor
 
-	handle, err := utils.GenerateHandle(req.Name, func(h string) bool {
-		existing, _ := s.projectRepo.GetProjectByHandleAndOrgID(h, organizationID)
-		return existing != nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate project handle: %w", err)
-	}
-	projectModel.Handle = handle
-
-	err = s.projectRepo.CreateProject(projectModel)
-	if err != nil {
+	if err = s.projectRepo.CreateProject(projectModel); err != nil {
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", projectModel.ID, "project", organizationID, actor)
 
-	return project, nil
+	return s.modelToAPI(projectModel, org.Handle), nil
 }
 
-func (s *ProjectService) GetProjectByID(projectId, orgId string) (*api.Project, error) {
-	projectModel, err := s.projectRepo.GetProjectByUUID(projectId)
+func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project, error) {
+	projectModel, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-
 	if projectModel == nil {
 		return nil, constants.ErrProjectNotFound
 	}
-	if projectModel.OrganizationID != orgId {
-		return nil, constants.ErrProjectNotFound
+
+	org, err := s.orgRepo.GetOrganizationByUUID(projectModel.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
 	}
 
-	project := s.modelToAPI(projectModel)
-	return project, nil
+	return s.modelToAPI(projectModel, orgHandle), nil
 }
 
 func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api.Project, error) {
-	// Check if organization exists
 	org, err := s.orgRepo.GetOrganizationByUUID(organizationID)
 	if err != nil {
 		return nil, err
@@ -176,7 +178,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 
 	projects := make([]api.Project, 0)
 	for _, projectModel := range projectModels {
-		apiProj := s.modelToAPI(projectModel)
+		apiProj := s.modelToAPI(projectModel, org.Handle)
 		if apiProj == nil {
 			s.slogger.Warn("Failed to convert project model to API", "organizationId", organizationID)
 			continue
@@ -186,32 +188,31 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 	return projects, nil
 }
 
-func (s *ProjectService) UpdateProject(projectId string, req *api.UpdateProjectRequest, orgId, actor string) (*api.Project, error) {
-	// Get existing project
-	project, err := s.projectRepo.GetProjectByUUID(projectId)
+func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, actor string) (*api.Project, error) {
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
 	if project == nil {
 		return nil, constants.ErrProjectNotFound
 	}
-	if project.OrganizationID != orgId {
-		return nil, constants.ErrProjectNotFound
+
+	// Validate that the handle in the body matches the path param (immutability check)
+	if req.Id == nil || *req.Id != handle {
+		return nil, constants.ErrHandleImmutable
 	}
 
-	// If name is being changed, check for duplicates in the organization
-	if req.Name != nil && *req.Name != "" && *req.Name != project.Name {
+	if req.DisplayName != project.Name {
 		existingProjects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
 		if err != nil {
 			return nil, err
 		}
-
 		for _, existingProject := range existingProjects {
-			if existingProject.Name == *req.Name && existingProject.ID != projectId {
+			if existingProject.Name == req.DisplayName && existingProject.Handle != handle {
 				return nil, constants.ErrProjectExists
 			}
 		}
-		project.Name = *req.Name
+		project.Name = req.DisplayName
 	}
 
 	if req.Description != nil {
@@ -220,26 +221,29 @@ func (s *ProjectService) UpdateProject(projectId string, req *api.UpdateProjectR
 	project.UpdatedAt = time.Now()
 	project.UpdatedBy = actor
 
-	err = s.projectRepo.UpdateProject(project)
+	if err = s.projectRepo.UpdateProject(project); err != nil {
+		return nil, err
+	}
+	_ = s.auditRepo.Record("UPDATE", project.ID, "project", orgId, actor)
+
+	org, err := s.orgRepo.GetOrganizationByUUID(orgId)
 	if err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", projectId, "project", orgId, actor)
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
 
-	updatedProject := s.modelToAPI(project)
-	return updatedProject, nil
+	return s.modelToAPI(project, orgHandle), nil
 }
 
-func (s *ProjectService) DeleteProject(projectId, orgId, actor string) error {
-	// Check if project exists
-	project, err := s.projectRepo.GetProjectByUUID(projectId)
+func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return err
 	}
 	if project == nil {
-		return constants.ErrProjectNotFound
-	}
-	if project.OrganizationID != orgId {
 		return constants.ErrProjectNotFound
 	}
 
@@ -251,8 +255,7 @@ func (s *ProjectService) DeleteProject(projectId, orgId, actor string) error {
 		return constants.ErrOrganizationMustHAveAtLeastOneProject
 	}
 
-	// check if there are any APIs associated with the project
-	apis, err := s.apiRepo.GetAPIsByProjectUUID(projectId, orgId)
+	apis, err := s.apiRepo.GetAPIsByProjectUUID(project.ID, orgId)
 	if err != nil {
 		return err
 	}
@@ -260,8 +263,7 @@ func (s *ProjectService) DeleteProject(projectId, orgId, actor string) error {
 		return constants.ErrProjectHasAssociatedAPIs
 	}
 
-	// check if there are any MCP proxies associated with the project
-	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, projectId)
+	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, project.ID)
 	if err != nil {
 		return err
 	}
@@ -270,19 +272,18 @@ func (s *ProjectService) DeleteProject(projectId, orgId, actor string) error {
 	}
 
 	for _, guard := range s.deletionGuards {
-		if err := guard.CheckProjectDeletion(orgId, projectId); err != nil {
+		if err := guard.CheckProjectDeletion(orgId, project.ID); err != nil {
 			return err
 		}
 	}
 
-	if err := s.projectRepo.DeleteProject(projectId); err != nil {
+	if err := s.projectRepo.DeleteProject(project.ID); err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", projectId, "project", orgId, actor)
+	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
 	return nil
 }
 
-// Mapping functions
 func (s *ProjectService) apiToModel(project *api.Project) *model.Project {
 	if project == nil {
 		return nil
@@ -303,38 +304,22 @@ func (s *ProjectService) apiToModel(project *api.Project) *model.Project {
 		description = *project.Description
 	}
 
-	projectID := ""
+	var handle string
 	if project.Id != nil {
-		projectID = utils.OpenAPIUUIDToString(*project.Id)
-	}
-
-	organizationID := ""
-	if project.OrganizationId != nil {
-		organizationID = utils.OpenAPIUUIDToString(*project.OrganizationId)
+		handle = *project.Id
 	}
 
 	return &model.Project{
-		ID:             projectID,
-		Name:           project.Name,
-		OrganizationID: organizationID,
-		Description:    description,
-		CreatedAt:      createdAt,
-		UpdatedAt:      updatedAt,
+		Handle:      handle,
+		Name:        project.DisplayName,
+		Description: description,
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 	}
 }
 
-func (s *ProjectService) modelToAPI(projectModel *model.Project) *api.Project {
+func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle string) *api.Project {
 	if projectModel == nil {
-		return nil
-	}
-
-	projectID, err := utils.ParseOpenAPIUUID(projectModel.ID)
-	if err != nil {
-		return nil
-	}
-
-	orgID, err := utils.ParseOpenAPIUUID(projectModel.OrganizationID)
-	if err != nil {
 		return nil
 	}
 
@@ -343,10 +328,11 @@ func (s *ProjectService) modelToAPI(projectModel *model.Project) *api.Project {
 		description = &projectModel.Description
 	}
 
+	handle := projectModel.Handle
 	return &api.Project{
-		Id:             projectID,
-		Name:           projectModel.Name,
-		OrganizationId: orgID,
+		Id:             &handle,
+		DisplayName:    projectModel.Name,
+		OrganizationId: &orgHandle,
 		Description:    description,
 		CreatedAt:      utils.TimePtrIfNotZero(projectModel.CreatedAt),
 		UpdatedAt:      utils.TimePtrIfNotZero(projectModel.UpdatedAt),

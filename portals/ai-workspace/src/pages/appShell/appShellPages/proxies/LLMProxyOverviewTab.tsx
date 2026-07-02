@@ -54,6 +54,10 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import type { Gateway } from '../../../../apis/gatewayTypes';
 import type { DeploymentResponse, UserAPIKey } from '../../../../utils/types';
+import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -118,6 +122,10 @@ export default function LLMProxyOverviewTab() {
   const [isDeletingKey, setIsDeletingKey] = useState(false);
   const [apiKeys, setApiKeys] = useState<UserAPIKey[]>([]);
   const [keysLoading, setKeysLoading] = useState(false);
+  // This tab only manages consumer API keys, which are credentials for calling the
+  // proxy — NOT part of the gateway runtime artifact. So key generation/deletion stays
+  // available even for gateway-created (read-only) proxies.
+  const isReadOnlyProxy = false;
 
   const apiKeyLocation = proxy?.security?.apiKey?.in ?? 'header';
   const apiKeyName = proxy?.security?.apiKey?.key ?? 'X-API-Key';
@@ -370,6 +378,7 @@ export default function LLMProxyOverviewTab() {
   };
 
   const handleGenerateAPIKey = async () => {
+    if (isReadOnlyProxy) return;
     if (!currentOrganization?.uuid || !proxy?.id) {
       return;
     }
@@ -387,7 +396,7 @@ export default function LLMProxyOverviewTab() {
       expiresAt.setDate(expiresAt.getDate() + 90);
 
       const response = await createProxyAPIKey({
-        name: buildApiKeyResourceName(trimmedDisplayName),
+        id: buildApiKeyResourceName(trimmedDisplayName),
         displayName: apiKeyDisplayName,
         expiresAt: expiresAt.toISOString(),
         issuer: 'api-platform-ai-workspace',
@@ -415,6 +424,7 @@ export default function LLMProxyOverviewTab() {
   };
 
   const handleOpenApiKeyModal = () => {
+    if (isReadOnlyProxy) return;
     setKeyError(null);
     setGeneratedKey(null);
     setApiKeyDisplayName('');
@@ -453,7 +463,7 @@ export default function LLMProxyOverviewTab() {
   };
 
   const handleDeleteApiKey = async () => {
-    if (!deleteTargetKeyName || !proxy?.id) {
+    if (isReadOnlyProxy || !deleteTargetKeyName || !proxy?.id) {
       return;
     }
 
@@ -461,7 +471,7 @@ export default function LLMProxyOverviewTab() {
       setIsDeletingKey(true);
       await deleteProxyAPIKey(deleteTargetKeyName);
       setApiKeys((prev) =>
-        prev.filter((key) => (key.name || '').trim() !== deleteTargetKeyName)
+        prev.filter((key) => (key.id || '').trim() !== deleteTargetKeyName)
       );
       setDeleteTargetKeyName(null);
       showSnackbar('API key deleted successfully.', 'success');
@@ -656,25 +666,32 @@ export default function LLMProxyOverviewTab() {
                           />
                         </Typography>
                       </Box>
-                      <Tooltip
-                        title={
-                          deployedGateways.length === 0
-                            ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
-                            : ''
-                        }
-                        placement="top"
+                      <DisabledActionTooltip
+                        disabled={isReadOnlyProxy}
+                        title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                       >
-                        <span>
-                          <Button
-                            variant="contained"
-                            size="medium"
-                            onClick={handleOpenApiKeyModal}
-                            disabled={deployedGateways.length === 0}
-                          >
-                            Generate API Key
-                          </Button>
-                        </span>
-                      </Tooltip>
+                        <Tooltip
+                          title={
+                            !isReadOnlyProxy && deployedGateways.length === 0
+                              ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
+                              : ''
+                          }
+                          placement="top"
+                        >
+                          <span>
+                            <Button
+                              variant="contained"
+                              size="medium"
+                              onClick={handleOpenApiKeyModal}
+                              disabled={
+                                isReadOnlyProxy || deployedGateways.length === 0
+                              }
+                            >
+                              Generate API Key
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      </DisabledActionTooltip>
                     </Stack>
 
                     {keyError && (
@@ -728,11 +745,11 @@ export default function LLMProxyOverviewTab() {
                             {apiKeys.map((key) => (
                               <ListingTable.Row
                                 key={`${
-                                  key.name || key.maskedApiKey || 'api-key'
+                                  key.id || key.maskedApiKey || 'api-key'
                                 }-${key.expiresAt || ''}`}
                               >
                                 <ListingTable.Cell>
-                                  {key.name || '-'}
+                                  {key.displayName || key.id || '-'}
                                 </ListingTable.Cell>
                                 <ListingTable.Cell>
                                   {key.maskedApiKey || '-'}
@@ -749,28 +766,39 @@ export default function LLMProxyOverviewTab() {
                                   </Tooltip>
                                 </ListingTable.Cell>
                                 <ListingTable.Cell align="right">
-                                  <Tooltip
-                                    title={
-                                      key.name
-                                        ? 'Delete API key'
-                                        : 'Unable to delete key without a name'
-                                    }
+                                  <DisabledActionTooltip
+                                    disabled={isReadOnlyProxy}
+                                    title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                                   >
-                                    <span>
-                                      <IconButton
-                                        size="small"
-                                        color="error"
-                                        onClick={() =>
-                                          setDeleteTargetKeyName(
-                                            key.name?.trim() || null
-                                          )
-                                        }
-                                        disabled={!key.name || isDeletingKey}
-                                      >
-                                        <Trash2 size={16} />
-                                      </IconButton>
-                                    </span>
-                                  </Tooltip>
+                                    <Tooltip
+                                      title={
+                                        isReadOnlyProxy
+                                          ? ''
+                                          : key.id
+                                            ? 'Delete API key'
+                                            : 'Unable to delete key without a name'
+                                      }
+                                    >
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          color="error"
+                                          onClick={() =>
+                                            setDeleteTargetKeyName(
+                                              key.id?.trim() || null
+                                            )
+                                          }
+                                          disabled={
+                                            isReadOnlyProxy ||
+                                            !key.id ||
+                                            isDeletingKey
+                                          }
+                                        >
+                                          <Trash2 size={16} />
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                  </DisabledActionTooltip>
                                 </ListingTable.Cell>
                               </ListingTable.Row>
                             ))}
@@ -895,6 +923,7 @@ export default function LLMProxyOverviewTab() {
                   size="small"
                   fullWidth
                   value={apiKeyDisplayName}
+                  disabled={isReadOnlyProxy}
                   onChange={(event) => setApiKeyDisplayName(event.target.value)}
                   placeholder="Ex: Production Key"
                 />
@@ -928,7 +957,11 @@ export default function LLMProxyOverviewTab() {
                 onClick={() => {
                   void handleGenerateAPIKey();
                 }}
-                disabled={generatingKey || !apiKeyDisplayName.trim()}
+                disabled={
+                  isReadOnlyProxy ||
+                  generatingKey ||
+                  !apiKeyDisplayName.trim()
+                }
               >
                 {generatingKey ? (
                   <>

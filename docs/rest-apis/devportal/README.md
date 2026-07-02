@@ -27,11 +27,9 @@ Base URLs:
 
 ### [Organization Content](organization-content.md)
 
-- [Upload organization layout content](organization-content.md#upload-organization-layout-content)
-- [Replace organization layout content](organization-content.md#replace-organization-layout-content)
-- [Get a single organization layout asset](organization-content.md#get-a-single-organization-layout-asset)
-- [Delete organization layout content](organization-content.md#delete-organization-layout-content)
-- [List organization layout assets by file type](organization-content.md#list-organization-layout-assets-by-file-type)
+- [Get a theme asset](organization-content.md#get-a-theme-asset)
+- [Apply a theme](organization-content.md#apply-a-theme)
+- [Reset theme to defaults](organization-content.md#reset-theme-to-defaults)
 
 ### [APIs](apis.md)
 
@@ -47,7 +45,30 @@ Base URLs:
 - [Replace API content](api-content.md#replace-api-content)
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
-- [List API document file names](api-content.md#list-api-document-file-names)
+
+### [MCP Servers](mcp-servers.md)
+
+- [Create MCP server metadata](mcp-servers.md#create-mcp-server-metadata)
+- [List MCP server metadata](mcp-servers.md#list-mcp-server-metadata)
+- [Get MCP server metadata](mcp-servers.md#get-mcp-server-metadata)
+- [Update MCP server metadata](mcp-servers.md#update-mcp-server-metadata)
+- [Delete MCP server metadata](mcp-servers.md#delete-mcp-server-metadata)
+
+### [MCP Server Content](mcp-server-content.md)
+
+- [Upload MCP server content](mcp-server-content.md#upload-mcp-server-content)
+- [Replace MCP server content](mcp-server-content.md#replace-mcp-server-content)
+- [Get an MCP server content file](mcp-server-content.md#get-an-mcp-server-content-file)
+- [Delete MCP server content files](mcp-server-content.md#delete-mcp-server-content-files)
+
+### [MCP Server Keys](mcp-server-keys.md)
+
+- [Generate an MCP server API key](mcp-server-keys.md#generate-an-mcp-server-api-key)
+- [List MCP server API keys](mcp-server-keys.md#list-mcp-server-api-keys)
+- [Regenerate an MCP server API key](mcp-server-keys.md#regenerate-an-mcp-server-api-key)
+- [Revoke an MCP server API key](mcp-server-keys.md#revoke-an-mcp-server-api-key)
+- [Associate an MCP server API key with an application](mcp-server-keys.md#associate-an-mcp-server-api-key-with-an-application)
+- [Remove an MCP server API key's application association](mcp-server-keys.md#remove-an-mcp-server-api-keys-application-association)
 
 ### [Subscription Plans](subscription-plans.md)
 
@@ -116,17 +137,10 @@ Base URLs:
 - [Delete an API workflow](api-workflows.md#delete-an-api-workflow)
 - [Generate an API workflow agent prompt](api-workflows.md#generate-an-api-workflow-agent-prompt)
 
-### [Utilities](utilities.md)
-
-- [Create a temporary Arazzo file](utilities.md#create-a-temporary-arazzo-file)
-
-### [Authentication](authentication.md)
-
 ### [Key Managers](key-managers.md)
 
 - [Create a key manager](key-managers.md#create-a-key-manager)
 - [List key managers](key-managers.md#list-key-managers)
-- [Discover available key managers](key-managers.md#discover-available-key-managers)
 - [Get a key manager](key-managers.md#get-a-key-manager)
 - [Update a key manager](key-managers.md#update-a-key-manager)
 - [Delete a key manager](key-managers.md#delete-a-key-manager)

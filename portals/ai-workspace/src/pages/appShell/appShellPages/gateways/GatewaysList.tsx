@@ -508,7 +508,7 @@ export default function GatewaysList() {
                                     navigate(
                                       buildOrgPath(
                                         currentOrganization,
-                                        `/gateways/view/${gateway.name}`
+                                        `/gateways/view/${gateway.id}`
                                       )
                                     )
                                 : undefined
@@ -609,7 +609,7 @@ export default function GatewaysList() {
                                     navigate(
                                       buildOrgPath(
                                         currentOrganization,
-                                        `/gateways/edit/${gateway.name}`
+                                        `/gateways/edit/${gateway.id}`
                                       )
                                     );
                                   }}

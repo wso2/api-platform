@@ -53,6 +53,7 @@ type llmProviderTemplateYAML struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
 	Spec struct {
+		GroupID          string                                   `yaml:"groupId"`
 		DisplayName      string                                   `yaml:"displayName"`
 		ManagedBy        string                                   `yaml:"managedBy"`
 		Version          string                                   `yaml:"version"`
@@ -135,9 +136,14 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 			handle = baseHandle + "-" + strings.ReplaceAll(strings.ToLower(seedVersion), ".", "-")
 		}
 
+		groupID := strings.TrimSpace(doc.Spec.GroupID)
+		if groupID == "" {
+			groupID = baseHandle
+		}
+
 		res = append(res, &model.LLMProviderTemplate{
 			ID:             handle,
-			GroupID: baseHandle,
+			GroupID:        groupID,
 			Version:        seedVersion,
 			Name:           doc.Spec.DisplayName,
 			ManagedBy:      managedBy,

@@ -46,6 +46,9 @@ import { useLLMProvider } from '../../../../contexts/llmProvider';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
+import {
+  DisabledActionTooltip,
+} from '../../../../utils/readOnlyArtifacts';
 import NoData from '../../../../assets/images/NoData.svg';
 import { ExpandableResourceRow } from '../../../../Components/ResourceView';
 import { FormattedMessage } from 'react-intl';
@@ -179,6 +182,7 @@ function buildOperationSpec(
 export default function ServiceProviderResourcesTab() {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
   const [resourceMode, setResourceMode] = useState<'allow' | 'deny'>('allow');
   const [pendingResourceMode, setPendingResourceMode] = useState<
     'allow' | 'deny' | null
@@ -240,7 +244,7 @@ export default function ServiceProviderResourcesTab() {
     exceptions: ResourceItem[],
     nextOpenapi: string
   ) => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isReadOnlyProvider) return;
     const {
       status,
       createdAt,
@@ -279,6 +283,7 @@ export default function ServiceProviderResourcesTab() {
     _event: React.MouseEvent<HTMLElement>,
     newMode: 'allow' | 'deny' | null
   ) => {
+    if (isReadOnlyProvider) return;
     if (!newMode || newMode === resourceMode) return;
     setPendingResourceMode(newMode);
     setResourceModeConfirmOpen(true);
@@ -290,6 +295,10 @@ export default function ServiceProviderResourcesTab() {
   };
 
   const handleApplyResourceModeChange = () => {
+    if (isReadOnlyProvider) {
+      handleCancelResourceModeChange();
+      return;
+    }
     if (!pendingResourceMode || pendingResourceMode === resourceMode) {
       handleCancelResourceModeChange();
       return;
@@ -324,7 +333,6 @@ export default function ServiceProviderResourcesTab() {
       try {
         const template = await providerTemplateApis.getProviderTemplate(
           templateId,
-          organizationId,
           PLATFORM_API_BASE_URL
         );
         if (!isMounted) return;
@@ -349,12 +357,14 @@ export default function ServiceProviderResourcesTab() {
   const updateSpecFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleUpdateSpecUploadClick = () => {
+    if (isReadOnlyProvider) return;
     updateSpecFileInputRef.current?.click();
   };
 
   const handleUpdateSpecFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
+    if (isReadOnlyProvider) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -380,6 +390,7 @@ export default function ServiceProviderResourcesTab() {
   };
 
   const applySpecificationFromUrl = async (url: string) => {
+    if (isReadOnlyProvider) return;
     if (!url.trim()) return;
     setIsFetchingSpec(true);
     try {
@@ -410,10 +421,12 @@ export default function ServiceProviderResourcesTab() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleUploadClick = () => {
+    if (isReadOnlyProvider) return;
     fileInputRef.current?.click();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isReadOnlyProvider) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -539,6 +552,7 @@ export default function ServiceProviderResourcesTab() {
   };
 
   const moveSelectedToExceptions = () => {
+    if (isReadOnlyProvider) return;
     if (!selectedAvailableKeys.length) return;
     const selected = availableResources.filter((resource) =>
       selectedAvailableKeySet.has(getResourceKey(resource))
@@ -551,6 +565,7 @@ export default function ServiceProviderResourcesTab() {
   };
 
   const moveSelectedToAvailable = () => {
+    if (isReadOnlyProvider) return;
     if (!selectedExceptionKeys.length) return;
     const nextExceptions = exceptionResources.filter(
       (resource) => !selectedExceptionKeySet.has(getResourceKey(resource))
@@ -561,6 +576,7 @@ export default function ServiceProviderResourcesTab() {
   };
 
   const moveAllToExceptions = () => {
+    if (isReadOnlyProvider) return;
     const nextExceptions = normalized;
     setExceptionResources(nextExceptions);
     setSelectedAvailableKeys([]);
@@ -568,6 +584,7 @@ export default function ServiceProviderResourcesTab() {
   };
 
   const moveAllToAvailable = () => {
+    if (isReadOnlyProvider) return;
     setExceptionResources([]);
     setSelectedExceptionKeys([]);
     void updateAccessControl(resourceMode, [], openapiText);
@@ -668,7 +685,13 @@ export default function ServiceProviderResourcesTab() {
               exclusive
               onChange={handleResourceModeChange}
             >
-              <ToggleButton value="allow" sx={{ textTransform: 'none' }}>
+              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                <Box component="span">
+                  <ToggleButton
+                    value="allow"
+                    disabled={isReadOnlyProvider}
+                    sx={{ textTransform: 'none' }}
+                  >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.allow.all"
                   defaultMessage={'Allow all'}
@@ -681,13 +704,21 @@ export default function ServiceProviderResourcesTab() {
                       defaultMessage="Allow all exposes every available resource. Any exception you add will be hidden."
                     />
                   }
-                >
-                  <IconButton size="small">
-                    <HelpCircle size={16} />
-                  </IconButton>
-                </Tooltip>
-              </ToggleButton>
-              <ToggleButton value="deny" sx={{ textTransform: 'none' }}>
+                  >
+                    <IconButton size="small">
+                      <HelpCircle size={16} />
+                    </IconButton>
+                  </Tooltip>
+                  </ToggleButton>
+                </Box>
+              </DisabledActionTooltip>
+              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                <Box component="span">
+                  <ToggleButton
+                    value="deny"
+                    disabled={isReadOnlyProvider}
+                    sx={{ textTransform: 'none' }}
+                  >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.deny.all"
                   defaultMessage={'Deny all'}
@@ -700,12 +731,14 @@ export default function ServiceProviderResourcesTab() {
                       defaultMessage="Deny all hides every available resource. Any exception you add will be exposed."
                     />
                   }
-                >
-                  <IconButton size="small">
-                    <HelpCircle size={16} />
-                  </IconButton>
-                </Tooltip>
-              </ToggleButton>
+                  >
+                    <IconButton size="small">
+                      <HelpCircle size={16} />
+                    </IconButton>
+                  </Tooltip>
+                  </ToggleButton>
+                </Box>
+              </DisabledActionTooltip>
             </ToggleButtonGroup>
           </Box>
 
@@ -728,17 +761,20 @@ export default function ServiceProviderResourcesTab() {
               accept=".json,.yaml,.yml"
               onChange={handleFileChange}
             /> */}
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<PenLine size={16} />}
-              onClick={() => setUpdateSpecModalOpen(true)}
-            >
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.update.openapi.definition"
-                defaultMessage={'Update OpenAPI Definition'}
-              />
-            </Button>
+            <DisabledActionTooltip disabled={isReadOnlyProvider}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<PenLine size={16} />}
+                onClick={() => setUpdateSpecModalOpen(true)}
+                disabled={isReadOnlyProvider}
+              >
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.update.openapi.definition"
+                  defaultMessage={'Update OpenAPI Definition'}
+                />
+              </Button>
+            </DisabledActionTooltip>
           </Box>
         </Box>
 
@@ -839,50 +875,58 @@ export default function ServiceProviderResourcesTab() {
             }}
           >
             <Stack spacing={1}>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={moveAllToExceptions}
-                disabled={!availableResources.length}
-              >
+              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={moveAllToExceptions}
+                  disabled={!availableResources.length || isReadOnlyProvider}
+                >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.message"
                   defaultMessage={'>>'}
                 />
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={moveSelectedToExceptions}
-                disabled={!selectedAvailableKeys.length}
-              >
+                </Button>
+              </DisabledActionTooltip>
+              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={moveSelectedToExceptions}
+                  disabled={!selectedAvailableKeys.length || isReadOnlyProvider}
+                >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.message.2"
                   defaultMessage={'>'}
                 />
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={moveSelectedToAvailable}
-                disabled={!selectedExceptionKeys.length}
-              >
+                </Button>
+              </DisabledActionTooltip>
+              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={moveSelectedToAvailable}
+                  disabled={!selectedExceptionKeys.length || isReadOnlyProvider}
+                >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.message.3"
                   defaultMessage={'<'}
                 />
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={moveAllToAvailable}
-                disabled={!exceptionResources.length}
-              >
+                </Button>
+              </DisabledActionTooltip>
+              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={moveAllToAvailable}
+                  disabled={!exceptionResources.length || isReadOnlyProvider}
+                >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderResourcesTab.message.4"
                   defaultMessage={'<<'}
                 />
-              </Button>
+                </Button>
+              </DisabledActionTooltip>
             </Stack>
           </Box>
 
@@ -1039,7 +1083,7 @@ export default function ServiceProviderResourcesTab() {
                   <Button
                     variant="outlined"
                     size="small"
-                    disabled={isFetchingSpec}
+                    disabled={isFetchingSpec || isReadOnlyProvider}
                     onClick={() => {
                       void applySpecificationFromUrl(specUrl);
                     }}
@@ -1054,6 +1098,7 @@ export default function ServiceProviderResourcesTab() {
               variant="outlined"
               fullWidth
               onClick={handleUpdateSpecUploadClick}
+              disabled={isReadOnlyProvider}
             >
               Upload Your Specification
             </Button>

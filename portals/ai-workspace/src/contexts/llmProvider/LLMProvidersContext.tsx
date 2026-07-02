@@ -33,8 +33,10 @@ import type {
 import * as llmProviderApis from '../../apis/llmProviderApis';
 import {
   createSecret,
+  deleteSecret,
   buildSecretPlaceholder,
   generateSecretHandle,
+  extractSecretHandle,
 } from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
@@ -150,19 +152,18 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           typeof authValue === 'string' && authValue.includes('{{ secret ');
 
         if (authValue && !isAlreadyPlaceholder) {
-          const secretHandle = generateSecretHandle(provider.id, 'api-key');
+          const secretHandle = generateSecretHandle();
           const secretResponse = await createSecret(
             {
-              handle: secretHandle,
-              name: `${provider.name} API Key`,
-              description: `Auto-generated secret for LLM provider ${provider.name}`,
+              id: secretHandle,
+              displayName: `${provider.displayName} API Key`,
+              description: `Auto-generated secret for LLM provider ${provider.displayName}`,
               value: authValue,
               type: 'GENERIC',
             },
-            PLATFORM_API_BASE_URL
           );
           logger.info('Created secret for LLM provider', {
-            secretHandle: secretResponse.handle,
+            secretHandle: secretResponse.id,
             providerId: provider.id,
           });
 
@@ -174,7 +175,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 ...provider.upstream.main,
                 auth: {
                   ...provider.upstream.main.auth,
-                  value: buildSecretPlaceholder(secretResponse.handle),
+                  value: buildSecretPlaceholder(secretResponse.id),
                 },
               },
             },
@@ -186,6 +187,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           organizationId,
           PLATFORM_API_BASE_URL
         );
+
         setProvidersResponse((prev) => ({
           ...prev,
           count: prev.count + 1,
@@ -227,25 +229,20 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           typeof authValue === 'string' && authValue.includes('{{ secret ');
 
         if (authValue && !isAlreadyPlaceholder) {
-          const secretHandle = generateSecretHandle(providerId, 'api-key');
-          const secretResponse = await createSecret(
-            {
-              handle: secretHandle,
-              name: `${providerId} API Key`,
-              description: `Auto-generated secret for LLM provider ${providerId}`,
-              value: authValue,
-              type: 'GENERIC',
-            },
-            PLATFORM_API_BASE_URL
-          );
-          logger.info('Rotated/created secret for LLM provider update', {
-            secretHandle: secretResponse.handle,
-            providerId,
-          });
+          const currentProvider = providersResponse.list.find((p) => p.id === providerId);
 
-          const currentProvider = providersResponse.list.find(
-            (p) => p.id === providerId
-          );
+          // Always create a fresh secret with a new unique handle so re-saving
+          // with a different key never collides with an existing secret.
+          const secretHandle = generateSecretHandle();
+          const secretResponse = await createSecret({
+            id: secretHandle,
+            displayName: `${providerId} API Key`,
+            description: `Auto-generated secret for LLM provider ${providerId}`,
+            value: authValue,
+            type: 'GENERIC',
+          });
+          logger.info('Created new secret for LLM provider update', { secretHandle, providerId });
+
           updatesPayload = {
             ...updates,
             upstream: {
@@ -255,7 +252,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 url: updates.upstream?.main?.url ?? currentProvider?.upstream?.main?.url ?? '',
                 auth: {
                   ...updates.upstream?.main?.auth,
-                  value: buildSecretPlaceholder(secretResponse.handle),
+                  value: buildSecretPlaceholder(secretResponse.id),
                 },
               },
             },
@@ -268,6 +265,22 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           organizationId,
           PLATFORM_API_BASE_URL
         );
+
+        // Best-effort: delete the old secret only after the provider update has
+        // succeeded. If the update failed we skip deletion so the provider keeps
+        // a valid secret reference and does not end up with a dangling placeholder.
+        if (authValue && !isAlreadyPlaceholder) {
+          const currentProvider = providersResponse.list.find((p) => p.id === providerId);
+          const existingPlaceholder = currentProvider?.upstream?.main?.auth?.value;
+          const oldHandle = typeof existingPlaceholder === 'string'
+            ? extractSecretHandle(existingPlaceholder)
+            : null;
+          if (oldHandle) {
+            deleteSecret(oldHandle).catch((err) => {
+              logger.warn('Could not delete old secret after provider update', { oldHandle, err });
+            });
+          }
+        }
         setProvidersResponse((prev) => ({
           ...prev,
           list: prev.list.map((provider) =>

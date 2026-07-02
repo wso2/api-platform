@@ -84,6 +84,7 @@ type Server struct {
 	WebSocket        WebSocket        `koanf:"websocket"`
 	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
 	Deployments      Deployments      `koanf:"deployments"`
+	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
 	TLS              TLS              `koanf:"tls"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
@@ -178,7 +179,7 @@ type Database struct {
 
 	EncryptionKey                  string `koanf:"encryption_key"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
-	SecretEncryptionKey string `koanf:"secret_encryption_key"`
+	SecretEncryptionKey            string `koanf:"secret_encryption_key"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.
@@ -207,6 +208,24 @@ type Deployments struct {
 	TimeoutEnabled            bool `koanf:"timeout_enabled"`
 	TimeoutInterval           int  `koanf:"timeout_interval"`
 	TimeoutDuration           int  `koanf:"timeout_duration"`
+}
+
+// ArtifactLimits holds the maximum number of each artifact kind an organization
+// may create. Each limit is optional: a value <= 0 (the default) means unlimited,
+// so organizations may create as many artifacts of that kind as they want.
+type ArtifactLimits struct {
+	MaxLLMProvidersPerOrg  int `koanf:"max_llm_providers_per_org"`
+	MaxLLMProxiesPerOrg    int `koanf:"max_llm_proxies_per_org"`
+	MaxMCPProxiesPerOrg    int `koanf:"max_mcp_proxies_per_org"`
+	MaxWebSubAPIsPerOrg    int `koanf:"max_websub_apis_per_org"`
+	MaxWebBrokerAPIsPerOrg int `koanf:"max_webbroker_apis_per_org"`
+}
+
+// LimitReached reports whether an organization currently holding currentCount
+// artifacts of some kind has reached its configured limit. A limit <= 0 means
+// unlimited, in which case this always returns false.
+func LimitReached(currentCount, limit int) bool {
+	return limit > 0 && currentCount >= limit
 }
 
 // APIKey holds API key-specific configuration.
@@ -526,6 +545,18 @@ func envToKoanfKey(s string) string {
 		return "deployments.timeout_interval"
 	case "deployments_timeout_duration":
 		return "deployments.timeout_duration"
+
+	// Artifact limits (per organization; <= 0 means unlimited)
+	case "artifact_limits_max_llm_providers_per_org":
+		return "artifact_limits.max_llm_providers_per_org"
+	case "artifact_limits_max_llm_proxies_per_org":
+		return "artifact_limits.max_llm_proxies_per_org"
+	case "artifact_limits_max_mcp_proxies_per_org":
+		return "artifact_limits.max_mcp_proxies_per_org"
+	case "artifact_limits_max_websub_apis_per_org":
+		return "artifact_limits.max_websub_apis_per_org"
+	case "artifact_limits_max_webbroker_apis_per_org":
+		return "artifact_limits.max_webbroker_apis_per_org"
 
 	// TLS
 	case "tls_cert_dir":

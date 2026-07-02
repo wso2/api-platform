@@ -23,9 +23,9 @@ import (
 
 // Project represents a project entity in the API management platform
 type Project struct {
-	ID             string    `json:"id" db:"uuid"`
-	Handle         string    `json:"handle" db:"handle"`
-	Name           string    `json:"name" db:"name"`
+	ID             string    `json:"uuid" db:"uuid"`
+	Handle         string    `json:"id" db:"handle"`
+	Name           string    `json:"displayName" db:"display_name"`
 	OrganizationID string    `json:"organizationId" db:"organization_uuid"` // FK to Organization.ID
 	Description    string    `json:"description" db:"description"`
 	CreatedBy      string    `json:"createdBy,omitempty" db:"created_by"`

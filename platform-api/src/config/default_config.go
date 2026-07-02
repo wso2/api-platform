@@ -30,11 +30,11 @@ func defaultConfig() *Server {
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
 		EnableScopeValidation:      true,
 		Database: Database{
-			Driver:           "sqlite3",
-			Path:             "./data/api_platform.db",
-			MaxOpenConns:     25,
-			MaxIdleConns:     10,
-			ConnMaxLifetime:  300,
+			Driver:          "sqlite3",
+			Path:            "./data/api_platform.db",
+			MaxOpenConns:    25,
+			MaxIdleConns:    10,
+			ConnMaxLifetime: 300,
 		},
 		Auth: Auth{
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
@@ -121,6 +121,11 @@ func defaultConfig() *Server {
 			TimeoutInterval:  20,
 			TimeoutDuration:  60,
 		},
+		// ArtifactLimits are unlimited by default: every limit is left at its
+		// zero value, which LimitReached treats as "no limit". Operators can cap
+		// a specific artifact kind per organization by setting a positive value
+		// (config file key artifact_limits.max_* or env ARTIFACT_LIMITS_MAX_*).
+		ArtifactLimits: ArtifactLimits{},
 		TLS: TLS{
 			CertDir: "./data/certs",
 		},

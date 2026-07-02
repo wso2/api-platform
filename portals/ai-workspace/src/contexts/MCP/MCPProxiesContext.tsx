@@ -104,7 +104,6 @@ export function MCPServersProvider({ children }: MCPServersProviderProps) {
       setIsLoading(true);
       setError(null);
       const response = await mcpProxiesApis.getMCPServers(
-        organizationId,
         projectId,
         apimBaseUrl
       );
@@ -131,7 +130,6 @@ export function MCPServersProvider({ children }: MCPServersProviderProps) {
       try {
         const newMCPServer = await mcpProxiesApis.createMCPServer(
           mcpServer,
-          organizationId,
           apimBaseUrl
         );
         setMCPServersResponse((prev) => ({
@@ -158,7 +156,6 @@ export function MCPServersProvider({ children }: MCPServersProviderProps) {
         const updatedMCPServer = await mcpProxiesApis.updateMCPServer(
           mcpServerId,
           updates,
-          organizationId,
           apimBaseUrl
         );
         setMCPServersResponse((prev) => ({
@@ -182,7 +179,7 @@ export function MCPServersProvider({ children }: MCPServersProviderProps) {
         throw new Error('Organization ID is missing');
       }
       try {
-        await mcpProxiesApis.deleteMCPServer(mcpServerId, organizationId, apimBaseUrl);
+        await mcpProxiesApis.deleteMCPServer(mcpServerId, apimBaseUrl);
         setMCPServersResponse((prev) => ({
           ...prev,
           count: Math.max(0, prev.count - 1),

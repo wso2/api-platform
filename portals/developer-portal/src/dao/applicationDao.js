@@ -19,22 +19,10 @@ const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../
 const { Sequelize } = require('sequelize');
 const logger = require('../config/logger');
 
-// handle is an immutable, org-scoped slug; application names aren't unique,
-// so a short random suffix keeps collisions practically impossible.
-const generateHandle = (name) => {
-    const slug = String(name || '').toLowerCase().trim()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .substring(0, 100);
-    const suffix = Math.random().toString(36).slice(2, 8);
-    return slug ? `${slug}-${suffix}` : `app-${suffix}`;
-};
-
 const create = async (orgId, userId, appData) => {
     const createAppData = {
-        name: appData.name,
-        handle: generateHandle(appData.name),
+        display_name: appData.displayName,
+        handle: appData.handle || appData.displayName,
         org_uuid: orgId,
         description: appData.description,
         created_by: userId,
@@ -55,7 +43,7 @@ const update = async (orgId, appId, userId, appData) => {
     try {
         const [updatedRowsCount] = await Application.update(
             {
-                name: appData.name,
+                display_name: appData.displayName,
                 description: appData.description,
                 updated_by: userId,
                 updated_at: new Date()
@@ -101,7 +89,7 @@ const get = async (orgId, appId, userId, t) => {
     }
 }
 
-const getId = async (orgId, userId, appName) => {
+const getId = async (orgId, userId, handle) => {
     try {
         return await Application.findOne(
             {
@@ -109,7 +97,7 @@ const getId = async (orgId, userId, appName) => {
                 where: {
                     org_uuid: orgId,
                     created_by: userId,
-                    name: appName
+                    handle: handle
                 }
             });
     } catch (error) {

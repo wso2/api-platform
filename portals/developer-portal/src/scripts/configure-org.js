@@ -137,14 +137,14 @@ async function updateOrgContent(orgId) {
     }
     const formData = new FormData();
     formData.append('file', zipFile.files[0]);
-    const response = await fetch(devportalApi.org('/views/default/layout'), {
-        method: 'PUT',
+    const response = await fetch(devportalApi.org('/views/default/apply-theme'), {
+        method: 'POST',
         body: formData,
         credentials: 'same-origin'
     });
     if (response.ok) {
         const result = await response.json();
-        await showAlert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`, 'success');
+        await showAlert(`Upload successful! Organization ID: ${result.id}, File Name: ${result.fileName}`, 'success');
         window.location.href = 'configure';
     } else {
         const error = await response.text();
@@ -159,14 +159,14 @@ async function uploadContent(orgId) {
     formData.append('file', zipFile.files[0]);
 
     const view = document.getElementById('uploadViewContent').value;
-    const response = await fetch(devportalApi.org(`/views/${view}/layout`), {
-        method: 'PUT',
+    const response = await fetch(devportalApi.org(`/views/${view}/apply-theme`), {
+        method: 'POST',
         body: formData,
         credentials: 'same-origin'
     });
     if (response.ok) {
         const result = await response.json();
-        await showAlert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`, 'success');
+        await showAlert(`Upload successful! Organization ID: ${result.id}, File Name: ${result.fileName}`, 'success');
         window.location.href = 'configure';
     } else {
         const error = await response.text();

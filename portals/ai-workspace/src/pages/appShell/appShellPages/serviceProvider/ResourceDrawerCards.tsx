@@ -216,7 +216,7 @@ export default function ResourceDrawerCards({
 
                   return (
                     <ProxyCard
-                      key={proxyId ?? proxy.name}
+                      key={proxyId ?? proxy.displayName}
                       proxy={proxy}
                       deployment={
                         proxyId ? proxyDeployments[proxyId] : undefined

@@ -218,13 +218,13 @@ export default function AssociationsTable({
                   const canDetermineAddableKeys =
                     hasLoadedMappedKeys && hasLoadedEntityKeys;
                   const hasEntityKeys = entityKeys.some((key) =>
-                    Boolean(key.name)
+                    Boolean(key.id)
                   );
                   const hasAvailableKeysToAdd = entityKeys.some(
                     (key) =>
-                      key.name &&
-                      !mappedKeyIds.has(key.name) &&
-                      !unavailableKeyNames.has(key.name)
+                      key.id &&
+                      !mappedKeyIds.has(key.id) &&
+                      !unavailableKeyNames.has(key.id)
                   );
                   const entityLabel = isProvider ? 'provider' : 'proxy';
                   const addApiKeyTooltip = selectionBlockedMessage
@@ -261,7 +261,7 @@ export default function AssociationsTable({
                         </IconButton>
                       </ListingTable.Cell>
                       <ListingTable.Cell>
-                        {association.name || '—'}
+                        {association.displayName || '—'}
                       </ListingTable.Cell>
                       <ListingTable.Cell>
                         <Typography variant="body2">
@@ -303,7 +303,7 @@ export default function AssociationsTable({
                                   void onOpenManageKeysDrawer(association)
                                 }
                                 aria-label={`Add API key for ${
-                                  association.name || association.id
+                                  association.displayName || association.id
                                 }`}
                               >
                                 <Plus size={16} />
@@ -315,7 +315,7 @@ export default function AssociationsTable({
                             color="error"
                             onClick={() => onDeleteAssociation(association)}
                             aria-label={`Remove ${
-                              association.name || association.id
+                              association.displayName || association.id
                             }`}
                           >
                             <Trash2 size={16} />

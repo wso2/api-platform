@@ -77,7 +77,6 @@ export function MCPServerValidationProvider({ children }: MCPServerValidationPro
         setError(null);
         const response = await mcpServerValidationApis.fetchMCPProxyServerInfo(
           request,
-          organizationId,
           apimBaseUrl
         );
         setServerInfo(response);

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -51,12 +52,14 @@ type MCPProxyService struct {
 	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	cfg                  *config.Server
 }
 
 // NewMCPProxyService creates a new MCPProxyService instance
 func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo repository.ProjectRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository) *MCPProxyService {
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository,
+	cfg *config.Server) *MCPProxyService {
 	return &MCPProxyService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
@@ -65,6 +68,7 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		cfg:                  cfg,
 	}
 }
 
@@ -78,7 +82,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" {
+	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -86,35 +90,54 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		return nil, constants.ErrInvalidInput
 	}
 
-	// Validate project exists if provided
-	if s.projectRepo != nil && req.ProjectId != nil && *req.ProjectId != "" {
-		project, err := s.projectRepo.GetProjectByUUID(*req.ProjectId)
+	// req.ProjectId is the project handle; resolve it to the project UUID so the
+	// proxy is stored against the same identifier List filters on. Without the
+	// project repository we cannot resolve the handle, and must not fall back to
+	// storing the raw handle as a UUID — fail fast instead.
+	var projectUUID *string
+	if req.ProjectId != nil && *req.ProjectId != "" {
+		if s.projectRepo == nil {
+			return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
+		}
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(*req.ProjectId, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
-		if project == nil {
+		if project == nil || project.OrganizationID != orgUUID {
 			return nil, constants.ErrProjectNotFound
 		}
-		if project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
+		projectUUID = &project.ID
+	}
+
+	// Determine handle: use provided id or auto-generate from displayName
+	var handle string
+	if req.Id != nil && *req.Id != "" {
+		handle = *req.Id
+		exists, err := s.repo.Exists(handle, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check MCP proxy exists: %w", err)
+		}
+		if exists {
+			return nil, constants.ErrMCPProxyExists
+		}
+	} else {
+		var err error
+		handle, err = utils.GenerateHandle(req.DisplayName, func(h string) bool {
+			exists, _ := s.repo.Exists(h, orgUUID)
+			return exists
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate MCP proxy handle: %w", err)
 		}
 	}
+	req.Id = &handle
 
-	// Check if MCP proxy already exists
-	exists, err := s.repo.Exists(req.Id, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check MCP proxy exists: %w", err)
-	}
-	if exists {
-		return nil, constants.ErrMCPProxyExists
-	}
-
-	// Temporary check for maximum MCP proxy limit per organization before creation
+	// Enforce the per-organization MCP proxy limit (unlimited when not configured).
 	proxyCount, err := s.repo.Count(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count existing MCP proxies: %w", err)
 	}
-	if proxyCount >= constants.MaxMCPProxiesPerOrganization {
+	if config.LimitReached(proxyCount, s.cfg.ArtifactLimits.MaxMCPProxiesPerOrg) {
 		return nil, constants.ErrMCPProxyLimitReached
 	}
 
@@ -129,17 +152,24 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		}
 	}
 
+	// Resolve any associated gateways up-front so they can be persisted within the
+	// same transaction as the MCP proxy create.
+	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create MCP proxy model
 	m := &model.MCPProxy{
-		Handle:           req.Id,
+		Handle:           handle,
 		OrganizationUUID: orgUUID,
-		ProjectUUID:      req.ProjectId,
-		Name:             req.Name,
+		ProjectUUID:      projectUUID,
+		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		Configuration: model.MCPProxyConfiguration{
-			Name:         req.Name,
+			Name:         req.DisplayName,
 			Version:      req.Version,
 			Context:      req.Context,
 			Vhost:        req.Vhost,
@@ -149,6 +179,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		},
 		Origin: constants.OriginCP,
+		AssociatedGateways: associatedGateways,
 	}
 
 	if err := s.repo.Create(m); err != nil {
@@ -159,7 +190,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 
 	_ = s.auditRepo.Record("CREATE", m.UUID, "mcp_proxy", orgUUID, createdBy)
-	return s.Get(orgUUID, req.Id)
+	return s.Get(orgUUID, handle)
 }
 
 // List retrieves all MCP proxies for an organization
@@ -192,7 +223,23 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 }
 
 // ListByProject retrieves MCP proxies for an organization filtered by project ID
-func (s *MCPProxyService) ListByProject(orgUUID, projectUUID string, limit, offset int) (*api.MCPProxyListResponse, error) {
+func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, offset int) (*api.MCPProxyListResponse, error) {
+	// projectHandle is the project handle; resolve it to the project UUID so the
+	// filter matches the identifier proxies are stored against. Without the
+	// project repository we cannot resolve the handle, and must not filter on the
+	// raw handle as if it were a UUID — fail fast instead.
+	if s.projectRepo == nil {
+		return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
+	}
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate project: %w", err)
+	}
+	if project == nil || project.OrganizationID != orgUUID {
+		return nil, constants.ErrProjectNotFound
+	}
+	projectUUID := project.ID
+
 	// TODO: pagination
 	proxies, err := s.repo.ListByProject(orgUUID, projectUUID)
 	if err != nil {
@@ -243,10 +290,10 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != "" && req.Id != handle {
-		return nil, constants.ErrInvalidInput
+	if req.Id != nil && *req.Id != "" && *req.Id != handle {
+		return nil, constants.ErrHandleImmutable
 	}
-	if req.Name == "" || req.Version == "" {
+	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -261,10 +308,6 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	}
 	if existing == nil {
 		return nil, constants.ErrMCPProxyNotFound
-	}
-	// DP-originated artifacts are read-only in the control plane.
-	if err := ensureOriginMutable(existing.Origin); err != nil {
-		return nil, err
 	}
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
@@ -281,13 +324,19 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	// Store existing upstream config for auth preservation
 	existingUpstreamConfig := existing.Configuration.Upstream
 
+	// Snapshot the gateway-owned runtime fields so a DP-originated proxy can preserve them
+	// (only the description is control-plane editable — restored below).
+	origName := existing.Name
+	origVersion := existing.Version
+	origConfiguration := existing.Configuration
+
 	// Update fields
-	existing.Name = req.Name
+	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.UpdatedBy = updatedBy
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
-		Name:         req.Name,
+		Name:         req.DisplayName,
 		Version:      req.Version,
 		Context:      req.Context,
 		Vhost:        req.Vhost,
@@ -300,6 +349,29 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	// Preserve existing upstream auth credential if not provided in update request
 	// (the auth value is redacted in GET responses, so clients send empty value on updates)
 	existing.Configuration.Upstream = *preserveMCPUpstreamAuthValue(&existingUpstreamConfig, &existing.Configuration.Upstream)
+
+	// The gateway owns the runtime configuration of a DP-originated proxy: preserve it
+	// verbatim and keep only the control-plane-editable description from the request.
+	// This keeps the gateway runtime artifact unchanged without depending on the update
+	// payload round-tripping the (masked) upstream credential.
+	if existing.Origin == constants.OriginDP {
+		existing.Name = origName
+		existing.Version = origVersion
+		existing.Configuration = origConfiguration
+	}
+
+	// Gateway associations are managed only when the field is present in the request. An
+	// omitted field leaves associations untouched; an explicit (possibly empty) list
+	// replaces the full set, removing any mapping no longer listed. Deployment state is not
+	// consulted and deployment records are never modified here.
+	requested, manage, err := resolveManagedAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+	if manage {
+		existing.AssociatedGateways = requested
+		existing.ReplaceAssociatedGateways = true
+	}
 
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -482,9 +554,9 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		specVersion = &sv
 	}
 
-	return &api.MCPProxy{
-		Id:             m.Handle,
-		Name:           m.Name,
+	out := &api.MCPProxy{
+		Id:             &m.Handle,
+		DisplayName:    m.Name,
 		Description:    &desc,
 		CreatedBy:      &createdBy,
 		Version:        m.Version,
@@ -499,6 +571,10 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
+	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
+		out.AssociatedGateways = associated
+	}
+	return out
 }
 
 func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
@@ -508,7 +584,7 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 
 	return &api.MCPProxyListItem{
 		Id:             utils.StringPtrIfNotEmpty(m.Handle),
-		Name:           utils.StringPtrIfNotEmpty(m.Name),
+		DisplayName:    m.Name,
 		Description:    utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:        utils.StringPtrIfNotEmpty(m.Version),

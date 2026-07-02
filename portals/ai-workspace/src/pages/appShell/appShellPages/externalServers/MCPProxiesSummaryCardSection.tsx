@@ -256,7 +256,7 @@ export default function MCPProxiesSummaryCardSection({
                       sx={{ minWidth: 0 }}
                     >
                       <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
-                        {truncateWords(server.name || 'No Name', 12)}
+                        {truncateWords(server.displayName || 'No Name', 12)}
                       </Typography>
                       <Chip
                         label={server.version || '—'}

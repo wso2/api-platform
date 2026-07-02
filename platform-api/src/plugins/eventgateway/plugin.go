@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/plugin"
@@ -72,6 +73,8 @@ var schemaSQLServer []byte
 
 // EventGatewayPlugin is the compile-time plugin for WebSub and WebBroker APIs.
 type EventGatewayPlugin struct {
+	cfg *config.Server
+
 	websubAPIRepo    *egrepo.WebSubAPIRepo
 	webbrokerAPIRepo *egrepo.WebBrokerAPIRepo
 	hmacSecretRepo   *egrepo.WebSubAPIHmacSecretRepo
@@ -100,6 +103,7 @@ func (p *EventGatewayPlugin) Name() string {
 func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 	db := deps.DB
 	cfg := deps.Config
+	p.cfg = cfg
 	logger := deps.Logger
 	apiUtil := &utils.APIUtil{}
 
@@ -138,6 +142,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		apiUtil,
 		logger,
 		deps.AuditRepo,
+		cfg,
 	)
 
 	websubDeploymentSvc := egservice.NewWebSubAPIDeploymentService(
@@ -160,6 +165,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		apiUtil,
 		logger,
 		deps.AuditRepo,
+		cfg,
 	)
 
 	webbrokerDeploymentSvc := egservice.NewWebBrokerAPIDeploymentService(
@@ -267,13 +273,14 @@ func (p *EventGatewayPlugin) EnrichSubscription(orgID string, sub *api.Organizat
 	if err != nil {
 		return err
 	}
-	limit := constants.MaxWebSubAPIsPerOrganization
-	remaining := max(limit-count, 0)
-	sub.Quotas.WebsubApis = &api.OrganizationQuota{
-		Used:      count,
-		Limit:     intPtr(limit),
-		Remaining: intPtr(remaining),
+	// A limit <= 0 means unlimited: report only usage, leaving Limit/Remaining
+	// unset so consumers treat the WebSub API quota as uncapped.
+	quota := &api.OrganizationQuota{Used: count}
+	if limit := p.cfg.ArtifactLimits.MaxWebSubAPIsPerOrg; limit > 0 {
+		quota.Limit = intPtr(limit)
+		quota.Remaining = intPtr(max(limit-count, 0))
 	}
+	sub.Quotas.WebsubApis = quota
 	return nil
 }
 

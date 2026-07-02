@@ -76,8 +76,8 @@ function parseOrganizationFromYamlFile(fileBuffer) {
         }
     }
     if (spec.views !== undefined && spec.views !== null) {
-        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || !v.handle)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a 'handle' field");
+        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || typeof v.id !== 'string' || !v.id.trim())) {
+            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a non-empty 'id' field");
         }
     }
     const organization = mapYamlToOrganization(parsed);
@@ -106,6 +106,9 @@ const createOrganization = async (req, res) => {
     logger.info('Initiate organization creation...');
 
     const payload = req.body;
+    if (payload.id) {
+        payload.handle = payload.id;
+    }
     payload.configuration = {
         devportalMode: constants.DEVPORTAL_MODE.DEFAULT,
         ...(payload.configuration || {}),
@@ -138,9 +141,19 @@ const createOrganization = async (req, res) => {
             createdLabels.forEach(l => { labelMap[l.dataValues.name] = l.dataValues.uuid; });
 
             // Views: use YAML-defined if provided, else fall back to default
-            const viewDefs = payload.views?.length
+            if (payload.views?.length) {
+                for (const viewDef of payload.views) {
+                    if (!viewDef.id || typeof viewDef.id !== 'string') {
+                        throw new Sequelize.ValidationError(
+                            "Invalid organization payload: each entry in 'views' must have a non-empty 'id'"
+                        );
+                    }
+                }
+            }
+            const viewDefs = (payload.views?.length
                 ? payload.views
-                : [{ handle: 'default', name: 'default', labels: [labelDefs[0].name] }];
+                : [{ id: 'default', name: 'default', labels: [labelDefs[0].name] }]
+            ).map(v => ({ ...v, handle: v.id }));
 
             for (const viewDef of viewDefs) {
                 const viewResponse = await viewDao.create(orgId, viewDef, userId, t);
@@ -149,7 +162,7 @@ const createOrganization = async (req, res) => {
                     const labelId = labelMap[lName];
                     if (!labelId) {
                         throw new Sequelize.ValidationError(
-                            `Invalid organization YAML: view '${viewDef.handle}' references unknown label '${lName}'`
+                            `Invalid organization YAML: view '${viewDef.id}' references unknown label '${lName}'`
                         );
                     }
                     await labelDao.addToView(orgId, labelId, viewId, userId, t);
@@ -168,12 +181,11 @@ const createOrganization = async (req, res) => {
         });
 
         const orgCreationResponse = {
-            id: organization.uuid,
+            id: organization.handle,
             name: organization.name,
             businessOwner: organization.business_owner,
             businessOwnerContact: organization.business_owner_contact,
             businessOwnerEmail: organization.business_owner_email,
-            handle: organization.handle,
             idpRefId: organization.idp_ref_id,
             cpRefId: organization.cp_ref_id,
             configuration: organization.dataValues.configuration
@@ -209,11 +221,10 @@ const getAllOrganizations = async () => {
         for (const organization of organizations) {
             orgList.push({
                 name: organization.dataValues.name,
-                id: organization.dataValues.uuid,
+                id: organization.dataValues.handle,
                 businessOwner: organization.dataValues.business_owner,
                 businessOwnerContact: organization.dataValues.business_owner_contact,
                 businessOwnerEmail: organization.dataValues.business_owner_email,
-                handle: organization.handle,
                 idpRefId: organization.idp_ref_id,
                 cpRefId: organization.cp_ref_id,
                 configuration: organization.dataValues.configuration
@@ -238,6 +249,9 @@ const updateOrganization = async (req, res) => {
     });
     try {
         const payload = req.body;
+        if (payload.id) {
+            payload.handle = payload.id;
+        }
         payload.orgId = orgId;
         const userId = util.resolveActor(req);
         payload.updatedBy = userId;
@@ -249,13 +263,15 @@ const updateOrganization = async (req, res) => {
 
         let updatedOrg;
         await sequelize.transaction({ timeout: 60000 }, async (t) => {
+            const existingOrg = await orgDao.get(orgId, t);
+            const resolvedOrgId = existingOrg.uuid;
             [, updatedOrg] = await orgDao.update(payload, t);
             logger.info('Organization update successful', { orgId });
 
             // Labels upsert — only if present in payload
             if (payload.labels?.length) {
                 for (const label of payload.labels) {
-                    await labelDao.update(orgId, label, userId, t);
+                    await labelDao.update(resolvedOrgId, label, userId, t);
                 }
                 logger.info('Labels upserted successfully', { orgId });
             }
@@ -263,14 +279,14 @@ const updateOrganization = async (req, res) => {
             // Views upsert — only if present in payload
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
-                    if (!viewDef.handle || typeof viewDef.handle !== 'string') {
+                    if (!viewDef.id || typeof viewDef.id !== 'string') {
                         throw new Sequelize.ValidationError(
-                            "Invalid organization payload: each entry in 'views' must have a non-empty 'handle'"
+                            "Invalid organization payload: each entry in 'views' must have a non-empty 'id'"
                         );
                     }
-                    const view = await viewDao.update(orgId, viewDef.handle, viewDef.name, userId, t);
+                    const view = await viewDao.update(resolvedOrgId, viewDef.id, viewDef.name, userId, t);
                     if (Array.isArray(viewDef.labels)) {
-                        await viewDao.replaceLabels(orgId, view.dataValues.uuid, viewDef.labels, userId, t);
+                        await viewDao.replaceLabels(resolvedOrgId, view.dataValues.uuid, viewDef.labels, userId, t);
                     }
                 }
                 logger.info('Views upserted successfully', { orgId });
@@ -278,12 +294,11 @@ const updateOrganization = async (req, res) => {
         });
 
         res.status(200).json({
-            id: updatedOrg[0].dataValues.uuid,
+            id: updatedOrg[0].dataValues.handle,
             name: updatedOrg[0].dataValues.name,
             businessOwner: updatedOrg[0].dataValues.business_owner,
             businessOwnerContact: updatedOrg[0].dataValues.business_owner_contact,
             businessOwnerEmail: updatedOrg[0].dataValues.business_owner_email,
-            handle: updatedOrg[0].dataValues.handle,
             idpRefId: updatedOrg[0].dataValues.idp_ref_id,
             cpRefId: updatedOrg[0].dataValues.cp_ref_id,
             configuration: updatedOrg[0].dataValues.configuration
@@ -304,7 +319,7 @@ const deleteOrganization = async (req, res) => {
         orgId
     });
     try {
-        const deletedRowsCount = await orgDao.delete(orgId);
+        const deletedRowsCount = await sequelize.transaction({ timeout: 60000 }, (t) => orgDao.delete(orgId, t));
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {
                 orgId
@@ -324,60 +339,7 @@ const deleteOrganization = async (req, res) => {
     }
 };
 
-const createOrgContent = async (req, res) => {
-    const orgId = req.orgId;
-    const viewName = req.params.viewName;
-    const zipFile = req.files?.file?.[0] ?? req.file;
-    const userId = util.resolveActor(req);
-    logger.info('Initiate create organization content...', {
-        orgId,
-        viewName
-    });
-
-    const extractPath = path.join(process.cwd(), '..', '.tmp', orgId);
-    let tempZipPath;
-
-    try {
-        if (!zipFile) {
-            throw new CustomError(400, "Bad Request", "Missing required zip file");
-        }
-        if (zipFile.size > 50 * 1024 * 1024) {
-            throw new CustomError(400, "Bad Request", "File size exceeds the 50MB limit");
-        }
-        let zipPath = zipFile.path;
-        if (!zipPath && zipFile.buffer) {
-            tempZipPath = path.join(require('os').tmpdir(), `org-content-${orgId}-${Date.now()}.zip`);
-            fs.writeFileSync(tempZipPath, zipFile.buffer);
-            zipPath = tempZipPath;
-        }
-        await util.unzipDirectory(zipPath, extractPath);
-        const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
-        for (const { filePath, fileName, fileContent, fileType } of files) {
-            await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId);
-        }
-        logger.info('Organization content created successfully', {
-            orgId,
-            viewName
-        });
-        res.status(201).send({ "id": orgId, "fileName": zipFile.originalname });
-        fs.rmSync(extractPath, { recursive: true, force: true });
-        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
-
-    } catch (error) {
-        logger.error('Organization content creation failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId,
-            viewName,
-            fileName: zipFile?.originalname
-        });
-        fs.rmSync(extractPath, { recursive: true, force: true });
-        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
-        return util.handleError(res, error);
-    }
-};
-
-const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName, userId) => {
+const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName, userId, t) => {
     let content;
     // eslint-disable-next-line no-useless-catch
     try {
@@ -390,84 +352,12 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
                 orgId: orgId,
                 viewName: viewName,
                 createdBy: userId
-            });
+            }, t);
         }
     } catch (error) {
         throw error;
     }
     return content;
-};
-
-const updateOrgContent = async (req, res) => {
-    const orgId = req.orgId;
-    const viewName = req.params.viewName;
-    const zipFile = req.files?.file?.[0] ?? req.file;
-    const userId = util.resolveActor(req);
-    logger.info('Initiate update organization content...', {
-        orgId,
-        viewName
-    });
-    const extractPath = path.join(process.cwd(), '..', '.tmp', orgId);
-    let tempZipPath;
-    try {
-        if (!zipFile) {
-            throw new CustomError(400, "Bad Request", "Missing required zip file");
-        }
-        if (zipFile.size > 50 * 1024 * 1024) {
-            throw new CustomError(400, "Bad Request", "File size exceeds the 50MB limit");
-        }
-        let zipPath = zipFile.path;
-        if (!zipPath && zipFile.buffer) {
-            tempZipPath = path.join(require('os').tmpdir(), `org-content-${orgId}-${Date.now()}.zip`);
-            fs.writeFileSync(tempZipPath, zipFile.buffer);
-            zipPath = tempZipPath;
-        }
-        await util.unzipDirectory(zipPath, extractPath);
-        const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
-        for (const { filePath, fileName, fileContent, fileType } of files) {
-            if (fileName != null && !fileName.startsWith('.')) {
-                const organizationContent = await getOrgContent(orgId, viewName, fileType, fileName, filePath);
-                if (organizationContent) {
-                    await orgDao.updateContent({
-                        fileType: fileType,
-                        fileName: fileName,
-                        fileContent: fileContent,
-                        filePath: filePath,
-                        orgId: orgId,
-                        viewName: viewName,
-                        updatedBy: userId
-                    });
-                } else {
-                    logger.info('Content not found during update, creating new content', {
-                        orgId,
-                        viewName,
-                        fileType,
-                        fileName,
-                        filePath
-                    });
-                    await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId);
-                }
-            }
-        }
-        fs.rmSync(extractPath, { recursive: true, force: true });
-        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
-        logger.info('Organization content updated successfully', {
-            orgId,
-            viewName
-        });
-        res.status(201).send({ "id": orgId, "fileName": zipFile.originalname });
-    } catch (error) {
-        logger.error('Organization content update failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId,
-            viewName,
-            fileName: zipFile?.originalname
-        });
-        fs.rmSync(extractPath, { recursive: true, force: true });
-        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
-        util.handleError(res, error);
-    }
 };
 
 const getOrgContent = async (orgId, viewName, fileType, fileName, filePath) => {
@@ -479,67 +369,6 @@ const getOrgContent = async (orgId, viewName, fileType, fileName, filePath) => {
         fileName: fileName,
         filePath: filePath
     });
-};
-
-const deleteOrgContent = async (req, res) => {
-    const orgId = req.orgId;
-    logger.info('Initiate delete organization content...', {
-        orgId,
-        viewName: req.params.viewName
-    });
-    try {
-        const fileName = req.query.fileName;
-        let deletedRowsCount;
-        if (!req.query.fileName) {
-            deletedRowsCount = await orgDao.deleteAllContent(orgId, req.params.viewName);
-        } else {
-            deletedRowsCount = await orgDao.deleteContent(orgId, req.params.viewName, fileName);
-        }
-        if (deletedRowsCount > 0) {
-            logger.info('Organization content deletion successful', {
-                orgId,
-                viewName: req.params.viewName
-            });
-            res.status(204).send();
-        } else {
-            throw new CustomError(404, "Records Not Found", 'Organization not found');
-        }
-    } catch (error) {
-        logger.error('Organization content deletion failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId,
-        });
-        util.handleError(res, error);
-    }
-};
-
-const deleteAllOrgContent = async (req, res) => {
-    const orgId = req.orgId;
-    logger.info('Initiate delete all organization content...', {
-        orgId,
-        viewName: req.params.viewName
-    });
-    try {
-        const deletedRowsCount = await orgDao.deleteAllContent(orgId, req.params.viewName, fileName);
-        if (deletedRowsCount > 0) {
-            logger.info('All organization content deletion successful', {
-                orgId,
-                viewName: req.params.viewName
-            });
-            res.status(204).send();
-        } else {
-            throw new CustomError(404, "Records Not Found", 'Organization not found');
-        }
-    } catch (error) {
-        logger.error('All organization content deletion failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId,
-            viewName: req.params.viewName
-        });
-        util.handleError(res, error);
-    }
 };
 
 function checkAdditionalValues(additionalValues) {
@@ -572,15 +401,65 @@ const getApplicationKeyMap = async (orgId, appId, userId) => {
 
 }
 
+const applyTheme = async (req, res) => {
+    const orgId = req.orgId;
+    const viewName = req.params.viewId;
+    const zipFile = req.files?.file?.[0] ?? req.file;
+    const userId = util.resolveActor(req);
+    const extractPath = path.join(process.cwd(), '..', '.tmp', `${orgId}-${viewName}-${Date.now()}`);
+    let tempZipPath;
+    try {
+        if (!zipFile) {
+            throw new CustomError(400, 'Bad Request', 'Missing required zip file');
+        }
+        if (zipFile.size > 50 * 1024 * 1024) {
+            throw new CustomError(400, 'Bad Request', 'File size exceeds the 50MB limit');
+        }
+        let zipPath = zipFile.path;
+        if (!zipPath && zipFile.buffer) {
+            tempZipPath = path.join(require('os').tmpdir(), `org-content-${orgId}-${Date.now()}.zip`);
+            fs.writeFileSync(tempZipPath, zipFile.buffer);
+            zipPath = tempZipPath;
+        }
+        await util.unzipDirectory(zipPath, extractPath);
+        const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
+        await sequelize.transaction(async (t) => {
+            await orgDao.deleteAllContent(orgId, viewName, t);
+            for (const { filePath, fileName, fileContent, fileType } of files) {
+                await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId, t);
+            }
+        });
+        fs.rmSync(extractPath, { recursive: true, force: true });
+        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
+        const organization = await orgDao.getByUuid(orgId);
+        res.status(200).json({ id: organization.handle, fileName: zipFile.originalname });
+    } catch (error) {
+        logger.error('Apply theme failed', { error: error.message, stack: error.stack, orgId, viewName });
+        fs.rmSync(extractPath, { recursive: true, force: true });
+        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
+        util.handleError(res, error);
+    }
+};
+
+const resetTheme = async (req, res) => {
+    const orgId = req.orgId;
+    const viewName = req.params.viewId;
+    try {
+        await orgDao.deleteAllContent(orgId, viewName);
+        res.status(204).send();
+    } catch (error) {
+        logger.error('Reset theme failed', { error: error.message, stack: error.stack, orgId, viewName });
+        util.handleError(res, error);
+    }
+};
+
 module.exports = {
     createOrganization,
     updateOrganization,
     deleteOrganization,
-    createOrgContent,
-    updateOrgContent,
     getOrgContent,
-    deleteOrgContent,
-    deleteAllOrgContent,
+    applyTheme,
+    resetTheme,
     getOrganizations,
     getAllOrganizations,
     getApplicationKeyMap,
