@@ -186,7 +186,7 @@ export default function ProviderTemplateOverview() {
     setIsLoading(true);
     setError(null);
     providerTemplateApis
-      .getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplate(templateId, PLATFORM_API_BASE_URL)
       .then((full) => {
         if (isMounted) setTemplate(full);
       })
@@ -206,12 +206,14 @@ export default function ProviderTemplateOverview() {
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
-    if (!templateId || !organizationId) return;
     setVersions([]);
+
+    const groupId = template?.groupId ?? template?.id;
+    if (!groupId || !organizationId) return;
 
     let isMounted = true;
     providerTemplateApis
-      .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplateVersions(groupId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (isMounted) {
           setVersions(list);
@@ -224,7 +226,7 @@ export default function ProviderTemplateOverview() {
     return () => {
       isMounted = false;
     };
-  }, [templateId, currentOrganization?.uuid]);
+  }, [template?.groupId, template?.id, currentOrganization?.uuid]);
 
   useEffect(() => {
     if (template?.version) setSelectedVersion(template.version);
@@ -235,10 +237,11 @@ export default function ProviderTemplateOverview() {
     if (!templateId || !organizationId || version === selectedVersion) return;
     setIsLoading(true);
     try {
-      const full = await providerTemplateApis.getProviderTemplateVersion(
-        templateId,
-        version,
-        organizationId,
+      
+      const targetHandle =
+        versions.find((v) => v.version === version)?.id ?? templateId;
+      const full = await providerTemplateApis.getProviderTemplate(
+        targetHandle,
         PLATFORM_API_BASE_URL
       );
       setSelectedVersion(version);
@@ -554,9 +557,7 @@ export default function ProviderTemplateOverview() {
       const updated =
         await providerTemplateApis.setProviderTemplateVersionEnabled(
           template.id,
-          currentVersion,
           next,
-          organizationId,
           PLATFORM_API_BASE_URL
         );
       setTemplate(updated);
@@ -609,8 +610,7 @@ export default function ProviderTemplateOverview() {
       if (allVersions.length === 0) {
         try {
           allVersions = await providerTemplateApis.getProviderTemplateVersions(
-            template.id,
-            organizationId,
+            template.groupId ?? template.id,
             PLATFORM_API_BASE_URL
           );
         } catch {
@@ -620,8 +620,6 @@ export default function ProviderTemplateOverview() {
 
       await providerTemplateApis.deleteProviderTemplateVersion(
         template.id,
-        currentVersion,
-        organizationId,
         PLATFORM_API_BASE_URL
       );
       await refreshTemplates();

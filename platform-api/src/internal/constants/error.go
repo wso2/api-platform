@@ -139,6 +139,7 @@ var (
 	ErrLLMProviderTemplateVersionExists     = errors.New("llm provider template version already exists")
 	ErrLLMProviderTemplateInUse             = errors.New("llm provider template is in use by one or more providers")
 	ErrLLMProviderTemplateReadOnly          = errors.New("built-in llm provider template is read-only")
+	ErrLLMProviderTemplateNotToggleable     = errors.New("only built-in templates can be enabled or disabled")
 	ErrLLMProviderTemplateManagedByReserved = errors.New("'wso2' is reserved and cannot be used as managedBy on custom templates")
 	ErrLLMProviderExists                    = errors.New("llm provider already exists")
 	ErrLLMProviderNotFound                  = errors.New("llm provider not found")

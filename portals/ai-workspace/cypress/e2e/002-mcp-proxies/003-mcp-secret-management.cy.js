@@ -60,7 +60,8 @@ describe('AI Workspace — MCP server secret management', () => {
         });
       })
       .then((response) => {
-        organizationId = response.body?.id ?? '';
+        const orgs = response.body?.list ?? [];
+        organizationId = orgs[0]?.id ?? '';       
       });
   });
 

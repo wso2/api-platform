@@ -223,7 +223,6 @@ type LLMProviderTemplateRepository interface {
 	RenameFamily(baseHandle, orgUUID, name string) error
 	SetEnabled(templateID, orgUUID, version string, enabled bool) error
 	DeleteVersion(templateID, orgUUID, version string) error
-	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
 	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)

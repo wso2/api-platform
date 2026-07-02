@@ -19,6 +19,7 @@
 metadata:
   name: openai
 spec:
+  groupId: openai
   displayName: OpenAI
   managedBy: wso2
   version: v1.0
