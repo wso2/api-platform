@@ -136,9 +136,11 @@ Creates a Developer Portal application in the specified organization. The reques
 ```
 
 ```yaml
-displayName: Weather App
-id: my-weather-app
-description: Application used to call Weather APIs.
+metadata:
+  name: my-weather-app
+spec:
+  displayName: Weather App
+  description: Application used to call Weather APIs.
 
 ```
 
@@ -349,9 +351,11 @@ Updates an application owned by the authenticated user in the specified organiza
 ```
 
 ```yaml
-displayName: Weather App
-id: my-weather-app
-description: Application used to call Weather APIs.
+metadata:
+  name: my-weather-app
+spec:
+  displayName: Weather App
+  description: Application used to call Weather APIs.
 
 ```
 
