@@ -46,8 +46,7 @@ const loadViewSettingsPage = async (req, res) => {
         baseUrl,
         viewName,
         csrfToken,
-        showApiWorkflowsNav: config.features?.apiWorkflows?.enabled === true,
-        demoMode: config.demo?.enabled === true
+        showApiWorkflowsNav: config.features?.apiWorkflows?.enabled === true
     };
     try {
         const orgName = req.params.orgName;

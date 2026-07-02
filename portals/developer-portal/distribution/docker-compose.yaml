@@ -37,10 +37,6 @@
 #   Every devportal config value can also be overridden via a DP_* env var.
 #   Create a .env file next to this file for persistent overrides.
 #
-# Demo mode (off by default):
-#   demo=true docker compose up
-#   Enables the "Seed sample APIs" button in Settings and the onboarding prompt.
-#
 # Database:
 #   SQLite is used by default — no external database required.
 #   To switch to PostgreSQL:
@@ -145,12 +141,6 @@ services:
 
       # Seed a default organization on startup (idempotent)
       DP_DEFAULTORGNAME: "default"
-
-      # Demo mode — off by default. When enabled, the Settings > Manage APIs page
-      # shows a "Seed sample APIs" button and admins get a one-time onboarding
-      # prompt to deploy sample APIs/MCPs. Enable with:
-      #   demo=true docker compose up
-      DP_DEMO_ENABLED: "${demo:-false}"
 
       # Auto-generate default subscription plans for every new org
       DP_GENERATEDEFAULTSUBPLANS: "true"
