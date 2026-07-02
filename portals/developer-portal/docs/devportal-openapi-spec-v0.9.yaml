@@ -3676,7 +3676,11 @@ components:
               - id: string
                 displayName: string
                 description: string
-                requestCount: string
+                limits:
+                  - limitType: REQUEST_COUNT
+                    limitCount: 10000
+                    timeUnit: MONTH
+                    timeAmount: 1
                 refId: string
                 orgId: string
                 createdBy: alice@example.com
@@ -4422,12 +4426,37 @@ components:
           type: string
         description:
           type: string
-        requestCount:
-          type: string
-          nullable: true
-          description: >-
-            Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type
-            (request-count or event-count) used to create the plan. Null if not set.
+        limits:
+          type: array
+          description: Rate/quota limits enforced for this plan. Empty when the plan is unlimited.
+          items:
+            type: object
+            properties:
+              limitType:
+                type: string
+                enum:
+                  - REQUEST_COUNT
+                  - EVENT_COUNT
+                  - BANDWIDTH
+                  - TOTAL_TOKEN_COUNT
+              limitCount:
+                oneOf:
+                  - type: integer
+                  - type: string
+                description: >-
+                  Use -1 for unlimited. Returned as a string when the stored count exceeds the safe integer
+                  range, otherwise a number.
+              timeUnit:
+                type: string
+                enum:
+                  - MINUTE
+                  - HOUR
+                  - DAY
+                  - MONTH
+                  - null
+                nullable: true
+              timeAmount:
+                type: integer
         refId:
           type: string
           nullable: true
@@ -4650,7 +4679,6 @@ components:
       required:
         - id
         - displayName
-        - type
       properties:
         id:
           type: string
@@ -4665,22 +4693,61 @@ components:
           type: string
         description:
           type: string
+        limits:
+          type: array
+          description: >-
+            Rate/quota limits enforced for this plan. Omit or leave empty for an unlimited plan. Replaces the
+            whole limit set on update.
+          items:
+            type: object
+            required:
+              - limitCount
+            properties:
+              limitType:
+                type: string
+                enum:
+                  - REQUEST_COUNT
+                  - EVENT_COUNT
+                  - BANDWIDTH
+                  - TOTAL_TOKEN_COUNT
+                default: REQUEST_COUNT
+              limitCount:
+                type: integer
+                description: Use -1 for unlimited, otherwise a positive number.
+                example: 10000
+              timeUnit:
+                type: string
+                enum:
+                  - MINUTE
+                  - HOUR
+                  - DAY
+                  - MONTH
+                  - null
+                nullable: true
+                description: Omit for a limit with no time window.
+              timeAmount:
+                type: integer
+                default: 1
+                description: Size of the time window, in `timeUnit` units.
         type:
           type: string
           enum:
             - requestcount
             - eventcount
-          description: Service accepts case-insensitive `requestcount` or `eventcount`.
+          description: >-
+            Legacy shorthand accepted only via SubscriptionPlan/SubscriptionPlanList YAML upload
+            (`multipart/form-data`); converted into `limits` before storage. Ignored for JSON requests — use
+            `limits` instead.
         requestCount:
           oneOf:
             - type: integer
             - type: string
-          description: Required for request-count plans. Use -1 for unlimited.
+          description: "Legacy YAML shorthand paired with `type: requestcount`. Use -1 for unlimited."
         eventCount:
           oneOf:
             - type: integer
             - type: string
-          description: Required for event-count plans. Use -1 for unlimited.
+          description: "Legacy YAML shorthand paired with `type: eventcount`. Use -1 for unlimited."
     LabelRequest:
       type: object
       required:
