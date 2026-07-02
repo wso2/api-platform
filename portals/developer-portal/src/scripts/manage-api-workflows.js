@@ -1313,7 +1313,7 @@ async function saveApiWorkflow(orgId, viewName, status) {
     if (!valid) return;
 
     const handle = generateHandle(name);
-    const payload = { displayName: name, handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
+    const payload = { displayName: name, id: handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
     const isEdit = !!apiWorkflowId;
     const url = isEdit
         ? devportalApi.org(`/views/${viewName}/api-workflows/${apiWorkflowId}`)
