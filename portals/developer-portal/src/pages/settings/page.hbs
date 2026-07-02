@@ -511,7 +511,7 @@
           <table class="cfg-table">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>Display name</th>
                 <th>Target URL</th>
                 <th>Events</th>
                 <th>Secret</th>
@@ -525,7 +525,7 @@
               <tr id="cfg-webhook-row-{{id}}" data-id="{{id}}">
                 <td>
                   <button type="button" class="cfg-webhook-edit-btn" data-id="{{id}}"
-                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{name}}</button>
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
                 </td>
                 <td>
                   <span class="cfg-name-chip" title="{{targetUrl}}"
@@ -547,7 +547,7 @@
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="cfg-icon-btn cfg-icon-btn--danger cfg-webhook-delete-btn" type="button"
-                      data-id="{{id}}" data-name="{{name}}" title="Delete">
+                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
                       <i class="bi bi-trash"></i>
                     </button>
                   </div>
@@ -726,8 +726,13 @@
       <button type="button" class="cfg-modal-close" id="cfg-webhook-modal-close"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
-      <label for="wh-name">Name <span class="required">*</span></label>
-      <input type="text" id="wh-name" class="cfg-form-input" placeholder="e.g. Production listener" />
+      <label for="wh-display">Display name <span class="required">*</span></label>
+      <input type="text" id="wh-display" class="cfg-form-input" placeholder="e.g. Production listener" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-handle">Handle <span class="required">*</span></label>
+      <input type="text" id="wh-handle" class="cfg-form-input cfg-form-input--mono" placeholder="production-listener" />
+      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="wh-url">Target URL <span class="required">*</span></label>
@@ -2010,7 +2015,8 @@
     editWebhookId = mode === 'edit' ? data.id : null;
     document.getElementById('cfg-webhook-modal-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
     document.getElementById('cfg-webhook-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
-    document.getElementById('wh-name').value      = mode === 'edit' ? (data.name || '')      : '';
+    document.getElementById('wh-display').value   = mode === 'edit' ? (data.displayName || '') : '';
+    document.getElementById('wh-handle').value    = mode === 'edit' ? (data.id || '')          : '';
     document.getElementById('wh-url').value       = mode === 'edit' ? (data.targetUrl || '')       : '';
     document.getElementById('wh-secret').value    = '';
     document.getElementById('wh-publickey').value = '';
@@ -2020,15 +2026,22 @@
     document.getElementById('wh-publickey-hint').style.display = mode === 'edit' && data.hasPublicKey ? 'block' : 'none';
     setSelectedEvents(mode === 'edit' ? data.events : []);
     document.getElementById('cfg-webhook-modal').style.display = 'flex';
-    document.getElementById('wh-name').focus();
+    document.getElementById('wh-display').focus();
   }
   function closeWebhookModal() { document.getElementById('cfg-webhook-modal').style.display = 'none'; editWebhookId = null; }
 
+  /* ── auto-slug display → handle ── */
+  document.getElementById('wh-display').addEventListener('input', function() {
+    if (editWebhookId) return;
+    document.getElementById('wh-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  });
+
   /* ── save ── */
   document.getElementById('cfg-webhook-modal-save').addEventListener('click', async function() {
-    var name = v('wh-name');
-    var url  = v('wh-url');
-    if (!name || !url) { await showAlert('Name and target URL are required.', 'error'); return; }
+    var displayName = v('wh-display');
+    var handle      = v('wh-handle');
+    var url         = v('wh-url');
+    if (!displayName || !handle || !url) { await showAlert('Display name, handle and target URL are required.', 'error'); return; }
 
     var parsedUrl;
     try { parsedUrl = new URL(url); } catch (e) { parsedUrl = null; }
@@ -2051,7 +2064,8 @@
     }
 
     var body = {
-      name: name,
+      id: handle,
+      displayName: displayName,
       targetUrl: url,
       events: events,
       enabled: document.getElementById('wh-enabled').checked,

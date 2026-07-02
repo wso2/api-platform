@@ -35,7 +35,8 @@ const create = async (orgId, subData, createdBy) => {
         }
         const record = await WebhookSubscriber.create({
             org_uuid: orgId,
-            name: subData.name,
+            handle: subData.handle,
+            display_name: subData.displayName,
             target_url: subData.targetUrl,
             ...(subData.secret && { secret_enc: whCrypto.encrypt(subData.secret) }),
             ...(subData.publicKey && { public_key: subData.publicKey }),
@@ -59,10 +60,11 @@ const create = async (orgId, subData, createdBy) => {
  * Update an existing webhook subscriber.
  * Re-encrypts the secret if it is provided.
  */
-const update = async (orgId, subscriberId, subData, updatedBy) => {
+const update = async (orgId, subscriberHandle, subData, updatedBy) => {
     try {
         const updatePayload = {
-            ...(subData.name && { name: subData.name }),
+            ...(subData.handle && { handle: subData.handle }),
+            ...(subData.displayName && { display_name: subData.displayName }),
             ...(subData.targetUrl && { target_url: subData.targetUrl }),
             ...(subData.publicKey !== undefined && { public_key: subData.publicKey }),
             ...(subData.events && { event_patterns: subData.events }),
@@ -80,14 +82,16 @@ const update = async (orgId, subscriberId, subData, updatedBy) => {
         }
 
         const [updatedRowsCount] = await WebhookSubscriber.update(updatePayload, {
-            where: { uuid: subscriberId, org_uuid: orgId }
+            where: { handle: subscriberHandle, org_uuid: orgId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
         // `returning: true` only yields row instances on Postgres; re-fetch
         // explicitly so the result is reliable on SQLite too.
-        const updated = await WebhookSubscriber.findByPk(subscriberId);
+        const updated = await WebhookSubscriber.findOne({
+            where: { handle: updatePayload.handle || subscriberHandle, org_uuid: orgId }
+        });
         return [updatedRowsCount, [updated]];
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.EmptyResultError) {
@@ -143,9 +147,9 @@ const matchSubscribers = async (orgId, eventType) => {
 /**
  * Get a single webhook subscriber by UUID.
  */
-const get = async (orgId, subscriberId) => {
+const get = async (orgId, subscriberHandle) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { uuid: subscriberId, org_uuid: orgId } });
+        const sub = await WebhookSubscriber.findOne({ where: { handle: subscriberHandle, org_uuid: orgId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -184,10 +188,10 @@ const getById = async (subscriberId) => {
 /**
  * Delete a webhook subscriber.
  */
-const deleteSubscriber = async (orgId, subscriberId) => {
+const deleteSubscriber = async (orgId, subscriberHandle) => {
     try {
         const deleted = await WebhookSubscriber.destroy({
-            where: { uuid: subscriberId, org_uuid: orgId }
+            where: { handle: subscriberHandle, org_uuid: orgId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');

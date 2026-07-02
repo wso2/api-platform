@@ -2498,8 +2498,8 @@ components:
       required: true
       schema:
         type: string
-        example: sub-uuid-12345
-      description: Webhook subscriber ID (UUID).
+        example: production-gateway
+      description: The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.
     viewId:
       name: viewId
       in: path
@@ -5070,12 +5070,16 @@ components:
     WebhookSubscriberRequest:
       type: object
       required:
-        - displayName
+        - id
         - targetUrl
       properties:
-        name:
+        id:
           type: string
-          description: Unique name within the organization.
+          description: Desired handle for the webhook subscriber (unique per org), stored as-is.
+          example: production-gateway
+        displayName:
+          type: string
+          description: Optional display name. Defaults to the handle when omitted.
           example: Production Gateway
         targetUrl:
           type: string
@@ -5116,12 +5120,12 @@ components:
       properties:
         id:
           type: string
-          description: Webhook subscriber UUID.
-          example: sub-uuid-12345
+          description: The webhook subscriber's handle (unique per org). Not the internal database uuid.
+          example: production-gateway
         orgId:
           type: string
           example: org-12345
-        name:
+        displayName:
           type: string
           example: Production Gateway
         targetUrl:
