@@ -25,7 +25,7 @@ const create = async (orgData, t) => {
         devPortalId = orgData.handle.toLowerCase();
     }
     const createOrgData = {
-        name: orgData.name,
+        display_name: orgData.displayName,
         business_owner: orgData.businessOwner,
         business_owner_contact: orgData.businessOwnerContact,
         business_owner_email: orgData.businessOwnerEmail,
@@ -54,7 +54,7 @@ const findOrgByIdentifier = async (param, t) => {
     const opts = { ...(t && { transaction: t }) };
     const handle = typeof param === 'string' ? param.toLowerCase() : param;
     return (await Organization.findOne({ where: { handle }, ...opts })) ||
-        (await Organization.findOne({ where: { name: param }, ...opts })) ||
+        (await Organization.findOne({ where: { display_name: param }, ...opts })) ||
         (await Organization.findOne({ where: { idp_ref_id: param }, ...opts }));
 };
 
@@ -129,7 +129,7 @@ const update = async (orgData, t) => {
         const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
         const [updatedRowsCount, updatedOrg] = await Organization.update(
             {
-                name: orgData.name,
+                display_name: orgData.displayName,
                 business_owner: orgData.businessOwner,
                 business_owner_contact: orgData.businessOwnerContact,
                 business_owner_email: orgData.businessOwnerEmail,

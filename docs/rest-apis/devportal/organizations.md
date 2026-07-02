@@ -25,7 +25,7 @@ Creates a Developer Portal organization and initializes its default portal confi
 
 ```json
 {
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -39,7 +39,7 @@ Creates a Developer Portal organization and initializes its default portal confi
 ```
 
 ```yaml
-name: string
+displayName: Acme Corporation
 businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
@@ -62,7 +62,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OrganizationCreateRequest](schemas.md#schemaorganizationcreaterequest)|true|Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field. The JSON example below applies only to the `application/json` content type. When an organization YAML **file** is uploaded instead, its content must use `kind: Organization` with the nested shape `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{id, name, labels}` — `id` becomes the view's handle) to bootstrap labels and views at creation time — these are not available via the `application/json` content type.|
+|body|body|[OrganizationCreateRequest](schemas.md#schemaorganizationcreaterequest)|true|Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field. The JSON example below applies only to the `application/json` content type. When an organization YAML **file** is uploaded instead, its content must use `kind: Organization` with the nested shape `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{id, displayName, labels}` — `id` becomes the view's handle) to bootstrap labels and views at creation time — these are not available via the `application/json` content type.|
 
 > Example responses
 
@@ -71,7 +71,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "acme",
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -216,7 +216,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "id": "acme",
-      "name": "string",
+      "displayName": "Acme Corporation",
       "businessOwner": "string",
       "businessOwnerContact": "string",
       "businessOwnerEmail": "user@example.com",
@@ -260,7 +260,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[OrganizationResponse](schemas.md#schemaorganizationresponse)]|false|none|none|
 |»» id|string|false|none|The organization's handle (unique). Not the internal database uuid.|
-|»» name|string|false|none|none|
+|»» displayName|string|false|none|none|
 |»» businessOwner|string¦null|false|none|none|
 |»» businessOwnerContact|string¦null|false|none|none|
 |»» businessOwnerEmail|string(email)¦null|false|none|none|
@@ -306,7 +306,7 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
 
 ```json
 {
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -320,7 +320,7 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
 ```
 
 ```yaml
-name: string
+displayName: Acme Corporation
 businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
@@ -343,7 +343,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OrganizationUpdateRequest](schemas.md#schemaorganizationupdaterequest)|true|Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. The JSON example below applies only to the `application/json` content type. When an organization YAML **file** is uploaded instead, its content must use `kind: Organization` with the nested shape `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by name) and `views` (upserted by `id`, which becomes the view's handle, with `labels` replacing the view's label set) — these are not available via the `application/json` content type.|
+|body|body|[OrganizationUpdateRequest](schemas.md#schemaorganizationupdaterequest)|true|Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. The JSON example below applies only to the `application/json` content type. When an organization YAML **file** is uploaded instead, its content must use `kind: Organization` with the nested shape `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by name) and `views` (upserted by `id`, which becomes the view's handle, with `labels` replacing the view's label set) — these are not available via the `application/json` content type.|
 |orgId|path|string|true|The organization's handle (also matches by name or IDP reference ID). Not the internal database uuid.|
 
 > Example responses
@@ -353,7 +353,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "acme",
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -485,7 +485,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "acme",
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",

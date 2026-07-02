@@ -26,7 +26,7 @@ Creates a Developer Portal view for an organization and associates it with the s
 ```json
 {
   "id": "partner-apis",
-  "name": "Partner APIs",
+  "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -169,7 +169,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "id": "partner-apis",
-      "name": "Partner APIs",
+      "displayName": "Partner APIs",
       "labels": [
         "partner",
         "public"
@@ -220,7 +220,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[ViewResponse](schemas.md#schemaviewresponse)]|false|none|none|
 |»» id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
-|»» name|string|false|none|none|
+|»» displayName|string|true|none|none|
 |»» labels|[string]|true|none|none|
 |»» createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |»» updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
@@ -256,7 +256,7 @@ Updates the view display name and/or label associations. When `labels` is suppli
 
 ```json
 {
-  "name": "Partner and Public APIs",
+  "displayName": "Partner and Public APIs",
   "labels": [
     "partner",
     "premium"
@@ -275,7 +275,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the name or label changes that should be applied.|
+|body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the display name or label changes that should be applied.|
 |viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
@@ -284,7 +284,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "name": "Partner and Public APIs",
+  "displayName": "Partner and Public APIs",
   "labels": [
     "partner",
     "premium"
@@ -412,7 +412,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "partner-apis",
-  "name": "Partner APIs",
+  "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"

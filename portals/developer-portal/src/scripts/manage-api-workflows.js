@@ -1156,8 +1156,8 @@ async function updatePromptFromForm() {
     const orgName = pathParts[1] || '';
     const viewName = pathParts[3] || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value || '';
-    const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(editingId)) : null;
-    const handle = editingFlow?.apiWorkflowId || generateHandle(name);
+    const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.id) === String(editingId)) : null;
+    const handle = editingFlow?.id || generateHandle(name);
 
     try {
         const response = await fetch(`/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
@@ -1200,8 +1200,8 @@ function updateWorkflowMdPreview() {
     const orgHandle = pathParts[1] || '';
     const viewName = pathParts[3] || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value;
-    const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === editingId) : null;
-    const handle = editingFlow?.apiWorkflowId || generateHandle(name);
+    const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.id) === editingId) : null;
+    const handle = editingFlow?.id || generateHandle(name);
     const flowStatus = (editingFlow?.status || 'PUBLISHED').toUpperCase();
 
     let md = '';
@@ -1353,7 +1353,7 @@ async function saveApiWorkflow(orgId, viewName, status) {
 // ─────────────────────────────────────────────
 
 function openDeleteApiWorkflowModal(orgId, viewName, apiWorkflowId) {
-    const flow = (apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
+    const flow = (apiWorkflowsData || []).find(f => String(f.id) === String(apiWorkflowId));
     const flowName = flow?.displayName || 'API Workflow';
 
     document.getElementById('deleteApiWorkflowModalTitle').textContent = 'Delete API Workflow';
@@ -1451,7 +1451,7 @@ function inferApiIdsFromMarkdown(mdContent, checkboxes) {
 }
 
 function openEditApiWorkflow(apiWorkflowId) {
-    const data = (window.apiWorkflowsData || apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
+    const data = (window.apiWorkflowsData || apiWorkflowsData || []).find(f => String(f.id) === String(apiWorkflowId));
     if (!data) return;
     resetApiWorkflowForm();
     const titleEl = document.getElementById('apiWorkflowFormTitle');
@@ -1510,7 +1510,7 @@ function openEditApiWorkflow(apiWorkflowId) {
 // ─────────────────────────────────────────────
 
 function openPromptModal(apiWorkflowId) {
-    const data = (window.apiWorkflowsData || apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
+    const data = (window.apiWorkflowsData || apiWorkflowsData || []).find(f => String(f.id) === String(apiWorkflowId));
     if (!data) return;
     document.getElementById('agentPromptFlowName').textContent = data.displayName;
     document.getElementById('agentPromptContent').textContent = data.agentPrompt || '';

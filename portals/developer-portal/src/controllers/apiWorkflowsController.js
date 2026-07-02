@@ -97,8 +97,7 @@ const loadAPIWorkflows = async (req, res, next) => {
         const resolvedFlows = apiWorkflows.map(flow => {
             const sources = extractSourceDescriptions(flow);
             return {
-                apiWorkflowId: flow.uuid,
-                handle: flow.handle,
+                id: flow.handle,
                 displayName: flow.display_name,
                 description: flow.description,
                 agentPrompt: flow.agent_prompt,

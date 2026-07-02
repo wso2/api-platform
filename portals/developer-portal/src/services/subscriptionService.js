@@ -73,6 +73,7 @@ const createSubscription = async (req, res) => {
     const orgId = req.orgId;
     const { apiId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
     const createdBy = util.resolveActor(req);
+    let apiId;
 
     if (!apiHandle || typeof apiHandle !== 'string' || !apiHandle.trim()) {
         return res.status(400).json({
@@ -81,7 +82,7 @@ const createSubscription = async (req, res) => {
     }
 
     try {
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'API not found',

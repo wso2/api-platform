@@ -32,7 +32,7 @@ DROP TABLE IF EXISTS "dp_api_metadata" CASCADE;
 DROP TABLE IF EXISTS "dp_organizations" CASCADE;
 
 -- dp_organizations
-CREATE TABLE IF NOT EXISTS "dp_organizations" ("uuid" VARCHAR(40) , "name" VARCHAR(255) NOT NULL UNIQUE, "business_owner" VARCHAR(255), "business_owner_contact" VARCHAR(255), "business_owner_email" VARCHAR(255), "handle" VARCHAR(255) NOT NULL UNIQUE, "idp_ref_id" VARCHAR(255) NOT NULL, "cp_ref_id" VARCHAR(255), "configuration" JSONB NOT NULL, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+CREATE TABLE IF NOT EXISTS "dp_organizations" ("uuid" VARCHAR(40) , "display_name" VARCHAR(255) NOT NULL UNIQUE, "business_owner" VARCHAR(255), "business_owner_contact" VARCHAR(255), "business_owner_email" VARCHAR(255), "handle" VARCHAR(255) NOT NULL UNIQUE, "idp_ref_id" VARCHAR(255) NOT NULL, "cp_ref_id" VARCHAR(255), "configuration" JSONB NOT NULL, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
 
 
 -- dp_api_metadata
@@ -50,7 +50,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_api_content_api_type_file_name" ON "dp_api
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_api_content_api_type_lookup_key" ON "dp_api_contents" ("api_uuid", "type", "lookup_key");
 
 -- dp_views
-CREATE TABLE IF NOT EXISTS "dp_views" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "handle" VARCHAR(255) NOT NULL, "name" VARCHAR(255) NOT NULL, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+CREATE TABLE IF NOT EXISTS "dp_views" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "handle" VARCHAR(255) NOT NULL, "display_name" VARCHAR(255) NOT NULL, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
 
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_view_handle_org_uuid" ON "dp_views" ("handle", "org_uuid");
 CREATE INDEX IF NOT EXISTS "idx_view_org_uuid" ON "dp_views" ("org_uuid");
@@ -105,7 +105,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_api_subscription_plan_mappings_plan_api" O
 CREATE INDEX IF NOT EXISTS "idx_api_subscription_plan_mappings_api_uuid" ON "dp_api_subscription_plan_mappings" ("api_uuid");
 
 -- dp_key_managers
-CREATE TABLE IF NOT EXISTS "dp_key_managers" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "handle" VARCHAR(255) NOT NULL, "type" VARCHAR(64) NOT NULL, "enabled" SMALLINT NOT NULL DEFAULT 1, "token_endpoint" VARCHAR(255) NOT NULL, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+CREATE TABLE IF NOT EXISTS "dp_key_managers" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "handle" VARCHAR(255) NOT NULL, "display_name" VARCHAR(255) NOT NULL, "type" VARCHAR(64) NOT NULL, "enabled" SMALLINT NOT NULL DEFAULT 1, "token_endpoint" VARCHAR(255) NOT NULL, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
 
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_key_manager_org_handle" ON "dp_key_managers" ("org_uuid", "handle");
 

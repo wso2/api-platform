@@ -1579,8 +1579,8 @@ const updateView = async (req, res) => {
         }, async (t) => {
 
             let viewId = "";
-            if (req.body.name) {
-                let viewResponse = await viewDao.update(orgId, viewHandle, req.body.name, userId, t);
+            if (req.body.displayName) {
+                let viewResponse = await viewDao.update(orgId, viewHandle, req.body.displayName, userId, t);
                 viewId = viewResponse.dataValues.uuid;
             }
             if (Array.isArray(labels)) {

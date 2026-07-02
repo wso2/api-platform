@@ -228,7 +228,7 @@ const createAPIWorkflow = async (req, res) => {
         logger.info('API Workflow created', { apiWorkflowId: apiWorkflow.uuid, orgId, viewId });
         logUserAction('API_WORKFLOW_CREATED', req, { orgId, apiWorkflowId: apiWorkflow.uuid, resourceUuid: apiWorkflow.uuid, resourceType: 'api_workflow' });
         res.status(201).json({
-            apiWorkflowId: apiWorkflow.handle,
+            id: apiWorkflow.handle,
             displayName: apiWorkflow.display_name,
             status: apiWorkflow.status
         });
@@ -403,7 +403,7 @@ const parseFileContent = (raw) => {
 const toAPIWorkflowDTO = (apiWorkflow, audit) => {
     const fileContent = parseFileContent(apiWorkflow.file_content);
     return {
-    apiWorkflowId: apiWorkflow.handle,
+    id: apiWorkflow.handle,
     displayName: apiWorkflow.display_name,
     description: apiWorkflow.description,
     agentPrompt: apiWorkflow.agent_prompt,

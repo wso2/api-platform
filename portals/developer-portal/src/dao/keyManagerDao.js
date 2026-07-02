@@ -27,6 +27,7 @@ const create = async (orgId, kmData, createdBy) => {
         const record = await KeyManager.create({
             org_uuid: orgId,
             handle: kmData.handle,
+            display_name: kmData.displayName,
             type: kmData.type,
             ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
             token_endpoint: kmData.tokenEndpoint,
@@ -50,6 +51,7 @@ const update = async (kmId, kmData, updatedBy) => {
     try {
         const updatePayload = {
             ...(kmData.handle && { handle: kmData.handle }),
+            ...(kmData.displayName && { display_name: kmData.displayName }),
             ...(kmData.type && { type: kmData.type }),
             ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
             ...(kmData.tokenEndpoint && { token_endpoint: kmData.tokenEndpoint }),

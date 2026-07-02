@@ -19,13 +19,14 @@ curl -X POST https://devportal.api-platform.io/api/v0.9/key-managers \
 
 ```
 
-Creates a key manager configuration for the organization. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings` token requests.
+Creates a key manager configuration for the organization. If `id` is omitted, the service generates one from the display name. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings` token requests.
 
 > Payload
 
 ```json
 {
-  "id": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -33,7 +34,8 @@ Creates a key manager configuration for the organization. Accepts either a `appl
 ```
 
 ```yaml
-id: Asgardeo
+displayName: Asgardeo
+id: asgardeo-prod
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -59,7 +61,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "Asgardeo",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
   "type": "ASGARDEO",
   "enabled": true,
@@ -188,9 +191,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "id": "km-uuid-12345",
+      "id": "asgardeo-prod",
+      "displayName": "Asgardeo",
       "orgId": "org-12345",
-      "name": "Asgardeo",
       "type": "ASGARDEO",
       "enabled": true,
       "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
@@ -238,6 +241,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»» *anonymous*|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|false|none|Key manager configuration.|
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|»»» displayName|string|false|none|none|
 |»»» orgId|string|false|none|none|
 |»»» type|string|false|none|none|
 |»»» enabled|boolean|false|none|none|
@@ -253,6 +257,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»» *anonymous*|[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)|false|none|Minimal developer-facing key manager view.|
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|»»» displayName|string|false|none|none|
 |»»» type|string|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 
@@ -316,7 +321,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "Asgardeo",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
   "type": "ASGARDEO",
   "enabled": true,
@@ -381,7 +387,8 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 
 ```json
 {
-  "id": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -389,7 +396,8 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 ```
 
 ```yaml
-id: Asgardeo
+displayName: Asgardeo
+id: asgardeo-prod
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -416,7 +424,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "Asgardeo",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
   "type": "ASGARDEO",
   "enabled": true,

@@ -250,7 +250,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 ```json
 {
   "id": "acme",
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -268,7 +268,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|The organization's handle (unique). Not the internal database uuid.|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |businessOwner|string¦null|false|none|none|
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
@@ -806,7 +806,7 @@ OAuth client ID mapping entry attached to an application.
 ```json
 {
   "id": "partner-apis",
-  "name": "Partner APIs",
+  "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -824,7 +824,7 @@ OAuth client ID mapping entry attached to an application.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
-|name|string|false|none|none|
+|displayName|string|true|none|none|
 |labels|[string]|true|none|none|
 |createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
@@ -840,7 +840,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -858,7 +858,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
+|displayName|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
@@ -885,7 +885,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -903,7 +903,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
+|displayName|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
@@ -1313,7 +1313,8 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "id": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -1325,7 +1326,8 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|true|none|Desired handle for the key manager (unique per org), stored as-is.|
+|displayName|string|true|none|none|
+|id|string|false|none|Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key manager's `displayName` when omitted.|
 |type|string|true|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
@@ -1348,7 +1350,8 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "id": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -1362,6 +1365,7 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|displayName|string|false|none|none|
 |id|string|false|none|Desired handle for the key manager (unique per org), stored as-is.|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
@@ -1385,7 +1389,8 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 ```json
 {
-  "id": "Asgardeo",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
   "type": "ASGARDEO",
   "enabled": true,
@@ -1405,6 +1410,7 @@ Key manager configuration.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |orgId|string|false|none|none|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
@@ -1432,7 +1438,8 @@ Key manager configuration.
 
 ```json
 {
-  "id": "Asgardeo",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "type": "ASGARDEO",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -1446,6 +1453,7 @@ Minimal developer-facing key manager view.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |type|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 
@@ -1628,7 +1636,7 @@ A single delivery attempt made to a webhook subscriber.
 ```json
 {
   "id": "partner-apis",
-  "name": "Partner APIs",
+  "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -1642,7 +1650,7 @@ A single delivery attempt made to a webhook subscriber.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Desired handle for the view (unique per org), stored as-is.|
-|name|string|false|none|Optional display name. Defaults to the handle when omitted.|
+|displayName|string|false|none|Optional display name. Defaults to the handle when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
@@ -1654,7 +1662,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "name": "Partner and Public APIs",
+  "displayName": "Partner and Public APIs",
   "labels": [
     "partner",
     "premium"
@@ -1667,7 +1675,7 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |labels|[string]|false|none|Full desired set of label names for the view. Labels present here but not currently attached are attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.|
 
 <h2 id="tocS_OAuthGenerateTokenRequest">OAuthGenerateTokenRequest</h2>
@@ -1765,7 +1773,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
+  "id": "workflow-12345",
   "displayName": "Weather onboarding",
   "status": "PUBLISHED"
 }
@@ -1776,7 +1784,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiWorkflowId|string|false|none|none|
+|id|string|false|none|none|
 |displayName|string|false|none|none|
 |status|string|false|none|none|
 
@@ -1796,7 +1804,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
+  "id": "workflow-12345",
   "displayName": "Weather onboarding",
   "description": "string",
   "agentPrompt": "string",
@@ -1815,7 +1823,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
+|id|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
 |displayName|string|false|none|none|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|

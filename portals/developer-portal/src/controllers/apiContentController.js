@@ -1219,7 +1219,7 @@ const loadLlmsTxt = async (req, res) => {
         }
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, {
-            orgName: orgDetails.name,
+            orgName: orgDetails.display_name,
             portalName: llmsConfig.portalName || null,
             portalDescription: llmsConfig.portalDescription || null,
         });
@@ -1244,7 +1244,7 @@ const previewLlmsTxt = async (req, res) => {
         const { portalName, portalDescription } = req.body;
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, {
-            orgName: orgDetails.name,
+            orgName: orgDetails.display_name,
             portalName: portalName || null,
             portalDescription: portalDescription || null,
         });

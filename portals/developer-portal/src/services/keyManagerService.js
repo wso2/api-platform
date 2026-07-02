@@ -43,6 +43,7 @@ function mapYamlToKeyManager(yamlDoc) {
     const spec = yamlDoc.spec || {};
     return {
         handle: yamlDoc.metadata?.name || spec.name,
+        displayName: spec.displayName || spec.name,
         type: spec.type,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
@@ -98,8 +99,19 @@ function _resolvePayload(req) {
     return payload;
 }
 
+const generateHandle = (name) =>
+    name.toLowerCase().trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 100);
+
+// Handles are used to build route segments, so user-supplied ids must be restricted
+// to the same safe character set generateHandle() produces.
+const HANDLE_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 function _validateRequiredFields(payload) {
-    const missing = ['handle', 'type', 'tokenEndpoint']
+    const missing = ['displayName', 'type', 'tokenEndpoint']
         .filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
@@ -133,9 +145,14 @@ const createKeyManager = async (req, res) => {
         if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
             return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
         }
+        const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
+        const resolvedHandle = hadExplicitHandle ? payload.handle.trim() : generateHandle(payload.displayName);
+        if (hadExplicitHandle && !HANDLE_PATTERN.test(resolvedHandle)) {
+            return res.status(400).json({ error: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
+        }
 
         const userId = util.resolveActor(req);
-        const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
+        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle, type: resolvedType }, userId);
         logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
         let audit;
         try {

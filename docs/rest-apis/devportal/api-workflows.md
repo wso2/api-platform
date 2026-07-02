@@ -60,8 +60,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "status": "PUBLISHED"
 }
 ```
@@ -125,7 +125,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "apiWorkflowId": "workflow-12345",
+      "id": "workflow-12345",
       "displayName": "Weather onboarding",
       "description": "string",
       "agentPrompt": "string",
@@ -160,7 +160,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[APIWorkflowResponse](schemas.md#schemaapiworkflowresponse)]|false|none|none|
-|»» apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
+|»» id|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
 |»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
 |»» agentPrompt|string|false|none|none|
@@ -226,8 +226,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",

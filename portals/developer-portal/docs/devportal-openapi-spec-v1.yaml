@@ -2007,10 +2007,11 @@ paths:
         - Key Managers
       summary: Create a key manager
       description: >-
-        Creates a key manager configuration for the organization. Accepts either a `application/json` body or a
-        `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications
-        are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint
-        to proxy `client_appKeyMappings` token requests.
+        Creates a key manager configuration for the organization. If `id` is omitted, the service generates one from
+        the display name. Accepts either a `application/json` body or a `multipart/form-data` upload with a
+        `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key
+        manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings`
+        token requests.
       operationId: createKeyManager
       requestBody:
         $ref: "#/components/requestBodies/KeyManagerBody"
@@ -2665,9 +2666,9 @@ components:
         Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field.
         The JSON example below applies only to the `application/json` content type. When an organization YAML
         **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
-        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName`; all other fields
         (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of
-        `{name, displayName}`) and `views` (array of `{id, name, labels}` — `id` becomes the view's handle) to
+        `{name, displayName}`) and `views` (array of `{id, displayName, labels}` — `id` becomes the view's handle) to
         bootstrap labels and views at creation time — these are not available via the `application/json` content
         type.
       content:
@@ -2675,7 +2676,7 @@ components:
           schema:
             $ref: "#/components/schemas/OrganizationCreateRequest"
           example:
-            name: Acme Corporation
+            displayName: Acme Corporation
             businessOwner: Jane Doe
             businessOwnerContact: +1-202-555-0147
             businessOwnerEmail: jane.doe@acme.example
@@ -2702,7 +2703,7 @@ components:
         Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field.
         The JSON example below applies only to the `application/json` content type. When an organization YAML
         **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
-        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName`; all other fields
         (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by
         name) and `views` (upserted by `id`, which becomes the view's handle, with `labels` replacing the view's
         label set) — these are not available via the `application/json` content type.
@@ -2932,19 +2933,19 @@ components:
               summary: Create a partner APIs view
               value:
                 id: partner-apis
-                name: Partner APIs
+                displayName: Partner APIs
                 labels:
                   - partner
                   - public
             internalView:
-              summary: Create a view using the handle as name
+              summary: Create a view using the handle as display name
               value:
                 id: internal-apis
                 labels:
                   - internal
     ViewUpdateBody:
       required: true
-      description: View update payload. Include only the name or label changes that should be applied.
+      description: View update payload. Include only the display name or label changes that should be applied.
       content:
         application/json:
           schema:
@@ -2953,7 +2954,7 @@ components:
             renameAndRelabel:
               summary: Rename a view and replace its labels
               value:
-                name: Partner and Public APIs
+                displayName: Partner and Public APIs
                 labels:
                   - partner
                   - premium
@@ -2982,7 +2983,8 @@ components:
           schema:
             $ref: "#/components/schemas/KeyManagerRequest"
           example:
-            id: Asgardeo
+            displayName: Asgardeo
+            id: asgardeo-prod
             type: ASGARDEO
             enabled: true
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -3025,6 +3027,7 @@ components:
           schema:
             $ref: "#/components/schemas/KeyManagerUpdateRequest"
           example:
+            displayName: Asgardeo
             enabled: false
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
         multipart/form-data:
@@ -3863,9 +3866,9 @@ components:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
-              - id: km-uuid-12345
+              - id: asgardeo-prod
+                displayName: Asgardeo
                 orgId: org-12345
-                name: Asgardeo
                 type: ASGARDEO
                 enabled: true
                 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -3935,8 +3938,8 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowCreateResponse"
           example:
-            apiWorkflowId: workflow-12345
-            name: Weather onboarding
+            id: workflow-12345
+            displayName: Weather onboarding
             status: PUBLISHED
     APIWorkflowResponse:
       description: API workflow DTO.
@@ -3945,8 +3948,8 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowResponse"
           example:
-            apiWorkflowId: workflow-12345
-            name: Weather onboarding
+            id: workflow-12345
+            displayName: Weather onboarding
             description: Guides users through the Weather API onboarding workflow.
             agentPrompt: Follow this workflow to onboard a Weather API user.
             status: PUBLISHED
@@ -3985,7 +3988,7 @@ components:
             $ref: "#/components/schemas/ViewResponse"
           example:
             id: partner-apis
-            name: Partner APIs
+            displayName: Partner APIs
             labels:
               - partner
               - public
@@ -4013,7 +4016,7 @@ components:
           schema:
             $ref: "#/components/schemas/ViewUpdateRequest"
           example:
-            name: Partner and Public APIs
+            displayName: Partner and Public APIs
             labels:
               - partner
               - premium
@@ -4178,8 +4181,9 @@ components:
           type: string
           description: The organization's handle (unique). Not the internal database uuid.
           example: acme
-        name:
+        displayName:
           type: string
+          example: Acme Corporation
         businessOwner:
           type: string
           nullable: true
@@ -4534,7 +4538,7 @@ components:
           type: string
           description: The view's handle (unique per org). Not the internal database uuid.
           example: partner-apis
-        name:
+        displayName:
           type: string
           example: Partner APIs
         labels:
@@ -4570,8 +4574,9 @@ components:
         - id
         - idpRefId
       properties:
-        name:
+        displayName:
           type: string
+          example: Acme Corporation
         businessOwner:
           type: string
         businessOwnerContact:
@@ -4611,8 +4616,9 @@ components:
         - id
         - idpRefId
       properties:
-        name:
+        displayName:
           type: string
+          example: Acme Corporation
         businessOwner:
           type: string
         businessOwnerContact:
@@ -4931,14 +4937,19 @@ components:
     KeyManagerRequest:
       type: object
       required:
-        - id
+        - displayName
         - type
         - tokenEndpoint
       properties:
+        displayName:
+          type: string
+          example: Asgardeo
         id:
           type: string
-          description: Desired handle for the key manager (unique per org), stored as-is.
-          example: Asgardeo
+          description: >-
+            Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key
+            manager's `displayName` when omitted.
+          example: asgardeo-prod
         type:
           type: string
           enum:
@@ -4965,10 +4976,13 @@ components:
         Partial update payload for a key manager. All fields are optional; only supplied fields are applied. Omitted
         fields retain their stored values.
       properties:
+        displayName:
+          type: string
+          example: Asgardeo
         id:
           type: string
           description: Desired handle for the key manager (unique per org), stored as-is.
-          example: Asgardeo
+          example: asgardeo-prod
         type:
           type: string
           enum:
@@ -4993,6 +5007,9 @@ components:
         id:
           type: string
           description: The key manager's handle (unique per org). Not the internal database uuid.
+          example: asgardeo-prod
+        displayName:
+          type: string
           example: Asgardeo
         orgId:
           type: string
@@ -5038,6 +5055,9 @@ components:
         id:
           type: string
           description: The key manager's handle (unique per org). Not the internal database uuid.
+          example: asgardeo-prod
+        displayName:
+          type: string
           example: Asgardeo
         type:
           type: string
@@ -5223,7 +5243,7 @@ components:
           type: string
           description: Desired handle for the view (unique per org), stored as-is.
           example: partner-apis
-        name:
+        displayName:
           type: string
           description: Optional display name. Defaults to the handle when omitted.
           example: Partner APIs
@@ -5240,7 +5260,7 @@ components:
     ViewUpdateRequest:
       type: object
       properties:
-        name:
+        displayName:
           type: string
           example: Partner and Public APIs
         labels:
@@ -5323,7 +5343,7 @@ components:
     APIWorkflowCreateResponse:
       type: object
       properties:
-        apiWorkflowId:
+        id:
           type: string
           example: workflow-12345
         displayName:
@@ -5339,7 +5359,7 @@ components:
     APIWorkflowResponse:
       type: object
       properties:
-        apiWorkflowId:
+        id:
           type: string
           example: workflow-12345
           description: The workflow's handle (unique per org and view). Not the internal database uuid.

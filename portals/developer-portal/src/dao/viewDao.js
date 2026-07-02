@@ -24,10 +24,10 @@ const { CustomError } = require('../utils/errors/customErrors');
 
 const create = async (orgId, payload, createdBy, t) => {
 
-    let name = payload.name ? payload.name : payload.handle;
+    let displayName = payload.displayName ? payload.displayName : payload.handle;
     try {
         const viewResponse = await View.create({
-            name: name,
+            display_name: displayName,
             handle: payload.handle,
             org_uuid: orgId,
             created_by: createdBy,
@@ -42,7 +42,7 @@ const create = async (orgId, payload, createdBy, t) => {
     }
 }
 
-const update = async (orgId, handle, name, updatedBy, t) => {
+const update = async (orgId, handle, displayName, updatedBy, t) => {
 
     try {
         let [record, created] = await View.findOrCreate({
@@ -52,7 +52,7 @@ const update = async (orgId, handle, name, updatedBy, t) => {
             },
             defaults: {
                 handle: handle,
-                name: name ? name : handle,
+                display_name: displayName ? displayName : handle,
                 created_by: updatedBy,
                 updated_by: updatedBy
             },
@@ -62,7 +62,7 @@ const update = async (orgId, handle, name, updatedBy, t) => {
         if (!created) {
             record = await record.update({
                 handle: handle,
-                ...(name && { name: name }),
+                ...(displayName && { display_name: displayName }),
                 updated_by: updatedBy,
                 updated_at: new Date()
             }, { transaction: t }); // Update if found
@@ -126,7 +126,7 @@ const getId = async (orgId, viewName, t) => {
         });
         if (!viewResponse) {
             viewResponse = await View.findOne({
-                where: { name: viewName, org_uuid: orgId },
+                where: { display_name: viewName, org_uuid: orgId },
                 transaction: t
             });
         }

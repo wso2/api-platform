@@ -33,6 +33,10 @@ const KeyManager = sequelize.define('dp_key_manager', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    display_name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
     type: {
         type: DataTypes.STRING(64),
         allowNull: false

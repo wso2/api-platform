@@ -19,6 +19,7 @@
 const logger = require('../config/logger');
 const auditDao = require('../dao/auditDao');
 const util = require('../utils/util');
+const constants = require('../utils/constants');
 
 /**
  * Middleware for audit logging user interactions
@@ -53,7 +54,7 @@ function auditMiddleware(options = {}) {
 
             // Create and log audit log entry
             const auditEntry = {
-                userId: req.user ? (req.user.id || req.user.username || 'unknown') : 'anonymous',
+                userId: req.user ? (req.user[constants.USER_ID] || 'unknown') : 'anonymous',
                 sessionId: req.sessionID || 'no-session',
                 ip: getClientIP(req),
                 requestBody: Object.keys(sanitizedBody).length > 0 ? sanitizedBody : "",
@@ -119,7 +120,7 @@ function sanitizeObject(obj, sensitiveFields) {
  *   resource-scoped mutations.
  */
 function logUserAction(action, req, additionalData = {}) {
-    const userId = req.user ? req.user.id || req.user.username || 'unknown' : 'anonymous';
+    const userId = req.user ? (req.user[constants.USER_ID] || 'unknown') : 'anonymous';
     const sessionId = req.sessionID || 'no-session';
 
     const auditEntry = {
