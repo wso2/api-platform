@@ -577,7 +577,8 @@ export default function ServiceProviderGuardrailsTab() {
 
   const handleRemoveAppliedGuardrail = async (
     policyIndex: number,
-    pathIndex: number | null
+    pathIndex: number | null,
+    source: 'global' | 'operation' | 'legacy'
   ) => {
     if (!provider || isLoading || error || isReadOnlyProvider) return;
 
