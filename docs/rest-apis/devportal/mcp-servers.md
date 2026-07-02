@@ -4,13 +4,13 @@
 
 <a id="opIdcreateMcpServer"></a>
 
-`POST /devportal/v1/mcp-servers`
+`POST /api/v0.9/mcp-servers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers \
 
 ```
 
-Creates Developer Portal MCP server metadata. Mirrors `POST /devportal/v1/apis` — same artifact ZIP, YAML (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is always typed `MCP`, regardless of what `type` is supplied.
+Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is always typed `MCP`, regardless of what `type` is supplied.
 
 > Payload
 
@@ -67,7 +67,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "version": "v1",
   "status": "PUBLISHED",
   "description": "Weather forecast API.",
-  "type": "REST",
+  "type": "MCP",
   "agentVisibility": "VISIBLE",
   "tags": [
     "weather"
@@ -153,7 +153,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created API metadata payload returned by the service.|[ApiMetadataCreateResponse](schemas.md#schemaapimetadatacreateresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created MCP server metadata payload returned by the service. Always typed `MCP`.|[ApiMetadataCreateResponse](schemas.md#schemaapimetadatacreateresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -172,26 +172,26 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Header|Type|Format|Description|
 |---|---|---|---|---|
-|201|Location|string|uri|URL of the created API metadata resource.|
+|201|Location|string|uri|URL of the created MCP server metadata resource.|
 
 ## List MCP server metadata
 
 <a id="opIdgetAllMcpServersForOrganization"></a>
 
-`GET /devportal/v1/mcp-servers`
+`GET /api/v0.9/mcp-servers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers \
+curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists MCP server metadata for an organization. Mirrors `GET /devportal/v1/apis` but only returns MCP-typed records.
+Lists MCP server metadata for an organization. Mirrors `GET /api/v0.9/apis` but only returns MCP-typed records.
 
 ### Authentication
 
@@ -226,7 +226,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "version": "v1",
       "status": "PUBLISHED",
       "description": "Weather forecast API.",
-      "type": "REST",
+      "type": "MCP",
       "agentVisibility": "VISIBLE",
       "labels": [
         "default"
@@ -291,7 +291,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API metadata DTOs.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of MCP server metadata DTOs. Always typed `MCP`.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -384,13 +384,13 @@ Status Code **200**
 
 <a id="opIdgetMcpServer"></a>
 
-`GET /devportal/v1/mcp-servers/{mcpServerId}`
+`GET /api/v0.9/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -426,7 +426,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "version": "v1",
   "status": "PUBLISHED",
   "description": "Weather forecast API.",
-  "type": "REST",
+  "type": "MCP",
   "agentVisibility": "VISIBLE",
   "labels": [
     "default"
@@ -495,7 +495,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API metadata DTO returned by the service.|[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCP server metadata DTO returned by the service. Always typed `MCP`.|[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -513,13 +513,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateMcpServer"></a>
 
-`PUT /devportal/v1/mcp-servers/{mcpServerId}`
+`PUT /api/v0.9/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -528,7 +528,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServe
 
 ```
 
-Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /devportal/v1/apis/{apiId}`.
+Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`.
 
 > Payload
 
@@ -578,7 +578,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "version": "v1",
   "status": "PUBLISHED",
   "description": "Weather forecast API.",
-  "type": "REST",
+  "type": "MCP",
   "agentVisibility": "VISIBLE",
   "labels": [
     "default"
@@ -661,7 +661,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API metadata DTO returned by the service.|[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCP server metadata DTO returned by the service. Always typed `MCP`.|[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -680,13 +680,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteMcpServer"></a>
 
-`DELETE /devportal/v1/mcp-servers/{mcpServerId}`
+`DELETE /api/v0.9/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'

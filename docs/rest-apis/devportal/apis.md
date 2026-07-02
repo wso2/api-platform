@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiMetadata"></a>
 
-`POST /devportal/v1/apis`
+`POST /api/v0.9/apis`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. MCP servers must be created via `POST /devportal/v1/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
 `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `id` is used (`[{"id":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount` are ignored.
 
 > Payload
@@ -179,20 +179,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllApiMetadataForOrganization"></a>
 
-`GET /devportal/v1/apis`
+`GET /api/v0.9/apis`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis \
+curl -X GET https://devportal.api-platform.io/api/v0.9/apis \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists API metadata for an organization. The service supports exact filters by API name, version, and tags, free-text search with `query`, and view filtering. Unknown query parameters are rejected. MCP-typed records are never returned here — use `GET /devportal/v1/mcp-servers`.
+Lists API metadata for an organization. The service supports exact filters by API name, version, and tags, free-text search with `query`, and view filtering. Unknown query parameters are rejected. MCP-typed records are never returned here — use `GET /api/v0.9/mcp-servers`.
 
 ### Authentication
 
@@ -385,13 +385,13 @@ Status Code **200**
 
 <a id="opIdgetApiMetadata"></a>
 
-`GET /devportal/v1/apis/{apiId}`
+`GET /api/v0.9/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -514,13 +514,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApiMetadata"></a>
 
-`PUT /devportal/v1/apis/{apiId}`
+`PUT /api/v0.9/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -681,13 +681,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiMetadata"></a>
 
-`DELETE /devportal/v1/apis/{apiId}`
+`DELETE /api/v0.9/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'

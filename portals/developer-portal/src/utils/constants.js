@@ -16,11 +16,11 @@
  * under the License.
  */
 // Devportal API base segment and version — single source of truth for the
-// invocation prefix `/devportal/v1`. Change these two to bump the base segment
+// invocation prefix `/api/v0.9`. Change these two to bump the base segment
 // (e.g. devportalv2) or version (e.g. v2) everywhere.
-const DEVPORTAL_BASE_SEGMENT = 'devportal';
-const DEVPORTAL_VERSION = 'v1';
-// Express route prefix for devportal routes, e.g. '/devportal/v1'
+const DEVPORTAL_BASE_SEGMENT = 'api';
+const DEVPORTAL_VERSION = 'v0.9';
+// Express route prefix for devportal routes, e.g. '/api/v0.9'
 const DEVPORTAL_BASE_PATH = `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
 // Builder for the devportal base path used in server-side URL generation.
 // The orgId argument is accepted for backward-compatibility but not used —

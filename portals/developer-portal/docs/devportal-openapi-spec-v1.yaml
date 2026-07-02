@@ -24,8 +24,9 @@ info:
     Fine-grained Developer Portal API for managing organizations,
     API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
-    Organization-scoped resources are served under `/devportal/v1`. Operations declare
-    the least-privilege OAuth2 scopes required for each resource action.
+    Most organization-scoped resources are served under `/api/v0.9`; organization
+    lifecycle endpoints (`/organizations`, `/organizations/{orgId}`) are unprefixed.
+    Operations declare the least-privilege OAuth2 scopes required for each resource action.
 servers:
   - url: https://devportal.api-platform.io
     description: Production
@@ -173,7 +174,7 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /devportal/v1/views/{viewId}/asset:
+  /api/v0.9/views/{viewId}/asset:
     parameters:
       - $ref: "#/components/parameters/viewId"
     get:
@@ -204,7 +205,7 @@ paths:
               schema:
                 type: string
       security: []
-  /devportal/v1/views/{viewId}/apply-theme:
+  /api/v0.9/views/{viewId}/apply-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -228,7 +229,7 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
-  /devportal/v1/views/{viewId}/reset-theme:
+  /api/v0.9/views/{viewId}/reset-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -246,7 +247,7 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
-  /devportal/v1/apis:
+  /api/v0.9/apis:
     post:
       tags:
         - APIs
@@ -258,7 +259,7 @@ paths:
         `status`, `agentVisibility`, `tags`, `labels`,
         `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for
-        GraphQL APIs when provided. MCP servers must be created via `POST /devportal/v1/mcp-servers` instead — a
+        GraphQL APIs when provided. MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a
         request whose resolved `type` is `MCP` is rejected with `400`.
 
         `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is
@@ -290,7 +291,7 @@ paths:
       description: >-
         Lists API metadata for an organization. The service supports exact filters by API name, version, and tags,
         free-text search with `query`, and view filtering. Unknown query parameters are rejected. MCP-typed records
-        are never returned here — use `GET /devportal/v1/mcp-servers`.
+        are never returned here — use `GET /api/v0.9/mcp-servers`.
       operationId: getAllApiMetadataForOrganization
       parameters:
         - $ref: "#/components/parameters/apiSearchQuery"
@@ -311,7 +312,7 @@ paths:
         - OAuth2Security:
             - dp:api_read
             - dp:api_manage
-  /devportal/v1/apis/{apiId}:
+  /api/v0.9/apis/{apiId}:
     parameters:
       - $ref: "#/components/parameters/apiId"
     get:
@@ -381,7 +382,7 @@ paths:
         - OAuth2Security:
             - dp:api_delete
             - dp:api_manage
-  /devportal/v1/subscription-plans:
+  /api/v0.9/subscription-plans:
     get:
       tags:
         - Subscription Plans
@@ -462,7 +463,7 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_update
             - dp:sub_plan_manage
-  /devportal/v1/subscription-plans/{planId}:
+  /api/v0.9/subscription-plans/{planId}:
     parameters:
       - $ref: "#/components/parameters/planId"
     get:
@@ -503,7 +504,7 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_delete
             - dp:sub_plan_manage
-  /devportal/v1/apis/{apiId}/assets:
+  /api/v0.9/apis/{apiId}/assets:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -542,7 +543,7 @@ paths:
       description: |
         Replaces or adds static content files for an existing API.
 
-        The upload format is the same as `POST /devportal/v1/apis/{apiId}/assets`.
+        The upload format is the same as `POST /api/v0.9/apis/{apiId}/assets`.
         Existing files with the same stored `type` and `fileName` are updated; new files are created.
         Image metadata is updated only when image metadata can be resolved from the upload or request body.
       operationId: replaceApiContent
@@ -614,7 +615,7 @@ paths:
         - OAuth2Security:
             - dp:api_content_delete
             - dp:api_content_manage
-  /devportal/v1/labels:
+  /api/v0.9/labels:
     post:
       tags:
         - Labels
@@ -663,7 +664,7 @@ paths:
         - OAuth2Security:
             - dp:label_read
             - dp:label_manage
-  /devportal/v1/labels/{labelId}:
+  /api/v0.9/labels/{labelId}:
     get:
       tags:
         - Labels
@@ -727,7 +728,7 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /devportal/v1/applications:
+  /api/v0.9/applications:
     get:
       tags:
         - Applications
@@ -785,7 +786,7 @@ paths:
         - OAuth2Security:
             - dp:app_create
             - dp:app_manage
-  /devportal/v1/applications/{applicationId}:
+  /api/v0.9/applications/{applicationId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     get:
@@ -853,7 +854,7 @@ paths:
         - OAuth2Security:
             - dp:app_delete
             - dp:app_manage
-  /devportal/v1/subscriptions:
+  /api/v0.9/subscriptions:
     post:
       tags:
         - Subscriptions
@@ -928,7 +929,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_read
             - dp:subscription_manage
-  /devportal/v1/subscriptions/{subId}:
+  /api/v0.9/subscriptions/{subId}:
     parameters:
       - $ref: "#/components/parameters/subId"
     get:
@@ -986,7 +987,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_delete
             - dp:subscription_manage
-  /devportal/v1/subscriptions/{subId}/change-plan:
+  /api/v0.9/subscriptions/{subId}/change-plan:
     parameters:
       - $ref: "#/components/parameters/subId"
     post:
@@ -1013,7 +1014,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_update
             - dp:subscription_manage
-  /devportal/v1/subscriptions/{subId}/regenerate-token:
+  /api/v0.9/subscriptions/{subId}/regenerate-token:
     parameters:
       - $ref: "#/components/parameters/subId"
     post:
@@ -1036,7 +1037,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:subscription_manage
-  /devportal/v1/apis/{apiId}/api-keys/generate:
+  /api/v0.9/apis/{apiId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1083,7 +1084,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_create
             - dp:api_key_manage
-  /devportal/v1/apis/{apiId}/api-keys:
+  /api/v0.9/apis/{apiId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/apiId"
     get:
@@ -1107,7 +1108,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /devportal/v1/apis/{apiId}/api-keys/regenerate:
+  /api/v0.9/apis/{apiId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1143,7 +1144,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /devportal/v1/apis/{apiId}/api-keys/revoke:
+  /api/v0.9/apis/{apiId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1179,7 +1180,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /devportal/v1/apis/{apiId}/api-keys/associate:
+  /api/v0.9/apis/{apiId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1221,7 +1222,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /devportal/v1/apis/{apiId}/api-keys/dissociate:
+  /api/v0.9/apis/{apiId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1247,13 +1248,13 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /devportal/v1/mcp-servers:
+  /api/v0.9/mcp-servers:
     post:
       tags:
         - MCP Servers
       summary: Create MCP server metadata
       description: >-
-        Creates Developer Portal MCP server metadata. Mirrors `POST /devportal/v1/apis` — same artifact ZIP, YAML
+        Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML
         (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is
         always typed `MCP`, regardless of what `type` is supplied.
       operationId: createMcpServer
@@ -1261,7 +1262,7 @@ paths:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
       responses:
         "201":
-          $ref: "#/components/responses/ApiMetadataCreateResponse"
+          $ref: "#/components/responses/McpServerCreateResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1279,7 +1280,7 @@ paths:
         - MCP Servers
       summary: List MCP server metadata
       description: >-
-        Lists MCP server metadata for an organization. Mirrors `GET /devportal/v1/apis` but only returns MCP-typed
+        Lists MCP server metadata for an organization. Mirrors `GET /api/v0.9/apis` but only returns MCP-typed
         records.
       operationId: getAllMcpServersForOrganization
       parameters:
@@ -1292,7 +1293,7 @@ paths:
         - $ref: "#/components/parameters/offset"
       responses:
         "200":
-          $ref: "#/components/responses/ApiMetadataListResponse"
+          $ref: "#/components/responses/McpServerListResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "500":
@@ -1301,7 +1302,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_read
             - dp:mcp_manage
-  /devportal/v1/mcp-servers/{mcpServerId}:
+  /api/v0.9/mcp-servers/{mcpServerId}:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     get:
@@ -1312,7 +1313,7 @@ paths:
       operationId: getMcpServer
       responses:
         "200":
-          $ref: "#/components/responses/ApiMetadataResponse"
+          $ref: "#/components/responses/McpServerResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1328,13 +1329,13 @@ paths:
         - MCP Servers
       summary: Update MCP server metadata
       description: >-
-        Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /devportal/v1/apis/{apiId}`.
+        Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`.
       operationId: updateMcpServer
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
       responses:
         "200":
-          $ref: "#/components/responses/ApiMetadataResponse"
+          $ref: "#/components/responses/McpServerResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1368,7 +1369,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_delete
             - dp:mcp_manage
-  /devportal/v1/mcp-servers/{mcpServerId}/assets:
+  /api/v0.9/mcp-servers/{mcpServerId}/assets:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1376,7 +1377,7 @@ paths:
         - MCP Server Content
       summary: Upload MCP server content
       description: >-
-        Uploads the static content package for an MCP server. Mirrors `POST /devportal/v1/apis/{apiId}/assets`.
+        Uploads the static content package for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/assets`.
       operationId: createMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
@@ -1398,7 +1399,7 @@ paths:
         - MCP Server Content
       summary: Replace MCP server content
       description: >-
-        Replaces or adds static content files for an existing MCP server. Mirrors `PUT /devportal/v1/apis/{apiId}/assets`.
+        Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api/v0.9/apis/{apiId}/assets`.
       operationId: replaceMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
@@ -1419,7 +1420,7 @@ paths:
       tags:
         - MCP Server Content
       summary: Get an MCP server content file
-      description: Retrieves a single stored MCP server content file. Mirrors `GET /devportal/v1/apis/{apiId}/assets`.
+      description: Retrieves a single stored MCP server content file. Mirrors `GET /api/v0.9/apis/{apiId}/assets`.
       operationId: getMcpServerContentFile
       security:
         - OAuth2Security:
@@ -1442,7 +1443,7 @@ paths:
         - MCP Server Content
       summary: Delete MCP server content files
       description: >-
-        Deletes stored MCP server content. Mirrors `DELETE /devportal/v1/apis/{apiId}/assets`.
+        Deletes stored MCP server content. Mirrors `DELETE /api/v0.9/apis/{apiId}/assets`.
       operationId: deleteMcpServerContentFile
       parameters:
         - $ref: "#/components/parameters/apiContentTypeQuery"
@@ -1460,7 +1461,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_content_delete
             - dp:mcp_content_manage
-  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/generate:
+  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1469,7 +1470,7 @@ paths:
       operationId: generateMcpServerApiKey
       summary: Generate an MCP server API key
       description: >-
-        Generates an API key for an MCP server. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/generate`.
+        Generates an API key for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/generate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyBody"
       responses:
@@ -1497,7 +1498,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_create
             - dp:mcp_key_manage
-  /devportal/v1/mcp-servers/{mcpServerId}/api-keys:
+  /api/v0.9/mcp-servers/{mcpServerId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     get:
@@ -1505,7 +1506,7 @@ paths:
         - MCP Server Keys
       operationId: listMcpServerApiKeys
       summary: List MCP server API keys
-      description: Lists API keys for the given MCP server. Mirrors `GET /devportal/v1/apis/{apiId}/api-keys`.
+      description: Lists API keys for the given MCP server. Mirrors `GET /api/v0.9/apis/{apiId}/api-keys`.
       parameters:
         - $ref: "#/components/parameters/appIdQueryOptional"
         - $ref: "#/components/parameters/limit"
@@ -1521,7 +1522,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_read
             - dp:mcp_key_manage
-  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/regenerate:
+  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1531,7 +1532,7 @@ paths:
       summary: Regenerate an MCP server API key
       description: >-
         Regenerates the secret for an existing MCP server API key identified by `keyId` in the request body. Mirrors
-        `POST /devportal/v1/apis/{apiId}/api-keys/regenerate`.
+        `POST /api/v0.9/apis/{apiId}/api-keys/regenerate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyRegenerateBody"
       responses:
@@ -1556,7 +1557,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/revoke:
+  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1566,7 +1567,7 @@ paths:
       summary: Revoke an MCP server API key
       description: >-
         Revokes an existing MCP server API key identified by `keyId` in the request body. Mirrors
-        `POST /devportal/v1/apis/{apiId}/api-keys/revoke`.
+        `POST /api/v0.9/apis/{apiId}/api-keys/revoke`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyRevokeBody"
       responses:
@@ -1591,7 +1592,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_revoke
             - dp:mcp_key_manage
-  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/associate:
+  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1601,7 +1602,7 @@ paths:
       summary: Associate an MCP server API key with an application
       description: >-
         Associates (or re-associates) an existing MCP server API key with an application, for analytics attribution
-        only. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/associate`.
+        only. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/associate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyAssociateBody"
       responses:
@@ -1632,7 +1633,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/dissociate:
+  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1642,7 +1643,7 @@ paths:
       summary: Remove an MCP server API key's application association
       description: >-
         Removes the application association from an MCP server API key identified by `keyId` in the request body, if
-        any. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/dissociate`.
+        any. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/dissociate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyDissociateBody"
       responses:
@@ -1658,7 +1659,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /devportal/v1/applications/{applicationId}/api-keys:
+  /api/v0.9/applications/{applicationId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     get:
@@ -1683,7 +1684,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /devportal/v1/views:
+  /api/v0.9/views:
     post:
       tags:
         - Views
@@ -1727,7 +1728,7 @@ paths:
         - OAuth2Security:
             - dp:view_read
             - dp:view_manage
-  /devportal/v1/views/{viewId}:
+  /api/v0.9/views/{viewId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
     put:
@@ -1760,7 +1761,7 @@ paths:
         - Views
       operationId: getView
       summary: Get a view
-      description: Retrieves one view by name, including the label names attached to that view.
+      description: Retrieves one view by its `viewId` handle, including the label names attached to that view.
       responses:
         "200":
           $ref: "#/components/responses/ViewResponse"
@@ -1779,7 +1780,7 @@ paths:
         - Views
       operationId: deleteView
       summary: Delete a view
-      description: Deletes a view by name. A missing view is returned as a not-found error.
+      description: Deletes a view by its `viewId` handle. A missing view is returned as a not-found error.
       responses:
         "204":
           description: View deleted successfully.
@@ -1793,7 +1794,7 @@ paths:
         - OAuth2Security:
             - dp:view_delete
             - dp:view_manage
-  /devportal/v1/applications/{applicationId}/generate-keys:
+  /api/v0.9/applications/{applicationId}/generate-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     post:
@@ -1822,7 +1823,7 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
+  /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
     parameters:
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
@@ -1849,7 +1850,7 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}:
+  /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
@@ -1871,7 +1872,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:app_key_revoke
-  /devportal/v1/views/{viewId}/api-workflows:
+  /api/v0.9/views/{viewId}/api-workflows:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -1915,7 +1916,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_read
             - dp:api_workflow_manage
-  /devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId}:
+  /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
       - $ref: "#/components/parameters/apiWorkflowId"
@@ -1976,7 +1977,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_delete
             - dp:api_workflow_manage
-  /devportal/v1/views/{viewId}/api-workflows/generate-prompt:
+  /api/v0.9/views/{viewId}/api-workflows/generate-prompt:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -1998,7 +1999,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_create
             - dp:api_workflow_manage
-  /devportal/v1/key-managers:
+  /api/v0.9/key-managers:
     post:
       tags:
         - Key Managers
@@ -2054,7 +2055,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:km_read
-  /devportal/v1/key-managers/{kmId}:
+  /api/v0.9/key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/kmId"
     get:
@@ -2117,7 +2118,7 @@ paths:
         - OAuth2Security:
             - dp:km_delete
             - dp:km_manage
-  /devportal/v1/webhook-subscribers:
+  /api/v0.9/webhook-subscribers:
     post:
       tags:
         - Webhook Subscribers
@@ -2170,7 +2171,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /devportal/v1/webhook-subscribers/{subscriberId}:
+  /api/v0.9/webhook-subscribers/{subscriberId}:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
     get:
@@ -2232,7 +2233,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_delete
             - dp:webhook_subscriber_manage
-  /devportal/v1/webhook-subscribers/{subscriberId}/deliveries:
+  /api/v0.9/webhook-subscribers/{subscriberId}/deliveries:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
     get:
@@ -2261,7 +2262,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /devportal/v1/webhook-events:
+  /api/v0.9/webhook-events:
     get:
       tags:
         - Webhook Events
@@ -2294,7 +2295,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:event_read
-  /devportal/v1/webhook-events/{eventId}:
+  /api/v0.9/webhook-events/{eventId}:
     parameters:
       - $ref: "#/components/parameters/eventId"
     get:
@@ -2660,11 +2661,13 @@ components:
       required: true
       description: >-
         Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field.
-        When YAML is used, the service always takes the handle from `metadata.name` (the `id` field is ignored) and
-        `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec`
-        block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{id, name,
-        labels}` — `id` becomes the view's handle) to bootstrap labels and views at creation time — these are not
-        available via the `application/json` content type.
+        The JSON example below applies only to the `application/json` content type. When an organization YAML
+        **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of
+        `{name, displayName}`) and `views` (array of `{id, name, labels}` — `id` becomes the view's handle) to
+        bootstrap labels and views at creation time — these are not available via the `application/json` content
+        type.
       content:
         application/json:
           schema:
@@ -2694,12 +2697,13 @@ components:
     OrganizationUpdateBody:
       required: true
       description: >-
-        Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When
-        YAML is used, the service always takes the handle from `metadata.name` (the `id` field is ignored) and
-        `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec`
-        block additionally accepts `labels` (upserted by name) and `views` (upserted by `id`, which becomes the
-        view's handle, with `labels` replacing the view's label set) — these are not available via the
-        `application/json` content type.
+        Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field.
+        The JSON example below applies only to the `application/json` content type. When an organization YAML
+        **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by
+        name) and `views` (upserted by `id`, which becomes the view's handle, with `labels` replacing the view's
+        label set) — these are not available via the `application/json` content type.
       content:
         application/json:
           schema:
@@ -2796,8 +2800,8 @@ components:
       required: true
       description: >-
         API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can
-        be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the
-        `{apiId}` path parameter.
+        be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP
+        server, depending on the path) is identified by the corresponding path parameter.
       content:
         application/json:
           schema:
@@ -3178,8 +3182,10 @@ components:
       required: true
       description: >-
         Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field.
-        When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description`
-        as the description, and always takes the handle from `metadata.name` (any `id` sent alongside YAML is ignored).
+        The JSON example below (`displayName`, `id`, `description`) applies only to the `application/json` content
+        type. When an application YAML **file** is uploaded instead, its content must use the nested shape
+        `metadata.name` (handle) and `spec.displayName` / `spec.description` — any top-level `id` inside that YAML
+        file is ignored.
       content:
         application/json:
           schema:
@@ -3396,7 +3402,7 @@ components:
           example:
             code: "400"
             message: Bad Request
-            description: apiId is required
+            description: Invalid request parameters
     SimpleNotFound:
       description: Resource not found.
       content:
@@ -3545,6 +3551,93 @@ components:
                 status: PUBLISHED
                 description: Weather forecast API.
                 type: REST
+                agentVisibility: VISIBLE
+                labels:
+                  - default
+                endPoints:
+                  sandboxURL: https://sandbox.example.com/weather
+                  productionURL: https://api.example.com/weather
+            pagination:
+              total: 1
+              limit: 20
+              offset: 0
+    McpServerCreateResponse:
+      description: Created MCP server metadata payload returned by the service. Always typed `MCP`.
+      headers:
+        Location:
+          description: URL of the created MCP server metadata resource.
+          schema:
+            type: string
+            format: uri
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiMetadataCreateResponse"
+          example:
+            id: weather-api-v1
+            refId: cp-api-12345
+            name: Weather API
+            apiTitle: Weather Forecast API
+            version: v1
+            status: PUBLISHED
+            description: Weather forecast API.
+            type: MCP
+            agentVisibility: VISIBLE
+            tags:
+              - weather
+            labels:
+              - default
+            endPoints:
+              productionURL: https://api.example.com/weather
+              sandboxURL: https://sandbox.example.com/weather
+            subscriptionPlans:
+              - id: Gold
+    McpServerResponse:
+      description: MCP server metadata DTO returned by the service. Always typed `MCP`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiMetadataResponse"
+          example:
+            id: weather-api-v1
+            refId: cp-api-12345
+            name: Weather API
+            apiTitle: Weather Forecast API
+            remotes: []
+            version: v1
+            status: PUBLISHED
+            description: Weather forecast API.
+            type: MCP
+            agentVisibility: VISIBLE
+            labels:
+              - default
+            endPoints:
+              sandboxURL: https://sandbox.example.com/weather
+              productionURL: https://api.example.com/weather
+            subscriptionPlans:
+              - id: Gold
+    McpServerListResponse:
+      description: List of MCP server metadata DTOs. Always typed `MCP`.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiMetadataResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
+          example:
+            list:
+              - id: weather-api-v1
+                refId: cp-api-12345
+                name: Weather API
+                version: v1
+                status: PUBLISHED
+                description: Weather forecast API.
+                type: MCP
                 agentVisibility: VISIBLE
                 labels:
                   - default

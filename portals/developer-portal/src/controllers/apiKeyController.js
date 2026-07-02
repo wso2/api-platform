@@ -82,7 +82,7 @@ function mapKey(k) {
 }
 
 /**
- * POST /devportal/v1/apis/:apiId/api-keys/generate
+ * POST /api/v0.9/apis/:apiId/api-keys/generate
  * Body: { name, expiresAt?, subscriptionId?, appId? }
  */
 async function generateApiKey(req, res) {
@@ -115,7 +115,7 @@ async function generateApiKey(req, res) {
 }
 
 /**
- * GET /devportal/v1/apis/:apiId/api-keys
+ * GET /api/v0.9/apis/:apiId/api-keys
  * Query: subscriptionId (optional), status (optional), appId (optional)
  */
 async function listApiKeys(req, res) {
@@ -170,7 +170,7 @@ async function listApiKeys(req, res) {
 }
 
 /**
- * POST /devportal/v1/apis/:apiId/api-keys/regenerate
+ * POST /api/v0.9/apis/:apiId/api-keys/regenerate
  * Body: { keyId, expiresAt? }
  */
 async function regenerateApiKey(req, res) {
@@ -197,7 +197,7 @@ async function regenerateApiKey(req, res) {
 }
 
 /**
- * POST /devportal/v1/apis/:apiId/api-keys/revoke
+ * POST /api/v0.9/apis/:apiId/api-keys/revoke
  * Body: { keyId }
  */
 async function revokeApiKey(req, res) {
@@ -222,7 +222,7 @@ async function revokeApiKey(req, res) {
 }
 
 /**
- * POST /devportal/v1/apis/:apiId/api-keys/associate
+ * POST /api/v0.9/apis/:apiId/api-keys/associate
  * Body: { keyId, appId }
  */
 async function associateApiKeyApplication(req, res) {
@@ -256,7 +256,7 @@ async function associateApiKeyApplication(req, res) {
 }
 
 /**
- * POST /devportal/v1/apis/:apiId/api-keys/dissociate
+ * POST /api/v0.9/apis/:apiId/api-keys/dissociate
  * Body: { keyId }
  */
 async function removeApiKeyApplication(req, res) {
@@ -281,7 +281,7 @@ async function removeApiKeyApplication(req, res) {
 }
 
 /**
- * GET /devportal/v1/applications/:applicationId/api-keys
+ * GET /api/v0.9/applications/:applicationId/api-keys
  * Lists all API keys (across every API) currently associated with an app.
  */
 async function listApplicationApiKeys(req, res) {

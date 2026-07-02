@@ -3,9 +3,9 @@
 // pages working if the global is ever missing. Defined synchronously (outside
 // DOMContentLoaded) so it is available before any page script's handlers run.
 (function () {
-    var cfg = window.__DEVPORTAL_API__ || { base: 'devportal', version: 'v1' };
+    var cfg = window.__DEVPORTAL_API__ || { base: 'api', version: 'v0.9' };
     window.devportalApi = {
-        // Devportal API resource: org('/subscriptions') => '/devportal/v1/subscriptions'
+        // Devportal API resource: org('/subscriptions') => '/api/v0.9/subscriptions'
         org: function (path) {
             return '/' + cfg.base + '/' + cfg.version + (path || '');
         },
