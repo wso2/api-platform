@@ -35,6 +35,7 @@ const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManagerDao');
 const { generateToken } = require('../services/oauthTokenService');
 const { CustomError } = require('../utils/errors/customErrors');
+const { logUserAction } = require('../middlewares/auditLogger');
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -98,6 +99,7 @@ const saveApplication = async (req, res) => {
         } catch (pubErr) {
             logger.warn('Failed to publish application.created', { orgId: orgId, appId: createdApp.uuid, error: pubErr.message });
         }
+        logUserAction('APPLICATION_CREATED', req, { orgId, appId: createdApp.uuid, resourceUuid: createdApp.uuid, resourceType: 'application' });
         const audit = await userIdpReferenceDao.buildSingleAuditFields(createdApp);
         return res.status(201).json(new ApplicationDTO(createdApp, audit));
     } catch (error) {
@@ -134,6 +136,7 @@ const updateApplication = async (req, res) => {
         } catch (pubErr) {
             logger.warn('Failed to publish webhook events after app update', { orgId: orgId, appId: appId, error: pubErr.message });
         }
+        logUserAction('APPLICATION_UPDATED', req, { orgId, appId, resourceUuid: appId, resourceType: 'application' });
         const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedApp[0].dataValues);
         res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues, audit));
     } catch (error) {
@@ -204,6 +207,7 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
 const finalizeApplicationDeletion = async (orgId, applicationId, userId, idpId, req) => {
     const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
     trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
+    logUserAction('APPLICATION_DELETED', req, { orgId, appId: applicationId, resourceUuid: applicationId, resourceType: 'application' });
     await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
 };
 

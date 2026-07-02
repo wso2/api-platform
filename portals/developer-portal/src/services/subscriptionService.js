@@ -128,7 +128,7 @@ const createSubscription = async (req, res) => {
         });
 
         const created = await subDao.get(orgId, newSub.uuid, createdBy);
-        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgId, apiId, subscriptionId: newSub.uuid });
+        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgId, apiId, subscriptionId: newSub.uuid, resourceUuid: newSub.uuid, resourceType: 'subscription' });
         const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
         return res.status(201).json(formatSubscriptionResponse(created, audit));
     } catch (error) {
@@ -299,7 +299,7 @@ const changePlan = async (req, res) => {
             });
         });
 
-        logUserAction('SUBSCRIPTION_PLAN_CHANGED', req, { orgId, subscriptionId, planId });
+        logUserAction('SUBSCRIPTION_PLAN_CHANGED', req, { orgId, subscriptionId, planId, resourceUuid: subscriptionId, resourceType: 'subscription' });
         const updated = await subDao.get(orgId, subscriptionId, actorId);
         const audit = await userIdpReferenceDao.buildSingleAuditFields(updated);
         return res.status(200).json(formatSubscriptionResponse(updated, audit));
@@ -342,7 +342,7 @@ const regenerateSubscriptionToken = async (req, res) => {
             });
         });
 
-        logUserAction('SUBSCRIPTION_TOKEN_REGENERATED', req, { orgId, subscriptionId });
+        logUserAction('SUBSCRIPTION_TOKEN_REGENERATED', req, { orgId, subscriptionId, resourceUuid: subscriptionId, resourceType: 'subscription' });
         const updated = await subDao.get(orgId, subscriptionId, actorId);
         const audit = await userIdpReferenceDao.buildSingleAuditFields(updated);
         return res.status(200).json(formatSubscriptionResponse(updated, audit));
@@ -382,7 +382,7 @@ const deleteSubscription = async (req, res) => {
             });
         });
 
-        logUserAction('SUBSCRIPTION_DELETED', req, { orgId: orgId, subscriptionId });
+        logUserAction('SUBSCRIPTION_DELETED', req, { orgId: orgId, subscriptionId, resourceUuid: subscriptionId, resourceType: 'subscription' });
         return res.status(200).json({ message: 'Subscription deleted successfully' });
     } catch (error) {
         if (error.statusCode === 404) {

@@ -23,6 +23,7 @@ const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 
 /**
  * Supported key manager types. Every type proxies token requests identically
@@ -131,6 +132,7 @@ const createKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
+        logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
         let audit;
         try {
             audit = await userIdpReferenceDao.buildSingleAuditFields(record);
@@ -172,6 +174,7 @@ const updateKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await kmDao.update(kmId, payload, userId);
+        logUserAction('KEY_MANAGER_UPDATED', req, { orgId: req.orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         let audit;
         try {
             audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
@@ -239,6 +242,7 @@ const deleteKeyManager = async (req, res) => {
     try {
         const { kmId } = req.params;
         await kmDao.delete(kmId);
+        logUserAction('KEY_MANAGER_DELETED', req, { orgId: req.orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

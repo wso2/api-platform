@@ -22,6 +22,7 @@ const orgDao = require('../dao/organizationDao');
 const sequelize = require('../db/sequelizeConfig');
 const { UniqueConstraintError } = require('sequelize');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
@@ -225,6 +226,7 @@ const createAPIWorkflow = async (req, res) => {
 
         await t.commit();
         logger.info('API Workflow created', { apiWorkflowId: apiWorkflow.uuid, orgId, viewId });
+        logUserAction('API_WORKFLOW_CREATED', req, { orgId, apiWorkflowId: apiWorkflow.uuid, resourceUuid: apiWorkflow.uuid, resourceType: 'api_workflow' });
         res.status(201).json({
             apiWorkflowId: apiWorkflow.handle,
             name: apiWorkflow.name,
@@ -293,6 +295,7 @@ const updateAPIWorkflow = async (req, res) => {
 
         await t.commit();
         logger.info('API Workflow updated', { apiWorkflowId: existing.uuid, orgId, viewId });
+        logUserAction('API_WORKFLOW_UPDATED', req, { orgId, apiWorkflowId: existing.uuid, resourceUuid: existing.uuid, resourceType: 'api_workflow' });
         res.status(200).json({ message: 'API Workflow updated successfully' });
     } catch (error) {
         await t.rollback();
@@ -325,6 +328,7 @@ const deleteAPIWorkflow = async (req, res) => {
         }
         await t.commit();
         logger.info('API Workflow deleted', { apiWorkflowId: existing.uuid, orgId, viewId });
+        logUserAction('API_WORKFLOW_DELETED', req, { orgId, apiWorkflowId: existing.uuid, resourceUuid: existing.uuid, resourceType: 'api_workflow' });
         res.status(200).json({ message: 'API Workflow deleted successfully' });
     } catch (error) {
         await t.rollback();
