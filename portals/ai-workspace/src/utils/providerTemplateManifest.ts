@@ -46,6 +46,29 @@ export function buildTemplateManifestYaml(t: ProviderTemplate): string {
     }
   }
 
+  const resources = t.resourceMappings?.resources ?? [];
+  const mappedResources = resources
+    .filter((r) => r.resource?.trim())
+    .map((r) => {
+      const entry: Record<string, unknown> = { resource: r.resource };
+      let overrides = 0;
+      for (const key of tokenKeys) {
+        const v = r[key];
+        if (!v || !v.identifier?.trim()) continue;
+        const g = t[key];
+        if (g && g.identifier === v.identifier && g.location === v.location) {
+          continue;
+        }
+        entry[key] = { location: v.location, identifier: v.identifier };
+        overrides += 1;
+      }
+      return overrides ? entry : null;
+    })
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+  if (mappedResources.length) {
+    spec.resourceMappings = { resources: mappedResources };
+  }
+
   const manifest = {
     apiVersion: 'gateway.api-platform.wso2.com/v1',
     kind: 'LlmProviderTemplate',
