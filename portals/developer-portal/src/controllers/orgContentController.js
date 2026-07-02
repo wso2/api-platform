@@ -49,7 +49,7 @@ const loadDefaultLandingPage = async (req, res) => {
     
     // Track home page visit telemetry for default landing page
     trackHomePageVisit({
-        idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+        idpId: req.isAuthenticated() ? req.user?.sub : undefined
     }, req);
     
     res.send(html);
@@ -64,7 +64,7 @@ const loadOrgContentFromFile = async (req, res) => {
     };
 
     trackHomePageVisit({
-        idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+        idpId: req.isAuthenticated() ? req.user?.sub : undefined
     }, req);
 
     return renderTemplate(layoutPath + 'pages/home/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
@@ -99,7 +99,7 @@ const loadOrgContentFromAPI = async (req, res, next) => {
         // Track home page visit telemetry
         trackHomePageVisit({ 
             orgId: orgId, 
-            idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+            idpId: req.isAuthenticated() ? req.user?.sub : undefined
         }, req);
     } catch (error) {
         logger.error(`Failed to load organization`, {

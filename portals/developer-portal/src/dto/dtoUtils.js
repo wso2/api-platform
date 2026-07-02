@@ -15,25 +15,16 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { applyAudit } = require('./dtoUtils');
 
 /**
- * DTO for webhook subscriber responses.
- * Never exposes the subscriber's secret in API responses.
+ * Merges createdBy/updatedBy/createdAt/updatedAt (or whatever the caller's
+ * audit builder produced) onto a DTO instance, when present. Shared across
+ * DTOs so the merge behavior stays identical everywhere it's used.
  */
-class WebhookSubscriberDTO {
-    constructor(sub, audit) {
-        this.id = sub.uuid;
-        this.orgId = sub.org_uuid;
-        this.name = sub.name;
-        this.targetUrl = sub.target_url;
-        this.enabled = !!sub.enabled;
-        this.events = sub.event_patterns || [];
-        this.timeoutMs = sub.timeout_ms;
-        this.hasSecret = !!sub.secret_enc;
-        this.hasPublicKey = !!sub.public_key;
-        applyAudit(this, audit);
+function applyAudit(instance, audit) {
+    if (audit) {
+        Object.assign(instance, audit);
     }
 }
 
-module.exports = { WebhookSubscriberDTO };
+module.exports = { applyAudit };

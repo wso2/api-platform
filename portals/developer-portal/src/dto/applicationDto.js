@@ -16,14 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
+
 class ApplicationDTO {
-    constructor(app) {
+    constructor(app, audit) {
         this.id = app.handle;
         this.displayName = app.display_name;
         this.description = app.description;
         if (app.dp_app_key_mappings) {
             this.appKeyMappings = app.dp_app_key_mappings.map(map => new AppMappingDTO(map));
         }
+        applyAudit(this, audit);
     }
 
     setResponseData(data) {

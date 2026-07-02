@@ -15,25 +15,20 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { applyAudit } = require('./dtoUtils');
+const UserOrganizationMapping = require('../models/userOrganizationMapping');
+const { findOrCreateSafe } = require('./findOrCreateHelper');
 
 /**
- * DTO for webhook subscriber responses.
- * Never exposes the subscriber's secret in API responses.
+ * Record that this user has been seen in this org. No-op if already recorded.
  */
-class WebhookSubscriberDTO {
-    constructor(sub, audit) {
-        this.id = sub.uuid;
-        this.orgId = sub.org_uuid;
-        this.name = sub.name;
-        this.targetUrl = sub.target_url;
-        this.enabled = !!sub.enabled;
-        this.events = sub.event_patterns || [];
-        this.timeoutMs = sub.timeout_ms;
-        this.hasSecret = !!sub.secret_enc;
-        this.hasPublicKey = !!sub.public_key;
-        applyAudit(this, audit);
-    }
-}
+const ensureMapping = async (userUuid, orgUuid) => {
+    await findOrCreateSafe(
+        UserOrganizationMapping,
+        { user_uuid: userUuid, org_uuid: orgUuid },
+        { user_uuid: userUuid, org_uuid: orgUuid },
+    );
+};
 
-module.exports = { WebhookSubscriberDTO };
+module.exports = {
+    ensureMapping,
+};

@@ -18,6 +18,7 @@
 const apiKeyService = require('../services/apiKeyService');
 const applicationDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const util = require('../utils/util');
@@ -66,7 +67,7 @@ async function resolveAppId(orgId, userId, appHandle) {
     return app ? app.uuid : null;
 }
 
-function mapKey(k) {
+function mapKey(k, audit) {
     const app = k.dp_api_key_app_mapping?.dp_application;
     return {
         keyId: k.uuid,
@@ -77,8 +78,14 @@ function mapKey(k) {
         revokedAt: k.revoked_at || undefined,
         apiId: k.dp_api_metadata?.handle || k.api_uuid,
         appId: app ? app.handle : null,
-        appDisplayName: app ? app.display_name : null
+        appDisplayName: app ? app.display_name : null,
+        ...audit,
     };
+}
+
+async function mapKeysWithAudit(keys) {
+    const auditList = await userIdpReferenceDao.buildListAuditFields(keys);
+    return keys.map((k, i) => mapKey(k, auditList[i]));
 }
 
 /**
@@ -156,7 +163,7 @@ async function listApiKeys(req, res) {
             appId,
             status: status || undefined
         });
-        const mapped = keys.map(k => mapKey(k));
+        const mapped = await mapKeysWithAudit(keys);
         return res.status(200).json(util.toPaginatedList(mapped, req));
     } catch (err) {
         logger.error('Failed to list API keys', { error: err.message, orgId });
@@ -295,7 +302,7 @@ async function listApplicationApiKeys(req, res) {
         }
         const applicationId = appRecord.uuid;
         const keys = await apiKeyService.list(orgId, { appId: applicationId });
-        return res.status(200).json(util.toPaginatedList(keys.map(mapKey), req));
+        return res.status(200).json(util.toPaginatedList(await mapKeysWithAudit(keys), req));
     } catch (err) {
         logger.error('Failed to list application API keys', { error: err.message, orgId, applicationId: applicationHandle });
         return res.status(errorStatus(err)).json({

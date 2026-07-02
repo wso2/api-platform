@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplateFromAPI } = require('../utils/util');
+const { renderTemplateFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -40,7 +40,7 @@ const loadSubscriptions = async (req, res, next) => {
 
         let allSubscriptions = [];
         try {
-            const createdBy = req.user && req.user.sub;
+            const createdBy = req.user && resolveActor(req);
             const localSubs = await subDao.list(orgId, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
                 id: sub.uuid,

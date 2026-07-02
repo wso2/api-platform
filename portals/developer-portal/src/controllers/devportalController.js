@@ -28,6 +28,7 @@ const { publish } = require('../services/webhooks/eventPublisher');
 const sequelize = require('../db/sequelizeConfig');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { Sequelize } = require("sequelize");
 const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey, trackGenerateCredentials } = require('../utils/telemetryUtil');
 const yaml = require('js-yaml');
@@ -70,7 +71,9 @@ const listApplications = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
     try {
         const applications = await appDao.list(orgId, userId);
-        return res.status(200).json(util.toPaginatedList(applications.map(a => new ApplicationDTO(a.dataValues)), req));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(applications.map(a => a.dataValues));
+        const dtos = applications.map((a, i) => new ApplicationDTO(a.dataValues, auditList[i]));
+        return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error('Error occurred while listing applications', { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
@@ -82,9 +85,10 @@ const saveApplication = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
     try {
         const applicationData = parseApplicationDataFromRequest(req);
-        trackAppCreationStart({ orgId: orgId, appName: applicationData.displayName, idpId: userId }, req);
+        const idpId = req.auth?.rawSub || req.user?.sub;
+        trackAppCreationStart({ orgId: orgId, appName: applicationData.displayName, idpId }, req);
         const application = await appDao.create(orgId, userId, applicationData);
-        trackAppCreationEnd({ orgId: orgId, appName: applicationData.displayName, idpId: userId }, req);
+        trackAppCreationEnd({ orgId: orgId, appName: applicationData.displayName, idpId }, req);
         const createdApp = application.dataValues;
         try {
             await sequelize.transaction((t) => publish('application.created',
@@ -94,7 +98,8 @@ const saveApplication = async (req, res) => {
         } catch (pubErr) {
             logger.warn('Failed to publish application.created', { orgId: orgId, appId: createdApp.uuid, error: pubErr.message });
         }
-        return res.status(201).json(new ApplicationDTO(createdApp));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(createdApp);
+        return res.status(201).json(new ApplicationDTO(createdApp, audit));
     } catch (error) {
         logger.error('Error occurred while creating the application', { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
@@ -129,7 +134,8 @@ const updateApplication = async (req, res) => {
         } catch (pubErr) {
             logger.warn('Failed to publish webhook events after app update', { orgId: orgId, appId: appId, error: pubErr.message });
         }
-        res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedApp[0].dataValues);
+        res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues, audit));
     } catch (error) {
         logger.error("Error occurred while updating the application", { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
@@ -138,13 +144,14 @@ const updateApplication = async (req, res) => {
 
 // ***** Delete Application *****
 
-const revokeAppKeyMappings = async (orgId, appId) => {
+const revokeAppKeyMappings = async (orgId, appId, t) => {
     const { ApplicationKeyMapping } = require('../models/application');
     const mappings = await ApplicationKeyMapping.findAll({
         where: { app_uuid: appId },
+        transaction: t,
     });
     const mappingIds = mappings.map((mapping) => mapping.uuid);
-    await appDao.deleteMappingsByIds(orgId, mappingIds);
+    await appDao.deleteMappingsByIds(orgId, mappingIds, t);
 };
 
 /**
@@ -183,9 +190,21 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
     await sequelize.transaction(async (t) => {
         appToDelete = await appDao.get(orgId, applicationId, userId, t);
         affectedKeys = await apiKeyService.list(orgId, { appId: applicationId }, t);
+        await revokeAppKeyMappings(orgId, applicationId, t);
         await appDao.delete(orgId, applicationId, userId, t);
     });
     return { appToDelete, affectedKeys };
+};
+
+/**
+ * Revokes key mappings, deletes the application row, and publishes the resulting
+ * deletion events. Shared by deleteApplication's initial attempt and its
+ * already-deleted (404) retry path.
+ */
+const finalizeApplicationDeletion = async (orgId, applicationId, userId, idpId, req) => {
+    const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
+    trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
+    await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
 };
 
 const getApplication = async (req, res) => {
@@ -201,7 +220,8 @@ const getApplication = async (req, res) => {
         if (!app) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
         }
-        return res.status(200).json(new ApplicationDTO(app.dataValues));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(app.dataValues);
+        return res.status(200).json(new ApplicationDTO(app.dataValues, audit));
     } catch (error) {
         logger.error('Error occurred while getting the application', { orgId, appId: applicationHandle, error: error.message });
         util.handleError(res, error);
@@ -223,18 +243,13 @@ const deleteApplication = async (req, res) => {
         if (!ownedApp) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
         }
+        const idpId = req.auth?.rawSub || req.user?.sub;
         try {
-            await revokeAppKeyMappings(orgId, applicationId);
-            const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
-            trackAppDeletion({ orgId: orgId, appId: applicationId, idpId: userId }, req);
-            await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
+            await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
             res.status(200).send("Resource Deleted Successfully");
         } catch (error) {
             if (error.statusCode === 404) {
-                await revokeAppKeyMappings(orgId, applicationId);
-                const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
-                trackAppDeletion({ orgId: orgId, appId: applicationId, idpId: userId }, req);
-                await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
+                await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
                 return res.status(200).send("Resource Deleted Successfully");
             }
             logger.error('Error occurred while deleting the application', { orgId: orgId, appId: applicationId, error: error.message, stack: error.stack });
@@ -299,7 +314,7 @@ const generateKeys = async (req, res) => {
         trackGenerateCredentials({
             orgId: orgId,
             appName: appId,
-            idpId: req.isAuthenticated() ? userId : undefined
+            idpId: req.isAuthenticated() ? (req.auth?.rawSub || req.user?.sub) : undefined
         }, req);
         return res.status(200).json(responseData);
     } catch (error) {
@@ -353,7 +368,7 @@ const generateOAuthKeys = async (req, res) => {
         trackGenerateKey({
             orgId: req.user[constants.ORG_UUID],
             appId: applicationId,
-            idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+            idpId: req.isAuthenticated() ? (req.auth?.rawSub || req.user?.sub) : undefined
         }, req);
         res.status(200).json(responseData);
     } catch (error) {

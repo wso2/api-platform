@@ -45,7 +45,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "description": "string",
       "requestCount": "string",
       "refId": "string",
-      "orgId": "string"
+      "orgId": "string",
+      "createdBy": "alice@example.com",
+      "createdAt": "2026-05-07T08:30:00Z",
+      "updatedAt": "2026-05-07T08:30:00Z"
     }
   ],
   "pagination": {
@@ -119,6 +122,10 @@ Status Code **200**
 |»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
 |»» orgId|string|false|none|none|
+|»» createdBy|string|false|none|Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»» updatedBy|string|false|none|Identity of the user who last updated this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»» createdAt|string(date-time)|false|none|none|
+|»» updatedAt|string(date-time)|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -341,7 +348,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "description": "string",
   "requestCount": "string",
   "refId": "string",
-  "orgId": "string"
+  "orgId": "string",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -470,7 +481,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "description": "string",
   "requestCount": "string",
   "refId": "string",
-  "orgId": "string"
+  "orgId": "string",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 

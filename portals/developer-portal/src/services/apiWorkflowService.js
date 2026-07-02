@@ -16,6 +16,7 @@
  * under the License.
  */
 const apiWorkflowDao = require('../dao/apiWorkflowDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const viewDao = require('../dao/viewDao');
 const orgDao = require('../dao/organizationDao');
 const sequelize = require('../db/sequelizeConfig');
@@ -344,7 +345,8 @@ const getAPIWorkflow = async (req, res) => {
         if (!apiWorkflow) {
             return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
         }
-        res.status(200).json(toAPIWorkflowDTO(apiWorkflow));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(apiWorkflow);
+        res.status(200).json(toAPIWorkflowDTO(apiWorkflow, audit));
     } catch (error) {
         if (error instanceof CustomError) {
             return res.status(error.statusCode).json({ message: error.message });
@@ -360,7 +362,7 @@ const getAllAPIWorkflows = async (req, res) => {
     try {
         const viewId = await resolveViewId(orgId, viewHandle);
         const apiWorkflows = await apiWorkflowDao.list(orgId, viewId);
-        res.status(200).json(util.toPaginatedList(apiWorkflows.map(toAPIWorkflowDTO), req));
+        res.status(200).json(util.toPaginatedList(await toAPIWorkflowListDTOs(apiWorkflows), req));
     } catch (error) {
         if (error instanceof CustomError) {
             return res.status(error.statusCode).json({ message: error.message });
@@ -385,7 +387,7 @@ const generatePrompt = async (req, res) => {
 // Internal utility used by settingsController
 const getAllAPIWorkflowsFromDB = async (orgId, viewId) => {
     const apiWorkflows = await apiWorkflowDao.list(orgId, viewId);
-    return apiWorkflows.map(toAPIWorkflowDTO);
+    return toAPIWorkflowListDTOs(apiWorkflows);
 };
 
 const parseFileContent = (raw) => {
@@ -394,7 +396,7 @@ const parseFileContent = (raw) => {
     try { return JSON.stringify(JSON.parse(str), null, 2); } catch { return str; }
 };
 
-const toAPIWorkflowDTO = (apiWorkflow) => {
+const toAPIWorkflowDTO = (apiWorkflow, audit) => {
     const fileContent = parseFileContent(apiWorkflow.file_content);
     return {
     apiWorkflowId: apiWorkflow.handle,
@@ -409,9 +411,18 @@ const toAPIWorkflowDTO = (apiWorkflow) => {
     createdAt: apiWorkflow.created_at ? new Date(apiWorkflow.created_at).toLocaleDateString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric'
     }) : '',
-    updatedAt: apiWorkflow.updated_at
+    updatedAt: apiWorkflow.updated_at ? new Date(apiWorkflow.updated_at).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric'
+    }) : '',
+    createdBy: audit?.createdBy,
+    updatedBy: audit?.updatedBy,
     };
 };
+
+async function toAPIWorkflowListDTOs(apiWorkflows) {
+    const auditList = await userIdpReferenceDao.buildListAuditFields(apiWorkflows);
+    return apiWorkflows.map((wf, i) => toAPIWorkflowDTO(wf, auditList[i]));
+}
 
 module.exports = {
     createAPIWorkflow,

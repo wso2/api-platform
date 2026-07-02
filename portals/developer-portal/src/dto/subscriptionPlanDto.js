@@ -16,8 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
+
 class SubscriptionPlan {
-    constructor(subscriptionPlan) {
+    constructor(subscriptionPlan, audit) {
         this.id = subscriptionPlan.handle;
         this.name = subscriptionPlan.name;
         this.description = subscriptionPlan.description;
@@ -29,6 +31,7 @@ class SubscriptionPlan {
             timeAmount: l.time_amount,
             limitCount: Number.isSafeInteger(Number(l.limit_count)) ? Number(l.limit_count) : String(l.limit_count),
         }));
+        applyAudit(this, audit);
     }
 }
 

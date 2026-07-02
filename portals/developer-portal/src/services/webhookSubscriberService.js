@@ -19,6 +19,7 @@ const { Sequelize } = require('sequelize');
 const whDao = require('../dao/webhookSubscriberDao');
 const eventDao = require('../dao/eventDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
@@ -56,7 +57,8 @@ const createWebhookSubscriber = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const record = await whDao.create(orgId, payload, userId);
-        const dto = new WebhookSubscriberDTO(record);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        const dto = new WebhookSubscriberDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -77,7 +79,8 @@ const updateWebhookSubscriber = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await whDao.update(orgId, subscriberId, payload, userId);
-        const dto = new WebhookSubscriberDTO(updatedRows[0]);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
+        const dto = new WebhookSubscriberDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -97,7 +100,8 @@ const getWebhookSubscribers = async (req, res) => {
     try {
         const orgId = req.orgId;
         const records = await whDao.list(orgId);
-        const dtos = records.map(r => new WebhookSubscriberDTO(r));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(records);
+        const dtos = records.map((r, i) => new WebhookSubscriberDTO(r, auditList[i]));
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR, { error });
@@ -110,7 +114,8 @@ const getWebhookSubscriber = async (req, res) => {
         const orgId = req.orgId;
         const { subscriberId } = req.params;
         const record = await whDao.get(orgId, subscriberId);
-        const dto = new WebhookSubscriberDTO(record);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        const dto = new WebhookSubscriberDTO(record, audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

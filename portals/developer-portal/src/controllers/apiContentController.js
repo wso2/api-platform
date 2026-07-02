@@ -87,7 +87,7 @@ const loadAPIs = async (req, res, next) => {
             // Load subscriptions for APIs with subscription plans (single call for all)
             if (req.user) {
                 try {
-                    const createdBy = req.user && req.user.sub;
+                    const createdBy = req.user && util.resolveActor(req);
                     const localSubs = await subDao.list(orgId, { createdBy });
                     const subscribedApiIds = new Set(localSubs.map(sub => sub.api_uuid));
                     for (const metaData of metaDataList) {
@@ -342,7 +342,7 @@ const loadAPIContent = async (req, res, next) => {
             const hasPlans = (subscriptionPlans || []).length > 0;
             if (req.user && hasPlans) {
                 try {
-                    const createdBy = req.user && req.user.sub;
+                    const createdBy = req.user && util.resolveActor(req);
                     const localSubs = await subDao.list(orgId, { apiId: apiId, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
                         subscriptionId: sub.uuid,
