@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS applications (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    project_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40),
     organization_uuid VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
@@ -60,7 +60,6 @@ CREATE TABLE IF NOT EXISTS applications (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
