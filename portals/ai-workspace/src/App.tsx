@@ -82,7 +82,8 @@ import { LLMProvidersProvider } from './contexts/llmProvider';
 import React, { useRef, useState } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
-import { Box } from '@wso2/oxygen-ui';
+import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
+import OoopsImage from './assets/images/Ooops.svg';
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -140,8 +141,6 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const initiated = useRef(false);
   const [orgState, setOrgState] = useState<OrgInitState>('checking');
-  const [orgError, setOrgError] = useState<string | null>(null);
-  const [sessionExpired, setSessionExpired] = useState(false);
 
   React.useEffect(() => {
     if (initiated.current) return;
@@ -168,15 +167,10 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
         navigate(`/organizations/${org.handle}/home`, { replace: true });
         setOrgState('done');
       })
-      .catch((err: unknown) => {
-        // A 401 means the session is invalid/expired — retrying won't help.
-        // Surface a "session expired" screen with a logout action instead.
-        if ((err as { status?: number })?.status === 401) {
-          setSessionExpired(true);
-          setOrgState('error');
-          return;
-        }
-        setOrgError(err instanceof Error ? err.message : 'Failed to set up workspace');
+      .catch(() => {
+        // Any failure here (a 401 from an expired/invalid session, or an
+        // unexpected error) is unrecoverable without re-authenticating, so
+        // surface the error screen whose only action is to log out.
         setOrgState('error');
       });
   }, [user, navigate]);
@@ -191,14 +185,51 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
   }
 
   if (orgState === 'error') {
+    const onLogout = () => { void forceLogoutAndRedirect(); };
     return (
-      <OrgProvisioningPage
-        orgName={user?.org?.name ?? undefined}
-        error={sessionExpired ? null : orgError}
-        isSessionExpired={sessionExpired}
-        onLogout={() => { void forceLogoutAndRedirect(); }}
-        onRetry={() => { initiated.current = false; setOrgState('checking'); }}
-      />
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: 2,
+        }}
+      >
+        <Box
+          sx={{
+            width: 'min(560px, 100%)',
+            textAlign: 'center',
+          }}
+        >
+          <Stack spacing={1} alignItems="center">
+            <Box
+              component="img"
+              src={OoopsImage}
+              alt="Oops"
+              sx={{
+                width: 180,
+                maxWidth: '100%',
+                height: 'auto',
+              }}
+            />
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
+              Oops! This is embarrassing
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Something went wrong. Please log out and sign in again.
+            </Typography>
+            <Button variant="contained" onClick={onLogout}>
+              Logout
+            </Button>
+          </Stack>
+        </Box>
+      </Box>
     );
   }
 
