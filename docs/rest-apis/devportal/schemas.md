@@ -1655,11 +1655,9 @@ A single delivery attempt made to a webhook subscriber.
 ```json
 {
   "name": "Partner and Public APIs",
-  "addedLabels": [
+  "labels": [
+    "partner",
     "premium"
-  ],
-  "removedLabels": [
-    "internal"
   ]
 }
 
@@ -1670,8 +1668,7 @@ A single delivery attempt made to a webhook subscriber.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|false|none|none|
-|addedLabels|[string]|false|none|Label names to attach to the view.|
-|removedLabels|[string]|false|none|Label names to detach from the view.|
+|labels|[string]|false|none|Full desired set of label names for the view. Labels present here but not currently attached are attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.|
 
 <h2 id="tocS_OAuthGenerateTokenRequest">OAuthGenerateTokenRequest</h2>
 

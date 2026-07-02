@@ -1570,8 +1570,7 @@ const addView = async (req, res) => {
 const updateView = async (req, res) => {
 
     const orgId = req.orgId;
-    const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
-    const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
+    const labels = req.body.labels;
     const viewHandle = req.params.viewId;
     const userId = util.resolveActor(req);
     try {
@@ -1584,14 +1583,9 @@ const updateView = async (req, res) => {
                 let viewResponse = await viewDao.update(orgId, viewHandle, req.body.name, userId, t);
                 viewId = viewResponse.dataValues.uuid;
             }
-            if (removedLabels.length !== 0 || addedLabels.length !== 0) {
+            if (Array.isArray(labels)) {
                 viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
-            }
-            if (removedLabels.length !== 0) {
-                await viewDao.deleteLabels(orgId, viewId, removedLabels, t);
-            }
-            if (addedLabels.length !== 0) {
-                await viewDao.addLabels(orgId, viewId, addedLabels, userId, t);
+                await viewDao.replaceLabels(orgId, viewId, labels, userId, t);
             }
             viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
             logUserAction('VIEW_UPDATED', req, { orgId, viewId: viewHandle, resourceUuid: viewId, resourceType: 'view' });

@@ -1738,8 +1738,9 @@ paths:
       operationId: updateView
       summary: Update a view
       description: >-
-        Updates the view display name and label associations. `addedLabels` are attached to the view and `removedLabels`
-        are detached. The service returns the accepted request payload.
+        Updates the view display name and/or label associations. When `labels` is supplied, it fully replaces the
+        view's label set — labels present in the list are attached and any others are detached. The service returns
+        the accepted request payload.
       requestBody:
         $ref: "#/components/requestBodies/ViewUpdateBody"
       responses:
@@ -2950,17 +2951,16 @@ components:
             $ref: "#/components/schemas/ViewUpdateRequest"
           examples:
             renameAndRelabel:
-              summary: Rename a view and adjust labels
+              summary: Rename a view and replace its labels
               value:
                 name: Partner and Public APIs
-                addedLabels:
+                labels:
+                  - partner
                   - premium
-                removedLabels:
-                  - internal
-            addLabelsOnly:
-              summary: Add labels without renaming
+            relabelOnly:
+              summary: Replace labels without renaming
               value:
-                addedLabels:
+                labels:
                   - beta
     OAuthGenerateTokenBody:
       required: false
@@ -4014,10 +4014,9 @@ components:
             $ref: "#/components/schemas/ViewUpdateRequest"
           example:
             name: Partner and Public APIs
-            addedLabels:
+            labels:
+              - partner
               - premium
-            removedLabels:
-              - internal
     WebhookEventListResponse:
       description: Paginated list of webhook events.
       content:
@@ -5244,20 +5243,16 @@ components:
         name:
           type: string
           example: Partner and Public APIs
-        addedLabels:
+        labels:
           type: array
-          description: Label names to attach to the view.
+          description: >-
+            Full desired set of label names for the view. Labels present here but not currently attached are
+            attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.
           items:
             type: string
           example:
+            - partner
             - premium
-        removedLabels:
-          type: array
-          description: Label names to detach from the view.
-          items:
-            type: string
-          example:
-            - internal
       additionalProperties: false
     OAuthGenerateTokenRequest:
       type: object

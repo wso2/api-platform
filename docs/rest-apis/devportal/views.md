@@ -250,18 +250,16 @@ curl -X PUT https://devportal.api-platform.io/api/v0.9/views/{viewId} \
 
 ```
 
-Updates the view display name and label associations. `addedLabels` are attached to the view and `removedLabels` are detached. The service returns the accepted request payload.
+Updates the view display name and/or label associations. When `labels` is supplied, it fully replaces the view's label set — labels present in the list are attached and any others are detached. The service returns the accepted request payload.
 
 > Payload
 
 ```json
 {
   "name": "Partner and Public APIs",
-  "addedLabels": [
+  "labels": [
+    "partner",
     "premium"
-  ],
-  "removedLabels": [
-    "internal"
   ]
 }
 ```
@@ -287,11 +285,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "name": "Partner and Public APIs",
-  "addedLabels": [
+  "labels": [
+    "partner",
     "premium"
-  ],
-  "removedLabels": [
-    "internal"
   ]
 }
 ```

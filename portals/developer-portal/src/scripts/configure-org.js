@@ -198,25 +198,17 @@ function addViewLabel(labelSelectID, labelsContainerID) {
     labelsContainer.appendChild(span);
 }
 
-async function editView(existingLabels, labelsContainerID, nameID, handleID, orgId) {
+async function editView(labelsContainerID, nameID, handleID, orgId) {
 
     const labelsContainer = document.getElementById(labelsContainerID);
     const name = document.getElementById(nameID).value;
     const handle = document.getElementById(handleID).value;
     const selected = [...labelsContainer.children].map(span => span.textContent.replace("×", "").trim());
-    const addedLabels = selected.filter(label => !existingLabels.includes(label));
-    let removedLabels = [];
-    if (existingLabels.length > 0) {
-        const existinglabelsList = JSON.parse(existingLabels);
-         removedLabels = existinglabelsList.filter(label => !selected.includes(label));
-    }
-    const sanitizAddedLabels = addedLabels.map(label => sanitizeInput(label));
-    const sanitizeRemovedLabels = removedLabels.map(label => sanitizeInput(label));
+    const sanitizedLabels = selected.map(label => sanitizeInput(label));
 
     const data = {
         name: name,
-        addedLabels: sanitizAddedLabels,
-        removedLabels: sanitizeRemovedLabels
+        labels: sanitizedLabels
     }
     const response = await fetch(devportalApi.org(`/views/${handle}`), {
         method: 'PUT',

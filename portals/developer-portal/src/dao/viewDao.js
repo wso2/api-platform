@@ -18,7 +18,7 @@
 const View = require('../models/view');
 const ViewLabels = require('../models/viewLabel');
 const Labels = require('../models/label');
-const { Sequelize, Op } = require('sequelize');
+const { Sequelize } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
@@ -104,7 +104,7 @@ const get = async (orgId, handle) => {
             },
             include: {
                 model: Labels,
-                attributes: ["name"],
+                attributes: ["handle"],
                 through: { attributes: [] }
             },
         });
@@ -151,7 +151,7 @@ const list = async (orgId) => {
             },
             include: {
                 model: Labels,
-                attributes: ["name"],
+                attributes: ["handle"],
                 through: {
                     attributes: []
                 }
@@ -202,26 +202,7 @@ const replaceLabels = async (orgId, viewId, labelNames, createdBy, t) => {
     }
 }
 
-const deleteLabels = async (orgId, viewId, labels, t) => {
-
-    const IDList = await getLabelId(orgId, labels, t);
-    try {
-        return await ViewLabels.destroy({
-            where: {
-                label_uuid: { [Op.in]: IDList },
-                view_uuid: viewId,
-            },
-            transaction: t
-        });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-// Internal helper used by addLabels, replaceLabels, deleteLabels
+// Internal helper used by addLabels, replaceLabels
 async function getLabelId(orgId, labels, t) {
     const labelDao = require('./labelDao');
     return labelDao.getId(orgId, labels, t);
@@ -236,5 +217,4 @@ module.exports = {
     list,
     addLabels,
     replaceLabels,
-    deleteLabels,
 };
