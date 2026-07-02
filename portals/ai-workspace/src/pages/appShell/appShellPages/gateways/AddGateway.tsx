@@ -130,10 +130,11 @@ export default function AddGateway() {
     if (!isFormValid()) return;
 
     try {
+      const normalizedVhost = normalizeVhost(vhost);
       const createdGateway = await createGateway({
         displayName,
         id: name,
-        vhost: normalizeVhost(vhost),
+        endpoints: normalizedVhost ? [normalizedVhost] : undefined,
         functionalityType,
         description: description || undefined,
         version: selectedVersion!.version,
