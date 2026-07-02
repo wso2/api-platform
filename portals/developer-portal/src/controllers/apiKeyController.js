@@ -177,7 +177,8 @@ async function listApiKeys(req, res) {
             apiId,
             subscriptionId: subscriptionId || undefined,
             appId,
-            status: status || undefined
+            status: status || undefined,
+            createdBy: util.resolveActor(req),
         });
         const mapped = await mapKeysWithAudit(keys);
         return res.status(200).json(util.toPaginatedList(mapped, req));

@@ -67,11 +67,12 @@ async function getIdByHandle(orgId, apiId, handle) {
     return key ? key.uuid : null;
 }
 
-async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {}, transaction) {
+async function list(orgId, { apiId, subscriptionId, appId, status, createdBy, limit } = {}, transaction) {
     const where = { org_uuid: orgId };
     if (apiId) where.api_uuid = apiId;
     if (subscriptionId) where.subscription_uuid = subscriptionId;
     if (status) where.status = status;
+    if (createdBy) where.created_by = createdBy;
     return APIKey.findAll({
         where,
         order: [['created_at', 'DESC']],

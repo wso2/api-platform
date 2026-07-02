@@ -348,7 +348,7 @@ const loadAPIContent = async (req, res, next) => {
                         subscriptionId: sub.uuid,
                         // policyName (raw POLICY_NAME) is what isCurrentPlan compares against in the template.
                         // subscriptionPlanName keeps the human-readable label (DISPLAY_NAME when set).
-                        policyName: sub.dp_subscription_plan?.display_name || '',
+                        policyName: sub.dp_subscription_plan?.handle || '',
                         subscriptionPlanName: sub.dp_subscription_plan?.display_name || '',
                         status: sub.status,
                         subscriptionToken: sub.token,

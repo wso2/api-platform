@@ -119,6 +119,21 @@ const ensureAuthenticated = async (req, res, next) => {
             req.user[constants.ORG_IDENTIFIER] = req.user.userOrg;
         }
     }
+    // Resolve the acting user's internal UUID for every authenticated request, not just
+    // pages gated by authenticatedPages below — resolveActor() (used for created_by/updated_by
+    // audit columns and "my resources" filters like subscriptions) must return the same
+    // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
+    if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
+        if (req.user.isLocalAuth && !config.identityProvider?.clientId) {
+            req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
+        } else {
+            const earlyToken = accessTokenPresent(req);
+            if (earlyToken) {
+                const earlyDecoded = jwt.decode(earlyToken);
+                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID]);
+            }
+        }
+    }
     if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
         config.authenticatedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
         const orgId = req.params.orgName;
