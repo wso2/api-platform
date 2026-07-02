@@ -383,7 +383,9 @@ export default function ProviderTemplateOverview() {
 
   const handleSaveChanges = async () => {
     if (!template?.id || isSaving) return;
-    if (!endpointUrl.trim()) {
+    // DP-origin (gateway-created) templates carry no endpoint URL — the gateway
+    // owns the connection — so it is optional for them; only CP templates require it.
+    if (!template.readOnly && !endpointUrl.trim()) {
       showSnackbar('Endpoint URL is required.', 'error');
       return;
     }
@@ -1024,12 +1026,13 @@ export default function ProviderTemplateOverview() {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
-              {isDpOrigin && !isReadOnly && (
-                <GatewayArtifactReadOnlyBanner message="Connection settings are managed by the gateway that created this template and are read-only here." />
-              )}
+              {/* Connection settings (endpoint URL, auth) are authoring/display
+                  metadata that the gateway never reads at runtime, so they stay
+                  editable even on a gateway-created (DP-origin) template. Only
+                  built-in templates lock this section. */}
               <Box
                 sx={
-                  isSectionReadOnly
+                  isReadOnly
                     ? { pointerEvents: 'none', opacity: 0.7 }
                     : undefined
                 }
@@ -1037,10 +1040,10 @@ export default function ProviderTemplateOverview() {
                 <Grid container spacing={2}>
                 <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth>
-                    <FormLabel required>Endpoint URL</FormLabel>
+                    <FormLabel required={!isDpOrigin}>Endpoint URL</FormLabel>
                     <TextField
                       fullWidth
-                      required
+                      required={!isDpOrigin}
                       value={endpointUrl}
                       onChange={(e) => {
                         setEndpointUrl(e.target.value);
@@ -1049,9 +1052,9 @@ export default function ProviderTemplateOverview() {
                       }}
                       onBlur={() => setEndpointUrlTouched(true)}
                       placeholder="https://api.openai.com"
-                      error={endpointUrlTouched && (!endpointUrl.trim() || !isValidHttpUrl(endpointUrl))}
+                      error={endpointUrlTouched && ((!isDpOrigin && !endpointUrl.trim()) || !isValidHttpUrl(endpointUrl))}
                       helperText={
-                        endpointUrlTouched && !endpointUrl.trim()
+                        endpointUrlTouched && !isDpOrigin && !endpointUrl.trim()
                           ? 'Endpoint URL is required.'
                           : endpointUrlTouched && !isValidHttpUrl(endpointUrl)
                             ? 'Enter a valid URL.'
@@ -1164,7 +1167,7 @@ export default function ProviderTemplateOverview() {
                   disabled={
                     !isDirty ||
                     isSaving ||
-                    !endpointUrl.trim() ||
+                    (!isDpOrigin && !endpointUrl.trim()) ||
                     !isValidHttpUrl(endpointUrl) ||
                     !isValidHttpUrl(openapiSpecUrl) ||
                     !isValidHttpUrl(logoUrlField)

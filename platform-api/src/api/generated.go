@@ -2548,24 +2548,14 @@ type SyncCustomPolicyParams struct {
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
-	// Query URL-encoded search DSL. `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av1.0). The version may instead be supplied via the standalone `version` query param.
+	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av2.0).
 	Query *string `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
-
-	// Version Selects a single version within the family named by `query=groupId:<id>`, returning the full template for that (groupId, version). Alternative to packing `&version:<ver>` inside the `query` value; ignored when `query` has no groupId.
-	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Limit Maximum number of LLM provider templates to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
 	// Offset Number of LLM provider templates to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
-
-	// Latest Which versions to include. By default (false) the response contains
-	// every version row across all templates (full history). Set to true
-	// to return only the latest version of each family (one entry per
-	// built-in/custom bucket), for the catalog listing. May also be passed
-	// inside the query DSL as `query=latest:true`.
-	Latest *bool `form:"latest,omitempty" json:"latest,omitempty" yaml:"latest,omitempty"`
 }
 
 // CopyLLMProviderTemplateVersionParams defines parameters for CopyLLMProviderTemplateVersion.
