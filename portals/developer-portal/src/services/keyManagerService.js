@@ -180,11 +180,16 @@ const updateKeyManager = async (req, res) => {
     }
 };
 
+/**
+ * Admins get the full configuration for every key manager; other callers get the
+ * minimal, developer-facing view of enabled key managers only (no admin creds).
+ */
 const getKeyManagers = async (req, res) => {
     try {
         const orgId = req.orgId;
-        const records = await kmDao.list(orgId);
-        const dtos = records.map(r => new KeyManagerDTO(r));
+        const isAdmin = req.user?.isAdmin;
+        const records = isAdmin ? await kmDao.list(orgId) : await kmDao.listEnabled(orgId);
+        const dtos = records.map(r => (isAdmin ? new KeyManagerDTO(r) : new KeyManagerPublicDTO(r)));
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
@@ -221,28 +226,12 @@ const deleteKeyManager = async (req, res) => {
     }
 };
 
-/**
- * Developer-facing: list only enabled key managers (no admin creds).
- */
-const getAvailableKeyManagers = async (req, res) => {
-    try {
-        const orgId = req.orgId;
-        const records = await kmDao.listEnabled(orgId);
-        const dtos = records.map(r => new KeyManagerPublicDTO(r));
-        return res.status(200).json(util.toPaginatedList(dtos, req));
-    } catch (error) {
-        logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR });
-    }
-};
-
 module.exports = {
     createKeyManager,
     updateKeyManager,
     getKeyManagers,
     getKeyManager,
     deleteKeyManager,
-    getAvailableKeyManagers,
     // Exported for use in org creation YAML ingestion
     mapYamlToKeyManager,
     parseKeyManagerFromYamlFile,

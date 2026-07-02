@@ -166,7 +166,7 @@ const deleteOrg = async (orgId) => {
     }
 }
 
-const createContent = async (orgData) => {
+const createContent = async (orgData, t) => {
     const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
     try {
         const orgContent = await OrgContent.create({
@@ -178,7 +178,7 @@ const createContent = async (orgData) => {
             view_uuid: viewId,
             created_by: orgData.createdBy,
             updated_by: orgData.createdBy
-        });
+        }, { transaction: t });
         return orgContent;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -276,14 +276,15 @@ const deleteContent = async (orgId, viewName, fileName) => {
     }
 };
 
-const deleteAllContent = async (orgId, viewName) => {
+const deleteAllContent = async (orgId, viewName, t) => {
     const viewId = await viewDao.getId(orgId, viewName);
     try {
         const deletedRowsCount = await OrgContent.destroy({
             where: {
                 org_uuid: orgId,
                 view_uuid: viewId
-            }
+            },
+            transaction: t
         });
 
         if (deletedRowsCount < 1) {

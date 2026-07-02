@@ -95,7 +95,7 @@ async function setApplication(orgId, keyId, appId, updatedBy, transaction, { act
 
 async function updateExpiry(orgId, keyId, expiresAt, updatedBy, transaction) {
     const [count] = await APIKey.update(
-        { expires_at: expiresAt, updated_by: updatedBy },
+        { expires_at: expiresAt, updated_by: updatedBy, updated_at: new Date() },
         { where: { uuid: keyId, org_uuid: orgId, status: constants.API_KEY_STATUS.ACTIVE }, transaction }
     );
     return count > 0;

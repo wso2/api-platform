@@ -3,7 +3,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const queryInput = document.getElementById('query');
     const applicationsContainer = document.getElementById(
-        'applicationCardsContainer'
+        'applicationsContainer'
     );
     const allCards = Array.from(applicationsContainer.children);
     queryInput.addEventListener('input', () => {

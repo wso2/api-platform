@@ -16,6 +16,7 @@ DROP TABLE IF EXISTS "dp_app_key_mappings" CASCADE;
 DROP TABLE IF EXISTS "dp_applications" CASCADE;
 DROP TABLE IF EXISTS "dp_key_managers" CASCADE;
 DROP TABLE IF EXISTS "dp_api_subscription_plan_mappings" CASCADE;
+DROP TABLE IF EXISTS "dp_subscription_plan_limits" CASCADE;
 DROP TABLE IF EXISTS "dp_subscription_plans" CASCADE;
 DROP TABLE IF EXISTS "dp_api_tag_mappings" CASCADE;
 DROP TABLE IF EXISTS "dp_api_label_mappings" CASCADE;
@@ -83,9 +84,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_api_tag_mappings_tag_api" ON "dp_api_tag_m
 CREATE INDEX IF NOT EXISTS "idx_api_tag_mappings_api_uuid" ON "dp_api_tag_mappings" ("api_uuid");
 
 -- dp_subscription_plans
-CREATE TABLE IF NOT EXISTS "dp_subscription_plans" ("uuid" VARCHAR(40) NOT NULL , "handle" VARCHAR(255) NOT NULL, "name" VARCHAR(255) NOT NULL, "description" VARCHAR(1023), "request_count" VARCHAR(255), "ref_id" VARCHAR(255), "org_uuid" VARCHAR(40) REFERENCES "dp_organizations" ("uuid") ON DELETE SET NULL ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+CREATE TABLE IF NOT EXISTS "dp_subscription_plans" ("uuid" VARCHAR(40) NOT NULL , "handle" VARCHAR(255) NOT NULL, "name" VARCHAR(255) NOT NULL, "description" VARCHAR(1023), "ref_id" VARCHAR(255), "org_uuid" VARCHAR(40) REFERENCES "dp_organizations" ("uuid") ON DELETE SET NULL ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
 
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_subscription_plan_org_handle" ON "dp_subscription_plans" ("org_uuid", "handle");
+
+-- dp_subscription_plan_limits
+CREATE TABLE IF NOT EXISTS "dp_subscription_plan_limits" ("uuid" VARCHAR(40) NOT NULL , "plan_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_subscription_plans" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "limit_type" VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT', "time_unit" VARCHAR(20), "time_amount" INTEGER NOT NULL DEFAULT 1, "limit_count" BIGINT NOT NULL, PRIMARY KEY ("uuid"));
+
+CREATE INDEX IF NOT EXISTS "idx_dp_subscription_plan_limits_plan" ON "dp_subscription_plan_limits" ("plan_uuid");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_dp_subscription_plan_limits" ON "dp_subscription_plan_limits" ("plan_uuid", "limit_type", "time_amount", "time_unit") WHERE "time_unit" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_dp_subscription_plan_limits_null_unit" ON "dp_subscription_plan_limits" ("plan_uuid", "limit_type", "time_amount") WHERE "time_unit" IS NULL;
 
 -- dp_api_subscription_plan_mappings
 CREATE TABLE IF NOT EXISTS "dp_api_subscription_plan_mappings" ("uuid" VARCHAR(40) , "api_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_api_metadata" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "plan_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_subscription_plans" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));

@@ -78,9 +78,14 @@ class APISubscriptionPlan {
     constructor(apiSubscriptionPlan) {
         this.handle = apiSubscriptionPlan.handle;
         this.name = apiSubscriptionPlan.name;
-        this.requestCount = apiSubscriptionPlan.request_count;
         this.id = apiSubscriptionPlan.uuid;
         this.description = apiSubscriptionPlan.description;
+        this.limits = (apiSubscriptionPlan.limits || []).map(l => ({
+            limitType:  l.limit_type,
+            timeUnit:   l.time_unit ?? null,
+            timeAmount: l.time_amount,
+            limitCount: Number(l.limit_count),
+        }));
     }
 }
 

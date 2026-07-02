@@ -242,7 +242,7 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
 
 ### `apikey.application_updated`
 
-Fired whenever a single key's application association changes: the key is associated with an app, dissociated, or its app is renamed or deleted. This is a **per-key** event — like `apikey.generated`/`apikey.regenerated`/`apikey.revoked`, `key_id` identifies the one key affected. The association is optional and exists for analytics attribution only — it has no effect on key validity or authorization.
+Fired whenever a single key's application association changes: the key is associated with an app, dissociated, or its app is deleted. This is a **per-key** event — like `apikey.generated`/`apikey.regenerated`/`apikey.revoked`, `key_id` identifies the one key affected. The association is optional and exists for analytics attribution only — it has no effect on key validity or authorization.
 
 ```json
 {
@@ -266,7 +266,7 @@ Fired whenever a single key's application association changes: the key is associ
 ```
 
 - `application` is `null` when the key's association was removed, or when the key's app was deleted
-- Renaming an app does **not** fire this event — the key-to-application association is unchanged, only the app's own `name`/`handle` change; see [`application.updated`](#applicationupdated)
+- Renaming an app does **not** fire this event — the key-to-application association is unchanged, only the app's own `display_name`/`handle` change; see [`application.updated`](#applicationupdated)
 - Deleting an app fires this event once per key currently associated with it, each with `application: null` — there is no separate "deleted" variant
 
 ### `subscription.created`

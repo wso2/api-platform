@@ -18,6 +18,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
+const SubscriptionPlanLimit = require('./subscriptionPlanLimit');
 
 const SubscriptionPlan = sequelize.define('dp_subscription_plan', {
     uuid: {
@@ -37,10 +38,6 @@ const SubscriptionPlan = sequelize.define('dp_subscription_plan', {
     },
     description: {
         type: DataTypes.STRING(1023),
-        allowNull: true
-    },
-    request_count: {
-        type: DataTypes.STRING,
         allowNull: true
     },
     ref_id: {
@@ -85,5 +82,7 @@ SubscriptionPlan.belongsTo(Organization, {
         unique: 'unique_org_plan_handle'
     }
 });
+
+SubscriptionPlan.hasMany(SubscriptionPlanLimit, { foreignKey: 'plan_uuid', as: 'limits' });
 
 module.exports = SubscriptionPlan;

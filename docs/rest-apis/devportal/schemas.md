@@ -1079,7 +1079,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — used as a fallback when the API cannot be derived from the subscription record.|
+|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
 |planId|string|true|none|Developer Portal subscription plan ID to switch to.|
 
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
@@ -1817,26 +1817,6 @@ Access token response proxied from the key manager's token endpoint. Field names
 |---|---|---|---|---|
 |agentPrompt|string|false|none|none|
 
-<h2 id="tocS_TempArazzoFileResponse">TempArazzoFileResponse</h2>
-
-<a id="schematemparazzofileresponse"></a>
-<a id="schema_TempArazzoFileResponse"></a>
-<a id="tocStemparazzofileresponse"></a>
-<a id="tocstemparazzofileresponse"></a>
-
-```json
-{
-  "path": "/tmp/arazzo-abc123/workflow.arazzo.yaml"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|path|string|false|none|none|
-
 <h2 id="tocS_APIWorkflowCreateRequest">APIWorkflowCreateRequest</h2>
 
 <a id="schemaapiworkflowcreaterequest"></a>
@@ -1996,50 +1976,6 @@ continued
 |orgHandle|string|false|none|none|
 |viewName|string|false|none|none|
 |handle|string|false|none|none|
-
-<h2 id="tocS_LoginRequest">LoginRequest</h2>
-
-<a id="schemaloginrequest"></a>
-<a id="schema_LoginRequest"></a>
-<a id="tocSloginrequest"></a>
-<a id="tocsloginrequest"></a>
-
-```json
-{
-  "username": "string",
-  "password": "pa$$word"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|username|string|true|none|none|
-|password|string(password)|true|none|none|
-
-<h2 id="tocS_TempArazzoFileRequest">TempArazzoFileRequest</h2>
-
-<a id="schematemparazzofilerequest"></a>
-<a id="schema_TempArazzoFileRequest"></a>
-<a id="tocStemparazzofilerequest"></a>
-<a id="tocstemparazzofilerequest"></a>
-
-```json
-{
-  "content": "arazzo: 1.0.1\ninfo:\n  title: Weather onboarding\n  version: 1.0.0\nworkflows: []\n",
-  "filename": "workflow.arazzo.yaml"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|content|string|true|none|Arazzo YAML content to write to a temporary file.|
-|filename|string|false|none|none|
 
 <h2 id="tocS_WebhookEventDelivery">WebhookEventDelivery</h2>
 

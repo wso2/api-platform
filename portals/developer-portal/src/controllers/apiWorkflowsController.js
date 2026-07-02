@@ -126,7 +126,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
-                ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=`)
+                ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`)
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {
@@ -209,7 +209,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
-                ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=`)
+                ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`)
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {

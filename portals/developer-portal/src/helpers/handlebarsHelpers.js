@@ -44,8 +44,23 @@ const helpers = {
         return array.some(item => item[key]);
     },
 
+    // URL helpers
+    urlEncode: (value) => encodeURIComponent(value ?? ''),
+
     // JSON helpers
     json: (context) => JSON.stringify(context ?? null),
+    // For embedding JSON inside HTML double-quoted attributes
+    jsonAttr: (context) => new Handlebars.SafeString(Handlebars.escapeExpression(JSON.stringify(context ?? null))),
+
+    // Subscription plan limit display helpers
+    limitTypeLabel: (type) => {
+        const map = { REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens' };
+        return map[String(type)] || String(type || '').toLowerCase().replace(/_/g, ' ');
+    },
+    timeUnitLabel: (unit) => {
+        const map = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
+        return map[String(unit)] || String(unit || '').toLowerCase();
+    },
     jsonBeautify: (context) => typeof context === 'string' ? context : JSON.stringify(context ?? {}, null, 2),
     jsonSafeSubscriptions: function (context) {
         try {
