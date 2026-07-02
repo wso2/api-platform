@@ -420,7 +420,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "labels": [
     "partner",
     "public"
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 

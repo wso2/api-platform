@@ -289,7 +289,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "my-weather-app",
   "displayName": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "appKeyMappings": []
+  "appKeyMappings": [],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -382,7 +386,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "my-weather-app",
   "displayName": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "appKeyMappings": []
+  "appKeyMappings": [],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 

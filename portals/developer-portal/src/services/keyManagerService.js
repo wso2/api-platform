@@ -131,7 +131,16 @@ const createKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
-        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after key manager creation', {
+                error: auditError.message,
+                kmId: record.uuid
+            });
+            audit = { createdAt: record.created_at, updatedAt: record.updated_at };
+        }
         const dto = new KeyManagerDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
@@ -163,7 +172,16 @@ const updateKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await kmDao.update(kmId, payload, userId);
-        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after key manager update', {
+                error: auditError.message,
+                kmId
+            });
+            audit = { createdAt: updatedRows[0].created_at, updatedAt: updatedRows[0].updated_at };
+        }
         const dto = new KeyManagerDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {

@@ -144,13 +144,14 @@ const updateApplication = async (req, res) => {
 
 // ***** Delete Application *****
 
-const revokeAppKeyMappings = async (orgId, appId) => {
+const revokeAppKeyMappings = async (orgId, appId, t) => {
     const { ApplicationKeyMapping } = require('../models/application');
     const mappings = await ApplicationKeyMapping.findAll({
         where: { app_uuid: appId },
+        transaction: t,
     });
     const mappingIds = mappings.map((mapping) => mapping.uuid);
-    await appDao.deleteMappingsByIds(orgId, mappingIds);
+    await appDao.deleteMappingsByIds(orgId, mappingIds, t);
 };
 
 /**
@@ -189,6 +190,7 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
     await sequelize.transaction(async (t) => {
         appToDelete = await appDao.get(orgId, applicationId, userId, t);
         affectedKeys = await apiKeyService.list(orgId, { appId: applicationId }, t);
+        await revokeAppKeyMappings(orgId, applicationId, t);
         await appDao.delete(orgId, applicationId, userId, t);
     });
     return { appToDelete, affectedKeys };
@@ -200,7 +202,6 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
  * already-deleted (404) retry path.
  */
 const finalizeApplicationDeletion = async (orgId, applicationId, userId, idpId, req) => {
-    await revokeAppKeyMappings(orgId, applicationId);
     const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
     trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
     await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);

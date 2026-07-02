@@ -236,7 +236,16 @@ const createAPIMetadata = async (req, res) => {
             delete apiMetadata.handle;
         });
 
-        const audit = await userIdpReferenceDao.buildSingleAuditFields(createdAPIRecord);
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(createdAPIRecord);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after API creation', {
+                error: auditError.message,
+                apiId: createdAPIRecord.uuid
+            });
+            audit = { createdAt: createdAPIRecord.created_at, updatedAt: createdAPIRecord.updated_at };
+        }
         res.status(201).send({ ...apiMetadata, ...audit });
     } catch (error) {
         logger.error('API metadata creation failed', {
@@ -1230,7 +1239,7 @@ const createSubscriptionPlans = async (req, res) => {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
             }
 
-            const createdPlans = [];
+            const createdRecords = [];
 
             await sequelize.transaction({
                 timeout: 60000,
@@ -1245,10 +1254,11 @@ const createSubscriptionPlans = async (req, res) => {
                             `Failed to create plan: ${plan.handle || "unknown"}`
                         );
                     }
-                    const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
-                    createdPlans.push(new subscriptionPlanDTO(created, audit));
+                    createdRecords.push(created);
                 }
             });
+            const audits = await userIdpReferenceDao.buildListAuditFields(createdRecords);
+            const createdPlans = createdRecords.map((created, i) => new subscriptionPlanDTO(created, audits[i]));
             logger.info('Created subscription plans', {
                 orgId
             });
@@ -1315,7 +1325,7 @@ const updateSubscriptionPlans = async (req, res) => {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
             }
 
-            const updatedPlans = [];
+            const updatedRecords = [];
 
             await sequelize.transaction({
                 timeout: 60000,
@@ -1330,10 +1340,11 @@ const updateSubscriptionPlans = async (req, res) => {
                             `Failed to upsert plan: ${plan.handle || "unknown"}`
                         );
                     }
-                    const audit = await userIdpReferenceDao.buildSingleAuditFields(result.subscriptionPlanResponse);
-                    updatedPlans.push(new subscriptionPlanDTO(result.subscriptionPlanResponse, audit));
+                    updatedRecords.push(result.subscriptionPlanResponse);
                 }
             });
+            const audits = await userIdpReferenceDao.buildListAuditFields(updatedRecords);
+            const updatedPlans = updatedRecords.map((record, i) => new subscriptionPlanDTO(record, audits[i]));
 
             res.status(201).send(updatedPlans);
         }

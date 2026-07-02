@@ -181,7 +181,16 @@ const createOrganization = async (req, res) => {
 
         });
 
-        const orgAudit = await userIdpReferenceDao.buildSingleAuditFields(organization.dataValues);
+        let orgAudit;
+        try {
+            orgAudit = await userIdpReferenceDao.buildSingleAuditFields(organization.dataValues);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after organization creation', {
+                error: auditError.message,
+                orgId: organization.handle
+            });
+            orgAudit = { createdAt: organization.dataValues.created_at, updatedAt: organization.dataValues.updated_at };
+        }
         const orgCreationResponse = {
             id: organization.handle,
             name: organization.name,
@@ -298,7 +307,16 @@ const updateOrganization = async (req, res) => {
             }
         });
 
-        const updatedOrgAudit = await userIdpReferenceDao.buildSingleAuditFields(updatedOrg[0].dataValues);
+        let updatedOrgAudit;
+        try {
+            updatedOrgAudit = await userIdpReferenceDao.buildSingleAuditFields(updatedOrg[0].dataValues);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after organization update', {
+                error: auditError.message,
+                orgId
+            });
+            updatedOrgAudit = { createdAt: updatedOrg[0].dataValues.created_at, updatedAt: updatedOrg[0].dataValues.updated_at };
+        }
         res.status(200).json({
             id: updatedOrg[0].dataValues.handle,
             name: updatedOrg[0].dataValues.name,
