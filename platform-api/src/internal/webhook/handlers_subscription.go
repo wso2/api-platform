@@ -109,7 +109,9 @@ func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope)
 		token = decrypted
 	}
 
-	_, err := r.subs.CreateSubscription(d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status)
+	// Developer Portal sync events have no interactive platform user, so the audit
+	// actor is left empty (there is no internal-UUID identity to attribute).
+	_, err := r.subs.CreateSubscription(d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status, "")
 	if err != nil {
 		// Domain-level idempotency: a duplicate delivery whose subscription already exists is success.
 		if errors.Is(err, constants.ErrSubscriptionAlreadyExists) {
@@ -142,7 +144,7 @@ func (r *Receiver) handleSubscriptionUpdated(ctx context.Context, env *Envelope)
 		return constants.ErrSubscriptionNotFound
 	}
 
-	_, err = r.subs.UpdateSubscription(sub.UUID, env.OrgID, d.SubscriberID, d.Status)
+	_, err = r.subs.UpdateSubscription(sub.UUID, env.OrgID, d.SubscriberID, d.Status, "")
 	return err
 }
 
@@ -221,7 +223,7 @@ func (r *Receiver) handleSubscriptionDeleted(ctx context.Context, env *Envelope)
 		return nil
 	}
 
-	if err := r.subs.DeleteSubscription(sub.UUID, env.OrgID, d.SubscriberID); err != nil {
+	if err := r.subs.DeleteSubscription(sub.UUID, env.OrgID, d.SubscriberID, ""); err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
 			return nil
 		}

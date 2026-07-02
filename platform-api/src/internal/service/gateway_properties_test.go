@@ -97,6 +97,7 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		gatewayRepo: mockGatewayRepo,
 		orgRepo:     mockOrgRepo,
 		auditRepo:   &noopAuditRepo{},
+		identity:    newTestIdentityService(),
 	}
 
 	gatewayID := "prod-gateway-01"
@@ -157,6 +158,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			gatewayRepo: mockGatewayRepo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
 			auditRepo:   &noopAuditRepo{},
+			identity:    newTestIdentityService(),
 		}
 
 		newDescription := "New description"
@@ -196,6 +198,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			gatewayRepo: mockGatewayRepo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
 			auditRepo:   &noopAuditRepo{},
+			identity:    newTestIdentityService(),
 		}
 
 		newProperties := map[string]interface{}{

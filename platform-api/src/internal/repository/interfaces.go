@@ -362,3 +362,30 @@ type CustomPolicyRepository interface {
 type AuditRepository interface {
 	Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
+
+// UserIdentityMappingRepository defines the interface for internal-UUID <-> IdP-identity mapping persistence.
+type UserIdentityMappingRepository interface {
+	GetOrCreateUUID(identity string) (string, error)
+	// GetSubByUUID returns the resolved actor identity mapped to uuid, or
+	// found=false if uuid has no mapping (a "hanging" UUID).
+	GetSubByUUID(uuid string) (identity string, found bool, err error)
+	// GetSubsByUUIDs batch-resolves multiple UUIDs to their mapped identity in
+	// a single query (avoids N+1 on list endpoints). UUIDs with no mapping are
+	// absent from the returned map.
+	GetSubsByUUIDs(uuids []string) (map[string]string, error)
+}
+
+// UserOrganizationMappingRepository defines the interface for user<->organization
+// membership persistence. Populate-only today (no reader depends on it). Both
+// FKs are declared without ON DELETE CASCADE; DeleteByUser/DeleteByOrg exist so
+// callers can perform the cascade in application code, in the same transaction
+// as the parent delete.
+type UserOrganizationMappingRepository interface {
+	// AddMembership records that userUUID has onboarded to orgUUID. Idempotent:
+	// a duplicate (userUUID, orgUUID) pair is a no-op, not an error.
+	AddMembership(userUUID, orgUUID string) error
+	// DeleteByUser removes all membership rows for userUUID, within tx.
+	DeleteByUser(tx *sql.Tx, userUUID string) error
+	// DeleteByOrg removes all membership rows for orgUUID, within tx.
+	DeleteByOrg(tx *sql.Tx, orgUUID string) error
+}

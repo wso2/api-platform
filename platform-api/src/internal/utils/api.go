@@ -135,6 +135,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API, projectHandle string) (*ap
 		SubscriptionPlans: stringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
 		Transport:         stringSlicePtr(modelAPI.Configuration.Transport),
 		UpdatedAt:         TimePtrIfNotZero(modelAPI.UpdatedAt),
+		UpdatedBy:         StringPtrIfNotEmpty(modelAPI.UpdatedBy),
 		Upstream:          u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
 		Version:           modelAPI.Version,
 	}, nil

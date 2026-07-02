@@ -152,7 +152,11 @@ func (s *SubscriptionService) GetArtifactMetadataMap(uuids []string, orgUUID str
 
 // CreateSubscription creates a new subscription for an artifact of the given kind.
 // apiId is the artifact handle; kind selects the artifact table it is resolved against.
-func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string) (*model.Subscription, error) {
+// subscriberID identifies who the subscription is for (client-supplied, not a token
+// identity); subscriptionToken, when non-empty, is the token imported from the
+// Developer Portal (empty means generate one); actor is the authenticated caller's
+// internal UUID, used for created_by/updated_by/audit.
+func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string) (*model.Subscription, error) {
 	apiUUID, err := s.resolveArtifactUUIDByKind(apiId, kind, orgUUID)
 	if err != nil {
 		return nil, err
@@ -205,13 +209,13 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 		SubscriptionToken:  subscriptionToken,
 		OrganizationUUID:   orgUUID,
 		Status:             st,
-		CreatedBy:          subscriberID,
-		UpdatedBy:          subscriberID,
+		CreatedBy:          actor,
+		UpdatedBy:          actor,
 	}
 	if err := s.subscriptionRepo.Create(sub); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", sub.UUID, "subscription", sub.OrganizationUUID, subscriberID)
+	_ = s.auditRepo.Record("CREATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
@@ -305,8 +309,10 @@ func (s *SubscriptionService) FindByArtifactKindAndSubscriber(orgUUID, apiHandle
 	return list[0], nil
 }
 
-// UpdateSubscription updates a subscription (e.g. status). subscriberID must match the stored subscriber_id.
-func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscriberID, status string) (*model.Subscription, error) {
+// UpdateSubscription updates a subscription (e.g. status). subscriberID must match the
+// stored subscriber_id; actor is the authenticated caller's internal UUID, used for
+// updated_by/audit.
+func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscriberID, status, actor string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
@@ -329,11 +335,11 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 			return nil, fmt.Errorf("invalid status: %s", status)
 		}
 	}
-	sub.UpdatedBy = subscriberID
+	sub.UpdatedBy = actor
 	if err := s.subscriptionRepo.Update(sub); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, subscriberID)
+	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
@@ -491,8 +497,9 @@ func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscribe
 	return sub, nil
 }
 
-// DeleteSubscription removes a subscription. subscriberID must match the stored subscriber_id.
-func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscriberID string) error {
+// DeleteSubscription removes a subscription. subscriberID must match the stored
+// subscriber_id; actor is the authenticated caller's internal UUID, used for audit.
+func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscriberID, actor string) error {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
@@ -510,7 +517,7 @@ func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscr
 	if err := s.subscriptionRepo.Delete(subscriptionId, orgUUID); err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", subscriptionId, "subscription", orgUUID, subscriberID)
+	_ = s.auditRepo.Record("DELETE", subscriptionId, "subscription", orgUUID, actor)
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)

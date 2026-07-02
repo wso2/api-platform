@@ -42,13 +42,14 @@ type ProjectService struct {
 	appRepo        repository.ApplicationRepository
 	deletionGuards []ProjectDeletionGuard
 	auditRepo      repository.AuditRepository
+	identity       *IdentityService
 	slogger        *slog.Logger
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
 	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
-	slogger *slog.Logger) *ProjectService {
+	identity *IdentityService, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
 		projectRepo:  projectRepo,
 		orgRepo:      orgRepo,
@@ -56,6 +57,7 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 		mcpProxyRepo: mcpProxyRepo,
 		appRepo:      appRepo,
 		auditRepo:    auditRepo,
+		identity:     identity,
 		slogger:      slogger,
 	}
 }
@@ -141,7 +143,7 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	}
 	_ = s.auditRepo.Record("CREATE", projectModel.ID, "project", organizationID, actor)
 
-	return s.modelToAPI(projectModel, org.Handle), nil
+	return s.modelToAPI(projectModel, org.Handle)
 }
 
 func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project, error) {
@@ -162,7 +164,7 @@ func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project,
 		orgHandle = org.Handle
 	}
 
-	return s.modelToAPI(projectModel, orgHandle), nil
+	return s.modelToAPI(projectModel, orgHandle)
 }
 
 func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api.Project, error) {
@@ -181,11 +183,16 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 
 	projects := make([]api.Project, 0)
 	for _, projectModel := range projectModels {
-		apiProj := s.modelToAPI(projectModel, org.Handle)
+		apiProj, err := s.modelToAPI(projectModel, org.Handle)
+		if err != nil {
+			return nil, err
+		}
 		if apiProj == nil {
 			s.slogger.Warn("Failed to convert project model to API", "organizationId", organizationID)
 			continue
 		}
+		// updatedBy is detail-only; omit it from list responses.
+		apiProj.UpdatedBy = nil
 		projects = append(projects, *apiProj)
 	}
 	return projects, nil
@@ -238,7 +245,7 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 		orgHandle = org.Handle
 	}
 
-	return s.modelToAPI(project, orgHandle), nil
+	return s.modelToAPI(project, orgHandle)
 }
 
 func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
@@ -332,9 +339,9 @@ func (s *ProjectService) apiToModel(project *api.Project) *model.Project {
 	}
 }
 
-func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle string) *api.Project {
+func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle string) (*api.Project, error) {
 	if projectModel == nil {
-		return nil
+		return nil, nil
 	}
 
 	var description *string
@@ -343,12 +350,21 @@ func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle strin
 	}
 
 	handle := projectModel.Handle
-	return &api.Project{
+	resp := &api.Project{
 		Id:             &handle,
 		DisplayName:    projectModel.Name,
 		OrganizationId: &orgHandle,
 		Description:    description,
+		CreatedBy:      utils.StringPtrIfNotEmpty(projectModel.CreatedBy),
+		UpdatedBy:      utils.StringPtrIfNotEmpty(projectModel.UpdatedBy),
 		CreatedAt:      utils.TimePtrIfNotZero(projectModel.CreatedAt),
 		UpdatedAt:      utils.TimePtrIfNotZero(projectModel.UpdatedAt),
 	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }

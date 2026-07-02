@@ -41,6 +41,8 @@ type UpdateSecretRequest struct {
 type SecretResponse struct {
 	Handle      string    `json:"id"`
 	DisplayName string    `json:"displayName"`
+	CreatedBy   string    `json:"createdBy,omitempty"`
+	UpdatedBy   string    `json:"updatedBy,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
@@ -54,6 +56,7 @@ type SecretSummary struct {
 	Provider    string    `json:"provider"`
 	Status      string    `json:"status"`
 	Hash        string    `json:"hash"`
+	CreatedBy   string    `json:"createdBy,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }

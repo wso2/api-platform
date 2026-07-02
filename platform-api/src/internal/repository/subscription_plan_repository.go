@@ -41,7 +41,7 @@ import (
 // improved to surface all limit rows.
 const planSelectColumns = `
 		p.uuid, p.handle, p.display_name, p.expiry_time,
-		p.organization_uuid, p.status, p.created_at, p.updated_at,
+		p.organization_uuid, p.status, p.created_by, p.updated_by, p.created_at, p.updated_at,
 		spl.limit_count, spl.time_unit, spl.stop_on_quota_reach
 	FROM subscription_plans p
 	LEFT JOIN subscription_plan_limits spl
@@ -77,11 +77,11 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 
 	if _, err := tx.Exec(r.db.Rebind(`
 		INSERT INTO subscription_plans (uuid, handle, display_name, expiry_time,
-			organization_uuid, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			organization_uuid, status, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`),
 		plan.UUID, plan.Handle, plan.Name, plan.ExpiryTime,
-		plan.OrganizationUUID, string(plan.Status), plan.CreatedAt, plan.UpdatedAt,
+		plan.OrganizationUUID, string(plan.Status), plan.CreatedBy, plan.UpdatedBy, plan.CreatedAt, plan.UpdatedAt,
 	); err != nil {
 		return fmt.Errorf("failed to insert subscription plan: %w", err)
 	}
@@ -138,17 +138,20 @@ func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.Subs
 func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 	plan := &model.SubscriptionPlan{}
 	var (
-		limitCount  sql.NullInt64
-		timeUnit    sql.NullString
-		stopOnQuota sql.NullInt64
+		createdBy, updatedBy sql.NullString
+		limitCount           sql.NullInt64
+		timeUnit             sql.NullString
+		stopOnQuota          sql.NullInt64
 	)
 	if err := scanner.Scan(
 		&plan.UUID, &plan.Handle, &plan.Name, &plan.ExpiryTime,
-		&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
+		&plan.OrganizationUUID, &plan.Status, &createdBy, &updatedBy, &plan.CreatedAt, &plan.UpdatedAt,
 		&limitCount, &timeUnit, &stopOnQuota,
 	); err != nil {
 		return nil, err
 	}
+	plan.CreatedBy = createdBy.String
+	plan.UpdatedBy = updatedBy.String
 	if limitCount.Valid {
 		c := int(limitCount.Int64)
 		plan.ThrottleLimitCount = &c
@@ -250,11 +253,11 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 
 	result, err := tx.Exec(r.db.Rebind(`
 		UPDATE subscription_plans
-		SET handle = ?, display_name = ?, expiry_time = ?, status = ?, updated_at = ?
+		SET handle = ?, display_name = ?, expiry_time = ?, status = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`),
 		plan.Handle, plan.Name, plan.ExpiryTime,
-		string(plan.Status), plan.UpdatedAt,
+		string(plan.Status), plan.UpdatedBy, plan.UpdatedAt,
 		plan.UUID, plan.OrganizationUUID,
 	)
 	if err != nil {

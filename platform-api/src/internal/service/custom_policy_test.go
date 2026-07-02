@@ -160,6 +160,7 @@ func newTestGatewayService(gwRepo repository.GatewayRepository, cpRepo repositor
 		gatewayRepo:      gwRepo,
 		customPolicyRepo: cpRepo,
 		slogger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		identity:         newTestIdentityService(),
 	}
 }
 

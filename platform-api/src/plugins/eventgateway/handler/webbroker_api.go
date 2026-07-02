@@ -30,6 +30,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	egservice "platform-api/src/plugins/eventgateway/service"
 
@@ -39,13 +40,15 @@ import (
 // WebBrokerAPIHandler handles CRUD and auxiliary routes for WebBroker APIs
 type WebBrokerAPIHandler struct {
 	webbrokerAPIService *egservice.WebBrokerAPIService
+	identity            *service.IdentityService
 	slogger             *slog.Logger
 }
 
 // NewWebBrokerAPIHandler creates a new WebBrokerAPIHandler instance
-func NewWebBrokerAPIHandler(webbrokerAPIService *egservice.WebBrokerAPIService, slogger *slog.Logger) *WebBrokerAPIHandler {
+func NewWebBrokerAPIHandler(webbrokerAPIService *egservice.WebBrokerAPIService, identity *service.IdentityService, slogger *slog.Logger) *WebBrokerAPIHandler {
 	return &WebBrokerAPIHandler{
 		webbrokerAPIService: webbrokerAPIService,
+		identity:            identity,
 		slogger:             slogger,
 	}
 }
@@ -74,7 +77,10 @@ func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create WebBroker API")
+	if !ok {
+		return
+	}
 
 	resp, err := h.webbrokerAPIService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -164,7 +170,10 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	updatedBy, _ := middleware.GetUserIDFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update WebBroker API")
+	if !ok {
+		return
+	}
 	resp, err := h.webbrokerAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -183,7 +192,10 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.
 	}
 
 	id := r.PathValue("webBrokerApiId")
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
+	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete WebBroker API")
+	if !ok {
+		return
+	}
 
 	if err := h.webbrokerAPIService.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)

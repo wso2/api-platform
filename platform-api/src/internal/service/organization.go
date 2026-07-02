@@ -30,18 +30,20 @@ import (
 )
 
 type OrganizationService struct {
-	orgRepo           repository.OrganizationRepository
-	projectRepo       repository.ProjectRepository
-	applicationRepo   repository.ApplicationRepository
-	apiRepo           repository.APIRepository
-	gatewayRepo       repository.GatewayRepository
-	llmProviderRepo   repository.LLMProviderRepository
-	llmProxyRepo      repository.LLMProxyRepository
-	mcpProxyRepo      repository.MCPProxyRepository
-	llmTemplateSeeder *LLMTemplateSeeder
-	auditRepo         repository.AuditRepository
-	config            *config.Server
-	slogger           *slog.Logger
+	orgRepo            repository.OrganizationRepository
+	projectRepo        repository.ProjectRepository
+	applicationRepo    repository.ApplicationRepository
+	apiRepo            repository.APIRepository
+	gatewayRepo        repository.GatewayRepository
+	llmProviderRepo    repository.LLMProviderRepository
+	llmProxyRepo       repository.LLMProxyRepository
+	mcpProxyRepo       repository.MCPProxyRepository
+	llmTemplateSeeder  *LLMTemplateSeeder
+	auditRepo          repository.AuditRepository
+	userOrgMappingRepo repository.UserOrganizationMappingRepository
+	identity           *IdentityService
+	config             *config.Server
+	slogger            *slog.Logger
 }
 
 func NewOrganizationService(orgRepo repository.OrganizationRepository,
@@ -54,22 +56,26 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
 	llmTemplateSeeder *LLMTemplateSeeder,
 	auditRepo repository.AuditRepository,
+	userOrgMappingRepo repository.UserOrganizationMappingRepository,
+	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:           orgRepo,
-		projectRepo:       projectRepo,
-		applicationRepo:   applicationRepo,
-		apiRepo:           apiRepo,
-		gatewayRepo:       gatewayRepo,
-		llmProviderRepo:   llmProviderRepo,
-		llmProxyRepo:      llmProxyRepo,
-		mcpProxyRepo:      mcpProxyRepo,
-		llmTemplateSeeder: llmTemplateSeeder,
-		auditRepo:         auditRepo,
-		config:            cfg,
-		slogger:           slogger,
+		orgRepo:            orgRepo,
+		projectRepo:        projectRepo,
+		applicationRepo:    applicationRepo,
+		apiRepo:            apiRepo,
+		gatewayRepo:        gatewayRepo,
+		llmProviderRepo:    llmProviderRepo,
+		llmProxyRepo:       llmProxyRepo,
+		mcpProxyRepo:       mcpProxyRepo,
+		llmTemplateSeeder:  llmTemplateSeeder,
+		auditRepo:          auditRepo,
+		userOrgMappingRepo: userOrgMappingRepo,
+		identity:           identity,
+		config:             cfg,
+		slogger:            slogger,
 	}
 }
 
@@ -124,11 +130,23 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	// The IDP organization reference is derived server-side from the token's
 	// organization claim; it is stored internally and not exposed via the API.
 	orgModel.IdpOrganizationRefUUID = idpOrgRefUUID
+	orgModel.CreatedBy = performedBy
+	orgModel.UpdatedBy = performedBy
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", orgModel.ID, "organization", orgModel.ID, performedBy)
+
+	// Record that the registering user has onboarded to this organization.
+	// Best-effort: user_organization_mappings.user_uuid FKs to
+	// user_idp_references, so an anonymous actor (no mapping row, per
+	// D-ANON-KEY) cannot be org-mapped — that is expected, not an error.
+	if s.userOrgMappingRepo != nil {
+		if membershipErr := s.userOrgMappingRepo.AddMembership(performedBy, orgModel.ID); membershipErr != nil {
+			s.slogger.Warn("Failed to record organization membership", "organization", orgModel.ID, "error", membershipErr)
+		}
+	}
 
 	// Seed default LLM provider templates for the new organization (best-effort)
 	if s.llmTemplateSeeder != nil {
@@ -262,13 +280,22 @@ func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Org
 		return nil, nil
 	}
 
-	return &api.Organization{
+	resp := &api.Organization{
 		Id:          &orgModel.Handle,
 		DisplayName: orgModel.Name,
 		Region:      orgModel.Region,
+		CreatedBy:   utils.StringPtrIfNotEmpty(orgModel.CreatedBy),
+		UpdatedBy:   utils.StringPtrIfNotEmpty(orgModel.UpdatedBy),
 		CreatedAt:   utils.TimePtrIfNotZero(orgModel.CreatedAt),
 		UpdatedAt:   utils.TimePtrIfNotZero(orgModel.UpdatedAt),
-	}, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func intPtr(value int) *int {

@@ -271,6 +271,7 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 		newTestLogger(),
 		&noopAuditRepo{},
 		&config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
 	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
@@ -313,6 +314,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 		newTestLogger(),
 		&noopAuditRepo{},
 		&config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{

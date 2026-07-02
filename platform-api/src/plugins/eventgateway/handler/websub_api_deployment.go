@@ -29,6 +29,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	egservice "platform-api/src/plugins/eventgateway/service"
 
@@ -38,13 +39,15 @@ import (
 // WebSubAPIDeploymentHandler handles deployment routes for WebSub APIs
 type WebSubAPIDeploymentHandler struct {
 	websubAPIDeploymentService *egservice.WebSubAPIDeploymentService
+	identity                   *service.IdentityService
 	slogger                    *slog.Logger
 }
 
 // NewWebSubAPIDeploymentHandler creates a new WebSubAPIDeploymentHandler
-func NewWebSubAPIDeploymentHandler(websubAPIDeploymentService *egservice.WebSubAPIDeploymentService, slogger *slog.Logger) *WebSubAPIDeploymentHandler {
+func NewWebSubAPIDeploymentHandler(websubAPIDeploymentService *egservice.WebSubAPIDeploymentService, identity *service.IdentityService, slogger *slog.Logger) *WebSubAPIDeploymentHandler {
 	return &WebSubAPIDeploymentHandler{
 		websubAPIDeploymentService: websubAPIDeploymentService,
+		identity:                   identity,
 		slogger:                    slogger,
 	}
 }
@@ -92,7 +95,10 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "deploy WebSub API")
+	if !ok {
+		return
+	}
 	deployment, err := h.websubAPIDeploymentService.DeployWebSubAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {

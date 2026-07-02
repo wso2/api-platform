@@ -90,6 +90,7 @@ type Deps struct {
 	// Core services shared with plugins.
 	GatewayEventsService *service.GatewayEventsService
 	APIKeyService        *service.APIKeyService
+	IdentityService      *service.IdentityService
 
 	// DBEncryptionKey is the derived hex key used for encrypted DB columns.
 	DBEncryptionKey string

@@ -36,13 +36,15 @@ import (
 // APIKeyHandler handles API key operations for external services (Cloud APIM)
 type APIKeyHandler struct {
 	apiKeyService *service.APIKeyService
+	identity      *service.IdentityService
 	slogger       *slog.Logger
 }
 
 // NewAPIKeyHandler creates a new API key handler
-func NewAPIKeyHandler(apiKeyService *service.APIKeyService, slogger *slog.Logger) *APIKeyHandler {
+func NewAPIKeyHandler(apiKeyService *service.APIKeyService, identity *service.IdentityService, slogger *slog.Logger) *APIKeyHandler {
 	return &APIKeyHandler{
 		apiKeyService: apiKeyService,
+		identity:      identity,
 		slogger:       slogger,
 	}
 }
@@ -58,8 +60,10 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract optional x-user-id header for user identification (empty string if not present)
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "create API key")
+	if !ok {
+		return
+	}
 
 	// Extract API handle from path parameter (parameter named apiId for backward compatibility, but contains handle)
 	apiHandle := r.PathValue("restApiId")
@@ -149,8 +153,10 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract optional x-user-id header for user identification (empty string if not present)
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "update API key")
+	if !ok {
+		return
+	}
 
 	// Extract API ID and key name from path parameters
 	apiHandle := r.PathValue("restApiId")
@@ -248,8 +254,10 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract optional x-user-id header for user identification (empty string if not present)
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "revoke API key")
+	if !ok {
+		return
+	}
 
 	// Revoke the API key and broadcast to gateways
 	err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId)

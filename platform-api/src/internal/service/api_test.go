@@ -167,7 +167,8 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			}
 
 			service := &APIService{
-				apiRepo: mock,
+				apiRepo:  mock,
+				identity: newTestIdentityService(),
 			}
 
 			err := service.validateUpdateAPIRequest(tt.existingAPI, tt.req, "test-org-uuid")
@@ -396,7 +397,8 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 			}
 
 			service := &APIService{
-				apiRepo: mock,
+				apiRepo:  mock,
+				identity: newTestIdentityService(),
 			}
 
 			err := service.validateCreateAPIRequest(tt.req, "test-org-uuid")
@@ -429,6 +431,7 @@ func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 		apiRepo:     &mockAPIRepository{},
 		projectRepo: &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
 		apiUtil:     &utils.APIUtil{},
+		identity:    newTestIdentityService(),
 	}
 
 	condition := "request.path == '/pets'"

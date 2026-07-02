@@ -36,13 +36,15 @@ import (
 // LLMProxyAPIKeyHandler handles API key operations for LLM proxies
 type LLMProxyAPIKeyHandler struct {
 	apiKeyService *service.LLMProxyAPIKeyService
+	identity      *service.IdentityService
 	slogger       *slog.Logger
 }
 
 // NewLLMProxyAPIKeyHandler creates a new LLM proxy API key handler
-func NewLLMProxyAPIKeyHandler(apiKeyService *service.LLMProxyAPIKeyService, slogger *slog.Logger) *LLMProxyAPIKeyHandler {
+func NewLLMProxyAPIKeyHandler(apiKeyService *service.LLMProxyAPIKeyService, identity *service.IdentityService, slogger *slog.Logger) *LLMProxyAPIKeyHandler {
 	return &LLMProxyAPIKeyHandler{
 		apiKeyService: apiKeyService,
+		identity:      identity,
 		slogger:       slogger,
 	}
 }
@@ -63,7 +65,10 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	callerUserID := r.Header.Get("x-user-id")
+	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "list LLM proxy API keys")
+	if !ok {
+		return
+	}
 
 	response, err := h.apiKeyService.ListLLMProxyAPIKeys(r.Context(), proxyID, orgID, callerUserID)
 	if err != nil {
@@ -104,7 +109,10 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	callerUserID := r.Header.Get("x-user-id")
+	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM proxy API key")
+	if !ok {
+		return
+	}
 
 	err := h.apiKeyService.DeleteLLMProxyAPIKey(r.Context(), proxyID, orgID, callerUserID, keyName)
 	if err != nil {
@@ -165,7 +173,10 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	userID := r.Header.Get("x-user-id")
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM proxy API key")
+	if !ok {
+		return
+	}
 
 	response, err := h.apiKeyService.CreateLLMProxyAPIKey(r.Context(), proxyID, orgID, userID, &req)
 	if err != nil {
