@@ -20,6 +20,9 @@
             "mode": "auto",
             "program": "${workspaceFolder}/platform-api/src/cmd",
             "cwd": "${workspaceFolder}/platform-api/src",
+            "args": [
+                "-config", "${workspaceFolder}/platform-api/src/config/config.toml",
+            ],
             "env": {
                 // Database configuration
                 "DATABASE_DRIVER": "sqlite3",
