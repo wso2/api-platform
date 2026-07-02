@@ -72,8 +72,30 @@ type Server struct {
 	logger         *slog.Logger
 }
 
+// validateAuthConfig enforces production auth requirements when demo mode is off.
+func validateAuthConfig(cfg *config.Server) error {
+	if demoMode() {
+		return nil
+	}
+	if cfg.Auth.FileBased.Enabled {
+		return fmt.Errorf("file-based authentication (AUTH_FILE_BASED_ENABLED=true) is not allowed when APIP_DEMO_MODE=false; configure an IDP (AUTH_IDP_ENABLED=true) or JWT (AUTH_JWT_ENABLED=true) instead")
+	}
+	if !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
+		return fmt.Errorf("APIP_DEMO_MODE=false requires a real auth mode; set AUTH_IDP_ENABLED=true or AUTH_JWT_ENABLED=true")
+	}
+	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
+		return fmt.Errorf("JWT signature validation cannot be skipped (AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set AUTH_JWT_SKIP_VALIDATION=false for production")
+	}
+	return nil
+}
+
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
+	if err := validateAuthConfig(cfg); err != nil {
+		slogger.Error("Invalid auth configuration for production mode", "error", err)
+		return nil, err
+	}
+
 	// Initialize database using configuration
 	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
@@ -695,6 +717,14 @@ func (s *Server) Start(port string, certDir string) error {
 
 	// Generate new certificate if not loaded
 	if cert.Certificate == nil {
+		if !demoMode() {
+			return fmt.Errorf(
+				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
+					"mount real certificates or set TLS_CERT_DIR to a directory containing cert.pem and key.pem; "+
+					"self-signed certificate generation is only permitted in demo mode",
+				certDir,
+			)
+		}
 		s.logger.Info("Generating self-signed certificate for development...")
 		// Ensure cert directory exists
 		if err := os.MkdirAll(certDir, 0755); err != nil {
