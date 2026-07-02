@@ -45,7 +45,7 @@ delete_resource() {
   elif [[ "${HTTP_STATUS}" == "404" ]]; then
     warn "${kind}/${name} not found — already deleted?"
   else
-    error "Failed to delete ${kind}/${name} (HTTP ${HTTP_STATUS})."
+    warn "Failed to delete ${kind}/${name} (HTTP ${HTTP_STATUS}); continuing teardown."
   fi
 }
 
