@@ -912,6 +912,7 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails, orgHandle string) 
 		CreatedAt:         utils.TimePtrIfNotZero(gwd.CreatedAt),
 		Description:       utils.StringPtrIfNotEmpty(gwd.Description),
 		DisplayName:       gwd.Name,
+		Endpoints:         &gwd.Endpoints,
 		FunctionalityType: restAPIGatewayFunctionalityTypePtr(gwd.FunctionalityType),
 		Id:                utils.StringPtrIfNotEmpty(gwd.Handle),
 		IsActive:          utils.BoolPtr(gwd.IsActive),
@@ -920,7 +921,6 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails, orgHandle string) 
 		OrganizationId:    utils.StringPtrIfNotEmpty(orgHandle),
 		Properties:        utils.MapPtrIfNotEmpty(gwd.Properties),
 		UpdatedAt:         utils.TimePtrIfNotZero(gwd.UpdatedAt),
-		Vhost:             utils.StringPtrIfNotEmpty(gwd.Vhost),
 	}
 
 	// Add deployment details if deployed

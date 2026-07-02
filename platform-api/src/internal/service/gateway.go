@@ -517,7 +517,7 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, description, vhost string, isCritical bool,
+func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, description string, endpoints []string, isCritical bool,
 	functionalityType, version, createdBy string, properties map[string]interface{}) (*api.GatewayResponse, error) {
 	// Determine handle: use provided id or auto-generate from displayName
 	var name string
@@ -535,8 +535,13 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 	}
 
 	// 1. Validate inputs
-	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
+	if err := s.validateGatewayInput(orgID, name, displayName, endpoints, functionalityType); err != nil {
 		return nil, err
+	}
+
+	normalizedEndpoints := make([]string, len(endpoints))
+	for i, endpoint := range endpoints {
+		normalizedEndpoints[i] = strings.TrimSpace(endpoint)
 	}
 
 	version = strings.TrimSpace(version)
@@ -586,7 +591,7 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 		Name:              displayName,
 		Description:       description,
 		Properties:        properties,
-		Vhost:             vhost,
+		Endpoints:         normalizedEndpoints,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
 		Version:           version,
@@ -673,6 +678,9 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 	gateway.Name = req.DisplayName
 	if req.Description != nil {
 		gateway.Description = *req.Description
+	}
+	if req.Endpoints != nil {
+		gateway.Endpoints = *req.Endpoints
 	}
 	if req.IsCritical != nil {
 		gateway.IsCritical = *req.IsCritical
@@ -920,7 +928,7 @@ func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bo
 }
 
 // validateGatewayInput validates gateway registration inputs
-func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, functionalityType string) error {
+func (s *GatewayService) validateGatewayInput(orgID, name, displayName string, endpoints []string, functionalityType string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
 		return errors.New("organization ID is required")
@@ -961,10 +969,18 @@ func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, f
 		return errors.New("display name must not exceed 128 characters")
 	}
 
-	// VHost validation
-	vhost = strings.TrimSpace(vhost)
-	if vhost == "" {
-		return errors.New("vhost is required")
+	// Endpoints validation
+	if len(endpoints) == 0 {
+		return errors.New("at least one endpoint is required")
+	}
+	for _, endpoint := range endpoints {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return errors.New("endpoint must not be empty")
+		}
+		if len(endpoint) > 255 {
+			return errors.New("endpoint must not exceed 255 characters")
+		}
 	}
 
 	// Gateway type validation
@@ -1021,7 +1037,7 @@ func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) *api.GatewayR
 		DisplayName:       gateway.Name,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
-		Vhost:             &gateway.Vhost,
+		Endpoints:         &gateway.Endpoints,
 		IsCritical:        &gateway.IsCritical,
 		FunctionalityType: &functionalityType,
 		Version:           &gateway.Version,

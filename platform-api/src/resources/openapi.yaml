@@ -5842,7 +5842,7 @@ components:
       type: object
       required:
         - displayName
-        - vhost
+        - endpoints
         - functionalityType
       properties:
         id:
@@ -5862,14 +5862,16 @@ components:
           type: string
           description: Description of the gateway
           example: "Production gateway for handling API traffic"
-        vhost:
-          type: string
-          description: Virtual host (domain name) for the gateway
-          maxLength: 255
-          minLength: 1
-          # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123) and appended *
-          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
-          example: mg.wso2.com
+        endpoints:
+          type: array
+          description: Network endpoints exposed by this gateway, each as a full URL string
+          minItems: 1
+          items:
+            type: string
+            maxLength: 255
+          example:
+            - "https://api.example.com:8443/api/v1"
+            - "wss://events.example.com:8444"
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production
@@ -6013,10 +6015,16 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
-        vhost:
-          type: string
-          description: Virtual host (domain name) for the gateway
-          example: mg.wso2.com
+        endpoints:
+          type: array
+          description: Network endpoints exposed by this gateway, each as a full URL string
+          minItems: 1
+          items:
+            type: string
+            maxLength: 255
+          example:
+            - "https://api.example.com:8443/api/v1"
+            - "wss://events.example.com:8444"
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production

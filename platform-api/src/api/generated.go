@@ -675,6 +675,9 @@ type CreateGatewayRequest struct {
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints []string `binding:"required" json:"endpoints" yaml:"endpoints"`
+
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType CreateGatewayRequestFunctionalityType `binding:"required" json:"functionalityType" yaml:"functionalityType"`
 
@@ -689,9 +692,6 @@ type CreateGatewayRequest struct {
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`). Defaults to `1.0` if not provided.
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Vhost Virtual host (domain name) for the gateway
-	Vhost string `binding:"required" json:"vhost" yaml:"vhost"`
 }
 
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
@@ -1078,6 +1078,9 @@ type GatewayResponse struct {
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints *[]string `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *GatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
@@ -1101,9 +1104,6 @@ type GatewayResponse struct {
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Vhost Virtual host (domain name) for the gateway
-	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
 // GatewayResponseFunctionalityType Type of gateway functionality
@@ -1941,6 +1941,9 @@ type RESTAPIGatewayResponse struct {
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
+	// Endpoints Network endpoints exposed by this gateway, each as a full URL string
+	Endpoints *[]string `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *RESTAPIGatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
@@ -1967,9 +1970,6 @@ type RESTAPIGatewayResponse struct {
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Vhost Virtual host (domain name) for the gateway
-	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
 // RESTAPIGatewayResponseFunctionalityType Type of gateway functionality

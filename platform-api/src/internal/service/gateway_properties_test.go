@@ -105,7 +105,7 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		&gatewayID,
 		"Production Gateway",
 		"Gateway for prod traffic",
-		"api.example.com",
+		[]string{"https://api.example.com"},
 		true,
 		constants.GatewayFunctionalityTypeRegular,
 		"1.0",
