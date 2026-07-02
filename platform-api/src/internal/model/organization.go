@@ -23,12 +23,15 @@ import (
 
 // Organization represents an organization entity in the API management platform
 type Organization struct {
-	ID        string    `json:"id" db:"uuid"`
-	Handle    string    `json:"handle" db:"handle"`
-	Name      string    `json:"name" db:"name"`
-	Region    string    `json:"region" db:"region"`
-	CreatedAt time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
+	ID     string `json:"id" db:"uuid"`
+	Handle string `json:"handle" db:"handle"`
+	Name   string `json:"name" db:"name"`
+	Region string `json:"region" db:"region"`
+	// IdpOrganizationRefUUID is the identity provider's organization UUID, sourced
+	// from the token's org_id claim. Empty for file-based auth (no external IDP).
+	IdpOrganizationRefUUID string    `json:"idpOrganizationRefUuid" db:"idp_organization_ref_uuid"`
+	CreatedAt              time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt              time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // TableName returns the table name for the Organization model

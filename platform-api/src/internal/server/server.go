@@ -461,6 +461,21 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		chain = append(chain, authenticator.Middleware()...)
 	}
 
+	// Resolve the organization claim (the platform UUID in file-based mode, or
+	// the IDP's organization id in IDP mode) into the platform organization UUID
+	// so downstream handlers scope their queries by the correct value.
+	chain = append(chain, middleware.OrganizationResolverMiddleware(
+		func(orgClaim string) (string, bool) {
+			if org, err := orgRepo.GetOrganizationByIdpOrgRefUUID(orgClaim); err == nil && org != nil {
+				return org.ID, true
+			}
+			if org, err := orgRepo.GetOrganizationByUUID(orgClaim); err == nil && org != nil {
+				return org.ID, true
+			}
+			return "", false
+		},
+	))
+
 	// Apply the OpenAPI-driven scope enforcer after authentication so identity
 	// values are already in the context when scope checks run.
 	chain = append(chain, middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
@@ -782,34 +797,45 @@ func (s *Server) GetMux() *http.ServeMux {
 }
 
 // seedFileBasedOrg ensures the file-based auth organization exists in the DB.
-// It fetches by the configured handle first; only creates the org when no
-// matching org is found. The org ID in cfg is updated to the persisted value
-// so the login handler issues tokens with the correct org ID.
+// It fetches by the configured handle (Organization.ID) first; only creates the
+// org when no matching org is found. The resolved platform UUID is stored back
+// into cfg (Organization.UUID) so the login handler issues tokens carrying the
+// correct organization claim.
 func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
 	ba := &cfg.Auth.FileBased
 
-	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.Handle)
+	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.ID)
 	if err != nil {
 		return fmt.Errorf("failed to check file-based organization: %w", err)
 	}
 	if existing != nil {
-		ba.Organization.ID = existing.ID
-		slogger.Info("File-based organization already exists", "id", existing.ID, "handle", existing.Handle)
+		ba.Organization.UUID = existing.ID
+		slogger.Info("File-based organization already exists", "uuid", existing.ID, "handle", existing.Handle)
 		return nil
+	}
+
+	uuid, err := utils.GenerateUUID()
+	if err != nil {
+		return fmt.Errorf("failed to generate file-based organization UUID: %w", err)
 	}
 
 	now := time.Now()
 	org := &model.Organization{
-		ID:        ba.Organization.ID,
-		Name:      ba.Organization.Name,
-		Handle:    ba.Organization.Handle,
-		Region:    ba.Organization.Region,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:     uuid,
+		Name:   ba.Organization.DisplayName,
+		Handle: ba.Organization.ID,
+		Region: ba.Organization.Region,
+		// File-based auth has no external IDP, so the organization references
+		// itself: the org claim in issued tokens is this UUID, and the resolver
+		// matches it via the same idp_organization_ref_uuid path as IDP orgs.
+		IdpOrganizationRefUUID: uuid,
+		CreatedAt:              now,
+		UpdatedAt:              now,
 	}
 	if err := orgRepo.CreateOrganization(org); err != nil {
 		return fmt.Errorf("failed to create file-based organization: %w", err)
 	}
-	slogger.Info("Seeded file-based organization", "id", org.ID, "handle", org.Handle)
+	ba.Organization.UUID = uuid
+	slogger.Info("Seeded file-based organization", "uuid", org.ID, "handle", org.Handle)
 	return nil
 }

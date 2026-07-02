@@ -81,7 +81,12 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	}
 
 	performedBy, _ := middleware.GetUserIDFromRequest(r)
-	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, performedBy)
+	// The IDP's organization UUID is derived server-side from the token's raw
+	// organization claim (the IDP org id), never client-supplied. This uses the
+	// unresolved claim rather than the resolved platform UUID, since the
+	// organization being created does not exist yet. Empty in file-based mode.
+	idpOrgRefUUID, _ := middleware.GetIdpOrgRefFromRequest(r)
+	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, idpOrgRefUUID, performedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
