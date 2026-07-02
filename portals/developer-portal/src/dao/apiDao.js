@@ -415,6 +415,51 @@ const getId = async (orgId, apiHandle) => {
     }
 }
 
+// Same as getId, but also constrains the match to a specific `type` (e.g. 'MCP') in a
+// single query — used by resource families that only manage one API type.
+const getIdByType = async (orgId, apiHandle, type) => {
+
+    try {
+        const api = await APIMetadata.findOne({
+            attributes: ['uuid'],
+            where: {
+                handle: apiHandle,
+                org_uuid: orgId,
+                type
+            }
+        })
+        return api?.uuid;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+// Inverse of getIdByType — matches any type EXCEPT the excluded one. Used by /apis/*
+// once a type gets its own dedicated resource family (e.g. MCP via /mcp-servers), so
+// /apis/* stops resolving handles that belong to that dedicated family.
+const getIdExcludingType = async (orgId, apiHandle, excludedType) => {
+
+    try {
+        const api = await APIMetadata.findOne({
+            attributes: ['uuid'],
+            where: {
+                handle: apiHandle,
+                org_uuid: orgId,
+                type: { [Op.ne]: excludedType }
+            }
+        })
+        return api?.uuid;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
 const getHandle = async (orgId, apiRefId) => {
     try {
         const api = await APIMetadata.findOne({
@@ -518,6 +563,8 @@ module.exports = {
     search,
     searchFallback,
     getId,
+    getIdByType,
+    getIdExcludingType,
     getHandle,
     getIdByRef,
     getSpecs,

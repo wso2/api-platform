@@ -249,12 +249,11 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "id": "string",
+  "id": "acme",
   "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
@@ -268,12 +267,11 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
+|id|string|false|none|The organization's handle (unique). Not the internal database uuid.|
 |name|string|false|none|none|
 |businessOwner|string¦null|false|none|none|
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
-|handle|string|false|none|none|
 |idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
 |configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
@@ -352,7 +350,6 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "description": "string",
   "type": "REST",
   "referenceId": "string",
-  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -385,7 +382,6 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "subscriptionPlans": [
     {
       "id": "string",
-      "handle": "string",
       "name": "string",
       "description": "string",
       "requestCount": "string",
@@ -410,7 +406,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» id|string|false|none|none|
+|» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
 |» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
 |» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
@@ -434,7 +430,6 @@ and
   "description": "string",
   "type": "REST",
   "referenceId": "string",
-  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -469,7 +464,6 @@ and
   "subscriptionPlans": [
     {
       "id": "string",
-      "handle": "string",
       "name": "string",
       "description": "string",
       "requestCount": "string",
@@ -494,7 +488,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» id|string|false|none|none|
+|» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
 |» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |» planId|string|false|none|none|
@@ -520,7 +514,6 @@ and
   "description": "string",
   "type": "REST",
   "referenceId": "string",
-  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -562,7 +555,6 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |description|string|false|none|none|
 |type|string|false|none|none|
 |referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
-|handle|string¦null|false|none|Present when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Also used as the API's stored handle when no explicit handle is otherwise computed.|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
@@ -665,7 +657,6 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 ```json
 {
   "id": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "requestCount": "string",
@@ -679,8 +670,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |name|string|false|none|none|
 |description|string|false|none|none|
 |requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
@@ -720,9 +710,8 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```json
 {
-  "id": "app-12345",
+  "id": "my-weather-app",
   "displayName": "Weather App",
-  "handle": "weather-app",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": [
     {
@@ -739,9 +728,8 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
+|id|string|false|none|The application's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
-|handle|string|false|none|none|
 |description|string|false|none|none|
 |appKeyMappings|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 
@@ -787,7 +775,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "handle": "partner-apis",
+  "id": "partner-apis",
   "name": "Partner APIs",
   "labels": [
     "partner",
@@ -801,7 +789,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|handle|string|true|none|none|
+|id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
 |name|string|true|none|none|
 |labels|[string]|true|none|none|
 
@@ -818,7 +806,7 @@ OAuth client ID mapping entry attached to an application.
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "handle": "string",
+  "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
@@ -836,7 +824,7 @@ OAuth client ID mapping entry attached to an application.
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|handle|string|true|none|Public organization handle used in portal URLs.|
+|id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
 |idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
 |configuration|object|false|none|none|
@@ -863,7 +851,7 @@ OAuth client ID mapping entry attached to an application.
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "handle": "string",
+  "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
@@ -881,7 +869,7 @@ OAuth client ID mapping entry attached to an application.
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|handle|string|true|none|none|
+|id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
 |idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
 |configuration|object|false|none|none|
@@ -904,9 +892,8 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "id": "string",
+  "id": "Gold",
   "refId": "string",
-  "handle": "string",
   "name": "string",
   "description": "string",
   "type": "requestcount",
@@ -920,9 +907,8 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|Optional external/APIM-assigned plan UUID.|
+|id|string|true|none|Desired handle for the plan (unique per org), stored as-is. When the plan is created from a SubscriptionPlan YAML artifact instead, the handle is always taken from `metadata.name`.|
 |refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
-|handle|string|true|none|none|
 |name|string|true|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
@@ -997,7 +983,7 @@ xor
 ```json
 {
   "displayName": "Weather App",
-  "handle": "weather-app",
+  "id": "my-weather-app",
   "description": "Application used to call Weather APIs."
 }
 
@@ -1008,7 +994,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |displayName|string|true|none|none|
-|handle|string|false|none|Immutable, org-scoped slug for the application. Optional — defaults to the application's `displayName` when omitted.|
+|id|string|false|none|Immutable, org-scoped slug for the application, stored as its handle. Optional — defaults to the application's `displayName` when omitted.|
 |description|string|true|none|none|
 
 <h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
@@ -1020,8 +1006,8 @@ xor
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
-  "subscriptionPlanId": "plan-7f4c2a6b"
+  "apiId": "weather-api-v1",
+  "subscriptionPlanId": "Gold"
 }
 
 ```
@@ -1069,8 +1055,8 @@ xor
 
 ```json
 {
-  "apiId": "api-5f2b8c1a",
-  "planId": "pol-9a3d1f7e"
+  "apiId": "weather-api-v1",
+  "planId": "Gold"
 }
 
 ```
@@ -1092,7 +1078,7 @@ xor
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -1134,7 +1120,7 @@ Subscription payload.
 {
   "name": "weather_prod_key",
   "subscriptionId": "sub-abc123",
-  "appId": "app-12345",
+  "appId": "my-weather-app",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
 
@@ -1172,8 +1158,8 @@ xor
 {
   "keyId": "key-12345",
   "name": "weather_prod_key",
-  "apiId": "api-7f4c2a6b",
-  "appId": "app-12345",
+  "apiId": "weather-api-v1",
+  "appId": "my-weather-app",
   "appDisplayName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
@@ -1254,7 +1240,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 {
   "keyId": "key-12345",
   "application": {
-    "id": "app-12345",
+    "id": "my-weather-app",
     "displayName": "My Mobile App"
   }
 }
@@ -1581,7 +1567,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "handle": "partner-apis",
+  "id": "partner-apis",
   "name": "Partner APIs",
   "labels": [
     "partner",
@@ -1595,8 +1581,8 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|handle|string|true|none|none|
-|name|string|false|none|Optional display name. Defaults to `handle` when omitted.|
+|id|string|true|none|Desired handle for the view (unique per org), stored as-is.|
+|name|string|false|none|Optional display name. Defaults to the handle when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
@@ -1755,7 +1741,6 @@ Access token response proxied from the key manager's token endpoint. Field names
 {
   "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -1773,9 +1758,8 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiWorkflowId|string|false|none|none|
+|apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
 |name|string|false|none|none|
-|handle|string|false|none|none|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
@@ -1827,7 +1811,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 ```json
 {
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
+  "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
@@ -1844,7 +1828,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
@@ -1891,7 +1875,7 @@ continued
 ```json
 {
   "name": "Weather onboarding v2",
-  "handle": "weather-onboarding-v2",
+  "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -1908,7 +1892,7 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|false|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
@@ -1961,7 +1945,7 @@ continued
   ],
   "orgHandle": "acme",
   "viewName": "default",
-  "handle": "weather-onboarding"
+  "id": "weather-onboarding"
 }
 
 ```
@@ -1975,7 +1959,7 @@ continued
 |apis|[object]|false|none|none|
 |orgHandle|string|false|none|none|
 |viewName|string|false|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|The workflow's (would-be) handle, used only to build the workflow detail URL referenced in the generated prompt.|
 
 <h2 id="tocS_WebhookEventDelivery">WebhookEventDelivery</h2>
 

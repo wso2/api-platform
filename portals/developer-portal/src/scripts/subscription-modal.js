@@ -213,7 +213,7 @@ async function prepareSubscriptionModal(modalId) {
                 btn.dataset.orgId = orgId;
                 btn.dataset.apiId = apiId;
                 btn.dataset.planId = plan.id || '';
-                btn.dataset.planName = plan.handle || plan.subscriptionPlanName || '';
+                btn.dataset.planName = plan.id || plan.subscriptionPlanName || '';
                 btn.dataset.displayName = plan.name || plan.subscriptionPlanName || '';
                 if (window.isReadOnly) {
                     btn.disabled = true;

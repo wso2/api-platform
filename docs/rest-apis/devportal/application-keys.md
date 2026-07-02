@@ -43,7 +43,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[AppKeyMappingRequest](schemas.md#schemaappkeymappingrequest)|true|Maps an OAuth client_id — created directly in the key manager — to this application. The application is identified by the `applicationId` path parameter.|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 
@@ -185,7 +185,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthGenerateTokenRequest](schemas.md#schemaoauthgeneratetokenrequest)|false|OAuth token generation payload. The portal calls the Authorization Server token endpoint directly.|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 |keyMappingId|path|string|true|none|
 
 > Example responses
@@ -302,7 +302,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 |keyMappingId|path|string|true|none|
 
 > Example responses

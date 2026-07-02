@@ -41,7 +41,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "id": "app-12345",
+      "id": "my-weather-app",
       "displayName": "Weather App",
       "description": "Application used to call Weather APIs.",
       "appKeyMappings": [
@@ -85,9 +85,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ApplicationResponse](schemas.md#schemaapplicationresponse)]|false|none|none|
-|»» id|string|false|none|none|
+|»» id|string|false|none|The application's handle (unique per org). Not the internal database uuid.|
 |»» displayName|string|false|none|none|
-|»» handle|string|false|none|none|
 |»» description|string|false|none|none|
 |»» appKeyMappings|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 |»»» asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
@@ -131,14 +130,14 @@ Creates a Developer Portal application in the specified organization. The reques
 ```json
 {
   "displayName": "Weather App",
-  "handle": "weather-app",
+  "id": "my-weather-app",
   "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
 displayName: Weather App
-handle: weather-app
+id: my-weather-app
 description: Application used to call Weather APIs.
 
 ```
@@ -154,7 +153,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description` as the description, and `spec.handle` or `metadata.name` as the handle.|
+|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description` as the description, and always takes the handle from `metadata.name` (any `id` sent alongside YAML is ignored).|
 
 > Example responses
 
@@ -162,7 +161,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "app-12345",
+  "id": "my-weather-app",
   "displayName": "Weather App",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": []
@@ -275,7 +274,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 
@@ -283,9 +282,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "app-12345",
+  "id": "my-weather-app",
   "displayName": "Weather App",
-  "handle": "weather-app",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": []
 }
@@ -345,14 +343,14 @@ Updates an application owned by the authenticated user in the specified organiza
 ```json
 {
   "displayName": "Weather App",
-  "handle": "weather-app",
+  "id": "my-weather-app",
   "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
 displayName: Weather App
-handle: weather-app
+id: my-weather-app
 description: Application used to call Weather APIs.
 
 ```
@@ -368,8 +366,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description` as the description, and `spec.handle` or `metadata.name` as the handle.|
-|applicationId|path|string|true|none|
+|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description` as the description, and always takes the handle from `metadata.name` (any `id` sent alongside YAML is ignored).|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 
@@ -377,9 +375,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "app-12345",
+  "id": "my-weather-app",
   "displayName": "Weather App",
-  "handle": "weather-app",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": []
 }
@@ -496,7 +493,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 

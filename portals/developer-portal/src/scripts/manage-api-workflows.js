@@ -1157,13 +1157,13 @@ async function updatePromptFromForm() {
     const viewName = pathParts[3] || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value || '';
     const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(editingId)) : null;
-    const handle = editingFlow?.handle || generateHandle(name);
+    const handle = editingFlow?.apiWorkflowId || generateHandle(name);
 
     try {
         const response = await fetch(`/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-            body: JSON.stringify({ name, description, apis, orgName, viewName, handle }),
+            body: JSON.stringify({ name, description, apis, orgHandle: orgName, viewName, id: handle }),
             credentials: 'same-origin'
         });
         if (response.ok) {
@@ -1201,7 +1201,7 @@ function updateWorkflowMdPreview() {
     const viewName = pathParts[3] || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value;
     const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === editingId) : null;
-    const handle = editingFlow?.handle || generateHandle(name);
+    const handle = editingFlow?.apiWorkflowId || generateHandle(name);
     const flowStatus = (editingFlow?.status || 'PUBLISHED').toUpperCase();
 
     let md = '';

@@ -1,5 +1,5 @@
-<!--
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -14,12 +14,17 @@
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ *
  */
- -->
-{{#pageScripts}}
-  <script src='/technical-scripts/subscription.js' defer></script>
-  <script src='/technical-scripts/subscription-modal.js' defer></script>
-{{/pageScripts}}
-{{> api-listing }}
-{{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-{{> alert }}
+
+/*
+ * Tag: MCP Server Content
+ */
+const mcpServerService = require('../../../services/mcpServerService');
+
+module.exports = {
+    createMcpServerContent: mcpServerService.createMcpServerContent,
+    replaceMcpServerContent: mcpServerService.replaceMcpServerContent,
+    getMcpServerContentFile: mcpServerService.getMcpServerContentFile,
+    deleteMcpServerContentFile: mcpServerService.deleteMcpServerContentFile,
+};

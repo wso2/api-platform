@@ -25,8 +25,8 @@ Creates a subscription for an API. The API must exist in the Developer Portal an
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
-  "subscriptionPlanId": "plan-7f4c2a6b"
+  "apiId": "weather-api-v1",
+  "subscriptionPlanId": "Gold"
 }
 ```
 
@@ -50,7 +50,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -158,7 +158,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "subscriptionId": "sub-12345",
-      "apiId": "api-7f4c2a6b",
+      "apiId": "weather-api-v1",
       "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
       "subscriptionPlanName": "Gold",
       "status": "ACTIVE",
@@ -267,7 +267,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -354,7 +354,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -497,8 +497,8 @@ Changes the subscription plan in-place. The subscription UUID and token remain u
 
 ```json
 {
-  "apiId": "api-5f2b8c1a",
-  "planId": "pol-9a3d1f7e"
+  "apiId": "weather-api-v1",
+  "planId": "Gold"
 }
 ```
 
@@ -523,7 +523,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -610,7 +610,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
+  "apiId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",

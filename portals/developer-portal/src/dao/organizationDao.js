@@ -47,20 +47,39 @@ const create = async (orgData, t) => {
     }
 };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Matches by handle, then name, then idp_ref_id, in that priority order — deterministic
+// even if one org's handle happens to equal another org's name or idp_ref_id, unlike a
+// single Op.or query (which returns whichever row the DB orders first).
+const findOrgByIdentifier = async (param, t) => {
+    const opts = { ...(t && { transaction: t }) };
+    const handle = typeof param === 'string' ? param.toLowerCase() : param;
+    return (await Organization.findOne({ where: { handle }, ...opts })) ||
+        (await Organization.findOne({ where: { name: param }, ...opts })) ||
+        (await Organization.findOne({ where: { idp_ref_id: param }, ...opts }));
+};
 
-const get = async (param) => {
+const get = async (param, t) => {
     try {
-        const conditions = [
-            { name: param },
-            { handle: typeof param === 'string' ? param.toLowerCase() : param },
-            { idp_ref_id: param },
-        ];
-        if (typeof param === 'string' && UUID_RE.test(param)) {
-            conditions.push({ uuid: param });
+        const organization = await findOrgByIdentifier(param, t);
+        if (!organization) {
+            throw new Sequelize.EmptyResultError('Organization not found');
         }
+        return organization;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
+// For internal callers that already hold a resolved org uuid (e.g. req.orgId set by
+// auth middleware) — not for public REST lookups, which should use get()/handle instead.
+const getByUuid = async (uuid, t) => {
+    try {
         const organization = await Organization.findOne({
-            where: { [Sequelize.Op.or]: conditions }
+            where: { uuid },
+            ...(t && { transaction: t }),
         });
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
@@ -76,15 +95,7 @@ const get = async (param) => {
 
 const getId = async (orgName) => {
     try {
-        const organization = await Organization.findOne({
-            where: {
-                [Sequelize.Op.or]: [
-                    { name: orgName },
-                    { handle: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
-                    { idp_ref_id: orgName }
-                ]
-            }
-        });
+        const organization = await findOrgByIdentifier(orgName);
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
         }
@@ -113,11 +124,9 @@ const list = async () => {
 };
 
 const update = async (orgData, t) => {
-    let devPortalId = "";
-    if (orgData.handle) {
-        devPortalId = orgData.handle.toLowerCase();
-    }
     try {
+        const existing = await get(orgData.orgId, t);
+        const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
         const [updatedRowsCount, updatedOrg] = await Organization.update(
             {
                 name: orgData.name,
@@ -132,7 +141,7 @@ const update = async (orgData, t) => {
                 updated_at: new Date()
             },
             {
-                where: { uuid: orgData.orgId },
+                where: { uuid: existing.uuid },
                 returning: true,
                 transaction: t,
             }
@@ -149,10 +158,12 @@ const update = async (orgData, t) => {
     }
 };
 
-const deleteOrg = async (orgId) => {
+const deleteOrg = async (orgId, t) => {
     try {
+        const existing = await get(orgId, t);
         const deletedRowsCount = await Organization.destroy({
-            where: { uuid: orgId }
+            where: { uuid: existing.uuid },
+            ...(t && { transaction: t }),
         });
         if (deletedRowsCount < 1) {
             throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));
@@ -279,22 +290,14 @@ const deleteContent = async (orgId, viewName, fileName) => {
 const deleteAllContent = async (orgId, viewName, t) => {
     const viewId = await viewDao.getId(orgId, viewName);
     try {
-        const deletedRowsCount = await OrgContent.destroy({
+        return await OrgContent.destroy({
             where: {
                 org_uuid: orgId,
                 view_uuid: viewId
             },
             transaction: t
         });
-
-        if (deletedRowsCount < 1) {
-            throw Object.assign(new Sequelize.EmptyResultError('Organization content not found'));
-        }
-        return deletedRowsCount;
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
         throw new Sequelize.DatabaseError(error);
     }
 };
@@ -302,6 +305,7 @@ const deleteAllContent = async (orgId, viewName, t) => {
 module.exports = {
     create,
     get,
+    getByUuid,
     getId,
     list,
     update,

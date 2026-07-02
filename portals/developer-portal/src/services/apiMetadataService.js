@@ -83,12 +83,23 @@ const createAPIMetadata = async (req, res) => {
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
             apiMetadata.type = util.resolveApiType(apiMetadata.type);
+            if (apiMetadata.id) {
+                apiMetadata.handle = apiMetadata.id;
+            }
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
+        }
+
+        if (req.__forceApiType) {
+            apiMetadata.type = req.__forceApiType;
+        } else if (apiMetadata.type === constants.API_TYPE.MCP) {
+            throw new Sequelize.ValidationError(
+                "MCP servers must be created via /devportal/v1/mcp-servers"
+            );
         }
 
         // Validate input
@@ -119,6 +130,7 @@ const createAPIMetadata = async (req, res) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, userId, t);
             const apiId = createdAPI.dataValues.uuid;
+            apiMetadata.handle = createdAPI.dataValues.handle;
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -128,7 +140,7 @@ const createAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.id);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
@@ -217,7 +229,8 @@ const createAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.storeMany(artifactApiContent, apiId, userId, t);
             }
-            apiMetadata.id = apiId;
+            apiMetadata.id = apiMetadata.handle;
+            delete apiMetadata.handle;
         });
 
 
@@ -276,12 +289,26 @@ async function allowAPIStatusChange(apiStatus, orgId, apiId) {
     return true;
 }
 
+/**
+ * Resolves a handle to its uuid, scoped by whether the caller is operating on the
+ * `/apis` family (excludes MCP-typed records) or the `/mcp-servers` family (only
+ * MCP-typed records). `req.__forceApiType` is set by mcpServerService when it
+ * delegates into these shared handlers so they can be reused for both resource
+ * families without duplicating their logic.
+ */
+async function resolveScopedApiId(req, orgId, apiHandle) {
+    return req.__forceApiType === constants.API_TYPE.MCP
+        ? apiDao.getIdByType(orgId, apiHandle, constants.API_TYPE.MCP)
+        : apiDao.getIdExcludingType(orgId, apiHandle, constants.API_TYPE.MCP);
+}
+
 const getAPIMetadata = async (req, res) => {
 
     const orgId = req.orgId;
-    const { apiId } = req.params;
+    const { apiId: apiHandle } = req.params;
     try {
-        const retrievedAPI = await getMetadataFromDB(orgId, apiId);
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        const retrievedAPI = apiId ? await getMetadataFromDB(orgId, apiId) : "";
         if (retrievedAPI !== "") {
             // Create response object
             res.status(200).send(retrievedAPI);
@@ -293,7 +320,7 @@ const getAPIMetadata = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId,
-            apiId
+            apiId: apiHandle
         });
         util.handleError(res, error);
     }
@@ -322,7 +349,8 @@ const getAllAPIMetadata = async (req, res) => {
         const tags = req.query.tags;
         const view = req.query.view;
         const retrievedAPIs = await getMetadataListFromDB(orgId, searchTerm, tags, apiName, apiVersion, view);
-        res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
+        const nonMcpAPIs = retrievedAPIs.filter((api) => api.type !== constants.API_TYPE.MCP);
+        res.status(200).json(util.toPaginatedList(nonMcpAPIs, req));
     } catch (error) {
         logger.error('API metadata list retrieval failed', {
             error: error.message,
@@ -362,24 +390,29 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
 
 const updateAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
-    const { apiId } = req.params;
+    const { apiId: apiHandle } = req.params;
     const userId = util.resolveActor(req);
+    let apiId;
     logger.info('Updating API metadata', {
         orgId,
-        apiId
+        apiId: apiHandle
     });
     let apiMetadata;
     let apiDefinitionFile, apiFileName = "";
     let fullApiBundle;
     const apiArtifactFile = req.files?.artifact?.[0];
-    logger.debug('MCP API Definition file', {
-        apiFileName,
-        hasApiDefinitionFile: !!apiDefinitionFile,
-        orgId,
-        apiId
-    });
 
     try {
+        apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).send("API not found");
+        }
+        logger.debug('MCP API Definition file', {
+            apiFileName,
+            hasApiDefinitionFile: !!apiDefinitionFile,
+            orgId,
+            apiId
+        });
         let artifactApiContent = [];
         let resolvedImageMetadata = {};
         if (apiArtifactFile?.buffer) {
@@ -410,12 +443,23 @@ const updateAPIMetadata = async (req, res) => {
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
             apiMetadata.type = util.resolveApiType(apiMetadata.type);
+            if (apiMetadata.id) {
+                apiMetadata.handle = apiMetadata.id;
+            }
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
+        }
+
+        if (req.__forceApiType) {
+            apiMetadata.type = req.__forceApiType;
+        } else if (apiMetadata.type === constants.API_TYPE.MCP) {
+            throw new Sequelize.ValidationError(
+                "MCP servers must be updated via /devportal/v1/mcp-servers/{mcpServerId}"
+            );
         }
 
         // Validate input — spec file is optional on update (already stored from create)
@@ -501,7 +545,7 @@ const updateAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.id);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
@@ -601,11 +645,16 @@ const updateAPIMetadata = async (req, res) => {
 
 const deleteAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
-    const { apiId } = req.params;
+    const { apiId: apiHandle } = req.params;
+    let apiId;
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
         try {
+            apiId = await resolveScopedApiId(req, orgId, apiHandle);
+            if (!apiId) {
+                return res.status(404).send("API not found");
+            }
             const subApis = await subDao.listByApi(orgId, apiId);
             if (subApis.length > 0) {
                 throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
@@ -640,7 +689,11 @@ const createAPITemplate = async (req, res) => {
     });
     try {
         const orgId = req.orgId;
-        const { apiId } = req.params;
+        const { apiId: apiHandle } = req.params;
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).send("API not found");
+        }
         const userId = util.resolveActor(req);
         const zipFilePath = req.file.path;
         const extractPath = path.join("/tmp", orgId + "/" + apiId);
@@ -750,7 +803,11 @@ const createAPIContent = async (req, res) => {
     });
     try {
         const orgId = req.orgId;
-        const { apiId } = req.params;
+        const { apiId: apiHandle } = req.params;
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).send("API not found");
+        }
         const userId = util.resolveActor(req);
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
         let docMetadata = "";
@@ -805,7 +862,11 @@ const updateAPITemplate = async (req, res) => {
     });
     try {
         const orgId = req.orgId;
-        const { apiId } = req.params;
+        const { apiId: apiHandle } = req.params;
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).send("API not found");
+        }
         const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
@@ -910,7 +971,11 @@ const updateAPIContent = async (req, res) => {
     });
     try {
         const orgId = req.orgId;
-        const { apiId } = req.params;
+        const { apiId: apiHandle } = req.params;
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).send("API not found");
+        }
         const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
@@ -958,13 +1023,18 @@ const updateAPIContent = async (req, res) => {
 const getAPIFile = async (req, res) => {
 
     const orgId = req.orgId;
-    const { apiId } = req.params;
+    const { apiId: apiHandle } = req.params;
     const apiFileName = req.query.fileName;
     const type = req.query.type;
     let apiFileResponse = "";
     let apiFile;
     let contentType = "";
+    let apiId;
     try {
+        apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).send("API not found");
+        }
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (apiFileResponse) {
@@ -1026,10 +1096,14 @@ const deleteAPIFile = async (req, res) => {
         fileType: req.query.type
     });
     const orgId = req.orgId;
-    const { apiId } = req.params;
+    const { apiId: apiHandle } = req.params;
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
     try {
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        if (!apiId) {
+            return res.status(404).send("API not found");
+        }
         let apiFileResponse;
         if (apiFileName) {
             apiFileResponse = await apiFileDao.delete(apiFileName, fileType, orgId, apiId);
@@ -1084,9 +1158,18 @@ const putSubscriptionPlans = async (req, res) => {
     }
 }
 
+// The plan's own `id` in the request body is what the client wants to become the stored handle.
+// YAML-sourced plans already carry `.handle` (set from metadata.name), so this is a no-op for them.
+function normalizePlanHandle(plan) {
+    if (plan && plan.id) {
+        plan.handle = plan.id;
+    }
+    return plan;
+}
+
 const createSubscriptionPlan = async (req, res) => {
     const orgId = req.orgId;
-    const subscriptionPlan = req.body;
+    const subscriptionPlan = normalizePlanHandle(req.body);
     const userId = util.resolveActor(req);
     logger.info('Creating subscription plan...', {
         orgId
@@ -1143,6 +1226,7 @@ const createSubscriptionPlans = async (req, res) => {
                 timeout: 60000,
             }, async (t) => {
                 for (const plan of subscriptionPlans) {
+                    normalizePlanHandle(plan);
                     const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
                     if (!created) {
                         throw new CustomError(
@@ -1174,7 +1258,7 @@ const updateSubscriptionPlan = async (req, res) => {
     logger.info('Updating subscription plan...', {
         orgId
     });
-    const subscriptionPlan = req.body;
+    const subscriptionPlan = normalizePlanHandle(req.body);
     const userId = util.resolveActor(req);
 
     if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
@@ -1225,6 +1309,7 @@ const updateSubscriptionPlans = async (req, res) => {
                 timeout: 60000,
             }, async (t) => {
                 for (const plan of subscriptionPlans) {
+                    normalizePlanHandle(plan);
                     const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
                     if (!result?.subscriptionPlanResponse) {
                         throw new CustomError(
@@ -1260,7 +1345,7 @@ const deleteSubscriptionPlan = async (req, res) => {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const deleteCount = await subscriptionPlanDao.deleteById(orgId, planId, t);
+            const deleteCount = await subscriptionPlanDao.delete(orgId, planId, t);
             if (deleteCount === 0) {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             } else {
@@ -1285,7 +1370,7 @@ const getSubscriptionPlan = async (req, res) => {
     const { planId } = req.params;
 
     try {
-        const subscriptionPlanResponse = await subscriptionPlanDao.get(planId, orgId);
+        const subscriptionPlanResponse = await subscriptionPlanDao.getByName(orgId, planId);
         if (subscriptionPlanResponse) {
             res.status(200).send(new subscriptionPlanDTO(subscriptionPlanResponse));
         } else {
@@ -1415,6 +1500,9 @@ const addView = async (req, res) => {
     const orgId = req.orgId;
     const labels = req.body.labels;
     const userId = util.resolveActor(req);
+    if (req.body.id) {
+        req.body.handle = req.body.id;
+    }
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -1439,7 +1527,7 @@ const updateView = async (req, res) => {
     const orgId = req.orgId;
     const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
     const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
-    const viewName = req.params.viewName;
+    const viewHandle = req.params.viewId;
     const userId = util.resolveActor(req);
     try {
         await sequelize.transaction({
@@ -1448,11 +1536,11 @@ const updateView = async (req, res) => {
 
             let viewId = "";
             if (req.body.name) {
-                let viewResponse = await viewDao.update(orgId, viewName, req.body.name, userId, t);
+                let viewResponse = await viewDao.update(orgId, viewHandle, req.body.name, userId, t);
                 viewId = viewResponse.dataValues.uuid;
             }
             if (removedLabels.length !== 0 || addedLabels.length !== 0) {
-                viewId = viewId ? viewId : await viewDao.getId(orgId, viewName, t);
+                viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
             }
             if (removedLabels.length !== 0) {
                 await viewDao.deleteLabels(orgId, viewId, removedLabels, t);
@@ -1475,7 +1563,7 @@ const updateView = async (req, res) => {
 const deleteView = async (req, res) => {
 
     const orgId = req.orgId;
-    const name = req.params.viewName;
+    const name = req.params.viewId;
     try {
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
@@ -1496,7 +1584,7 @@ const deleteView = async (req, res) => {
 const getView = async (req, res) => {
 
     const orgId = req.orgId;
-    const name = req.params.viewName;
+    const name = req.params.viewId;
     try {
         const view = await getViewInfo(orgId, name);
         if (view) {
@@ -1752,7 +1840,7 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
     const businessInformation = spec.businessInformation || {};
 
     const subscriptionPlans = util.normalizeStringArray(spec.subscriptionPlans)
-        .map(planName => ({ handle: planName }));
+        .map(planName => ({ id: planName }));
 
     return {
         name: spec.displayName,

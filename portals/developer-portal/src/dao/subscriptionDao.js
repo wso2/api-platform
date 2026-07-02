@@ -56,7 +56,7 @@ const INCLUDE_API_AND_PLAN = [
     },
     {
         model: SubscriptionPlan,
-        attributes: ['uuid', 'name', 'ref_id'],
+        attributes: ['uuid', 'name', 'handle', 'ref_id'],
         required: false,
     },
 ];

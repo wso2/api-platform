@@ -305,7 +305,7 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
     });
 
     logger.info('API key associated to application', { keyId, orgId, appId: application.id, actor });
-    return { keyId, application: { id: application.id, displayName: application.display_name, handle: application.handle } };
+    return { keyId, application: { id: application.handle, displayName: application.display_name } };
 }
 
 /**

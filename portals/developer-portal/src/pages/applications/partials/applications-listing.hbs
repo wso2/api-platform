@@ -134,6 +134,24 @@
     return (x || 'AP').slice(0, 2).toUpperCase();
   }
 
+  /* Slugifies a display name into a handle, matching platform-api's handle convention:
+     lowercase, alphanumeric + hyphens only, no leading/trailing/consecutive hyphens,
+     max 40 chars. Actual uniqueness (per org) is enforced server-side. */
+  function generateHandle(name) {
+    var handle = (name || '')
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    handle = handle.substring(0, 40).replace(/-$/, '');
+    if (handle.length < 3) {
+      var suffix = Math.random().toString(36).slice(2, 6);
+      handle = handle ? handle + '-' + suffix : suffix;
+    }
+    return handle;
+  }
+
   document.querySelectorAll('.app-avatar[data-display-name]').forEach(function (el, i) {
     var c = palette[i % palette.length];
     el.style.background = c.bg;
@@ -180,10 +198,12 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ displayName: name, description: desc }),
+      body: JSON.stringify({ displayName: name, description: desc, id: generateHandle(name) }),
     })
       .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) return r.json().catch(function () { return {}; }).then(function (data) {
+          throw new Error(data.description || data.message || ('HTTP ' + r.status));
+        });
         return r.json();
       })
       .then(function () { window.location.reload(); })
@@ -191,6 +211,9 @@
         btn.disabled = false;
         btn.textContent = 'Create';
         console.error('Create application failed:', err);
+        if (typeof showAlert === 'function') {
+          showAlert('Failed to create application: ' + (err.message || 'an application with this name may already exist'), 'error');
+        }
       });
   });
 

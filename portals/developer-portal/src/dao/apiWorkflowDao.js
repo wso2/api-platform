@@ -74,12 +74,6 @@ const deleteFlow = async (orgId, viewId, apiWorkflowId, t) => {
     });
 };
 
-const get = async (orgId, viewId, apiWorkflowId) => {
-    return await APIWorkflow.findOne({
-        where: { uuid: apiWorkflowId, org_uuid: orgId, view_uuid: viewId }
-    });
-};
-
 const getByHandle = async (orgId, viewId, handle) => {
     return await APIWorkflow.findOne({
         where: { handle: handle, org_uuid: orgId, view_uuid: viewId }
@@ -112,7 +106,6 @@ module.exports = {
     create,
     update,
     delete: deleteFlow,
-    get,
     getByHandle,
     list,
     listPublished,

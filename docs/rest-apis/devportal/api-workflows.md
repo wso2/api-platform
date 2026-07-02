@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiWorkflow"></a>
 
-`POST /devportal/v1/views/{viewName}/api-workflows`
+`POST /devportal/v1/views/{viewId}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/api-workflows \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,14 +19,14 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api
 
 ```
 
-Creates an API workflow in the selected view. If `handle` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
+Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
 
 > Payload
 
 ```json
 {
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
+  "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "contentType": "ARAZZO",
   "apiWorkflowDefinition": {
@@ -52,7 +52,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[APIWorkflowCreateRequest](schemas.md#schemaapiworkflowcreaterequest)|true|API workflow creation payload. Use `contentType` `ARAZZO` for JSON/YAML workflow content or `MD` for Markdown workflow content.|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -87,13 +87,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllApiWorkflows"></a>
 
-`GET /devportal/v1/views/{viewName}/api-workflows`
+`GET /devportal/v1/views/{viewId}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewId}/api-workflows \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -115,7 +115,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -127,7 +127,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     {
       "apiWorkflowId": "workflow-12345",
       "name": "Weather onboarding",
-      "handle": "weather-onboarding",
       "description": "string",
       "agentPrompt": "string",
       "status": "PUBLISHED",
@@ -161,9 +160,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[APIWorkflowResponse](schemas.md#schemaapiworkflowresponse)]|false|none|none|
-|»» apiWorkflowId|string|false|none|none|
+|»» apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
 |»» name|string|false|none|none|
-|»» handle|string|false|none|none|
 |»» description|string|false|none|none|
 |»» agentPrompt|string|false|none|none|
 |»» status|string|false|none|none|
@@ -193,13 +191,13 @@ Status Code **200**
 
 <a id="opIdgetApiWorkflow"></a>
 
-`GET /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}`
+`GET /devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -219,8 +217,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|viewName|path|string|true|none|
-|apiWorkflowId|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
+|apiWorkflowId|path|string|true|The API workflow's handle (unique per org and view).|
 
 > Example responses
 
@@ -230,7 +228,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "apiWorkflowId": "workflow-12345",
   "name": "Weather onboarding",
-  "handle": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
@@ -263,13 +260,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApiWorkflow"></a>
 
-`PUT /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}`
+`PUT /devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -285,7 +282,7 @@ Updates API workflow metadata and content for the selected view. Duplicate handl
 ```json
 {
   "name": "Weather onboarding v2",
-  "handle": "weather-onboarding-v2",
+  "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -308,8 +305,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[APIWorkflowUpdateRequest](schemas.md#schemaapiworkflowupdaterequest)|true|API workflow update payload. Include only the fields that should change.|
-|viewName|path|string|true|none|
-|apiWorkflowId|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
+|apiWorkflowId|path|string|true|The API workflow's handle (unique per org and view).|
 
 > Example responses
 
@@ -335,13 +332,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiWorkflow"></a>
 
-`DELETE /devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}`
+`DELETE /devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -361,8 +358,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|viewName|path|string|true|none|
-|apiWorkflowId|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
+|apiWorkflowId|path|string|true|The API workflow's handle (unique per org and view).|
 
 > Example responses
 
@@ -386,13 +383,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgeneratePrompt"></a>
 
-`POST /devportal/v1/views/{viewName}/api-workflows/generate-prompt`
+`POST /devportal/v1/views/{viewId}/api-workflows/generate-prompt`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewName}/api-workflows/generate-prompt \
+curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/api-workflows/generate-prompt \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -414,7 +411,7 @@ Generates the default agent prompt text for a proposed API workflow using the su
   ],
   "orgHandle": "acme",
   "viewName": "default",
-  "handle": "weather-onboarding"
+  "id": "weather-onboarding"
 }
 ```
 
@@ -430,7 +427,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[APIWorkflowPromptRequest](schemas.md#schemaapiworkflowpromptrequest)|true|API workflow prompt-generation payload.|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
