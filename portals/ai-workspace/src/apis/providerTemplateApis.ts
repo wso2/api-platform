@@ -77,7 +77,7 @@ export async function createProviderTemplate(
 /**
  * Get Provider Templates for the catalog listing.
  *
- * Requests `latest=true` so the backend returns only the latest version
+ * Requests `query=latest:true` so the backend returns only the latest version
  * of each family (one entry per family) rather than the full version history.
  *
  * @returns Promise with the list of provider templates (latest per family)
@@ -91,7 +91,7 @@ export async function createProviderTemplate(
 export async function getProviderTemplates(baseUrl: string): Promise<ProviderTemplatesResponse> {
   try {
     const response = await get<ProviderTemplatesResponse>(
-      `/llm-provider-templates?latest=true`,
+      `/llm-provider-templates?query=${encodeURIComponent('latest:true')}`,
       undefined,
       baseUrl
     );

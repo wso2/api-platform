@@ -301,21 +301,6 @@ func TestLLMTemplateHTTP_GetVersionByQuery(t *testing.T) {
 		t.Errorf("expected version v1.0, got %v", m["version"])
 	}
 
-	// Same selection via the standalone ?version= param (query holds only the
-	// groupId) -> the single full template, not the family's version list.
-	standalone := tmplBase + "?query=" + url.QueryEscape("groupId:"+groupID) + "&version=v1.0"
-	w = doJSON(t, r, http.MethodGet, standalone, "", true)
-	if w.Code != http.StatusOK {
-		t.Fatalf("get version (standalone param): expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	m = bodyMap(t, w)
-	if _, isList := m["list"]; isList {
-		t.Errorf("standalone version: expected a single template object, got a list response: %s", w.Body.String())
-	}
-	if m["version"] != "v1.0" {
-		t.Errorf("standalone version: expected version v1.0, got %v", m["version"])
-	}
-
 	// Unknown version within an existing family -> 404.
 	if w := doJSON(t, r, http.MethodGet, queryVersionPath(groupID, "v9.9"), "", true); w.Code != http.StatusNotFound {
 		t.Errorf("unknown version: expected 404, got %d: %s", w.Code, w.Body.String())
