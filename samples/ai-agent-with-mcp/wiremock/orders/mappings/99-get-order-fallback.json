@@ -1,0 +1,17 @@
+{
+  "name": "orders-get-fallback",
+  "priority": 10,
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.method == 'tools/call')]" },
+      { "matchesJsonPath": "$[?(@.params.name == 'get_order')]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "orders-get-fallback.json"
+  }
+}

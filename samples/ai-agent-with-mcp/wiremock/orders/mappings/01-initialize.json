@@ -1,0 +1,14 @@
+{
+  "name": "orders-initialize",
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [{ "matchesJsonPath": "$.method" },
+                     { "matchesJsonPath": "$[?(@.method == 'initialize')]" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "orders-initialize.json"
+  }
+}

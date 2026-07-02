@@ -1,0 +1,17 @@
+{
+  "name": "kb-get-article-fallback",
+  "priority": 10,
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.method == 'tools/call')]" },
+      { "matchesJsonPath": "$[?(@.params.name == 'get_article')]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "kb-article-fallback.json"
+  }
+}

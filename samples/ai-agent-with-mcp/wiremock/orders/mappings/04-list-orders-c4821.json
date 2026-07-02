@@ -1,0 +1,18 @@
+{
+  "name": "orders-list-c4821",
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.method == 'tools/call')]" },
+      { "matchesJsonPath": "$[?(@.params.name == 'list_orders_for_customer')]" },
+      { "matchesJsonPath": "$[?(@.params.arguments.customer_id == 'C-4821')]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "orders-list-c4821.json"
+  }
+}
