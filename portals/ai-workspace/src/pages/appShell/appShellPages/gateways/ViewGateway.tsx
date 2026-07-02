@@ -235,9 +235,8 @@ export default function ViewGateway() {
   const gatewayVersionHelm = gatewayVersion.startsWith("v")
     ? gatewayVersion.slice(1)
     : gatewayVersion;
-  const gatewayBaseVersion = gatewayVersionHelm.replace(/-.*$/, "");
   const gatewayZipName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
-  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayBaseVersion}`;
+  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
   const gatewayEnvFile = `${gatewayFolderName}/configs/keys.env`;
 
   const getSetupGatewayDisplayCommand = () =>
