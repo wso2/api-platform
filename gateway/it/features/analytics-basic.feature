@@ -52,6 +52,7 @@ Feature: Analytics - Basic Event Capture
           - method: POST
             path: /data
       """
+    And I wait for policy snapshot sync
     When I send a POST request to "http://localhost:8080/metadata-test/v2/data" with body:
       """
       {"test": "data"}
@@ -82,6 +83,7 @@ Feature: Analytics - Basic Event Capture
           - method: GET
             path: /ping
       """
+    And I wait for policy snapshot sync
     When I send a GET request to "http://localhost:8080/multi-test/v1/ping"
     And I send a GET request to "http://localhost:8080/multi-test/v1/ping"
     And I send a GET request to "http://localhost:8080/multi-test/v1/ping"

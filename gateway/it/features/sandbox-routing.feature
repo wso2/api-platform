@@ -409,6 +409,7 @@ Feature: Sandbox Routing
             path: /whoami
       """
     Then the response should be successful
+    And I wait for policy snapshot sync
     And I record the current time as "request_start"
     When I clear all headers
     And I set request host to "sandbox-sandbox-timeout.local"
