@@ -4,13 +4,13 @@
 
 <a id="opIdcreateSubscription"></a>
 
-`POST /api/v0.9/subscriptions`
+`POST /subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/subscriptions \
+curl -X POST https://localhost:3000/api/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -119,13 +119,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistSubscriptions"></a>
 
-`GET /api/v0.9/subscriptions`
+`GET /subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/subscriptions \
+curl -X GET https://localhost:3000/api/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -235,13 +235,13 @@ Status Code **200**
 
 <a id="opIdgetSubscription"></a>
 
-`GET /api/v0.9/subscriptions/{subId}`
+`GET /subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/subscriptions/{subId} \
+curl -X GET https://localhost:3000/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -313,13 +313,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateSubscription"></a>
 
-`PUT /api/v0.9/subscriptions/{subId}`
+`PUT /subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/subscriptions/{subId} \
+curl -X PUT https://localhost:3000/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -413,13 +413,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscription"></a>
 
-`DELETE /api/v0.9/subscriptions/{subId}`
+`DELETE /subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/subscriptions/{subId} \
+curl -X DELETE https://localhost:3000/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -483,13 +483,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdchangePlan"></a>
 
-`POST /api/v0.9/subscriptions/{subId}/change-plan`
+`POST /subscriptions/{subId}/change-plan`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/subscriptions/{subId}/change-plan \
+curl -X POST https://localhost:3000/api/v0.9/subscriptions/{subId}/change-plan \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -584,13 +584,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdregenerateSubscriptionToken"></a>
 
-`POST /api/v0.9/subscriptions/{subId}/regenerate-token`
+`POST /subscriptions/{subId}/regenerate-token`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/subscriptions/{subId}/regenerate-token \
+curl -X POST https://localhost:3000/api/v0.9/subscriptions/{subId}/regenerate-token \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiWorkflow"></a>
 
-`POST /api/v0.9/views/{viewId}/api-workflows`
+`POST /views/{viewId}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows \
+curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/api-workflows \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -87,13 +87,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllApiWorkflows"></a>
 
-`GET /api/v0.9/views/{viewId}/api-workflows`
+`GET /views/{viewId}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows \
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/api-workflows \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -191,13 +191,13 @@ Status Code **200**
 
 <a id="opIdgetApiWorkflow"></a>
 
-`GET /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}`
+`GET /views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -260,13 +260,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApiWorkflow"></a>
 
-`PUT /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}`
+`PUT /views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
+curl -X PUT https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -332,13 +332,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiWorkflow"></a>
 
-`DELETE /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}`
+`DELETE /views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
+curl -X DELETE https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -383,13 +383,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgeneratePrompt"></a>
 
-`POST /api/v0.9/views/{viewId}/api-workflows/generate-prompt`
+`POST /views/{viewId}/api-workflows/generate-prompt`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/generate-prompt \
+curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/generate-prompt \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \

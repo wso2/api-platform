@@ -4,13 +4,13 @@
 
 <a id="opIdaddView"></a>
 
-`POST /api/v0.9/views`
+`POST /views`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/views \
+curl -X POST https://localhost:3000/api/v0.9/views \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -131,13 +131,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllViews"></a>
 
-`GET /api/v0.9/views`
+`GET /views`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/views \
+curl -X GET https://localhost:3000/api/v0.9/views \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -235,13 +235,13 @@ Status Code **200**
 
 <a id="opIdupdateView"></a>
 
-`PUT /api/v0.9/views/{viewId}`
+`PUT /views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/views/{viewId} \
+curl -X PUT https://localhost:3000/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -377,13 +377,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetView"></a>
 
-`GET /api/v0.9/views/{viewId}`
+`GET /views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId} \
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -494,13 +494,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteView"></a>
 
-`DELETE /api/v0.9/views/{viewId}`
+`DELETE /views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/views/{viewId} \
+curl -X DELETE https://localhost:3000/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

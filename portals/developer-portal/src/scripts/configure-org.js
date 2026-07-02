@@ -137,7 +137,7 @@ async function updateOrgContent(orgId) {
     }
     const formData = new FormData();
     formData.append('file', zipFile.files[0]);
-    const response = await fetch(devportalApi.org('/views/default/apply-theme'), {
+    const response = await fetch(devportalApi.root('/views/default/apply-theme'), {
         method: 'POST',
         body: formData,
         credentials: 'same-origin'
@@ -159,7 +159,7 @@ async function uploadContent(orgId) {
     formData.append('file', zipFile.files[0]);
 
     const view = document.getElementById('uploadViewContent').value;
-    const response = await fetch(devportalApi.org(`/views/${view}/apply-theme`), {
+    const response = await fetch(devportalApi.root(`/views/${view}/apply-theme`), {
         method: 'POST',
         body: formData,
         credentials: 'same-origin'
@@ -210,7 +210,7 @@ async function editView(labelsContainerID, nameID, handleID, orgId) {
         name: name,
         labels: sanitizedLabels
     }
-    const response = await fetch(devportalApi.org(`/views/${handle}`), {
+    const response = await fetch(devportalApi.root(`/views/${handle}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -226,7 +226,7 @@ async function editView(labelsContainerID, nameID, handleID, orgId) {
 
 async function deleteView(orgId, viewHandle) {
 
-    const response = await fetch(devportalApi.org(`/views/${viewHandle}`), {
+    const response = await fetch(devportalApi.root(`/views/${viewHandle}`), {
         method: 'DELETE',
     });
     if (response.ok) {
@@ -249,7 +249,7 @@ async function addLabels(orgId, orgLabels) {
         const sanitizeDelete = removedLabels.map(label => sanitizeInput(label));
         // Encode each name individually so spaces/reserved characters within a label
         const labelName = sanitizeDelete.map(label => encodeURIComponent(label)).join(",");
-        const response = await fetch(devportalApi.org(`/labels?names=${labelName}`), {
+        const response = await fetch(devportalApi.root(`/labels?names=${labelName}`), {
             method: "DELETE",
             headers: {
                 'Content-Type': 'application/json',
@@ -270,7 +270,7 @@ async function addLabels(orgId, orgLabels) {
         });
     });
  
-    const response = await fetch(devportalApi.org('/labels'), {
+    const response = await fetch(devportalApi.root('/labels'), {
         method: "PUT",
         headers: {
             'Content-Type': 'application/json',

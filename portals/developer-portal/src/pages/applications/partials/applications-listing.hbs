@@ -194,7 +194,7 @@
     var btn = this;
     btn.disabled = true;
     btn.textContent = 'Creating…';
-    fetch(devportalApi.org('/applications'), {
+    fetch(devportalApi.root('/applications'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -240,7 +240,7 @@
     var btn = this;
     btn.disabled = true;
     btn.textContent = 'Deleting…';
-    fetch(devportalApi.org('/applications/' + pendingDeleteId), {
+    fetch(devportalApi.root('/applications/' + pendingDeleteId), {
       method: 'DELETE',
       credentials: 'include',
     })

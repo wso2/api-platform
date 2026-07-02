@@ -4,13 +4,13 @@
 
 <a id="opIdcreateKeyManager"></a>
 
-`POST /api/v0.9/key-managers`
+`POST /key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/key-managers \
+curl -X POST https://localhost:3000/api/v0.9/key-managers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -154,13 +154,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetKeyManagers"></a>
 
-`GET /api/v0.9/key-managers`
+`GET /key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/key-managers \
+curl -X GET https://localhost:3000/api/v0.9/key-managers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -287,13 +287,13 @@ Status Code **200**
 
 <a id="opIdgetKeyManager"></a>
 
-`GET /api/v0.9/key-managers/{kmId}`
+`GET /key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/key-managers/{kmId} \
+curl -X GET https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -366,13 +366,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateKeyManager"></a>
 
-`PUT /api/v0.9/key-managers/{kmId}`
+`PUT /key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/key-managers/{kmId} \
+curl -X PUT https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -522,13 +522,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteKeyManager"></a>
 
-`DELETE /api/v0.9/key-managers/{kmId}`
+`DELETE /key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/key-managers/{kmId} \
+curl -X DELETE https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

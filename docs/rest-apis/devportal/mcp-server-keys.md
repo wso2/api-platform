@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateMcpServerApiKey"></a>
 
-`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate`
+`POST /mcp-servers/{mcpServerId}/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate \
+curl -X POST https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -118,13 +118,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistMcpServerApiKeys"></a>
 
-`GET /api/v0.9/mcp-servers/{mcpServerId}/api-keys`
+`GET /mcp-servers/{mcpServerId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys \
+curl -X GET https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -267,13 +267,13 @@ Status Code **200**
 
 <a id="opIdregenerateMcpServerApiKey"></a>
 
-`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate`
+`POST /mcp-servers/{mcpServerId}/api-keys/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate \
+curl -X POST https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -378,13 +378,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeMcpServerApiKey"></a>
 
-`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke`
+`POST /mcp-servers/{mcpServerId}/api-keys/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke \
+curl -X POST https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -472,13 +472,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdassociateMcpServerApiKeyApplication"></a>
 
-`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate`
+`POST /mcp-servers/{mcpServerId}/api-keys/associate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate \
+curl -X POST https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -591,13 +591,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdremoveMcpServerApiKeyApplication"></a>
 
-`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate`
+`POST /mcp-servers/{mcpServerId}/api-keys/dissociate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate \
+curl -X POST https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \

@@ -1316,8 +1316,8 @@ async function saveApiWorkflow(orgId, viewName, status) {
     const payload = { displayName: name, id: handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
     const isEdit = !!apiWorkflowId;
     const url = isEdit
-        ? devportalApi.org(`/views/${viewName}/api-workflows/${apiWorkflowId}`)
-        : devportalApi.org(`/views/${viewName}/api-workflows`);
+        ? devportalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`)
+        : devportalApi.root(`/views/${viewName}/api-workflows`);
     const method = isEdit ? 'PUT' : 'POST';
 
     const groupBtns = document.querySelectorAll('#saveApiWorkflowGroup button');
@@ -1381,7 +1381,7 @@ async function deleteApiWorkflow(orgId, viewName, apiWorkflowId) {
     };
 
     try {
-        const response = await fetch(devportalApi.org(`/views/${viewName}/api-workflows/${apiWorkflowId}`), {
+        const response = await fetch(devportalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': csrfToken },
             credentials: 'same-origin'

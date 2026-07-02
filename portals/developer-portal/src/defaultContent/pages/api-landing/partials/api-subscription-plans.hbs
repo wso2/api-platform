@@ -105,7 +105,7 @@
         var meta = (window.__tokenMeta || {})[subscriptionId];
         if (meta && meta._fullToken) return meta._fullToken;
         try {
-          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(subscriptionId)), {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(subscriptionId)), {
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
           if (!resp.ok) return null;
@@ -202,7 +202,7 @@
         var orgId = window.__subscriptionOrgId;
         var newStatus = _sub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
         try {
-          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             body: JSON.stringify({ status: newStatus }),
@@ -276,7 +276,7 @@
           closeUnsub();
           try {
             var resp = await fetch(
-              devportalApi.org('/subscriptions/' + encodeURIComponent(args.subscriptionId) + '/change-plan'),
+              devportalApi.root('/subscriptions/' + encodeURIComponent(args.subscriptionId) + '/change-plan'),
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
@@ -298,7 +298,7 @@
         if (!_sub) return;
         var orgId = window.__subscriptionOrgId;
         try {
-          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });

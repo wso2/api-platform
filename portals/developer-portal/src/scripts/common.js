@@ -5,13 +5,10 @@
 (function () {
     var cfg = window.__DEVPORTAL_API__ || { base: 'api', version: 'v0.9' };
     window.devportalApi = {
-        // Devportal API resource: org('/subscriptions') => '/api/v0.9/subscriptions'
-        org: function (path) {
-            return '/' + cfg.base + '/' + cfg.version + (path || '');
-        },
-        // Root resource: root('/organizations') => '/organizations'
+        // Devportal API resource under the versioned base:
+        // root('/subscriptions') => '/api/v0.9/subscriptions'
         root: function (path) {
-            return path || '/';
+            return '/' + cfg.base + '/' + cfg.version + (path || '');
         },
         // Per-session CSRF token from the XSRF-TOKEN cookie, to send as
         // X-CSRF-Token on mutating requests (see csrfProtection middleware).

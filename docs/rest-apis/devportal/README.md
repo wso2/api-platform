@@ -1,18 +1,16 @@
 
-<h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
+<h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v0.9.0</h1>
 
 Fine-grained Developer Portal API for managing organizations,
 API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
-Most organization-scoped resources are served under `/api/v0.9`; organization
-lifecycle endpoints (`/organizations`, `/organizations/{orgId}`) are unprefixed.
+All resources, including organization lifecycle endpoints
+(`/api/v0.9/organizations`, `/api/v0.9/organizations/{orgId}`), are served under `/api/v0.9`.
 Operations declare the least-privilege OAuth2 scopes required for each resource action.
 
 Base URLs:
-* <a href="https://devportal.api-platform.io">https://devportal.api-platform.io</a>
-* <a href="http://localhost:3000">http://localhost:3000</a>
-* <a href="https://localhost:{port}">https://localhost:{port}</a>
-    * **port** -  Default: 9443
+* <a href="https://localhost:3000/api/v0.9">https://localhost:3000/api/v0.9</a>
+* <a href="http://localhost:3000/api/v0.9">http://localhost:3000/api/v0.9</a>
 
 ## Table of Contents
 

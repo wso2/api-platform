@@ -19,24 +19,19 @@
 openapi: 3.0.3
 info:
   title: WSO2 API Developer Portal Core - Devportal Routes
-  version: 1.0.0
+  version: 0.9.0
   description: |
     Fine-grained Developer Portal API for managing organizations,
     API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
-    Most organization-scoped resources are served under `/api/v0.9`; organization
-    lifecycle endpoints (`/organizations`, `/organizations/{orgId}`) are unprefixed.
+    All resources, including organization lifecycle endpoints
+    (`/api/v0.9/organizations`, `/api/v0.9/organizations/{orgId}`), are served under `/api/v0.9`.
     Operations declare the least-privilege OAuth2 scopes required for each resource action.
 servers:
-  - url: https://devportal.api-platform.io
-    description: Production
-  - url: http://localhost:3000
-    description: Local development server
-  - url: https://localhost:{port}
+  - url: https://localhost:3000/api/v0.9
     description: Local HTTPS server
-    variables:
-      port:
-        default: "9443"
+  - url: http://localhost:3000/api/v0.9
+    description: Local development server
 tags:
   - name: Organizations
   - name: Organization Content
@@ -174,7 +169,7 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /api/v0.9/views/{viewId}/asset:
+  /views/{viewId}/asset:
     parameters:
       - $ref: "#/components/parameters/viewId"
     get:
@@ -205,7 +200,7 @@ paths:
               schema:
                 type: string
       security: []
-  /api/v0.9/views/{viewId}/apply-theme:
+  /views/{viewId}/apply-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -229,7 +224,7 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
-  /api/v0.9/views/{viewId}/reset-theme:
+  /views/{viewId}/reset-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -247,7 +242,7 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
-  /api/v0.9/apis:
+  /apis:
     post:
       tags:
         - APIs
@@ -312,7 +307,7 @@ paths:
         - OAuth2Security:
             - dp:api_read
             - dp:api_manage
-  /api/v0.9/apis/{apiId}:
+  /apis/{apiId}:
     parameters:
       - $ref: "#/components/parameters/apiId"
     get:
@@ -382,7 +377,7 @@ paths:
         - OAuth2Security:
             - dp:api_delete
             - dp:api_manage
-  /api/v0.9/subscription-plans:
+  /subscription-plans:
     get:
       tags:
         - Subscription Plans
@@ -463,7 +458,7 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_update
             - dp:sub_plan_manage
-  /api/v0.9/subscription-plans/{planId}:
+  /subscription-plans/{planId}:
     parameters:
       - $ref: "#/components/parameters/planId"
     get:
@@ -504,7 +499,7 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_delete
             - dp:sub_plan_manage
-  /api/v0.9/apis/{apiId}/assets:
+  /apis/{apiId}/assets:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -615,7 +610,7 @@ paths:
         - OAuth2Security:
             - dp:api_content_delete
             - dp:api_content_manage
-  /api/v0.9/labels:
+  /labels:
     post:
       tags:
         - Labels
@@ -664,7 +659,7 @@ paths:
         - OAuth2Security:
             - dp:label_read
             - dp:label_manage
-  /api/v0.9/labels/{labelId}:
+  /labels/{labelId}:
     get:
       tags:
         - Labels
@@ -728,7 +723,7 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /api/v0.9/applications:
+  /applications:
     get:
       tags:
         - Applications
@@ -786,7 +781,7 @@ paths:
         - OAuth2Security:
             - dp:app_create
             - dp:app_manage
-  /api/v0.9/applications/{applicationId}:
+  /applications/{applicationId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     get:
@@ -854,7 +849,7 @@ paths:
         - OAuth2Security:
             - dp:app_delete
             - dp:app_manage
-  /api/v0.9/subscriptions:
+  /subscriptions:
     post:
       tags:
         - Subscriptions
@@ -929,7 +924,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_read
             - dp:subscription_manage
-  /api/v0.9/subscriptions/{subId}:
+  /subscriptions/{subId}:
     parameters:
       - $ref: "#/components/parameters/subId"
     get:
@@ -987,7 +982,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_delete
             - dp:subscription_manage
-  /api/v0.9/subscriptions/{subId}/change-plan:
+  /subscriptions/{subId}/change-plan:
     parameters:
       - $ref: "#/components/parameters/subId"
     post:
@@ -1014,7 +1009,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_update
             - dp:subscription_manage
-  /api/v0.9/subscriptions/{subId}/regenerate-token:
+  /subscriptions/{subId}/regenerate-token:
     parameters:
       - $ref: "#/components/parameters/subId"
     post:
@@ -1037,7 +1032,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:subscription_manage
-  /api/v0.9/apis/{apiId}/api-keys/generate:
+  /apis/{apiId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1085,7 +1080,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_create
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys:
+  /apis/{apiId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/apiId"
     get:
@@ -1109,7 +1104,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/regenerate:
+  /apis/{apiId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1145,7 +1140,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/revoke:
+  /apis/{apiId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1181,7 +1176,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/associate:
+  /apis/{apiId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1223,7 +1218,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/dissociate:
+  /apis/{apiId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1249,7 +1244,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /api/v0.9/mcp-servers:
+  /mcp-servers:
     post:
       tags:
         - MCP Servers
@@ -1303,7 +1298,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_read
             - dp:mcp_manage
-  /api/v0.9/mcp-servers/{mcpServerId}:
+  /mcp-servers/{mcpServerId}:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     get:
@@ -1370,7 +1365,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_delete
             - dp:mcp_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/assets:
+  /mcp-servers/{mcpServerId}/assets:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1462,7 +1457,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_content_delete
             - dp:mcp_content_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate:
+  /mcp-servers/{mcpServerId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1499,7 +1494,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_create
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys:
+  /mcp-servers/{mcpServerId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     get:
@@ -1523,7 +1518,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_read
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate:
+  /mcp-servers/{mcpServerId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1558,7 +1553,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke:
+  /mcp-servers/{mcpServerId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1593,7 +1588,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_revoke
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate:
+  /mcp-servers/{mcpServerId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1634,7 +1629,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate:
+  /mcp-servers/{mcpServerId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1660,7 +1655,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /api/v0.9/applications/{applicationId}/api-keys:
+  /applications/{applicationId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     get:
@@ -1685,7 +1680,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /api/v0.9/views:
+  /views:
     post:
       tags:
         - Views
@@ -1729,7 +1724,7 @@ paths:
         - OAuth2Security:
             - dp:view_read
             - dp:view_manage
-  /api/v0.9/views/{viewId}:
+  /views/{viewId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
     put:
@@ -1796,7 +1791,7 @@ paths:
         - OAuth2Security:
             - dp:view_delete
             - dp:view_manage
-  /api/v0.9/applications/{applicationId}/generate-keys:
+  /applications/{applicationId}/generate-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     post:
@@ -1825,7 +1820,7 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
+  /applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
     parameters:
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
@@ -1852,7 +1847,7 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}:
+  /applications/{applicationId}/oauth-keys/{keyMappingId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
@@ -1874,7 +1869,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:app_key_revoke
-  /api/v0.9/views/{viewId}/api-workflows:
+  /views/{viewId}/api-workflows:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -1918,7 +1913,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_read
             - dp:api_workflow_manage
-  /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}:
+  /views/{viewId}/api-workflows/{apiWorkflowId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
       - $ref: "#/components/parameters/apiWorkflowId"
@@ -1979,7 +1974,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_delete
             - dp:api_workflow_manage
-  /api/v0.9/views/{viewId}/api-workflows/generate-prompt:
+  /views/{viewId}/api-workflows/generate-prompt:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -2001,7 +1996,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_create
             - dp:api_workflow_manage
-  /api/v0.9/key-managers:
+  /key-managers:
     post:
       tags:
         - Key Managers
@@ -2058,7 +2053,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:km_read
-  /api/v0.9/key-managers/{kmId}:
+  /key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/kmId"
     get:
@@ -2121,7 +2116,7 @@ paths:
         - OAuth2Security:
             - dp:km_delete
             - dp:km_manage
-  /api/v0.9/webhook-subscribers:
+  /webhook-subscribers:
     post:
       tags:
         - Webhook Subscribers
@@ -2174,7 +2169,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /api/v0.9/webhook-subscribers/{subscriberId}:
+  /webhook-subscribers/{subscriberId}:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
     get:
@@ -2236,7 +2231,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_delete
             - dp:webhook_subscriber_manage
-  /api/v0.9/webhook-subscribers/{subscriberId}/deliveries:
+  /webhook-subscribers/{subscriberId}/deliveries:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
     get:
@@ -2265,7 +2260,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /api/v0.9/webhook-events:
+  /webhook-events:
     get:
       tags:
         - Webhook Events
@@ -2298,7 +2293,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:event_read
-  /api/v0.9/webhook-events/{eventId}:
+  /webhook-events/{eventId}:
     parameters:
       - $ref: "#/components/parameters/eventId"
     get:
