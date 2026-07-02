@@ -41,6 +41,7 @@ const (
 	keyOrganization  contextKey = "organization"
 	keyOrgName       contextKey = "org_name"
 	keyOrgHandle     contextKey = "org_handle"
+	keyIdpOrgRef     contextKey = "idp_org_ref"
 	keyScope         contextKey = "scope"
 	keyAudience      contextKey = "audience"
 	keyClaims        contextKey = "claims"
@@ -49,14 +50,14 @@ const (
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
 type CustomClaims struct {
-	Audience      string   `json:"aud"`
-	Email         string   `json:"email"`
-	FirstName     string   `json:"firstName"`
-	LastName      string   `json:"lastName"`
-	JTI           string   `json:"jti"`
-	Organization  string   `json:"organization"`
-	Scope         string   `json:"scope"`
-	Username      string   `json:"username"`
+	Audience     string `json:"aud"`
+	Email        string `json:"email"`
+	FirstName    string `json:"firstName"`
+	LastName     string `json:"lastName"`
+	JTI          string `json:"jti"`
+	Organization string `json:"organization"`
+	Scope        string `json:"scope"`
+	Username     string `json:"username"`
 	jwt.RegisteredClaims
 }
 
@@ -242,12 +243,12 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) 
 
 			sub, _ := mapClaims["sub"].(string)
 			claimsObj := &CustomClaims{
-				Organization: org,
-				Username:     username,
-				Email:        email,
-				Scope:        scope,
-				Audience:     aud,
-				JTI:          jti,
+				Organization:     org,
+				Username:         username,
+				Email:            email,
+				Scope:            scope,
+				Audience:         aud,
+				JTI:              jti,
 				RegisteredClaims: jwt.RegisteredClaims{Subject: sub},
 			}
 
@@ -400,6 +401,44 @@ func GetOrgHandleFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyOrgHandle)
 }
 
+// GetIdpOrgRefFromRequest extracts the raw organization claim carried by the
+// token (the IDP's organization id in IDP mode). Unlike the organization key —
+// which OrganizationResolverMiddleware rewrites to the platform UUID — this
+// always reflects the value the token asserted. Returns false when unset.
+func GetIdpOrgRefFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyIdpOrgRef)
+}
+
+// OrgUUIDResolver maps a token's organization claim to the platform
+// organization UUID, returning true when a matching organization exists.
+type OrgUUIDResolver func(orgClaim string) (string, bool)
+
+// OrganizationResolverMiddleware resolves the organization claim populated by the
+// authentication middleware into the platform organization UUID, and stores that
+// UUID back under the organization context key. Downstream handlers therefore
+// scope their queries by the correct UUID regardless of whether the token carries
+// the platform UUID (file-based auth) or the IDP's organization id (IDP auth).
+//
+// The raw claim is preserved under a separate key (see GetIdpOrgRefFromRequest)
+// for callers that need the original IDP reference — notably organization
+// registration, where no organization exists yet to resolve against.
+func OrganizationResolverMiddleware(resolve OrgUUIDResolver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claim, ok := GetOrganizationFromRequest(r)
+			if !ok || resolve == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := context.WithValue(r.Context(), keyIdpOrgRef, claim)
+			if uuid, found := resolve(claim); found {
+				ctx = context.WithValue(ctx, keyOrganization, uuid)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // GetUserIDFromRequest extracts the user ID from the request context.
 func GetUserIDFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyUserID)
@@ -515,4 +554,3 @@ func WithUserID(r *http.Request, id string) *http.Request {
 }
 
 // --- Compatibility shims for common/authenticators ---
-

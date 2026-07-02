@@ -118,12 +118,12 @@ services:
       # ── OIDC — uncomment to delegate login to any OIDC provider. The BFF is a
       # confidential client (holds the secret, never sent to the browser). Set
       # the OIDC_* values in .env; keep the IDP block above in sync.
-      # - VITE_AUTH_MODE=oidc
-      # - OIDC_ISSUER=${OIDC_ISSUER:-}
-      # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
-      # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
-      # - OIDC_REDIRECT_URL=${OIDC_REDIRECT_URL:-https://localhost:5380/api/auth/callback}
-      # - OIDC_POST_LOGOUT_REDIRECT_URL=${OIDC_POST_LOGOUT_REDIRECT_URL:-https://localhost:5380/login}
+      - VITE_AUTH_MODE=oidc
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URL=${OIDC_REDIRECT_URL:-https://localhost:5380/api/auth/callback}
+      - OIDC_POST_LOGOUT_REDIRECT_URL=${OIDC_POST_LOGOUT_REDIRECT_URL:-https://localhost:5380/login}
       # - OIDC_SCOPES=${OIDC_SCOPES:-openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage}
     volumes:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro

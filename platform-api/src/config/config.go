@@ -49,17 +49,19 @@ type FileBasedUsers []FileBasedUser
 
 // FileBasedOrg holds the single organization used in file-based auth mode.
 type FileBasedOrg struct {
-	// ID is the org UUID. Auto-generated at startup if empty.
+	// ID is the organization handle (URL-safe slug), e.g. "default".
 	ID string `koanf:"id"`
 
-	// Name is the display name of the organization.
-	Name string `koanf:"name"`
-
-	// Handle is the URL-safe slug for the organization.
-	Handle string `koanf:"handle"`
+	// DisplayName is the human-readable name of the organization.
+	DisplayName string `koanf:"display_name"`
 
 	// Region is the deployment region for the organization.
 	Region string `koanf:"region"`
+
+	// UUID is the platform-generated organization UUID. It is resolved at
+	// startup (see seedFileBasedOrg) rather than read from config, and is used
+	// as the `organization` claim in issued tokens.
+	UUID string `koanf:"-"`
 }
 
 // FileBased holds configuration for local username/password authentication.
@@ -463,10 +465,8 @@ func envToKoanfKey(s string) string {
 		return "auth.file_based.enabled"
 	case "auth_file_based_organization_id":
 		return "auth.file_based.organization.id"
-	case "auth_file_based_organization_name":
-		return "auth.file_based.organization.name"
-	case "auth_file_based_organization_handle":
-		return "auth.file_based.organization.handle"
+	case "auth_file_based_organization_display_name":
+		return "auth.file_based.organization.display_name"
 	case "auth_file_based_organization_region":
 		return "auth.file_based.organization.region"
 	case "auth_file_based_users":
@@ -663,11 +663,8 @@ func validateFileBasedConfig(cfg *FileBased) error {
 	if cfg.Organization.ID == "" {
 		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.id to be configured")
 	}
-	if cfg.Organization.Name == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.name to be configured")
-	}
-	if cfg.Organization.Handle == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.handle to be configured")
+	if cfg.Organization.DisplayName == "" {
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.display_name to be configured")
 	}
 	if len(cfg.Users) == 0 {
 		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")

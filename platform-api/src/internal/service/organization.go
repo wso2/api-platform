@@ -73,7 +73,7 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	}
 }
 
-func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, performedBy string) (*api.Organization, error) {
+func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, idpOrgRefUUID string, performedBy string) (*api.Organization, error) {
 	// Auto-generate handle from name if not provided; otherwise validate the explicit handle.
 	if handle == "" {
 		generated, genErr := utils.GenerateHandle(name, func(h string) bool {
@@ -121,6 +121,9 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	}
 
 	orgModel := s.apiToModel(org, id)
+	// The IDP organization reference is derived server-side from the token's
+	// organization claim; it is stored internally and not exposed via the API.
+	orgModel.IdpOrganizationRefUUID = idpOrgRefUUID
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
 		return nil, err

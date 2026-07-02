@@ -66,10 +66,9 @@ audience = []
 enabled = false
 
 [auth.file_based.organization]
-id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
-name   = "AP Organization"
-handle = "ap-org"
-region = "us"
+id           = "ap-org"            # organization handle (URL-safe slug)
+display_name = "AP Organization"
+region       = "us"
 
 [[auth.file_based.users]]
 username      = "admin"

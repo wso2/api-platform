@@ -62,9 +62,8 @@ enabled = false
 enabled = true
 
 [auth.file_based.organization]
-id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
-name   = "AP Organization"
-handle = "ap-org"
+id   = "default"
+display_name = "Default"
 region = "us"
 
 [[auth.file_based.users]]
