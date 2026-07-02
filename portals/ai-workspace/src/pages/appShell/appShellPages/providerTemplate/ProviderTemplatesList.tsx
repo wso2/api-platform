@@ -242,7 +242,7 @@ export default function ProviderTemplatesList({
             <Stack direction="row" spacing={0.5} alignItems="center">
               <Clock size={14} />
               <Typography variant="body2" color="text.secondary">
-                {formatRelativeTime(template.createdAt ?? template.updatedAt)}
+                {formatRelativeTime(template.updatedAt ?? template.createdAt)}
               </Typography>
             </Stack>
             {template.enabled === false ? (
