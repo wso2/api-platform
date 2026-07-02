@@ -18,6 +18,7 @@ Documentation for self-hosted deployments of the AI Workspace control plane.
 ## Features
 
 - [AI Gateways](features/ai-gateways.md) — Register and manage gateway runtimes
+- [LLM Provider Templates](features/llm-provider-templates.md) — Reusable blueprints for connecting LLM providers
 - [LLM Providers](features/llm-providers.md) — Connect upstream LLM services
 - [LLM Proxies](features/llm-proxies.md) — Application-facing proxy endpoints
 - [MCP Proxies](features/mcp-proxies.md) — Model Context Protocol server proxies
