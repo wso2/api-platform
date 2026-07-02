@@ -84,7 +84,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
                     try {
                         const km = await kmDao.get(mapping.km_uuid);
                         keyList.push({
-                            keyManager: km.name,
+                            keyManager: km.handle,
                             consumerKey: mapping.as_client_id,
                             keyMappingId: mapping.uuid,
                             keyType: mapping.type || constants.KEY_TYPE.PRODUCTION,
@@ -111,8 +111,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
         const dbKeyManagers = await kmDao.listEnabled(orgId);
         for (const km of dbKeyManagers) {
             kMmetaData.push({
-                id: km.uuid,
-                name: km.name,
+                id: km.handle,
                 type: km.type,
                 enabled: true,
                 tokenEndpoint: km.token_endpoint,
@@ -143,12 +142,12 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
 
     kMmetaData.forEach(keyManager => {
         productionKeys.forEach(productionKey => {
-            if (productionKey.keyManager === keyManager.name) {
+            if (productionKey.keyManager === keyManager.id) {
                 keyManager.productionKeys = productionKey;
             }
         });
         sandboxKeys.forEach(sandboxKey => {
-            if (sandboxKey.keyManager === keyManager.name) {
+            if (sandboxKey.keyManager === keyManager.id) {
                 keyManager.sandboxKeys = sandboxKey;
             }
         });

@@ -800,7 +800,7 @@ async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
             }
             enrichedPlans.push({
                 id: subscriptionPlan.id,
-                name: subscriptionPlan.name,
+                displayName: subscriptionPlan.displayName,
                 description: subscriptionPlan.description,
                 limits: subscriptionPlan.limits || [],
             });

@@ -23,9 +23,8 @@ const { applyAudit } = require('./dtoUtils');
  */
 class KeyManagerDTO {
     constructor(km, audit) {
-        this.id = km.uuid;
+        this.id = km.handle;
         this.orgId = km.org_uuid;
-        this.name = km.name;
         this.type = km.type;
         this.enabled = !!km.enabled;
         this.tokenEndpoint = km.token_endpoint;
@@ -39,8 +38,7 @@ class KeyManagerDTO {
  */
 class KeyManagerPublicDTO {
     constructor(km) {
-        this.id = km.uuid;
-        this.name = km.name;
+        this.id = km.handle;
         this.type = km.type;
         this.tokenEndpoint = km.token_endpoint;
     }

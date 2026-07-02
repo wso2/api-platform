@@ -72,8 +72,8 @@ function parseOrganizationFromYamlFile(fileBuffer) {
     }
     const { spec = {} } = parsed;
     if (spec.labels !== undefined && spec.labels !== null) {
-        if (!Array.isArray(spec.labels) || spec.labels.some(l => typeof l !== 'object' || !l.name)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.labels' must be an array of objects with a 'name' field");
+        if (!Array.isArray(spec.labels) || spec.labels.some(l => typeof l !== 'object' || !l.id)) {
+            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.labels' must be an array of objects with an 'id' field");
         }
     }
     if (spec.views !== undefined && spec.views !== null) {
@@ -132,14 +132,14 @@ const createOrganization = async (req, res) => {
             // Labels: use YAML-defined if provided, else fall back to default
             const labelDefs = payload.labels?.length
                 ? payload.labels
-                : [{ name: 'default', displayName: 'default' }];
+                : [{ id: 'default', displayName: 'default' }];
 
-            const createdLabels = await labelDao.createMany(orgId, labelDefs, userId, t);
+            const createdLabels = await labelDao.createMany(orgId, labelDefs.map(l => ({ ...l, handle: l.id })), userId, t);
             logger.info('Labels created successfully', { orgId });
 
-            // Build name→UUID map for view→label linking
+            // Build handle→UUID map for view→label linking
             const labelMap = {};
-            createdLabels.forEach(l => { labelMap[l.dataValues.name] = l.dataValues.uuid; });
+            createdLabels.forEach(l => { labelMap[l.dataValues.handle] = l.dataValues.uuid; });
 
             // Views: use YAML-defined if provided, else fall back to default
             if (payload.views?.length) {
@@ -153,7 +153,7 @@ const createOrganization = async (req, res) => {
             }
             const viewDefs = (payload.views?.length
                 ? payload.views
-                : [{ id: 'default', name: 'default', labels: [labelDefs[0].name] }]
+                : [{ id: 'default', name: 'default', labels: [labelDefs[0].id] }]
             ).map(v => ({ ...v, handle: v.id }));
 
             for (const viewDef of viewDefs) {
@@ -291,7 +291,7 @@ const updateOrganization = async (req, res) => {
             // Labels upsert — only if present in payload
             if (payload.labels?.length) {
                 for (const label of payload.labels) {
-                    await labelDao.update(resolvedOrgId, label, userId, t);
+                    await labelDao.update(resolvedOrgId, { ...label, handle: label.id }, userId, t);
                 }
                 logger.info('Labels upserted successfully', { orgId });
             }

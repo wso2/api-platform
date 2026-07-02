@@ -669,7 +669,7 @@ paths:
       tags:
         - Labels
       summary: Get a label
-      description: Retrieves a single label by name.
+      description: Retrieves a single label by handle.
       operationId: getLabel
       parameters:
         - $ref: "#/components/parameters/labelId"
@@ -688,7 +688,7 @@ paths:
       tags:
         - Labels
       summary: Update a label
-      description: Updates an existing label by name.
+      description: Updates an existing label by handle.
       operationId: updateLabel
       parameters:
         - $ref: "#/components/parameters/labelId"
@@ -713,7 +713,7 @@ paths:
       tags:
         - Labels
       summary: Delete a label
-      description: Deletes a label by name.
+      description: Deletes a label by handle.
       operationId: deleteLabel
       parameters:
         - $ref: "#/components/parameters/labelId"
@@ -1882,7 +1882,7 @@ paths:
       operationId: createApiWorkflow
       summary: Create an API workflow
       description: >-
-        Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the name.
+        Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the display name.
         `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
       requestBody:
         $ref: "#/components/requestBodies/APIWorkflowCreateBody"
@@ -2493,8 +2493,8 @@ components:
       required: true
       schema:
         type: string
-        example: km-uuid-12345
-      description: Key manager ID (UUID).
+        example: Asgardeo
+      description: The key manager's handle (its `id` in request/response payloads), not the internal database uuid.
     subscriberId:
       name: subscriberId
       in: path
@@ -2636,8 +2636,8 @@ components:
       required: true
       schema:
         type: string
-        example: label-12345
-      description: The label ID.
+        example: premium
+      description: The label's handle (its `id` in request/response payloads), not the internal database uuid.
     limit:
       name: limit
       in: query
@@ -2767,7 +2767,7 @@ components:
           schema:
             $ref: "#/components/schemas/LabelRequest"
           example:
-            name: premium
+            id: premium
             displayName: Premium APIs
     SubscriptionCreateBody:
       required: true
@@ -2982,7 +2982,7 @@ components:
           schema:
             $ref: "#/components/schemas/KeyManagerRequest"
           example:
-            name: Asgardeo
+            id: Asgardeo
             type: ASGARDEO
             enabled: true
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -3048,7 +3048,7 @@ components:
             arazzoWorkflow:
               summary: Create an Arazzo API workflow
               value:
-                name: Weather onboarding
+                displayName: Weather onboarding
                 id: weather-onboarding
                 description: Guides users through the Weather API onboarding workflow.
                 contentType: ARAZZO
@@ -3061,7 +3061,7 @@ components:
             markdownWorkflow:
               summary: Create a Markdown API workflow
               value:
-                name: Weather guide
+                displayName: Weather guide
                 description: Human-readable guide for Weather API users.
                 contentType: MD
                 markdownContent: |-
@@ -3075,7 +3075,7 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowUpdateRequest"
           example:
-            name: Weather onboarding v2
+            displayName: Weather onboarding v2
             status: PUBLISHED
             agentVisibility: VISIBLE
     APIWorkflowPromptBody:
@@ -3086,7 +3086,7 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowPromptRequest"
           example:
-            name: Weather onboarding
+            displayName: Weather onboarding
             description: Guides users through the Weather API onboarding workflow.
             orgHandle: acme
             viewName: default
@@ -3676,7 +3676,7 @@ components:
           example:
             list:
               - id: string
-                name: string
+                displayName: string
                 description: string
                 requestCount: string
                 refId: string
@@ -4420,7 +4420,7 @@ components:
         id:
           type: string
           description: The plan's handle (unique per org). Not the internal database uuid.
-        name:
+        displayName:
           type: string
         description:
           type: string
@@ -4460,10 +4460,8 @@ components:
       properties:
         id:
           type: string
-          example: label-12345
-        name:
-          type: string
           example: premium
+          description: The label's handle (unique per org). Not the internal database uuid.
         displayName:
           type: string
           example: Premium APIs
@@ -4530,7 +4528,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - labels
       properties:
         id:
@@ -4569,7 +4567,7 @@ components:
     OrganizationCreateRequest:
       type: object
       required:
-        - name
+        - displayName
         - id
         - idpRefId
       properties:
@@ -4610,7 +4608,7 @@ components:
     OrganizationUpdateRequest:
       type: object
       required:
-        - name
+        - displayName
         - id
         - idpRefId
       properties:
@@ -4651,7 +4649,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - type
       properties:
         id:
@@ -4663,7 +4661,7 @@ components:
         refId:
           type: string
           description: Platform API subscription plan UUID to associate with this plan.
-        name:
+        displayName:
           type: string
         description:
           type: string
@@ -4686,12 +4684,13 @@ components:
     LabelRequest:
       type: object
       required:
-        - name
+        - id
         - displayName
       properties:
-        name:
+        id:
           type: string
           example: premium
+          description: Desired handle for the label (unique per org), stored as-is.
         displayName:
           type: string
           example: Premium APIs
@@ -4933,13 +4932,13 @@ components:
     KeyManagerRequest:
       type: object
       required:
-        - name
+        - id
         - type
         - tokenEndpoint
       properties:
-        name:
+        id:
           type: string
-          description: Unique name within the organization.
+          description: Desired handle for the key manager (unique per org), stored as-is.
           example: Asgardeo
         type:
           type: string
@@ -4967,9 +4966,9 @@ components:
         Partial update payload for a key manager. All fields are optional; only supplied fields are applied. Omitted
         fields retain their stored values.
       properties:
-        name:
+        id:
           type: string
-          description: Unique name within the organization.
+          description: Desired handle for the key manager (unique per org), stored as-is.
           example: Asgardeo
         type:
           type: string
@@ -4994,14 +4993,11 @@ components:
       properties:
         id:
           type: string
-          description: Key manager UUID.
-          example: km-uuid-12345
+          description: The key manager's handle (unique per org). Not the internal database uuid.
+          example: Asgardeo
         orgId:
           type: string
           example: org-12345
-        name:
-          type: string
-          example: Asgardeo
         type:
           type: string
           enum:
@@ -5042,9 +5038,7 @@ components:
       properties:
         id:
           type: string
-          example: km-uuid-12345
-        name:
-          type: string
+          description: The key manager's handle (unique per org). Not the internal database uuid.
           example: Asgardeo
         type:
           type: string
@@ -5062,7 +5056,7 @@ components:
     WebhookSubscriberRequest:
       type: object
       required:
-        - name
+        - displayName
         - targetUrl
       properties:
         name:
@@ -5337,7 +5331,7 @@ components:
         apiWorkflowId:
           type: string
           example: workflow-12345
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         status:
@@ -5354,7 +5348,7 @@ components:
           type: string
           example: workflow-12345
           description: The workflow's handle (unique per org and view). Not the internal database uuid.
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         description:
@@ -5400,10 +5394,10 @@ components:
     APIWorkflowCreateRequest:
       type: object
       required:
-        - name
+        - displayName
         - description
       properties:
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         id:
@@ -5448,7 +5442,7 @@ components:
     APIWorkflowUpdateRequest:
       type: object
       properties:
-        name:
+        displayName:
           type: string
           example: Weather onboarding v2
         id:
@@ -5487,10 +5481,10 @@ components:
     APIWorkflowPromptRequest:
       type: object
       required:
-        - name
+        - displayName
         - description
       properties:
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         description:

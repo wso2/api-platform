@@ -248,7 +248,7 @@ async function addLabels(orgId, orgLabels) {
 
     const labelsContainer = document.getElementById("inputContainer");
     const selected = [...labelsContainer.getElementsByClassName('span-tag')].map(span => span.textContent.replace('×', "").trim());
-    const existingLabels = orgLabels.map(label => label.name);
+    const existingLabels = orgLabels.map(label => label.id);
     const addedLabels = selected.filter(label => !existingLabels.includes(label));
     const removedLabels = existingLabels.filter(label => !selected.includes(label));
     const sanitizeAdd = addedLabels.map(label => sanitizeInput(label));
@@ -273,7 +273,7 @@ async function addLabels(orgId, orgLabels) {
     const labels = []
     sanitizeAdd.forEach(async label => {    
         labels.push({
-            "name": label,
+            "id": label,
             "displayName": label
         });
     });

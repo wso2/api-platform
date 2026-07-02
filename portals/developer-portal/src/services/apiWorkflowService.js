@@ -179,8 +179,8 @@ const createAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
     const viewHandle = req.params.viewId;
     const userId = util.resolveActor(req);
-    const { name, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
-    let resolvedHandle = (id && id.trim()) ? id.trim() : generateHandle(name);
+    const { displayName, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
+    let resolvedHandle = (id && id.trim()) ? id.trim() : generateHandle(displayName);
     if (!resolvedHandle) {
         const suffix = Math.random().toString(36).slice(2, 10);
         resolvedHandle = `workflow-${suffix}`;
@@ -211,10 +211,10 @@ const createAPIWorkflow = async (req, res) => {
         const viewId = await resolveViewId(orgId, viewHandle);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
-            : generateAgentPrompt(name, description, [], orgDetails.idp_ref_id || '', viewHandle, '', resolvedHandle);
+            : generateAgentPrompt(displayName, description, [], orgDetails.idp_ref_id || '', viewHandle, '', resolvedHandle);
 
         const apiWorkflow = await apiWorkflowDao.create(orgId, viewId, {
-            name,
+            displayName,
             handle: resolvedHandle,
             description,
             agentPrompt: resolvedPrompt,
@@ -229,7 +229,7 @@ const createAPIWorkflow = async (req, res) => {
         logUserAction('API_WORKFLOW_CREATED', req, { orgId, apiWorkflowId: apiWorkflow.uuid, resourceUuid: apiWorkflow.uuid, resourceType: 'api_workflow' });
         res.status(201).json({
             apiWorkflowId: apiWorkflow.handle,
-            name: apiWorkflow.name,
+            displayName: apiWorkflow.display_name,
             status: apiWorkflow.status
         });
     } catch (error) {
@@ -249,7 +249,7 @@ const updateAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
     const { apiWorkflowId: apiWorkflowHandle, viewId: viewHandle } = req.params;
     const userId = util.resolveActor(req);
-    const { name, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
+    const { displayName, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
     if (status !== undefined && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
         return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.` });
     }
@@ -278,7 +278,7 @@ const updateAPIWorkflow = async (req, res) => {
             return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
         }
         const [count] = await apiWorkflowDao.update(orgId, viewId, existing.uuid, {
-            name,
+            displayName,
             handle: id,
             description,
             agentPrompt,
@@ -377,10 +377,10 @@ const getAllAPIWorkflows = async (req, res) => {
 };
 
 const generatePrompt = async (req, res) => {
-    const { name, description, apis, orgHandle, viewName, id } = req.body;
+    const { displayName, description, apis, orgHandle, viewName, id } = req.body;
     try {
         const baseUrl = config.baseUrl || `${req.protocol}://${req.get('host')}`;
-        const prompt = generateAgentPrompt(name, description, apis || [], orgHandle || '', viewName || 'default', baseUrl, id || '');
+        const prompt = generateAgentPrompt(displayName, description, apis || [], orgHandle || '', viewName || 'default', baseUrl, id || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {
         logger.error('Error generating agent prompt', { error: error.message });
@@ -404,7 +404,7 @@ const toAPIWorkflowDTO = (apiWorkflow, audit) => {
     const fileContent = parseFileContent(apiWorkflow.file_content);
     return {
     apiWorkflowId: apiWorkflow.handle,
-    name: apiWorkflow.name,
+    displayName: apiWorkflow.display_name,
     description: apiWorkflow.description,
     agentPrompt: apiWorkflow.agent_prompt,
     status: apiWorkflow.status,

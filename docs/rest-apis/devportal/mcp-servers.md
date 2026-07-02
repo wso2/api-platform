@@ -343,7 +343,7 @@ Status Code **200**
 |»»»» productionURL|string|false|none|none|
 |»»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
 |»»»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
-|»»»» name|string|false|none|none|
+|»»»» displayName|string|false|none|none|
 |»»»» description|string|false|none|none|
 |»»»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|

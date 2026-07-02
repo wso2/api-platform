@@ -14,7 +14,7 @@
 
 | Plan | Limits | Description |
 |------|--------------|-------------|
-{{#each subscriptionPlans}}| {{name}} | {{#if limits.length}}{{#each limits}}{{#if (eq limitCount -1)}}Unlimited{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{timeAmount}} {{timeUnit}}{{/if}}{{#unless @last}}, {{/unless}}{{/each}}{{else if requestCount}}{{requestCount}}{{else}}—{{/if}} | {{description}} |
+{{#each subscriptionPlans}}| {{displayName}} | {{#if limits.length}}{{#each limits}}{{#if (eq limitCount -1)}}Unlimited{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{timeAmount}} {{timeUnit}}{{/if}}{{#unless @last}}, {{/unless}}{{/each}}{{else if requestCount}}{{requestCount}}{{else}}—{{/if}} | {{description}} |
 {{/each}}
 {{/if}}
 ## Authentication

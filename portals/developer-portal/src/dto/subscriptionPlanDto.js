@@ -21,7 +21,7 @@ const { applyAudit } = require('./dtoUtils');
 class SubscriptionPlan {
     constructor(subscriptionPlan, audit) {
         this.id = subscriptionPlan.handle;
-        this.name = subscriptionPlan.name;
+        this.displayName = subscriptionPlan.display_name;
         this.description = subscriptionPlan.description;
         this.refId = subscriptionPlan.ref_id;
         this.orgId = subscriptionPlan.org_uuid;

@@ -1163,7 +1163,7 @@ async function updatePromptFromForm() {
         const response = await fetch(`/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-            body: JSON.stringify({ name, description, apis, orgHandle: orgName, viewName, id: handle }),
+            body: JSON.stringify({ displayName: name, description, apis, orgHandle: orgName, viewName, id: handle }),
             credentials: 'same-origin'
         });
         if (response.ok) {
@@ -1313,7 +1313,7 @@ async function saveApiWorkflow(orgId, viewName, status) {
     if (!valid) return;
 
     const handle = generateHandle(name);
-    const payload = { name, handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
+    const payload = { displayName: name, handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
     const isEdit = !!apiWorkflowId;
     const url = isEdit
         ? devportalApi.org(`/views/${viewName}/api-workflows/${apiWorkflowId}`)
@@ -1354,7 +1354,7 @@ async function saveApiWorkflow(orgId, viewName, status) {
 
 function openDeleteApiWorkflowModal(orgId, viewName, apiWorkflowId) {
     const flow = (apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
-    const flowName = flow?.name || 'API Workflow';
+    const flowName = flow?.displayName || 'API Workflow';
 
     document.getElementById('deleteApiWorkflowModalTitle').textContent = 'Delete API Workflow';
     const messageEl = document.getElementById('deleteApiWorkflowModalMessage');
@@ -1458,7 +1458,7 @@ function openEditApiWorkflow(apiWorkflowId) {
     if (titleEl) titleEl.textContent = 'Edit API Workflow';
     document.getElementById('editingApiWorkflowId').value = apiWorkflowId;
     const nameField = document.getElementById('apiWorkflowName');
-    if (nameField) { nameField.value = data.name || ''; nameField.readOnly = true; nameField.classList.add('af-field-readonly'); }
+    if (nameField) { nameField.value = data.displayName || ''; nameField.readOnly = true; nameField.classList.add('af-field-readonly'); }
 
     document.getElementById('apiWorkflowDescription').value = data.description || '';
 
@@ -1512,7 +1512,7 @@ function openEditApiWorkflow(apiWorkflowId) {
 function openPromptModal(apiWorkflowId) {
     const data = (window.apiWorkflowsData || apiWorkflowsData || []).find(f => String(f.apiWorkflowId) === String(apiWorkflowId));
     if (!data) return;
-    document.getElementById('agentPromptFlowName').textContent = data.name;
+    document.getElementById('agentPromptFlowName').textContent = data.displayName;
     document.getElementById('agentPromptContent').textContent = data.agentPrompt || '';
     const copyIcon = document.getElementById('copyPromptBtn')?.querySelector('i');
     if (copyIcon) copyIcon.className = 'bi bi-copy';

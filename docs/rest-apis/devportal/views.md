@@ -220,7 +220,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[ViewResponse](schemas.md#schemaviewresponse)]|false|none|none|
 |»» id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
-|»» name|string|true|none|none|
+|»» name|string|false|none|none|
 |»» labels|[string]|true|none|none|
 |»» createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |»» updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|

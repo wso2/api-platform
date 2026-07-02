@@ -25,7 +25,7 @@ Creates a label for the organization.
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -49,8 +49,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -165,8 +164,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "id": "label-12345",
-      "name": "premium",
+      "id": "premium",
       "displayName": "Premium APIs"
     }
   ],
@@ -235,8 +233,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[LabelResponse](schemas.md#schemalabelresponse)]|false|none|none|
-|»» id|string|false|none|none|
-|»» name|string|false|none|none|
+|»» id|string|false|none|The label's handle (unique per org). Not the internal database uuid.|
 |»» displayName|string|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -267,7 +264,7 @@ curl -X GET https://devportal.api-platform.io/api/v0.9/labels/{labelId} \
 
 ```
 
-Retrieves a single label by name.
+Retrieves a single label by handle.
 
 ### Authentication
 
@@ -280,7 +277,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|labelId|path|string|true|The label ID.|
+|labelId|path|string|true|The label's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -288,8 +285,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -341,13 +337,13 @@ curl -X PUT https://devportal.api-platform.io/api/v0.9/labels/{labelId} \
 
 ```
 
-Updates an existing label by name.
+Updates an existing label by handle.
 
 > Payload
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -363,7 +359,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|labelId|path|string|true|The label ID.|
+|labelId|path|string|true|The label's handle (its `id` in request/response payloads), not the internal database uuid.|
 |body|body|[LabelRequest](schemas.md#schemalabelrequest)|true|Label payload.|
 
 > Example responses
@@ -372,8 +368,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -476,7 +471,7 @@ curl -X DELETE https://devportal.api-platform.io/api/v0.9/labels/{labelId} \
 
 ```
 
-Deletes a label by name.
+Deletes a label by handle.
 
 ### Authentication
 
@@ -489,7 +484,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|labelId|path|string|true|The label ID.|
+|labelId|path|string|true|The label's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 

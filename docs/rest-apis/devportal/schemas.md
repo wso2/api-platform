@@ -382,7 +382,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "subscriptionPlans": [
     {
       "id": "string",
-      "name": "string",
+      "displayName": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -468,7 +468,7 @@ and
   "subscriptionPlans": [
     {
       "id": "string",
-      "name": "string",
+      "displayName": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -673,7 +673,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 ```json
 {
   "id": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "requestCount": "string",
   "refId": "string",
@@ -691,7 +691,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |description|string|false|none|none|
 |requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
@@ -710,8 +710,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 
@@ -721,8 +720,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|The label's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
 
 <h2 id="tocS_ApplicationResponse">ApplicationResponse</h2>
@@ -826,7 +824,7 @@ OAuth client ID mapping entry attached to an application.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
-|name|string|true|none|none|
+|name|string|false|none|none|
 |labels|[string]|true|none|none|
 |createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
@@ -860,7 +858,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|name|string|false|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
@@ -905,7 +903,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|name|string|false|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
@@ -934,7 +932,7 @@ OAuth client ID mapping entry attached to an application.
 {
   "id": "Gold",
   "refId": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -949,7 +947,7 @@ OAuth client ID mapping entry attached to an application.
 |---|---|---|---|---|
 |id|string|true|none|Desired handle for the plan (unique per org), stored as-is. When the plan is created from a SubscriptionPlan YAML artifact instead, the handle is always taken from `metadata.name`.|
 |refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
 |requestCount|any|false|none|Required for request-count plans. Use -1 for unlimited.|
@@ -1000,7 +998,7 @@ xor
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 
@@ -1010,7 +1008,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|id|string|true|none|Desired handle for the label (unique per org), stored as-is.|
 |displayName|string|true|none|none|
 
 <h2 id="tocS_ApplicationRequest">ApplicationRequest</h2>
@@ -1315,7 +1313,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "name": "Asgardeo",
+  "id": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -1327,7 +1325,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|Unique name within the organization.|
+|id|string|true|none|Desired handle for the key manager (unique per org), stored as-is.|
 |type|string|true|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
@@ -1350,7 +1348,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "name": "Asgardeo",
+  "id": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -1364,7 +1362,7 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|Unique name within the organization.|
+|id|string|false|none|Desired handle for the key manager (unique per org), stored as-is.|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
@@ -1387,9 +1385,8 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
@@ -1407,9 +1404,8 @@ Key manager configuration.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|Key manager UUID.|
+|id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |orgId|string|false|none|none|
-|name|string|false|none|none|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
@@ -1436,8 +1432,7 @@ Key manager configuration.
 
 ```json
 {
-  "id": "km-uuid-12345",
-  "name": "Asgardeo",
+  "id": "Asgardeo",
   "type": "ASGARDEO",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -1450,8 +1445,7 @@ Minimal developer-facing key manager view.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |type|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 
@@ -1491,7 +1485,7 @@ Minimal developer-facing key manager view.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|Unique name within the organization.|
+|name|string|false|none|Unique name within the organization.|
 |targetUrl|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
@@ -1775,7 +1769,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 ```json
 {
   "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "status": "PUBLISHED"
 }
 
@@ -1786,7 +1780,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiWorkflowId|string|false|none|none|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |status|string|false|none|none|
 
 #### Enumerated Values
@@ -1806,7 +1800,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 ```json
 {
   "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -1825,7 +1819,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
@@ -1876,7 +1870,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
@@ -1893,7 +1887,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
@@ -1940,7 +1934,7 @@ continued
 
 ```json
 {
-  "name": "Weather onboarding v2",
+  "displayName": "Weather onboarding v2",
   "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
@@ -1957,7 +1951,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
@@ -2004,7 +1998,7 @@ continued
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "apis": [
     {}
@@ -2020,7 +2014,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |description|string|true|none|none|
 |apis|[object]|false|none|none|
 |orgHandle|string|false|none|none|

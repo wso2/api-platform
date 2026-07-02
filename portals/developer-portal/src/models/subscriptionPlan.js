@@ -32,7 +32,7 @@ const SubscriptionPlan = sequelize.define('dp_subscription_plan', {
         allowNull: false,
         unique: 'unique_org_plan_handle'
     },
-    name: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },

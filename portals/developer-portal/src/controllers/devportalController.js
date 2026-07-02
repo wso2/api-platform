@@ -287,7 +287,7 @@ const generateKeys = async (req, res) => {
             return res.status(400).json({ message: 'consumerKey is required.' });
         }
 
-        const kmRecord = await kmDao.getByName(orgId, kmName);
+        const kmRecord = await kmDao.getByHandle(orgId, kmName);
         if (!kmRecord) {
             return res.status(404).json({ message: `Key manager '${kmName}' not found.` });
         }

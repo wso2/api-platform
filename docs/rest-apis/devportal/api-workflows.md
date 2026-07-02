@@ -19,13 +19,13 @@ curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workf
 
 ```
 
-Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
+Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the display name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
 
 > Payload
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "contentType": "ARAZZO",
@@ -126,7 +126,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "apiWorkflowId": "workflow-12345",
-      "name": "Weather onboarding",
+      "displayName": "Weather onboarding",
       "description": "string",
       "agentPrompt": "string",
       "status": "PUBLISHED",
@@ -161,7 +161,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[APIWorkflowResponse](schemas.md#schemaapiworkflowresponse)]|false|none|none|
 |»» apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
-|»» name|string|false|none|none|
+|»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
 |»» agentPrompt|string|false|none|none|
 |»» status|string|false|none|none|
@@ -281,7 +281,7 @@ Updates API workflow metadata and content for the selected view. Duplicate handl
 
 ```json
 {
-  "name": "Weather onboarding v2",
+  "displayName": "Weather onboarding v2",
   "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
@@ -404,7 +404,7 @@ Generates the default agent prompt text for a proposed API workflow using the su
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "apis": [
     {}

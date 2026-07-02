@@ -30,7 +30,7 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
   return {
     org_uuid: orgId,
     handle: plan.handle,
-    name: plan.name,
+    display_name: plan.displayName,
     description: plan.description,
     ref_id: plan.refId ?? null,
   };

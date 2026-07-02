@@ -71,7 +71,7 @@ async function seedDefaultOrg() {
 
     let labelId;
     try {
-        const label = await labelDao.update(orgId, { name: 'default', displayName: 'default' }, constants.SYSTEM_ACTOR);
+        const label = await labelDao.update(orgId, { handle: 'default', displayName: 'default' }, constants.SYSTEM_ACTOR);
         labelId = label.dataValues.uuid;
     } catch (error) {
         logger.error('Failed to seed default label', {
@@ -114,7 +114,7 @@ async function seedDefaultOrg() {
                     logger.error('Failed to seed subscription plan', {
                         error: error.message,
                         operation: 'seedDefaultOrg',
-                        plan: plan.name,
+                        plan: plan.displayName,
                     });
                 }
             }

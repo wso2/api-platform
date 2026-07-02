@@ -22,7 +22,7 @@ class ViewDTO {
     constructor(view, audit) {
         this.id = view.handle;
         this.name = view.name;
-        this.labels = view.dp_labels.map(label => label.dataValues.name);
+        this.labels = view.dp_labels.map(label => label.dataValues.handle);
         applyAudit(this, audit);
     }
 

@@ -103,7 +103,7 @@ async function resolveSubscription(orgId, subscriptionId) {
     return {
         ref_id: sub.uuid,
         plan_ref_id: plan ? (plan.ref_id || null) : null,
-        plan_name: plan ? (plan.name || plan.display_name || null) : null
+        plan_name: plan ? (plan.display_name || null) : null
     };
 }
 

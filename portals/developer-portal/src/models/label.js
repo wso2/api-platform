@@ -31,7 +31,7 @@ const Labels = sequelize.define('dp_label', {
         type: DataTypes.STRING(40),
         allowNull: false,
     },
-    name: {
+    handle: {
         type: DataTypes.STRING,
         allowNull: false
     },
@@ -63,9 +63,9 @@ const Labels = sequelize.define('dp_label', {
     returning: true,
     indexes: [
         {
-            name: 'uq_label_name_org_uuid',
+            name: 'uq_label_handle_org_uuid',
             unique: true,
-            fields: ['name', 'org_uuid'],
+            fields: ['handle', 'org_uuid'],
         },
         {
             name: 'idx_label_org_uuid',

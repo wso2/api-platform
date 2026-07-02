@@ -25,7 +25,7 @@ Creates a key manager configuration for the organization. Accepts either a `appl
 
 ```json
 {
-  "name": "Asgardeo",
+  "id": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -33,7 +33,7 @@ Creates a key manager configuration for the organization. Accepts either a `appl
 ```
 
 ```yaml
-name: Asgardeo
+id: Asgardeo
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -59,9 +59,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
@@ -238,9 +237,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|false|none|Key manager configuration.|
-|»»» id|string|false|none|Key manager UUID.|
+|»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» orgId|string|false|none|none|
-|»»» name|string|false|none|none|
 |»»» type|string|false|none|none|
 |»»» enabled|boolean|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
@@ -254,8 +252,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)|false|none|Minimal developer-facing key manager view.|
-|»»» id|string|false|none|none|
-|»»» name|string|false|none|none|
+|»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» type|string|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 
@@ -311,7 +308,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|kmId|path|string|true|Key manager ID (UUID).|
+|kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -319,9 +316,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
@@ -385,7 +381,7 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 
 ```json
 {
-  "name": "Asgardeo",
+  "id": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -393,7 +389,7 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 ```
 
 ```yaml
-name: Asgardeo
+id: Asgardeo
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -412,7 +408,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[KeyManagerUpdateRequest](schemas.md#schemakeymanagerupdaterequest)|false|Key manager update payload. All fields are optional; only supplied fields are updated. Submit as `application/json` or as `multipart/form-data` with a `keymanager` field containing a KeyManager YAML file.|
-|kmId|path|string|true|Key manager ID (UUID).|
+|kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -420,9 +416,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
@@ -544,7 +539,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|kmId|path|string|true|Key manager ID (UUID).|
+|kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 

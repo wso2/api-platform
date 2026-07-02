@@ -27,7 +27,7 @@
                 <select id="labelSelect{{id}}" class="form-select"
                     onchange="addViewLabel('labelSelect{{id}}', 'labelsContainer{{id}}')">
                     {{#each @root.orgLabels as |orgLabelGroup|}}
-                    <option>{{orgLabelGroup.name}}</option>
+                    <option>{{orgLabelGroup.id}}</option>
                     {{/each}}
                 </select>
             </td>

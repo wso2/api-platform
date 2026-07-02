@@ -45,7 +45,7 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
         status: sub.status,
         subscription_plan: {
             ref_id: plan ? (plan.ref_id || null) : null,
-            name: plan ? (plan.name || null) : null,
+            name: plan ? (plan.display_name || null) : null,
         },
         api: {
             name: apiMetadata ? apiMetadata.name : null,
@@ -64,7 +64,7 @@ function formatSubscriptionResponse(sub, audit) {
         subscriptionToken: sub.token,
         status: sub.status,
         apiId: api.handle || sub.api_uuid,
-        subscriptionPlanName: plan.name || null,
+        subscriptionPlanName: plan.display_name || null,
         ...audit,
     };
 }
@@ -291,7 +291,7 @@ const changePlan = async (req, res) => {
                 ...buildWebhookPayload(existing, apiMetadata, newPlan),
                 previous_plan: {
                     ref_id: previousPlan ? (previousPlan.ref_id || null) : null,
-                    name: previousPlan ? (previousPlan.name || null) : null,
+                    name: previousPlan ? (previousPlan.display_name || null) : null,
                 },
             };
             await safePublish('subscription.plan_changed', payload, {

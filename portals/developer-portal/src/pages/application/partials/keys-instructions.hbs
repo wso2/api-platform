@@ -11,9 +11,9 @@
             </div>
             <div class="custom-modal-body">
                 <div class="container">
-                    <div id="tokenGenerationButtons_{{../name}}_{{keyType}}" class="mb-4">
+                    <div id="tokenGenerationButtons_{{../id}}_{{keyType}}" class="mb-4">
                         <div class="row">
-                            <div id="requestDetails_{{../name}}_{{keyType}}" class="mb-3">
+                            <div id="requestDetails_{{../id}}_{{keyType}}" class="mb-3">
                                 <p class="small instruction-text">You can use the following details to generate an access token using the client credentials grant type:</p>
                                 <div class="token-details-card">
                                     <div class="token-details-content">
@@ -37,7 +37,7 @@
                                 </div>
                             </div>
                             
-                            <div id="curlDisplay_{{../name}}_{{keyType}}">
+                            <div id="curlDisplay_{{../id}}_{{keyType}}">
                                 <p class="small mb-2 instruction-header">cURL to Generate Access Token</p>
                                 <p class="curl-description">
                                     The following cURL command template allows you to generate an access token using the
@@ -51,7 +51,7 @@
                                         <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                     </button>
                                     <code
-                                        id="curl_{{../name}}_{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
+                                        id="curl_{{../id}}_{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
                                 </div>
                             </div>
                         </div>

@@ -99,7 +99,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             return {
                 apiWorkflowId: flow.uuid,
                 handle: flow.handle,
-                name: flow.name,
+                displayName: flow.display_name,
                 description: flow.description,
                 agentPrompt: flow.agent_prompt,
                 status: flow.status,
@@ -185,7 +185,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
         const templateContent = {
             flow: {
                 flowId: apiWorkflow.uuid,
-                name: apiWorkflow.name,
+                displayName: apiWorkflow.display_name,
                 description: apiWorkflow.description,
                 agentPrompt: apiWorkflow.agent_prompt,
                 status: apiWorkflow.status,
@@ -261,7 +261,7 @@ const getFlowPromptJSON = async (req, res) => {
         res.status(200).json({
             flowId: apiWorkflow.uuid,
             handle: apiWorkflow.handle,
-            name: apiWorkflow.name,
+            displayName: apiWorkflow.display_name,
             description: apiWorkflow.description,
             agentPrompt: apiWorkflow.agent_prompt,
             contentType: apiWorkflow.content_type,
@@ -349,7 +349,7 @@ const generateWorkflowMarkdown = (arazoJson, apiWorkflow, orgName, viewName, sou
     const baseUrl = `/${orgName}/views/${viewName}`;
     const data = {
         flow: {
-            name: apiWorkflow.name,
+            displayName: apiWorkflow.display_name,
             handle: apiWorkflow.handle,
             status: apiWorkflow.status,
             description: apiWorkflow.description
@@ -374,7 +374,7 @@ const generateWorkflowsListMarkdown = (apiWorkflows, orgName, viewName, hiddenWo
     const baseUrl = `/${orgName}/views/${viewName}`;
     const data = {
         flows: apiWorkflows.map(flow => ({
-            name: flow.name,
+            displayName: flow.display_name,
             handle: flow.handle
         })),
         baseUrl,
@@ -425,10 +425,10 @@ const getAllPublishedFlowsMD = async (req, res) => {
 };
 
 const generatePrompt = async (req, res) => {
-    const { name, description, apis, orgName, viewName, handle } = req.body;
+    const { displayName, description, apis, orgName, viewName, handle } = req.body;
     try {
         const baseUrl = config.baseUrl || `${req.protocol}://${req.get('host')}`;
-        const prompt = apiWorkflowService.generateAgentPrompt(name, description, apis || [], orgName || '', viewName || 'default', baseUrl, handle || '');
+        const prompt = apiWorkflowService.generateAgentPrompt(displayName, description, apis || [], orgName || '', viewName || 'default', baseUrl, handle || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {
         logger.error('Error generating agent prompt', { error: error.message });

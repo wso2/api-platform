@@ -26,7 +26,7 @@ const create = async (orgId, kmData, createdBy) => {
     try {
         const record = await KeyManager.create({
             org_uuid: orgId,
-            name: kmData.name,
+            handle: kmData.handle,
             type: kmData.type,
             ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
             token_endpoint: kmData.tokenEndpoint,
@@ -49,7 +49,7 @@ const create = async (orgId, kmData, createdBy) => {
 const update = async (kmId, kmData, updatedBy) => {
     try {
         const updatePayload = {
-            ...(kmData.name && { name: kmData.name }),
+            ...(kmData.handle && { handle: kmData.handle }),
             ...(kmData.type && { type: kmData.type }),
             ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
             ...(kmData.tokenEndpoint && { token_endpoint: kmData.tokenEndpoint }),
@@ -124,12 +124,12 @@ const get = async (kmId) => {
 };
 
 /**
- * Get a key manager by name within an organization.
+ * Get a key manager by handle within an organization.
  */
-const getByName = async (orgId, name) => {
+const getByHandle = async (orgId, handle) => {
     try {
         const km = await KeyManager.findOne({
-            where: { org_uuid: orgId, name: name }
+            where: { org_uuid: orgId, handle }
         });
         if (!km) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -139,9 +139,17 @@ const getByName = async (orgId, name) => {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
         }
-        logger.error('Error fetching key manager by name', { error });
+        logger.error('Error fetching key manager by handle', { error });
         throw new Sequelize.DatabaseError(error);
     }
+};
+
+/**
+ * Resolve a key manager's handle to its internal uuid, or null if not found.
+ */
+const getIdByHandle = async (orgId, handle) => {
+    const km = await KeyManager.findOne({ where: { org_uuid: orgId, handle }, attributes: ['uuid'] });
+    return km ? km.uuid : null;
 };
 
 /**
@@ -171,6 +179,7 @@ module.exports = {
     list,
     listEnabled,
     get,
-    getByName,
+    getByHandle,
+    getIdByHandle,
     delete: deleteKm,
 };

@@ -48,7 +48,7 @@ const loadSubscriptions = async (req, res, next) => {
                 apiName: sub.dp_api_metadata?.name || '',
                 apiVersion: sub.dp_api_metadata?.version || '',
                 apiHandle: sub.dp_api_metadata?.handle || '#',
-                planName: sub.dp_subscription_plan?.name || '',
+                planName: sub.dp_subscription_plan?.display_name || '',
                 status: sub.status,
                 subscriptionToken: sub.token,
                 createdAt: sub.created_at || null,

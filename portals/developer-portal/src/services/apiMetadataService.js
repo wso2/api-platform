@@ -1447,6 +1447,9 @@ const createLabel = async (req, res) => {
 
     const orgId = req.orgId;
     const label = req.body;
+    if (label && label.id) {
+        label.handle = label.id;
+    }
     const userId = util.resolveActor(req);
     try {
         const record = await labelDao.create(orgId, label, userId);
@@ -1460,8 +1463,12 @@ const createLabel = async (req, res) => {
 const getLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const { labelId } = req.params;
+    const { labelId: labelHandle } = req.params;
     try {
+        const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
+        if (!labelId) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+        }
         const record = await labelDao.findById(orgId, labelId);
         res.status(200).json(new LabelDTO(record));
     } catch (error) {
@@ -1473,10 +1480,14 @@ const getLabel = async (req, res) => {
 const updateLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const { labelId } = req.params;
+    const { labelId: labelHandle } = req.params;
     const label = req.body;
     const userId = util.resolveActor(req);
     try {
+        const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
+        if (!labelId) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+        }
         const record = await labelDao.updateById(orgId, labelId, label, userId);
         res.status(200).json(new LabelDTO(record));
     } catch (error) {
@@ -1488,8 +1499,12 @@ const updateLabel = async (req, res) => {
 const deleteLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const { labelId } = req.params;
+    const { labelId: labelHandle } = req.params;
     try {
+        const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
+        if (!labelId) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+        }
         await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
     } catch (error) {
@@ -1943,7 +1958,7 @@ function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
         handle: metadata.name,
-        name: spec.displayName,
+        displayName: spec.displayName,
         description: spec.description,
         refId: spec.refId,
         limits: Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec),

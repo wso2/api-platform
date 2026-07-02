@@ -25,7 +25,7 @@ const { CustomError } = require('../utils/errors/customErrors');
 const create = async (orgId, label, createdBy, t) => {
     try {
         return await Labels.create({
-            name: label.name,
+            handle: label.handle,
             display_name: label.displayName,
             org_uuid: orgId,
             created_by: createdBy,
@@ -48,6 +48,11 @@ const findById = async (orgId, labelId, t) => {
         throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
     }
     return record;
+}
+
+const getIdByHandle = async (orgId, handle) => {
+    const label = await Labels.findOne({ where: { org_uuid: orgId, handle }, attributes: ['uuid'] });
+    return label ? label.uuid : null;
 }
 
 const updateById = async (orgId, labelId, label, updatedBy, t) => {
@@ -77,7 +82,7 @@ const createMany = async (orgId, labels, createdBy, t) => {
     try {
         labels.forEach(label => {
             labelList.push({
-                name: label.name,
+                handle: label.handle,
                 display_name: label.displayName,
                 org_uuid: orgId,
                 created_by: createdBy,
@@ -122,11 +127,11 @@ const update = async (orgId, label, updatedBy, t) => {
     try {
         let [record, created] = await Labels.findOrCreate({
             where: {
-                name: label.name,
+                handle: label.handle,
                 org_uuid: orgId
             },
             defaults: {
-                name: label.name,
+                handle: label.handle,
                 display_name: label.displayName,
                 created_by: updatedBy,
                 updated_by: updatedBy
@@ -166,7 +171,7 @@ const getIdList = async (orgId, label, t) => {
 
     const labelResponse = await Labels.findOne({
         where: {
-            name: label,
+            handle: label,
             org_uuid: orgId
         },
         transaction: t
@@ -233,6 +238,7 @@ module.exports = {
     update,
     updateById,
     findById,
+    getIdByHandle,
     getId,
     getIdList,
     deleteById,

@@ -34,7 +34,7 @@ const APIWorkflow = sequelize.define('dp_api_workflow', {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    name: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },
