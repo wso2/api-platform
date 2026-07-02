@@ -19,13 +19,13 @@ curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/ge
 
 ```
 
-Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published to the organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key names must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601 string.
+Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published to the organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id` must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601 string.
 
 > Payload
 
 ```json
 {
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
 ```
@@ -41,7 +41,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.|
+|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `id` must be lowercase and may contain numbers, underscores, and hyphens. `displayName` is an optional human-readable label that defaults to `id` when omitted. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
@@ -51,7 +51,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
@@ -157,7 +158,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "keyId": "key-12345",
-      "name": "weather_prod_key",
+      "id": "weather_prod_key",
+      "displayName": "Weather Prod Key",
       "apiId": "weather-api-v1",
       "appId": "my-weather-app",
       "appDisplayName": "My Mobile App",
@@ -233,7 +235,8 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
 |»» keyId|string|false|none|Developer Portal key identifier.|
-|»» name|string|false|none|none|
+|»» id|string|false|none|none|
+|»» displayName|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
@@ -285,7 +288,7 @@ Regenerates the secret for an existing API key identified by `keyId` in the requ
 
 ```json
 {
-  "keyId": "key-12345",
+  "keyId": "weather_prod_key",
   "expiresAt": "2027-01-01T00:00:00Z"
 }
 ```
@@ -301,8 +304,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided, updates the key's expiry; the key's `name` cannot be changed by this operation.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|body|body|object|true|Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided, updates the key's expiry; the key's `id`/`displayName` cannot be changed by this operation.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |» expiresAt|body|any|false|New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. Omit to leave the current expiry unchanged.|
 |»» *anonymous*|body|string(date-time)|false|none|
 |»» *anonymous*|body|number|false|none|
@@ -315,7 +318,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
@@ -395,7 +399,7 @@ Revokes an existing API key identified by `keyId` in the request body. An `apike
 
 ```json
 {
-  "keyId": "key-12345"
+  "keyId": "weather_prod_key"
 }
 ```
 
@@ -411,7 +415,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to revoke by its `keyId`.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
@@ -489,7 +493,7 @@ Associates (or re-associates) an existing API key with an application, for analy
 
 ```json
 {
-  "keyId": "key-12345",
+  "keyId": "weather_prod_key",
   "appId": "my-weather-app"
 }
 ```
@@ -506,7 +510,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key and the application to associate it with.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |» appId|body|string|true|Developer Portal application ID to associate the key with.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
@@ -608,7 +612,7 @@ Removes the application association from an API key identified by `keyId` in the
 
 ```json
 {
-  "keyId": "key-12345"
+  "keyId": "weather_prod_key"
 }
 ```
 
@@ -624,7 +628,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to remove the application association from.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
@@ -710,7 +714,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "keyId": "key-12345",
-      "name": "weather_prod_key",
+      "id": "weather_prod_key",
+      "displayName": "Weather Prod Key",
       "apiId": "weather-api-v1",
       "appId": "my-weather-app",
       "appDisplayName": "My Mobile App",
@@ -764,7 +769,8 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
 |»» keyId|string|false|none|Developer Portal key identifier.|
-|»» name|string|false|none|none|
+|»» id|string|false|none|none|
+|»» displayName|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|

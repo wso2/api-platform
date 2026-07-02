@@ -38,10 +38,10 @@ function appMappingInclude(required = false, appId = null) {
     return opts;
 }
 
-async function create({ apiId, subscriptionId, appId, orgId, name, expiresAt, createdBy }, transaction) {
+async function create({ apiId, subscriptionId, appId, orgId, handle, displayName, expiresAt, createdBy }, transaction) {
     const key = await APIKey.create(
         { api_uuid: apiId, subscription_uuid: subscriptionId || null, org_uuid: orgId,
-          name: name, expires_at: expiresAt || null, created_by: createdBy, updated_by: createdBy, status: constants.API_KEY_STATUS.ACTIVE },
+          handle: handle, display_name: displayName, expires_at: expiresAt || null, created_by: createdBy, updated_by: createdBy, status: constants.API_KEY_STATUS.ACTIVE },
         { transaction }
     );
     if (appId) {
@@ -56,6 +56,15 @@ async function get(orgId, keyId, transaction) {
         include: [API_METADATA_INCLUDE, appMappingInclude()],
         transaction
     });
+}
+
+// Resolves a key's handle (scoped to the given API) to its uuid, or null if not found.
+async function getIdByHandle(orgId, apiId, handle) {
+    const key = await APIKey.findOne({
+        where: { org_uuid: orgId, api_uuid: apiId, handle },
+        attributes: ['uuid'],
+    });
+    return key ? key.uuid : null;
 }
 
 async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {}, transaction) {
@@ -101,4 +110,4 @@ async function updateExpiry(orgId, keyId, expiresAt, updatedBy, transaction) {
     return count > 0;
 }
 
-module.exports = { create, get, list, revoke, setApplication, updateExpiry };
+module.exports = { create, get, getIdByHandle, list, revoke, setApplication, updateExpiry };

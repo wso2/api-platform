@@ -41,8 +41,12 @@ const APIKey = sequelize.define('dp_api_key', {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    name: {
+    handle: {
         type: DataTypes.STRING(128),
+        allowNull: false
+    },
+    display_name: {
+        type: DataTypes.STRING(255),
         allowNull: false
     },
     status: {

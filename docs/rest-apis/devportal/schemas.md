@@ -1162,7 +1162,8 @@ Subscription payload.
 
 ```json
 {
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "subscriptionId": "sub-abc123",
   "appId": "my-weather-app",
   "expiresAt": "2026-12-31T23:59:59Z"
@@ -1174,7 +1175,8 @@ Subscription payload.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|id|string|true|none|none|
+|displayName|string|false|none|Optional human-readable name for the key. Defaults to `id` when omitted.|
 |subscriptionId|string|false|none|Optional subscription ID to associate the key with.|
 |appId|string|false|none|Optional application ID to associate the key with, for analytics attribution only — it has no effect on the key's validity or authorization. Must belong to the same organization and be owned by the caller.|
 |expiresAt|any|false|none|Optional ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
@@ -1201,7 +1203,8 @@ xor
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "apiId": "weather-api-v1",
   "appId": "my-weather-app",
   "appDisplayName": "My Mobile App",
@@ -1220,7 +1223,8 @@ API key metadata returned by list operations. Secret material is omitted.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyId|string|false|none|Developer Portal key identifier.|
-|name|string|false|none|none|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
@@ -1246,7 +1250,8 @@ API key metadata returned by list operations. Secret material is omitted.
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
@@ -1254,14 +1259,15 @@ API key metadata returned by list operations. Secret material is omitted.
 
 ```
 
-API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyId|string|false|none|Developer Portal key identifier.|
-|name|string|false|none|none|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
 |key|string|false|none|One-time plaintext API key secret.|
 |expiresAt|string(date-time)¦null|false|none|none|
 |status|string|false|none|none|

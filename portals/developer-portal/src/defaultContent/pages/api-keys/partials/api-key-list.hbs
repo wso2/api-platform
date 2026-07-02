@@ -48,7 +48,7 @@
     <tbody>
       {{#each apiKeys}}
       <tr id="api-key-row-{{@index}}">
-        <td><span class="ak-key-name">{{this.name}}</span></td>
+        <td><span class="ak-key-name">{{this.displayName}}</span></td>
         <td><span class="ak-key-masked">••••••••</span></td>
         <td>
           <span class="ak-status {{#if (eq this.status 'active')}}ak-status--active{{else}}ak-status--inactive{{/if}}">
@@ -61,18 +61,18 @@
           {{#unless @root.isReadOnlyMode}}
           <div class="ak-actions">
             <button type="button" class="ak-btn-app btn-app-key"
-              data-key-id="{{this.keyId}}" data-key-name="{{this.name}}"
+              data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
               data-app-id="{{this.appId}}" data-app-display-name="{{this.appDisplayName}}"
               {{#unless (eq this.status 'active')}}disabled title="Key is revoked"{{/unless}}>
               <i class="bi bi-grid"></i> {{#if this.appDisplayName}}Change app{{else}}Associate app{{/if}}
             </button>
             <button type="button" class="ak-btn-regen btn-regenerate-key"
-              data-key-id="{{this.keyId}}" data-key-name="{{this.name}}"
+              data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
               {{#unless (eq this.status 'active')}}disabled title="Key is revoked"{{/unless}}>
               <i class="bi bi-arrow-clockwise"></i> Regenerate
             </button>
             <button type="button" class="ak-btn-revoke btn-revoke-key"
-              data-key-id="{{this.keyId}}" data-key-name="{{this.name}}"
+              data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
               {{#unless (eq this.status 'active')}}disabled title="Key is already revoked"{{/unless}}>
               <i class="bi bi-slash-circle"></i> Revoke
             </button>

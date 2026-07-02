@@ -25,7 +25,7 @@ Generates an API key for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/api
 
 ```json
 {
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
 ```
@@ -41,7 +41,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.|
+|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `id` must be lowercase and may contain numbers, underscores, and hyphens. `displayName` is an optional human-readable label that defaults to `id` when omitted. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
@@ -51,7 +51,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
@@ -157,7 +158,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "keyId": "key-12345",
-      "name": "weather_prod_key",
+      "id": "weather_prod_key",
+      "displayName": "Weather Prod Key",
       "apiId": "weather-api-v1",
       "appId": "my-weather-app",
       "appDisplayName": "My Mobile App",
@@ -233,7 +235,8 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
 |»» keyId|string|false|none|Developer Portal key identifier.|
-|»» name|string|false|none|none|
+|»» id|string|false|none|none|
+|»» displayName|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
@@ -285,7 +288,7 @@ Regenerates the secret for an existing MCP server API key identified by `keyId` 
 
 ```json
 {
-  "keyId": "key-12345",
+  "keyId": "weather_prod_key",
   "expiresAt": "2027-01-01T00:00:00Z"
 }
 ```
@@ -301,8 +304,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided, updates the key's expiry; the key's `name` cannot be changed by this operation.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|body|body|object|true|Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided, updates the key's expiry; the key's `id`/`displayName` cannot be changed by this operation.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |» expiresAt|body|any|false|New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. Omit to leave the current expiry unchanged.|
 |»» *anonymous*|body|string(date-time)|false|none|
 |»» *anonymous*|body|number|false|none|
@@ -315,7 +318,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
@@ -395,7 +399,7 @@ Revokes an existing MCP server API key identified by `keyId` in the request body
 
 ```json
 {
-  "keyId": "key-12345"
+  "keyId": "weather_prod_key"
 }
 ```
 
@@ -411,7 +415,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to revoke by its `keyId`.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
@@ -489,7 +493,7 @@ Associates (or re-associates) an existing MCP server API key with an application
 
 ```json
 {
-  "keyId": "key-12345",
+  "keyId": "weather_prod_key",
   "appId": "my-weather-app"
 }
 ```
@@ -506,7 +510,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key and the application to associate it with.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |» appId|body|string|true|Developer Portal application ID to associate the key with.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
@@ -608,7 +612,7 @@ Removes the application association from an MCP server API key identified by `ke
 
 ```json
 {
-  "keyId": "key-12345"
+  "keyId": "weather_prod_key"
 }
 ```
 
@@ -624,7 +628,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to remove the application association from.|
-|» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
+|» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses

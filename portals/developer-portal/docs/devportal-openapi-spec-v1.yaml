@@ -1048,7 +1048,7 @@ paths:
       description: >-
         Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is
         returned once in the response and never persisted. A `apikey.generated` webhook event is published to the
-        organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key names
+        organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id`
         must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601
         string.
       requestBody:
@@ -1068,7 +1068,8 @@ paths:
                 $ref: "#/components/schemas/ApiKeyResponse"
               example:
                 keyId: key-12345
-                name: weather_prod_key
+                id: weather_prod_key
+                displayName: Weather Prod Key
                 key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
                 expiresAt: "2026-12-31T23:59:59Z"
                 status: ACTIVE
@@ -2799,9 +2800,10 @@ components:
     ApiKeyBody:
       required: true
       description: >-
-        API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can
-        be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP
-        server, depending on the path) is identified by the corresponding path parameter.
+        API key payload. `id` must be lowercase and may contain numbers, underscores, and hyphens. `displayName` is
+        an optional human-readable label that defaults to `id` when omitted. `expiresAt` can be an ISO-8601 datetime
+        with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the
+        path) is identified by the corresponding path parameter.
       content:
         application/json:
           schema:
@@ -2810,17 +2812,17 @@ components:
             expiringKey:
               summary: Generate an expiring key
               value:
-                name: weather_prod_key
+                id: weather_prod_key
                 expiresAt: "2026-12-31T23:59:59Z"
             nonExpiringKey:
               summary: Generate a key without expiry
               value:
-                name: weather_sandbox_key
+                id: weather_sandbox_key
     ApiKeyRegenerateBody:
       required: true
       description: >-
         Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided,
-        updates the key's expiry; the key's `name` cannot be changed by this operation.
+        updates the key's expiry; the key's `id`/`displayName` cannot be changed by this operation.
       content:
         application/json:
           schema:
@@ -2830,8 +2832,8 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
               expiresAt:
                 oneOf:
                   - type: string
@@ -2843,7 +2845,7 @@ components:
                 example: "2027-01-01T00:00:00Z"
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
     ApiKeyRevokeBody:
       required: true
       description: Identifies the API key to revoke by its `keyId`.
@@ -2856,11 +2858,11 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
     ApiKeyAssociateBody:
       required: true
       description: Identifies the API key and the application to associate it with.
@@ -2874,15 +2876,15 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
               appId:
                 type: string
                 description: Developer Portal application ID to associate the key with.
                 example: my-weather-app
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
             appId: my-weather-app
     ApiKeyDissociateBody:
       required: true
@@ -2896,11 +2898,11 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
     AppKeyMappingBody:
       required: true
       description: >-
@@ -3818,7 +3820,8 @@ components:
             $ref: "#/components/schemas/ApiKeyResponse"
           example:
             keyId: key-12345
-            name: weather_prod_key
+            id: weather_prod_key
+            displayName: Weather Prod Key
             key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
             expiresAt: "2026-12-31T23:59:59Z"
             status: ACTIVE
@@ -4805,12 +4808,16 @@ components:
     ApiKeyRequest:
       type: object
       required:
-        - name
+        - id
       properties:
-        name:
+        id:
           type: string
           pattern: ^[a-z0-9][a-z0-9_-]{0,127}$
           example: weather_prod_key
+        displayName:
+          type: string
+          description: Optional human-readable name for the key. Defaults to `id` when omitted.
+          example: Weather Prod Key
         subscriptionId:
           type: string
           description: Optional subscription ID to associate the key with.
@@ -4837,9 +4844,12 @@ components:
           type: string
           description: Developer Portal key identifier.
           example: key-12345
-        name:
+        id:
           type: string
           example: weather_prod_key
+        displayName:
+          type: string
+          example: Weather Prod Key
         apiId:
           type: string
           description: Developer Portal API ID the key belongs to.
@@ -4877,15 +4887,18 @@ components:
       type: object
       description: >-
         API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include
-        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
       properties:
         keyId:
           type: string
           description: Developer Portal key identifier.
           example: key-12345
-        name:
+        id:
           type: string
           example: weather_prod_key
+        displayName:
+          type: string
+          example: Weather Prod Key
         key:
           type: string
           description: One-time plaintext API key secret.

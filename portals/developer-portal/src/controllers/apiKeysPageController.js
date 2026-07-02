@@ -96,7 +96,8 @@ const loadAPIApiKeys = async (req, res, next) => {
             const keys = await apiKeyService.list(orgId, { apiId: apiId, appId: selectedAppId || undefined });
             apiKeys = (keys || []).map((k) => ({
                 keyId: k.uuid,
-                name: k.name,
+                id: k.handle,
+                displayName: k.display_name,
                 status: String(k.status || 'ACTIVE').toLowerCase(),
                 expiresAt: k.expires_at,
                 createdAt: k.created_at,

@@ -385,7 +385,8 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
         const associated = await apiKeyService.list(orgId, { appId: applicationId });
         associatedApiKeys = associated.map((k) => ({
             keyId: k.uuid,
-            name: k.name,
+            id: k.handle,
+            displayName: k.display_name,
             status: String(k.status || 'ACTIVE').toLowerCase(),
             apiId: k.dp_api_metadata?.handle,
             apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
@@ -399,7 +400,7 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
             const apiId = k.dp_api_metadata?.handle || k.api_uuid;
             const apiName = formatApiDisplayName(k.dp_api_metadata, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
-            byApi.get(apiId).keys.push({ keyId: k.uuid, name: k.name });
+            byApi.get(apiId).keys.push({ keyId: k.uuid, id: k.handle, displayName: k.display_name });
         });
         availableKeysByApi = Array.from(byApi.values());
     } catch (error) {

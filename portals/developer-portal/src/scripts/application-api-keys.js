@@ -105,8 +105,8 @@
             keySelect.innerHTML = '<option value="">— Select a key —</option>';
             entry.keys.forEach(function (k) {
                 const opt = document.createElement('option');
-                opt.value = k.keyId;
-                opt.textContent = k.name;
+                opt.value = k.id;
+                opt.textContent = k.displayName;
                 keySelect.appendChild(opt);
             });
             keySelect.disabled = false;

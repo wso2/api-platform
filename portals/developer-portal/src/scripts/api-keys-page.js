@@ -295,7 +295,7 @@
                 if (typeof showAlert === 'function') await showAlert('Enter a valid name: start with a letter or number, then up to 128 URL-safe characters.', 'error');
                 return;
             }
-            const body = { name: name };
+            const body = { id: name };
             const iso = expInput ? expiresToIso(expInput.value) : null;
             if (iso) body.expiresAt = iso;
             submitGenBtn.dataset.loading = 'true';

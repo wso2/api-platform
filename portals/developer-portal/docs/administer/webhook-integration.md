@@ -154,7 +154,8 @@ Fired when a developer generates a new API key for an API.
   "encrypted_fields": ["key"],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "expires_at": "2027-01-01T00:00:00.000Z",
     "api": {
       "name": "Order API",
@@ -188,7 +189,7 @@ Fired when a developer generates a new API key for an API.
 
 ### `apikey.regenerated`
 
-Fired when a developer rotates an existing key. The `key_id` and `name` are unchanged; the new secret is delivered in `key`.
+Fired when a developer rotates an existing key. The `key_id`, `handle`, and `display_name` are unchanged; the new secret is delivered in `key`.
 
 ```json
 {
@@ -196,7 +197,8 @@ Fired when a developer rotates an existing key. The `key_id` and `name` are unch
   "encrypted_fields": ["key"],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "expires_at": null,
     "api": {
       "name": "Order API",
@@ -226,7 +228,8 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
   "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "api": {
       "name": "Order API",
       "version": "v1.0",
@@ -254,7 +257,8 @@ Fired whenever a single key's application association changes: the key is associ
   "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "api": {
       "name": "Order API",
       "version": "v1.0",
