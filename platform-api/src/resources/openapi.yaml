@@ -1054,17 +1054,17 @@ paths:
     get:
       summary: List templates, list a family's versions, or get a single version
       description: |
-        Behavior depends on query params:
-          - no `query` (or `query=latest:true`) -> list templates. By default every version of every family (full history, e.g. all 5 openai + all 9 deepseek); with `latest=true` only the latest version of each family (built-in and custom)
-          - `query=groupId:<id>`              -> list all versions of that family
-          - `query=groupId:<id>&version:<ver>` -> return the single full template for that (groupId, version)
-        The `query` value is URL-encoded so its `:` and `&` survive query
-        parsing (?query=groupId%3Aopenai%26version%3Av1.0). Organization is
-        identified via the JWT token.
+        Retrieves LLM provider templates based on the `query` parameter:
+          - no `query`                         -> list all template versions
+          - `query=latest:true`                -> list the latest version of each template
+          - `query=groupId:<id>`               -> list all versions for the template
+          - `query=groupId:<id>&version:<ver>` -> retrieve a specific template version
 
-        Note: with `version`, the response is a single `LLMProviderTemplate`
-        object (the same body as `GET /llm-provider-templates/{llmProviderTemplateId}`); otherwise
-        it is an `LLMProviderTemplateListResponse`.
+        All filters are provided via the URL-encoded `query` parameter (e.g.
+        `?query=groupId%3Aopenai%26version%3Av2.0`).
+
+        Returns a single `LLMProviderTemplate` only when both `groupId` and `version` are specified; 
+        otherwise returns an `LLMProviderTemplateListResponse`.
       operationId: listLLMProviderTemplates
       security:
         - OAuth2Security:
@@ -1077,25 +1077,15 @@ paths:
           in: query
           required: false
           description: >-
-            URL-encoded search DSL. `query=groupId:<id>` lists that family's
+            URL-encoded search DSL. `query=latest:true` lists only the latest
+            version of each family; `query=groupId:<id>` lists that family's
             versions; adding `&version:<ver>` returns the single full template
-            for that version. Terms are `&`-separated and the whole value is
-            percent-encoded (e.g. groupId%3Aopenai%26version%3Av1.0). The version
-            may instead be supplied via the standalone `version` query param.
+            for that version. Terms are `&`-separated `key:value` pairs and the
+            whole value is percent-encoded (e.g.
+            groupId%3Aopenai%26version%3Av2.0).
           schema:
             type: string
-          example: groupId:openai&version:v1.0
-        - name: version
-          in: query
-          required: false
-          description: >-
-            Selects a single version within the family named by `query=groupId:<id>`,
-            returning the full template for that (groupId, version). Alternative to
-            packing `&version:<ver>` inside the `query` value; ignored when `query`
-            has no groupId.
-          schema:
-            type: string
-          example: v1.0
+          example: groupId:openai&version:v2.0
         - name: limit
           in: query
           description: Maximum number of LLM provider templates to return
@@ -1111,24 +1101,14 @@ paths:
             type: integer
             minimum: 0
             default: 0
-        - name: latest
-          in: query
-          description: |
-            Which versions to include. By default (false) the response contains
-            every version row across all templates (full history). Set to true
-            to return only the latest version of each family (one entry per
-            built-in/custom bucket), for the catalog listing. May also be passed
-            inside the query DSL as `query=latest:true`.
-          schema:
-            type: boolean
-            default: false
       responses:
         '200':
           description: >-
-            Without `version`: a list response — either templates (all versions
-            by default, or the latest of each family when `latest=true`) or
-            a family's versions. With `groupId`+`version`: the single full
-            template for that version.
+            Without a `version` term: a list response — either templates (all
+            versions by default, or the latest of each family when
+            `query=latest:true`) or a family's versions. With
+            `query=groupId:<id>&version:<ver>`: the single full template for that
+            version.
           content:
             application/json:
               schema:

@@ -236,9 +236,6 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 			return
 		}
 		version := q.Version
-		if version == "" {
-			version = strings.TrimSpace(r.URL.Query().Get("version"))
-		}
 		if version != "" {
 			resp, err := h.templateService.GetVersion(orgID, groupID, version)
 			if err != nil {
@@ -277,9 +274,7 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// latest may be given inside the query DSL (?query=latest:true) or as a
-	// standalone param (?latest=true); both mean "latest version per family".
-	latestOnly := q.Latest || strings.EqualFold(r.URL.Query().Get("latest"), "true")
+	latestOnly := q.Latest
 
 	resp, err := h.templateService.List(orgID, limit, offset, latestOnly)
 	if err != nil {
