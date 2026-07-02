@@ -23,6 +23,7 @@ const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 
 function _validateRequiredFields(payload) {
     const missing = ['name', 'targetUrl'].filter(f => !payload[f]);
@@ -57,6 +58,7 @@ const createWebhookSubscriber = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const record = await whDao.create(orgId, payload, userId);
+        logUserAction('WEBHOOK_SUBSCRIBER_CREATED', req, { orgId, subscriberId: record.uuid, resourceUuid: record.uuid, resourceType: 'webhook_subscriber' });
         const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
         const dto = new WebhookSubscriberDTO(record, audit);
         return res.status(201).json(dto);
@@ -79,6 +81,7 @@ const updateWebhookSubscriber = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await whDao.update(orgId, subscriberId, payload, userId);
+        logUserAction('WEBHOOK_SUBSCRIBER_UPDATED', req, { orgId, subscriberId, resourceUuid: subscriberId, resourceType: 'webhook_subscriber' });
         const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
         const dto = new WebhookSubscriberDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
@@ -161,6 +164,7 @@ const deleteWebhookSubscriber = async (req, res) => {
         const orgId = req.orgId;
         const { subscriberId } = req.params;
         await whDao.delete(orgId, subscriberId);
+        logUserAction('WEBHOOK_SUBSCRIBER_DELETED', req, { orgId, subscriberId, resourceUuid: subscriberId, resourceType: 'webhook_subscriber' });
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

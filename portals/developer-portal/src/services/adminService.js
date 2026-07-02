@@ -206,7 +206,13 @@ const createOrganization = async (req, res) => {
             orgId: orgCreationResponse.id,
             orgName: orgCreationResponse.name,
         });
-        logUserAction('ORG_CREATED', req, { orgId: orgCreationResponse.id, orgName: orgCreationResponse.name });
+        logUserAction('ORG_CREATED', req, {
+            orgId: orgCreationResponse.id,
+            orgName: orgCreationResponse.name,
+            resourceUuid: organization.uuid,
+            resourceType: 'organization',
+            orgUuid: organization.uuid,
+        });
         res.status(201).send(orgCreationResponse);
     } catch (error) {
         logger.error('Organization creation failed', {
@@ -344,12 +350,17 @@ const deleteOrganization = async (req, res) => {
         orgId
     });
     try {
+        // Resolved before delete: dp_audit.org_uuid has ON DELETE CASCADE, so once the
+        // org is gone this uuid can no longer satisfy that FK — the ORG_DELETED audit
+        // insert below will be dropped (caught, logged, non-fatal), same limitation
+        // platform-api's own audit table has for its own org-delete cascade.
+        const orgUuid = await orgDao.getId(orgId);
         const deletedRowsCount = await sequelize.transaction({ timeout: 60000 }, (t) => orgDao.delete(orgId, t));
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {
                 orgId
             });
-            logUserAction('ORG_DELETED', req, { orgId });
+            logUserAction('ORG_DELETED', req, { orgId, resourceUuid: orgUuid, resourceType: 'organization', orgUuid });
             res.status(204).send();
         } else {
             throw new CustomError(404, "Records Not Found", 'Organization not found');

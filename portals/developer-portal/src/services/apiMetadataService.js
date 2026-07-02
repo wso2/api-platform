@@ -39,6 +39,7 @@ const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
 const subscriptionPlanDTO = require("../dto/subscriptionPlanDto");
 const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
+const { logUserAction } = require('../middlewares/auditLogger');
 const { CustomError } = require("../utils/errors/customErrors");
 const LabelDTO = require("../dto/labelDto");
 
@@ -236,6 +237,7 @@ const createAPIMetadata = async (req, res) => {
             delete apiMetadata.handle;
         });
 
+        logUserAction('API_METADATA_CREATED', req, { orgId, apiId: createdAPIRecord.uuid, resourceUuid: createdAPIRecord.uuid, resourceType: 'rest_api' });
         let audit;
         try {
             audit = await userIdpReferenceDao.buildSingleAuditFields(createdAPIRecord);
@@ -647,6 +649,7 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
+            logUserAction('API_METADATA_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
             const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0].dataValues);
             res.status(200).send(new APIDTO(updatedAPI[0].dataValues, audit));
         });
@@ -685,6 +688,7 @@ const deleteAPIMetadata = async (req, res) => {
             if (apiDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
             } else {
+                logUserAction('API_METADATA_DELETED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
                 res.status(200).send("Resouce Deleted Successfully");
             }
         } catch (error) {
@@ -1574,6 +1578,8 @@ const updateView = async (req, res) => {
             if (addedLabels.length !== 0) {
                 await viewDao.addLabels(orgId, viewId, addedLabels, userId, t);
             }
+            viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
+            logUserAction('VIEW_UPDATED', req, { orgId, viewId: viewHandle, resourceUuid: viewId, resourceType: 'view' });
             res.status(200).send(req.body);
         });
     } catch (error) {
@@ -1591,10 +1597,12 @@ const deleteView = async (req, res) => {
     const orgId = req.orgId;
     const name = req.params.viewId;
     try {
+        const viewUuid = await viewDao.getId(orgId, name);
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
             throw new Sequelize.EmptyResultError("Resource not found to delete");
         } else {
+            logUserAction('VIEW_DELETED', req, { orgId, viewId: name, resourceUuid: viewUuid, resourceType: 'view' });
             res.status(204).send("View Deleted Successfully");
         }
     } catch (error) {

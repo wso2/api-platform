@@ -113,7 +113,7 @@ async function generateApiKey(req, res) {
             orgId, apiId, subscriptionId, appId, name, expiresAt,
             actor: util.resolveActor(req), userToken: req.user?.accessToken,
         });
-        logUserAction('API_KEY_GENERATED', req, { orgId, apiId: apiHandle, keyId: result.keyId });
+        logUserAction('API_KEY_GENERATED', req, { orgId, apiId: apiHandle, keyId: result.keyId, resourceUuid: result.keyId, resourceType: 'api_key' });
         return res.status(201).json(result);
     } catch (err) {
         logger.error('Failed to generate API key', { error: err.message, orgId, apiId: apiHandle });
@@ -195,7 +195,7 @@ async function regenerateApiKey(req, res) {
         const result = await apiKeyService.regenerate({
             orgId, apiId, keyId: keyId.trim(), expiresAt, actor: util.resolveActor(req), userToken: req.user?.accessToken,
         });
-        logUserAction('API_KEY_REGENERATED', req, { orgId, apiId: apiHandle, keyId });
+        logUserAction('API_KEY_REGENERATED', req, { orgId, apiId: apiHandle, keyId, resourceUuid: keyId, resourceType: 'api_key' });
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to regenerate API key', { error: err.message, orgId, apiId: apiHandle, keyId });
@@ -220,7 +220,7 @@ async function revokeApiKey(req, res) {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
         await apiKeyService.revoke({ orgId, apiId, keyId: keyId.trim(), actor: util.resolveActor(req), userToken: req.user?.accessToken });
-        logUserAction('API_KEY_REVOKED', req, { orgId, apiId: apiHandle, keyId });
+        logUserAction('API_KEY_REVOKED', req, { orgId, apiId: apiHandle, keyId, resourceUuid: keyId, resourceType: 'api_key' });
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to revoke API key', { error: err.message, orgId, apiId: apiHandle, keyId });
@@ -254,7 +254,7 @@ async function associateApiKeyApplication(req, res) {
         const result = await apiKeyService.associateApplication({
             orgId, apiId, keyId: keyId.trim(), appId, actor: util.resolveActor(req),
         });
-        logUserAction('API_KEY_APP_ASSOCIATED', req, { orgId, apiId: apiHandle, keyId, appId: appHandle });
+        logUserAction('API_KEY_APP_ASSOCIATED', req, { orgId, apiId: apiHandle, keyId, appId: appHandle, resourceUuid: keyId, resourceType: 'api_key' });
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to associate application with API key', { error: err.message, orgId, apiId: apiHandle, keyId });
@@ -279,7 +279,7 @@ async function removeApiKeyApplication(req, res) {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
         await apiKeyService.removeApplicationAssociation({ orgId, apiId, keyId: keyId.trim(), actor: util.resolveActor(req) });
-        logUserAction('API_KEY_APP_DISASSOCIATED', req, { orgId, apiId: apiHandle, keyId });
+        logUserAction('API_KEY_APP_DISASSOCIATED', req, { orgId, apiId: apiHandle, keyId, resourceUuid: keyId, resourceType: 'api_key' });
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to remove application association from API key', { error: err.message, orgId, apiId: apiHandle, keyId });
