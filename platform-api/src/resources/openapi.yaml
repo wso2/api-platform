@@ -6534,10 +6534,10 @@ components:
     Subscription:
       type: object
       properties:
-        uuid:
+        id:
           type: string
           format: uuid
-          description: Subscription UUID
+          description: Subscription ID
         apiId:
           type: string
           description: Handle (ID) of the subscribed artifact

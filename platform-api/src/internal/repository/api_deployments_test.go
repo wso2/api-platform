@@ -90,8 +90,8 @@ func createTestAPI(t *testing.T, db *database.DB, apiUUID, orgUUID string) {
 
 	// Create organization directly
 	orgQuery := `
-		INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
-		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+		INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'idp-ref', datetime('now'), datetime('now'))
 	`
 	_, err := db.Exec(orgQuery, orgUUID, "test-org-"+orgUUID, "Test Org", "default")
 	if err != nil {

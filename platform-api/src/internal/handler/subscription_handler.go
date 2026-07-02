@@ -363,7 +363,7 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	resp := map[string]any{
-		"uuid":           sub.UUID,
+		"id":             sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
@@ -405,7 +405,7 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 		kind = meta.Kind
 	}
 	resp := map[string]any{
-		"uuid":           sub.UUID,
+		"id":             sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
