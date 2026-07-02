@@ -1,0 +1,30 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: wso2-openai-provider
+spec:
+  displayName: Anthropic Provider (OpenAI-compatible)
+  version: v1.0
+  template: openai
+  context: /openai/latest
+  upstream:
+    # Anthropic exposes an OpenAI-compatible endpoint, so the `openai` template
+    # and the standard /chat/completions path work unchanged. Auth is still a
+    # Bearer token (your sk-ant-... key), injected by setup.sh.
+    url: https://api.anthropic.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <API_KEY>
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /chat/completions
+        methods:
+          - POST
+      - path: /models
+        methods:
+          - GET
+      - path: /models/{modelId}
+        methods:
+          - GET
