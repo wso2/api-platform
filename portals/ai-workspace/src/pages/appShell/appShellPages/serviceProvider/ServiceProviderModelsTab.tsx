@@ -281,10 +281,10 @@ export default function ServiceProviderModelsTab() {
       ...baseProviders,
       {
         id: selectedOption.id,
-        name: selectedOption.name,
+        displayName: selectedOption.name,
         models: modelsForProvider.map((modelId) => ({
           id: modelId,
-          name: modelId,
+          displayName: modelId,
           description: '',
         })),
       },
@@ -312,7 +312,7 @@ export default function ServiceProviderModelsTab() {
     const alreadyExists = existingModels.some(
       (model) =>
         model.id.toLowerCase() === normalizedModelName ||
-        model.name.toLowerCase() === normalizedModelName
+        (model.displayName ?? '').toLowerCase() === normalizedModelName
     );
 
     if (alreadyExists) {
@@ -331,7 +331,7 @@ export default function ServiceProviderModelsTab() {
               ...existingModels,
               {
                 id: trimmedName,
-                name: trimmedName,
+                displayName: trimmedName,
                 description: '',
               },
             ],
@@ -422,7 +422,7 @@ export default function ServiceProviderModelsTab() {
                     {providers.map((p) => (
                       <ProviderRow
                         key={p.id}
-                        name={p.name}
+                        name={p.displayName || p.id}
                         selected={p.id === selectedProviderId}
                         onClick={() => setSelectedProviderId(p.id)}
                         removeDisabled={isSaving || isReadOnlyProvider}
@@ -433,7 +433,7 @@ export default function ServiceProviderModelsTab() {
                               }
                             : undefined
                         }
-                        removeAriaLabel={`Remove model provider ${p.name}`}
+                        removeAriaLabel={`Remove model provider ${p.displayName}`}
                       />
                     ))}
                   </Stack>
@@ -528,7 +528,9 @@ export default function ServiceProviderModelsTab() {
                     id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.models.available"
                     defaultMessage={'Models Available'}
                   />
-                  {selectedProvider?.name ? ` — ${selectedProvider.name}` : ''}
+                  {selectedProvider?.displayName
+                    ? ` — ${selectedProvider.displayName}`
+                    : ''}
                 </Typography>
               </Box>
 
@@ -574,14 +576,14 @@ export default function ServiceProviderModelsTab() {
                     selectedProvider.models.map((m) => (
                       <ModelPill
                         key={m.id}
-                        label={m.name}
+                        label={m.displayName || m.id}
                         removeDisabled={isSaving || isReadOnlyProvider}
                         onRemove={() => {
                           if (!isReadOnlyProvider) {
                             void removeModel(m.id);
                           }
                         }}
-                        removeAriaLabel={`Remove model ${m.name}`}
+                        removeAriaLabel={`Remove model ${m.displayName || m.id}`}
                       />
                     ))
                   ) : (
