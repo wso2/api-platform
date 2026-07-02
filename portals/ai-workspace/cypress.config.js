@@ -45,7 +45,7 @@ export default {
   env: {
     ADMIN_USER: 'admin',
     ADMIN_PASSWORD: 'admin',
-    ORG_HANDLE: 'ap-org',
+    ORG_HANDLE: 'default',
     QS_INTRO_STORAGE_KEY: 'qs_intro_seen_v1',
   },
 };

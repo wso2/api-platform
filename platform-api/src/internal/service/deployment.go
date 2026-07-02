@@ -999,6 +999,31 @@ func (s *DeploymentService) GetDeploymentContentByHandle(apiHandle, deploymentID
 	return s.GetDeploymentContent(apiUUID, deploymentID, orgUUID)
 }
 
+// resolveGatewayFilter resolves an optional gatewayId filter — supplied by clients
+// as a gateway handle — to the internal gateway UUID stored in
+// deployments.gateway_uuid. Deploy/undeploy identify the target gateway by handle,
+// so the deployment listing must resolve the same way for the gatewayId filter to
+// match any rows. Returns (uuidPtr, true, nil) when resolved (uuidPtr is nil when no
+// filter was requested), or (nil, false, nil) when a handle was given but no gateway
+// with that handle exists in the organization.
+func resolveGatewayFilter(gatewayRepo repository.GatewayRepository, gatewayHandle *string, orgUUID string) (*string, bool, error) {
+	if gatewayHandle == nil {
+		return nil, true, nil
+	}
+	handle := strings.TrimSpace(*gatewayHandle)
+	if handle == "" {
+		return nil, true, nil
+	}
+	gateway, err := gatewayRepo.GetByHandleAndOrgID(handle, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to resolve gateway handle: %w", err)
+	}
+	if gateway == nil {
+		return nil, false, nil
+	}
+	return &gateway.ID, true, nil
+}
+
 func toAPIDeploymentResponse(
 	gatewayRepo repository.GatewayRepository,
 	deploymentID string,

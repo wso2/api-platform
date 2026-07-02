@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApiKey"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/generate`
+`POST /api/v0.9/apis/{apiId}/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/generate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -41,7 +41,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the `{apiId}` path parameter.|
+|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
@@ -64,7 +64,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -117,13 +117,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApiKeys"></a>
 
-`GET /devportal/v1/apis/{apiId}/api-keys`
+`GET /api/v0.9/apis/{apiId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys \
+curl -X GET https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -264,13 +264,13 @@ Status Code **200**
 
 <a id="opIdregenerateApiKey"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/regenerate`
+`POST /api/v0.9/apis/{apiId}/api-keys/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/regenerate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -374,13 +374,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeApiKey"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/revoke`
+`POST /api/v0.9/apis/{apiId}/api-keys/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/revoke \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/revoke \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -468,13 +468,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdassociateApiKeyApplication"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/associate`
+`POST /api/v0.9/apis/{apiId}/api-keys/associate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/associate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/associate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -530,7 +530,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -587,13 +587,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdremoveApiKeyApplication"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/dissociate`
+`POST /api/v0.9/apis/{apiId}/api-keys/dissociate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/dissociate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/dissociate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -671,13 +671,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApplicationApiKeys"></a>
 
-`GET /devportal/v1/applications/{applicationId}/api-keys`
+`GET /api/v0.9/applications/{applicationId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/api-keys \
+curl -X GET https://devportal.api-platform.io/api/v0.9/applications/{applicationId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

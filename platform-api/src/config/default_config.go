@@ -77,10 +77,9 @@ func defaultConfig() *Server {
 			FileBased: FileBased{
 				Enabled: false,
 				Organization: FileBasedOrg{
-					ID:     "99089a17-72e0-4dd8-a2f4-c8dfbb085295",
-					Name:   "AP Organization",
-					Handle: "ap-org",
-					Region: "us",
+					ID:          "ap-org",
+					DisplayName: "AP Organization",
+					Region:      "us",
 				},
 				Users: FileBasedUsers{
 					{

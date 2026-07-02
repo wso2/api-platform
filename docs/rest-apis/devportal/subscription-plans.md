@@ -4,13 +4,13 @@
 
 <a id="opIdlistSubscriptionPlans"></a>
 
-`GET /devportal/v1/subscription-plans`
+`GET /api/v0.9/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/subscription-plans \
+curl -X GET https://devportal.api-platform.io/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -135,13 +135,13 @@ Status Code **200**
 
 <a id="opIdaddSubscriptionPlans"></a>
 
-`POST /devportal/v1/subscription-plans`
+`POST /api/v0.9/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/subscription-plans \
+curl -X POST https://devportal.api-platform.io/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -275,13 +275,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdputSubscriptionPlans"></a>
 
-`PUT /devportal/v1/subscription-plans`
+`PUT /api/v0.9/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/subscription-plans \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -431,13 +431,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetSubscriptionPlan"></a>
 
-`GET /devportal/v1/subscription-plans/{planId}`
+`GET /api/v0.9/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/subscription-plans/{planId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -548,13 +548,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscriptionPlan"></a>
 
-`DELETE /devportal/v1/subscription-plans/{planId}`
+`DELETE /api/v0.9/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/subscription-plans/{planId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

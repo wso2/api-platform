@@ -112,7 +112,7 @@ export default function GatewaysList() {
         gateway.name,
         gateway.displayName,
         gateway.description,
-        gateway.vhost,
+        gateway.endpoints?.[0] || gateway.vhost,
       ]
         .filter(Boolean)
         .join(' ')
@@ -596,7 +596,7 @@ export default function GatewaysList() {
                                     maxWidth: 280,
                                   }}
                                 >
-                                  {gateway.vhost || '—'}
+                                  {gateway.endpoints?.[0] || gateway.vhost || '—'}
                                 </Typography>
                               )}
                             </TableCell>

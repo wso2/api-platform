@@ -4,13 +4,13 @@
 
 <a id="opIdcreateSubscription"></a>
 
-`POST /devportal/v1/subscriptions`
+`POST /api/v0.9/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions \
+curl -X POST https://devportal.api-platform.io/api/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -65,7 +65,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -119,13 +119,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistSubscriptions"></a>
 
-`GET /devportal/v1/subscriptions`
+`GET /api/v0.9/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/subscriptions \
+curl -X GET https://devportal.api-platform.io/api/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -232,13 +232,13 @@ Status Code **200**
 
 <a id="opIdgetSubscription"></a>
 
-`GET /devportal/v1/subscriptions/{subId}`
+`GET /api/v0.9/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -308,13 +308,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateSubscription"></a>
 
-`PUT /devportal/v1/subscriptions/{subId}`
+`PUT /api/v0.9/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -369,7 +369,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -406,13 +406,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscription"></a>
 
-`DELETE /devportal/v1/subscriptions/{subId}`
+`DELETE /api/v0.9/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/subscriptions/{subId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -476,13 +476,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdchangePlan"></a>
 
-`POST /devportal/v1/subscriptions/{subId}/change-plan`
+`POST /api/v0.9/subscriptions/{subId}/change-plan`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions/{subId}/change-plan \
+curl -X POST https://devportal.api-platform.io/api/v0.9/subscriptions/{subId}/change-plan \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -538,7 +538,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -575,13 +575,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdregenerateSubscriptionToken"></a>
 
-`POST /devportal/v1/subscriptions/{subId}/regenerate-token`
+`POST /api/v0.9/subscriptions/{subId}/regenerate-token`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/subscriptions/{subId}/regenerate-token \
+curl -X POST https://devportal.api-platform.io/api/v0.9/subscriptions/{subId}/regenerate-token \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

@@ -182,8 +182,14 @@ export default function ServiceProvidersSummaryCard({
                 flex: 1,
                 minHeight: 300,
                 display: 'flex',
+                width: '100%',
                 alignItems: 'center',
                 justifyContent: 'center',
+                px: 3,
+                py: 0,
+                '&:last-child': {
+                  paddingBottom: 0,
+                },
               }
             : {}),
         }}
@@ -238,7 +244,7 @@ export default function ServiceProvidersSummaryCard({
             spacing={1.5}
             alignItems="center"
             justifyContent="center"
-            sx={{ textAlign: 'center', py: 2, width: '100%' }}
+            sx={{ textAlign: 'center', py: 2, width: '100%', mx: 'auto' }}
           >
             <Box
               component="img"

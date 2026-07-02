@@ -44,7 +44,7 @@ function transformRequestToApiFormat(
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     displayName: request.displayName,
-    vhost: request.vhost,
+    endpoints: request.endpoints,
     functionalityType: request.functionalityType,
     description: request.description,
   };

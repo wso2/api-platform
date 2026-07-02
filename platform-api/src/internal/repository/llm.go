@@ -121,6 +121,8 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	return err
 }
 
+const maxCreateNewVersionRetries = 3
+
 func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate) error {
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
 		ManagedBy:        t.ManagedBy,
@@ -136,21 +138,31 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	if err != nil {
 		return err
 	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxCreateNewVersionRetries; attempt++ {
+		lastErr = r.createNewVersionOnce(t, configJSON)
+		if lastErr == nil {
+			return nil
+		}
+		if !r.db.IsDuplicateKeyError(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func (r *LLMProviderTemplateRepo) createNewVersionOnce(t *model.LLMProviderTemplate, configJSON []byte) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockSQL := `SELECT uuid FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
-	switch r.db.Driver() {
-	case database.DriverPostgres, database.DriverPostgreSQL, database.DriverPGX:
-		lockSQL += " FOR UPDATE"
-	case database.DriverSQLServer, database.DriverMSSQL:
-		lockSQL = `SELECT uuid FROM llm_provider_templates WITH (UPDLOCK, HOLDLOCK) WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
-	}
-	var lockedUUID string
-	err = tx.QueryRow(r.db.Rebind(lockSQL), t.GroupID, t.OrganizationUUID, 1).Scan(&lockedUUID)
+	var latestUUID string
+	err = tx.QueryRow(r.db.Rebind(`
+		SELECT uuid FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?
+	`), t.GroupID, t.OrganizationUUID, 1).Scan(&latestUUID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sql.ErrNoRows
 	}

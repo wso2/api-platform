@@ -72,8 +72,30 @@ type Server struct {
 	logger         *slog.Logger
 }
 
+// validateAuthConfig enforces production auth requirements when demo mode is off.
+func validateAuthConfig(cfg *config.Server) error {
+	if demoMode() {
+		return nil
+	}
+	if cfg.Auth.FileBased.Enabled {
+		return fmt.Errorf("file-based authentication (AUTH_FILE_BASED_ENABLED=true) is not allowed when APIP_DEMO_MODE=false; configure an IDP (AUTH_IDP_ENABLED=true) or JWT (AUTH_JWT_ENABLED=true) instead")
+	}
+	if !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
+		return fmt.Errorf("APIP_DEMO_MODE=false requires a real auth mode; set AUTH_IDP_ENABLED=true or AUTH_JWT_ENABLED=true")
+	}
+	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
+		return fmt.Errorf("JWT signature validation cannot be skipped (AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set AUTH_JWT_SKIP_VALIDATION=false for production")
+	}
+	return nil
+}
+
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
+	if err := validateAuthConfig(cfg); err != nil {
+		slogger.Error("Invalid auth configuration for production mode", "error", err)
+		return nil, err
+	}
+
 	// Initialize database using configuration
 	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
@@ -461,6 +483,21 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		chain = append(chain, authenticator.Middleware()...)
 	}
 
+	// Resolve the organization claim (the platform UUID in file-based mode, or
+	// the IDP's organization id in IDP mode) into the platform organization UUID
+	// so downstream handlers scope their queries by the correct value.
+	chain = append(chain, middleware.OrganizationResolverMiddleware(
+		func(orgClaim string) (string, bool) {
+			if org, err := orgRepo.GetOrganizationByIdpOrgRefUUID(orgClaim); err == nil && org != nil {
+				return org.ID, true
+			}
+			if org, err := orgRepo.GetOrganizationByUUID(orgClaim); err == nil && org != nil {
+				return org.ID, true
+			}
+			return "", false
+		},
+	))
+
 	// Apply the OpenAPI-driven scope enforcer after authentication so identity
 	// values are already in the context when scope checks run.
 	chain = append(chain, middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
@@ -680,6 +717,14 @@ func (s *Server) Start(port string, certDir string) error {
 
 	// Generate new certificate if not loaded
 	if cert.Certificate == nil {
+		if !demoMode() {
+			return fmt.Errorf(
+				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
+					"mount real certificates or set TLS_CERT_DIR to a directory containing cert.pem and key.pem; "+
+					"self-signed certificate generation is only permitted in demo mode",
+				certDir,
+			)
+		}
 		s.logger.Info("Generating self-signed certificate for development...")
 		// Ensure cert directory exists
 		if err := os.MkdirAll(certDir, 0755); err != nil {
@@ -782,34 +827,45 @@ func (s *Server) GetMux() *http.ServeMux {
 }
 
 // seedFileBasedOrg ensures the file-based auth organization exists in the DB.
-// It fetches by the configured handle first; only creates the org when no
-// matching org is found. The org ID in cfg is updated to the persisted value
-// so the login handler issues tokens with the correct org ID.
+// It fetches by the configured handle (Organization.ID) first; only creates the
+// org when no matching org is found. The resolved platform UUID is stored back
+// into cfg (Organization.UUID) so the login handler issues tokens carrying the
+// correct organization claim.
 func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
 	ba := &cfg.Auth.FileBased
 
-	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.Handle)
+	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.ID)
 	if err != nil {
 		return fmt.Errorf("failed to check file-based organization: %w", err)
 	}
 	if existing != nil {
-		ba.Organization.ID = existing.ID
-		slogger.Info("File-based organization already exists", "id", existing.ID, "handle", existing.Handle)
+		ba.Organization.UUID = existing.ID
+		slogger.Info("File-based organization already exists", "uuid", existing.ID, "handle", existing.Handle)
 		return nil
+	}
+
+	uuid, err := utils.GenerateUUID()
+	if err != nil {
+		return fmt.Errorf("failed to generate file-based organization UUID: %w", err)
 	}
 
 	now := time.Now()
 	org := &model.Organization{
-		ID:        ba.Organization.ID,
-		Name:      ba.Organization.Name,
-		Handle:    ba.Organization.Handle,
-		Region:    ba.Organization.Region,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:     uuid,
+		Name:   ba.Organization.DisplayName,
+		Handle: ba.Organization.ID,
+		Region: ba.Organization.Region,
+		// File-based auth has no external IDP, so the organization references
+		// itself: the org claim in issued tokens is this UUID, and the resolver
+		// matches it via the same idp_organization_ref_uuid path as IDP orgs.
+		IdpOrganizationRefUUID: uuid,
+		CreatedAt:              now,
+		UpdatedAt:              now,
 	}
 	if err := orgRepo.CreateOrganization(org); err != nil {
 		return fmt.Errorf("failed to create file-based organization: %w", err)
 	}
-	slogger.Info("Seeded file-based organization", "id", org.ID, "handle", org.Handle)
+	ba.Organization.UUID = uuid
+	slogger.Info("Seeded file-based organization", "uuid", org.ID, "handle", org.Handle)
 	return nil
 }

@@ -4,13 +4,13 @@
 
 <a id="opIdcreateMcpServerContent"></a>
 
-`POST /devportal/v1/mcp-servers/{mcpServerId}/assets`
+`POST /api/v0.9/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServ
 
 ```
 
-Uploads the static content package for an MCP server. Mirrors `POST /devportal/v1/apis/{apiId}/assets`.
+Uploads the static content package for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/assets`.
 
 > Payload
 
@@ -143,13 +143,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdreplaceMcpServerContent"></a>
 
-`PUT /devportal/v1/mcp-servers/{mcpServerId}/assets`
+`PUT /api/v0.9/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -158,7 +158,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServe
 
 ```
 
-Replaces or adds static content files for an existing MCP server. Mirrors `PUT /devportal/v1/apis/{apiId}/assets`.
+Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api/v0.9/apis/{apiId}/assets`.
 
 > Payload
 
@@ -282,20 +282,20 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdgetMcpServerContentFile"></a>
 
-`GET /devportal/v1/mcp-servers/{mcpServerId}/assets`
+`GET /api/v0.9/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single stored MCP server content file. Mirrors `GET /devportal/v1/apis/{apiId}/assets`.
+Retrieves a single stored MCP server content file. Mirrors `GET /api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -400,20 +400,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteMcpServerContentFile"></a>
 
-`DELETE /devportal/v1/mcp-servers/{mcpServerId}/assets`
+`DELETE /api/v0.9/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets?type=document \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes stored MCP server content. Mirrors `DELETE /devportal/v1/apis/{apiId}/assets`.
+Deletes stored MCP server content. Mirrors `DELETE /api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 

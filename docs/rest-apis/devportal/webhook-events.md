@@ -4,13 +4,13 @@
 
 <a id="opIdlistWebhookEvents"></a>
 
-`GET /devportal/v1/webhook-events`
+`GET /api/v0.9/webhook-events`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-events \
+curl -X GET https://devportal.api-platform.io/api/v0.9/webhook-events \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -153,13 +153,13 @@ Status Code **200**
 
 <a id="opIdgetWebhookEvent"></a>
 
-`GET /devportal/v1/webhook-events/{eventId}`
+`GET /api/v0.9/webhook-events/{eventId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/webhook-events/{eventId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/webhook-events/{eventId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

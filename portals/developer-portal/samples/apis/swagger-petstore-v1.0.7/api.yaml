@@ -1,4 +1,4 @@
-apiVersion: devportal.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: RestApi # (RestApi | WS | GraphQL | SOAP | WebSubApi)
 
 metadata:

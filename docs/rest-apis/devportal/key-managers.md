@@ -4,13 +4,13 @@
 
 <a id="opIdcreateKeyManager"></a>
 
-`POST /devportal/v1/key-managers`
+`POST /api/v0.9/key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/key-managers \
+curl -X POST https://devportal.api-platform.io/api/v0.9/key-managers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -148,13 +148,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetKeyManagers"></a>
 
-`GET /devportal/v1/key-managers`
+`GET /api/v0.9/key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers \
+curl -X GET https://devportal.api-platform.io/api/v0.9/key-managers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -274,13 +274,13 @@ Status Code **200**
 
 <a id="opIdgetKeyManager"></a>
 
-`GET /devportal/v1/key-managers/{kmId}`
+`GET /api/v0.9/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers/{kmId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -349,13 +349,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateKeyManager"></a>
 
-`PUT /devportal/v1/key-managers/{kmId}`
+`PUT /api/v0.9/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/key-managers/{kmId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -499,13 +499,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteKeyManager"></a>
 
-`DELETE /devportal/v1/key-managers/{kmId}`
+`DELETE /api/v0.9/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/key-managers/{kmId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

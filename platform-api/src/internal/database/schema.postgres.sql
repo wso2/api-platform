@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS organizations (
     handle VARCHAR(40) UNIQUE NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
+    idp_organization_ref_uuid VARCHAR(40) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

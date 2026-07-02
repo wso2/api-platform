@@ -98,7 +98,7 @@ const createAPIMetadata = async (req, res) => {
             apiMetadata.type = req.__forceApiType;
         } else if (apiMetadata.type === constants.API_TYPE.MCP) {
             throw new Sequelize.ValidationError(
-                "MCP servers must be created via /devportal/v1/mcp-servers"
+                "MCP servers must be created via /api/v0.9/mcp-servers"
             );
         }
 
@@ -458,7 +458,7 @@ const updateAPIMetadata = async (req, res) => {
             apiMetadata.type = req.__forceApiType;
         } else if (apiMetadata.type === constants.API_TYPE.MCP) {
             throw new Sequelize.ValidationError(
-                "MCP servers must be updated via /devportal/v1/mcp-servers/{mcpServerId}"
+                "MCP servers must be updated via /api/v0.9/mcp-servers/{mcpServerId}"
             );
         }
 
