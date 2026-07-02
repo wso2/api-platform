@@ -4,7 +4,7 @@
   <h2 class="aov-plans-title">Subscription plans</h2>
 
   {{#each subscriptionPlans}}
-  <div class="aov-plan-card subscription-card{{#if (isCurrentPlan handle @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
+  <div class="aov-plan-card subscription-card{{#if (isCurrentPlan id @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
     id="subscriptionCard-{{id}}"
     data-policy-name="{{id}}">
     <div class="aov-plan-ribbon" aria-hidden="true">
@@ -17,7 +17,7 @@
         </span>
         <span class="aov-plan-name">{{#if name}}{{name}}{{else}}{{id}}{{/if}}</span>
       </div>
-      {{#unless (isCurrentPlan handle @root.subscriptions)}}
+      {{#unless (isCurrentPlan id @root.subscriptions)}}
       <span class="aov-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
@@ -34,7 +34,7 @@
     </div>
     <div class="position-relative">
       {{#if ../isAuthenticated}}
-        {{#if (isCurrentPlan handle @root.subscriptions)}}
+        {{#if (isCurrentPlan id @root.subscriptions)}}
         <button type="button"
           class="dp-btn dp-btn--outline dp-btn--block mcp-view-sub-btn api-view-sub-btn"
           data-org-id="{{@root.orgId}}"

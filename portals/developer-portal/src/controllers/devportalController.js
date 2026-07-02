@@ -212,12 +212,13 @@ const deleteApplication = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
     const applicationHandle = req.params.applicationId;
     const orgId = req.orgId || '';
+    let applicationId;
     try {
         const appRecord = await appDao.getId(orgId, userId, applicationHandle);
         if (!appRecord) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
         }
-        const applicationId = appRecord.uuid;
+        applicationId = appRecord.uuid;
         const ownedApp = await appDao.get(orgId, applicationId, userId);
         if (!ownedApp) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });

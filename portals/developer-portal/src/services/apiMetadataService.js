@@ -454,6 +454,14 @@ const updateAPIMetadata = async (req, res) => {
             }
         }
 
+        if (req.__forceApiType) {
+            apiMetadata.type = req.__forceApiType;
+        } else if (apiMetadata.type === constants.API_TYPE.MCP) {
+            throw new Sequelize.ValidationError(
+                "MCP servers must be updated via /devportal/v1/mcp-servers/{mcpServerId}"
+            );
+        }
+
         // Validate input — spec file is optional on update (already stored from create)
         if (!apiMetadata.name || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(

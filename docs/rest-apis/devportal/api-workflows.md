@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/api-w
 
 ```
 
-Creates an API workflow in the selected view. If `handle` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
+Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
 
 > Payload
 

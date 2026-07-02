@@ -76,8 +76,8 @@ function parseOrganizationFromYamlFile(fileBuffer) {
         }
     }
     if (spec.views !== undefined && spec.views !== null) {
-        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || !v.id)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with an 'id' field");
+        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || typeof v.id !== 'string' || !v.id.trim())) {
+            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a non-empty 'id' field");
         }
     }
     const organization = mapYamlToOrganization(parsed);
@@ -141,6 +141,15 @@ const createOrganization = async (req, res) => {
             createdLabels.forEach(l => { labelMap[l.dataValues.name] = l.dataValues.uuid; });
 
             // Views: use YAML-defined if provided, else fall back to default
+            if (payload.views?.length) {
+                for (const viewDef of payload.views) {
+                    if (!viewDef.id || typeof viewDef.id !== 'string') {
+                        throw new Sequelize.ValidationError(
+                            "Invalid organization payload: each entry in 'views' must have a non-empty 'id'"
+                        );
+                    }
+                }
+            }
             const viewDefs = (payload.views?.length
                 ? payload.views
                 : [{ id: 'default', name: 'default', labels: [labelDefs[0].name] }]

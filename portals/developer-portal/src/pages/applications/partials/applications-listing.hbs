@@ -201,7 +201,9 @@
       body: JSON.stringify({ displayName: name, description: desc, id: generateHandle(name) }),
     })
       .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) return r.json().catch(function () { return {}; }).then(function (data) {
+          throw new Error(data.description || data.message || ('HTTP ' + r.status));
+        });
         return r.json();
       })
       .then(function () { window.location.reload(); })
@@ -209,6 +211,9 @@
         btn.disabled = false;
         btn.textContent = 'Create';
         console.error('Create application failed:', err);
+        if (typeof showAlert === 'function') {
+          showAlert('Failed to create application: ' + (err.message || 'an application with this name may already exist'), 'error');
+        }
       });
   });
 

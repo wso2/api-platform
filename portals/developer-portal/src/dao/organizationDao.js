@@ -124,12 +124,9 @@ const list = async () => {
 };
 
 const update = async (orgData, t) => {
-    let devPortalId = "";
-    if (orgData.handle) {
-        devPortalId = orgData.handle.toLowerCase();
-    }
     try {
         const existing = await get(orgData.orgId, t);
+        const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
         const [updatedRowsCount, updatedOrg] = await Organization.update(
             {
                 name: orgData.name,

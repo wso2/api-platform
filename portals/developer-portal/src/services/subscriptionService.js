@@ -74,6 +74,12 @@ const createSubscription = async (req, res) => {
     const { apiId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
     const createdBy = req.user.sub;
 
+    if (!apiHandle || typeof apiHandle !== 'string' || !apiHandle.trim()) {
+        return res.status(400).json({
+            code: '400', message: 'Bad Request', description: 'apiId is required',
+        });
+    }
+
     try {
         const apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) {

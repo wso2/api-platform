@@ -302,7 +302,7 @@ const loadApplication = async (req, res, next) => {
             const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
             return next(err);
         } else {
-            error.status = 500;
+            error.status = error.statusCode || error.status || 500;
             return next(error);
         }
     }
@@ -361,7 +361,7 @@ const loadApplicationKeys = async (req, res, next) => {
             const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
             return next(err);
         } else {
-            error.status = 500;
+            error.status = error.statusCode || error.status || 500;
             return next(error);
         }
     }

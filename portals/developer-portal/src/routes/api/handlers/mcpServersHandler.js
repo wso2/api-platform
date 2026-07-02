@@ -21,11 +21,13 @@
  * Tag: MCP Servers
  */
 const mcpServerService = require('../../../services/mcpServerService');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
+const { compose } = require('./compose');
 
 module.exports = {
-    createMcpServer: mcpServerService.createMcpServer,
+    createMcpServer: compose(requireCsrfForMutatingApi, mcpServerService.createMcpServer),
     getMcpServer: mcpServerService.getMcpServer,
     getAllMcpServersForOrganization: mcpServerService.getAllMcpServersForOrganization,
-    updateMcpServer: mcpServerService.updateMcpServer,
-    deleteMcpServer: mcpServerService.deleteMcpServer,
+    updateMcpServer: compose(requireCsrfForMutatingApi, mcpServerService.updateMcpServer),
+    deleteMcpServer: compose(requireCsrfForMutatingApi, mcpServerService.deleteMcpServer),
 };
