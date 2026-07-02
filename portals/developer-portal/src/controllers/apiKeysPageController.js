@@ -86,9 +86,13 @@ const loadAPIApiKeys = async (req, res, next) => {
         let apiKeysCount = 0;
         let apiKeysLoadError = false;
         let applications = [];
-        const selectedAppId = typeof req.query.appId === 'string' ? req.query.appId.trim() : '';
+        const selectedAppHandle = typeof req.query.appId === 'string' ? req.query.appId.trim() : '';
 
         try {
+            const selectedApp = selectedAppHandle
+                ? await applicationDao.getId(orgId, resolveActor(req), selectedAppHandle)
+                : undefined;
+            const selectedAppId = selectedApp ? selectedApp.uuid : undefined;
             const keys = await apiKeyService.list(orgId, { apiId: apiId, appId: selectedAppId || undefined });
             apiKeys = (keys || []).map((k) => ({
                 keyId: k.uuid,
@@ -97,8 +101,8 @@ const loadAPIApiKeys = async (req, res, next) => {
                 expiresAt: k.expires_at,
                 createdAt: k.created_at,
                 revokedAt: k.revoked_at || undefined,
-                apiId: k.api_uuid,
-                appId: k.dp_api_key_app_mapping?.app_uuid || null,
+                apiId: k.dp_api_metadata?.handle || k.api_uuid,
+                appId: k.dp_api_key_app_mapping?.dp_application?.handle || null,
                 appDisplayName: k.dp_api_key_app_mapping?.dp_application?.display_name || null,
                 maskedApiKey: '••••••••'
             }));
@@ -114,7 +118,7 @@ const loadAPIApiKeys = async (req, res, next) => {
 
         try {
             const apps = await applicationDao.list(orgId, resolveActor(req));
-            applications = (apps || []).map((a) => ({ appId: a.uuid, displayName: a.display_name }));
+            applications = (apps || []).map((a) => ({ appId: a.handle, displayName: a.display_name }));
         } catch (dbError) {
             logger.warn('Failed to load applications for API key association', {
                 error: dbError.message,
@@ -139,7 +143,7 @@ const loadAPIApiKeys = async (req, res, next) => {
             apiKeysCount: apiKeysCount,
             apiKeysLoadError,
             applications,
-            selectedAppId,
+            selectedAppId: selectedAppHandle,
             apiMetadata: metaData,
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,

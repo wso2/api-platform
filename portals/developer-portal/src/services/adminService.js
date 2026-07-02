@@ -181,6 +181,7 @@ const createOrganization = async (req, res) => {
 
         });
 
+        const orgAudit = await userIdpReferenceDao.buildSingleAuditFields(organization.dataValues);
         const orgCreationResponse = {
             id: organization.handle,
             name: organization.name,
@@ -189,7 +190,8 @@ const createOrganization = async (req, res) => {
             businessOwnerEmail: organization.business_owner_email,
             idpRefId: organization.idp_ref_id,
             cpRefId: organization.cp_ref_id,
-            configuration: organization.dataValues.configuration
+            configuration: organization.dataValues.configuration,
+            ...orgAudit,
         };
         logger.info('Organization creation flow completed successfully', {
             orgId: orgCreationResponse.id,
@@ -296,6 +298,7 @@ const updateOrganization = async (req, res) => {
             }
         });
 
+        const updatedOrgAudit = await userIdpReferenceDao.buildSingleAuditFields(updatedOrg[0].dataValues);
         res.status(200).json({
             id: updatedOrg[0].dataValues.handle,
             name: updatedOrg[0].dataValues.name,
@@ -304,7 +307,8 @@ const updateOrganization = async (req, res) => {
             businessOwnerEmail: updatedOrg[0].dataValues.business_owner_email,
             idpRefId: updatedOrg[0].dataValues.idp_ref_id,
             cpRefId: updatedOrg[0].dataValues.cp_ref_id,
-            configuration: updatedOrg[0].dataValues.configuration
+            configuration: updatedOrg[0].dataValues.configuration,
+            ...updatedOrgAudit,
         });
     } catch (error) {
         logger.error('Organization update failed', {

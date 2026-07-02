@@ -131,7 +131,8 @@ const createKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
-        const dto = new KeyManagerDTO(record);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        const dto = new KeyManagerDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -162,7 +163,8 @@ const updateKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await kmDao.update(kmId, payload, userId);
-        const dto = new KeyManagerDTO(updatedRows[0]);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
+        const dto = new KeyManagerDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

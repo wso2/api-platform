@@ -387,7 +387,7 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
             keyId: k.uuid,
             name: k.name,
             status: String(k.status || 'ACTIVE').toLowerCase(),
-            apiId: k.api_uuid,
+            apiId: k.dp_api_metadata?.handle,
             apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
         }));
 
@@ -396,7 +396,7 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
         const byApi = new Map();
         allKeys.forEach((k) => {
             if (k.dp_api_key_app_mapping?.app_uuid === applicationId) return;
-            const apiId = k.api_uuid;
+            const apiId = k.dp_api_metadata?.handle;
             const apiName = formatApiDisplayName(k.dp_api_metadata, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
             byApi.get(apiId).keys.push({ keyId: k.uuid, name: k.name });

@@ -57,7 +57,8 @@ const createWebhookSubscriber = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const record = await whDao.create(orgId, payload, userId);
-        const dto = new WebhookSubscriberDTO(record);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        const dto = new WebhookSubscriberDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -78,7 +79,8 @@ const updateWebhookSubscriber = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await whDao.update(orgId, subscriberId, payload, userId);
-        const dto = new WebhookSubscriberDTO(updatedRows[0]);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
+        const dto = new WebhookSubscriberDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

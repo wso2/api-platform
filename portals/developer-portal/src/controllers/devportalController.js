@@ -98,7 +98,8 @@ const saveApplication = async (req, res) => {
         } catch (pubErr) {
             logger.warn('Failed to publish application.created', { orgId: orgId, appId: createdApp.uuid, error: pubErr.message });
         }
-        return res.status(201).json(new ApplicationDTO(createdApp));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(createdApp);
+        return res.status(201).json(new ApplicationDTO(createdApp, audit));
     } catch (error) {
         logger.error('Error occurred while creating the application', { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
@@ -133,7 +134,8 @@ const updateApplication = async (req, res) => {
         } catch (pubErr) {
             logger.warn('Failed to publish webhook events after app update', { orgId: orgId, appId: appId, error: pubErr.message });
         }
-        res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedApp[0].dataValues);
+        res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues, audit));
     } catch (error) {
         logger.error("Error occurred while updating the application", { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);

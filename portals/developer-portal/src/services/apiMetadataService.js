@@ -125,11 +125,13 @@ const createAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
+        let createdAPIRecord;
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, userId, t);
+            createdAPIRecord = createdAPI.dataValues;
             const apiId = createdAPI.dataValues.uuid;
             apiMetadata.handle = createdAPI.dataValues.handle;
             if (apiMetadata.subscriptionPlans) {
@@ -234,8 +236,8 @@ const createAPIMetadata = async (req, res) => {
             delete apiMetadata.handle;
         });
 
-
-        res.status(201).send(apiMetadata);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(createdAPIRecord);
+        res.status(201).send({ ...apiMetadata, ...audit });
     } catch (error) {
         logger.error('API metadata creation failed', {
             error: error.message,
@@ -636,7 +638,8 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
-            res.status(200).send(new APIDTO(updatedAPI[0].dataValues));
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0].dataValues);
+            res.status(200).send(new APIDTO(updatedAPI[0].dataValues, audit));
         });
     } catch (error) {
         logger.error('API metadata update failed', {
@@ -1194,7 +1197,8 @@ const createSubscriptionPlan = async (req, res) => {
                 logger.info('Created subscription plan', {
                     orgId
                 });
-                res.status(201).send(new subscriptionPlanDTO(subscriptionPlanResponse));
+                const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
+                res.status(201).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
             } else {
                 throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_CREATE_ERROR);
             }
@@ -1241,7 +1245,8 @@ const createSubscriptionPlans = async (req, res) => {
                             `Failed to create plan: ${plan.handle || "unknown"}`
                         );
                     }
-                    createdPlans.push(new subscriptionPlanDTO(created));
+                    const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
+                    createdPlans.push(new subscriptionPlanDTO(created, audit));
                 }
             });
             logger.info('Created subscription plans', {
@@ -1277,7 +1282,8 @@ const updateSubscriptionPlan = async (req, res) => {
         }, async (t) => {
             const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
-                res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse));
+                const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
+                res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
             } else {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
@@ -1324,7 +1330,8 @@ const updateSubscriptionPlans = async (req, res) => {
                             `Failed to upsert plan: ${plan.handle || "unknown"}`
                         );
                     }
-                    updatedPlans.push(new subscriptionPlanDTO(result.subscriptionPlanResponse));
+                    const audit = await userIdpReferenceDao.buildSingleAuditFields(result.subscriptionPlanResponse);
+                    updatedPlans.push(new subscriptionPlanDTO(result.subscriptionPlanResponse, audit));
                 }
             });
 
