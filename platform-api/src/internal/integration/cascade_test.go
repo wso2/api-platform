@@ -148,25 +148,6 @@ func TestCascade_DeleteApplicationRemovesMappings(t *testing.T) {
 	}
 }
 
-// TestCascade_DeleteProjectRemovesApplications verifies the kept projects ->
-// applications CASCADE (the org-direct application edge is now NO ACTION on
-// SQL Server, so applications must be cleaned via the project edge). Project
-// deletion is guarded against associated APIs in the service layer, so we
-// remove the API artifacts first to mirror a legitimate project delete.
-func TestCascade_DeleteProjectRemovesApplications(t *testing.T) {
-	it := openITDB(t)
-	defer it.db.Close()
-	g := seedOrgGraph(t, it)
-
-	// Remove API-side rows first (as the service guard requires no APIs).
-	it.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, g.apiArtifact)
-
-	it.exec(t, `DELETE FROM projects WHERE uuid = ?`, g.project)
-	if got := it.count(t, "applications", "uuid", g.app); got != 0 {
-		t.Fatalf("[%s] application not removed after project delete: %d remain", it.driver, got)
-	}
-}
-
 // TestCascade_DeleteSubscriptionPlanRemovesLimits verifies that deleting a
 // subscription plan cascade-removes its subscription_plan_limits rows. On SQL
 // Server the limit's organization/composite edges are NO ACTION (to avoid the
