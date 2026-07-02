@@ -3528,6 +3528,143 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateways/{gatewayId}/policy-attachments:
+    post:
+      summary: Attach a custom policy to a gateway
+      description: |
+        Associates a custom policy with the specified gateway. The policy must already be
+        synced to the organization via the gateway custom policy registry.
+        Access is validated against the organization in the JWT token.
+      operationId: AttachGatewayPolicy
+      security:
+        - OAuth2Security:
+            - gateway:policy:attach
+      tags:
+        - Gateways
+        - Gateway Policies
+      parameters:
+        - $ref: '#/components/parameters/gatewayId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachGatewayPolicyRequest'
+      responses:
+        '201':
+          description: Policy attached to gateway successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayPolicyAttachment'
+        '400':
+          description: Bad Request. Missing or invalid policy attachment fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Gateway or custom policy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List policy attachments for a gateway
+      description: |
+        Returns all custom policies attached to the specified gateway.
+        Access is validated against the organization in the JWT token.
+      operationId: ListGatewayPolicyAttachments
+      security:
+        - OAuth2Security:
+            - gateway:policy:read
+      tags:
+        - Gateways
+        - Gateway Policies
+      parameters:
+        - $ref: '#/components/parameters/gatewayId'
+      responses:
+        '200':
+          description: Policy attachments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayPolicyAttachmentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateways/{gatewayId}/policy-attachments/{AttachmentID}:
+    get:
+      summary: Get a gateway policy attachment by ID
+      description: |
+        Retrieves a specific policy attachment for the given gateway.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGatewayPolicyAttachment
+      security:
+        - OAuth2Security:
+            - gateway:policy:read
+      tags:
+        - Gateways
+        - Gateway Policies
+      parameters:
+        - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/AttachmentID'
+      responses:
+        '200':
+          description: Policy attachment retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayPolicyAttachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Detach a custom policy from a gateway
+      description: |
+        Removes a custom policy attachment from the specified gateway.
+        Access is validated against the organization in the JWT token.
+      operationId: DetachGatewayPolicy
+      security:
+        - OAuth2Security:
+            - ap:gateway:custom_policy:detach
+      tags:
+        - Gateways
+        - Gateway Policies
+      parameters:
+        - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/AttachmentID'
+      responses:
+        '204':
+          description: Policy detached from gateway successfully
+        '400':
+          description: Bad Request. Attachment cannot be removed in its current state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateway-custom-policies:
     get:
       summary: Get synced custom policies for the current organization
@@ -4845,6 +4982,9 @@ components:
             ap:gateway:manage: Full access to gateways
             ap:gateway:manifest:read: Read a gateway manifest
             ap:gateway:read: Read gateways
+            gateway:policy:attach: Attach a custom policy to a gateway
+            gateway:policy:read: Read gateway policy attachments
+            ap:gateway:custom_policy:detach: Detach a custom policy from a gateway
             ap:gateway_custom_policy:create: Create a gateway custom policy
             ap:gateway_custom_policy:delete: Delete a gateway custom policy
             ap:gateway_custom_policy:manage: Full access to gateway custom policies
@@ -6112,6 +6252,92 @@ components:
             $ref: '#/components/schemas/GatewayResponse'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    AttachGatewayPolicyRequest:
+      type: object
+      required:
+        - policyId
+        - order
+      properties:
+        policyId:
+          type: string
+          description: Handle of the custom policy to attach
+          example: rate-limiter
+        order:
+          type: integer
+          description: Execution order of the policy within the gateway pipeline
+          minimum: 1
+          maximum: 100
+          example: 1
+        config:
+          type: object
+          description: Policy-specific configuration overrides
+          additionalProperties: true
+
+    GatewayPolicyAttachment:
+      type: object
+      required:
+        - id
+        - gatewayId
+        - policyId
+        - order
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the attachment
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        gatewayId:
+          type: string
+          description: Handle of the gateway this attachment belongs to
+          example: "prod-gateway-01"
+        policyId:
+          type: string
+          description: Handle of the attached custom policy
+          example: "rate-limiter"
+        order:
+          type: integer
+          description: Execution order of the policy in the gateway pipeline
+          minimum: 1
+          maximum: 100
+          example: 1
+        config:
+          type: object
+          description: Active policy configuration overrides
+          additionalProperties: true
+        policySpec:
+          type: object
+          description: Full policy specification including name, version, and parameters schema
+          properties:
+            name:
+              type: string
+              description: Policy name
+            version:
+              type: string
+              description: Policy version string
+            parameters:
+              type: object
+              additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the policy was attached
+
+    GatewayPolicyAttachmentListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayPolicyAttachment'
+          description: List of policy attachments for the gateway
+        count:
+          type: integer
+          description: Total number of policy attachments
+          example: 3
 
     GatewayStatusResponse:
       type: object
@@ -8679,6 +8905,17 @@ components:
         type: string
         format: uuid
       description: The UUID of the deployment
+
+    AttachmentID:
+      name: AttachmentID
+      in: path
+      required: true
+      description: |
+        **Attachment ID** consisting of the **UUID** of the policy attachment.
+      schema:
+        type: string
+        format: uuid
+        example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 
     deploymentStatus-Q:
       name: status

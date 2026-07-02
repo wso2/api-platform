@@ -356,6 +356,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProviderService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
+	mockResourceHandler := handler.NewMockResourceHandler(slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
 		Enabled:  cfg.Deployments.TimeoutEnabled,
@@ -411,6 +412,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	mcpProxyHandler.RegisterRoutes(mux)
 	mcpProxyDeploymentHandler.RegisterRoutes(mux)
 	secretHandler.RegisterRoutes(mux)
+	mockResourceHandler.RegisterRoutes(mux)
 
 	// Initialize plugins and register their routes.
 	// Plugins contribute routes, DB schema, and OpenAPI scopes at startup.
