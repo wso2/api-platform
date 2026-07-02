@@ -192,9 +192,9 @@ else
 	@cp ../../platform-api/src/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 endif
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
-	@sed -i.bak \
-	    -e 's|/ai-workspace:[^[:space:]]*|/ai-workspace:$(DIST_VERSION)|g' \
-	    -e 's|/platform-api:[^[:space:]]*|/platform-api:$(PLATFORM_API_VERSION)|g' \
+	@sed -i.bak -E \
+	    -e 's|^([[:space:]]*image:[[:space:]]*.*/ai-workspace):[^[:space:]]*|\1:$(DIST_VERSION)|' \
+	    -e 's|^([[:space:]]*image:[[:space:]]*.*/platform-api):[^[:space:]]*|\1:$(PLATFORM_API_VERSION)|' \
 	    $(DIST_DIR)/docker-compose.yaml
 	@rm -f $(DIST_DIR)/docker-compose.yaml.bak
 	@cd target && zip -rq $(DIST_NAME).zip $(DIST_NAME)
