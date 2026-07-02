@@ -212,8 +212,8 @@ paths:
         - Organization Content
       summary: Apply a theme
       description: >-
-        Uploads a ZIP file and atomically replaces all existing theme assets for the view. All previously stored
-        files are deleted before the new ones are extracted and stored.
+        Uploads a ZIP file and atomically replaces the view's theme assets. Only the assets contained in the
+        uploaded ZIP are present afterward.
       operationId: applyTheme
       requestBody:
         $ref: "#/components/requestBodies/FileUploadBody"
@@ -2837,7 +2837,7 @@ components:
                   New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or
                   epoch milliseconds. Omit to leave the current expiry unchanged.
                 example: "2027-01-01T00:00:00Z"
-            additionalProperties: true
+            additionalProperties: false
           example:
             keyId: key-12345
     ApiKeyRevokeBody:
@@ -3101,7 +3101,7 @@ components:
               file:
                 type: string
                 format: binary
-                description: ZIP file containing organization layout assets.
+                description: ZIP file containing organization theme assets.
     ApiMetadataMultipartBody:
       required: true
       description: >-
@@ -3721,7 +3721,7 @@ components:
               list:
                 type: array
                 items:
-                  oneOf:
+                  anyOf:
                     - $ref: "#/components/schemas/KeyManagerResponseSchema"
                     - $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
               pagination:

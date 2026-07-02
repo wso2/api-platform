@@ -293,22 +293,14 @@ const deleteContent = async (orgId, viewName, fileName) => {
 const deleteAllContent = async (orgId, viewName, t) => {
     const viewId = await viewDao.getId(orgId, viewName);
     try {
-        const deletedRowsCount = await OrgContent.destroy({
+        return await OrgContent.destroy({
             where: {
                 org_uuid: orgId,
                 view_uuid: viewId
             },
             transaction: t
         });
-
-        if (deletedRowsCount < 1) {
-            throw Object.assign(new Sequelize.EmptyResultError('Organization content not found'));
-        }
-        return deletedRowsCount;
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
         throw new Sequelize.DatabaseError(error);
     }
 };

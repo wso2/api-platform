@@ -224,9 +224,9 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[oneOf]|false|none|none|
+|» list|[anyOf]|false|none|none|
 
-*oneOf*
+*anyOf*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -238,7 +238,7 @@ Status Code **200**
 |»»» enabled|boolean|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 
-*xor*
+*or*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|

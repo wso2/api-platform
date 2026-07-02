@@ -62,7 +62,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/apply
 
 ```
 
-Uploads a ZIP file and atomically replaces all existing theme assets for the view. All previously stored files are deleted before the new ones are extracted and stored.
+Uploads a ZIP file and atomically replaces the view's theme assets. Only the assets contained in the uploaded ZIP are present afterward.
 
 > Payload
 
@@ -83,7 +83,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|ZIP file upload. Organization content uploads are limited to 50 MB.|
-|» file|body|string(binary)|true|ZIP file containing organization layout assets.|
+|» file|body|string(binary)|true|ZIP file containing organization theme assets.|
 |viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
