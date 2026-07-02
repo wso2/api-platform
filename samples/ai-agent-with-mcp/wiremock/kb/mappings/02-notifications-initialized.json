@@ -1,0 +1,13 @@
+{
+  "name": "kb-notifications-initialized",
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [{ "matchesJsonPath": "$[?(@.method == 'notifications/initialized')]" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": ""
+  }
+}

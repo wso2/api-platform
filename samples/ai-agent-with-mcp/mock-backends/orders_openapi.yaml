@@ -1,0 +1,176 @@
+openapi: 3.0.3
+info:
+  title: Order Management API
+  description: >
+    Order Management System API. Provides order status, shipping details,
+    estimated delivery dates, and per-customer order history.
+  version: "1.0"
+
+servers:
+  - url: https://<your-tunnel-url>/orders
+    description: >
+      Replace <your-tunnel-url> with your VS Code port-forwarding URL
+      (e.g. https://abc123-8000.app.github.dev).
+      This is the backend endpoint Bijira will call when routing requests through the proxy.
+
+paths:
+  /orders/{order_id}:
+    get:
+      operationId: get_order_status
+      summary: Get order status by order ID
+      description: >
+        Retrieve the current status, shipping carrier, tracking number, and
+        estimated delivery date of an order by order ID.
+        Use when the user asks about the status, shipping, or delivery of an order.
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          description: The order ID (e.g. O-9901)
+          schema:
+            type: string
+            example: O-9901
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+              example:
+                id: O-9901
+                customer_id: C-4821
+                status: in_transit
+                status_label: In Transit
+                carrier: FedEx
+                tracking_number: "794644774888"
+                items:
+                  - sku: PRD-881
+                    name: Wireless Headphones
+                    qty: 1
+                    unit_price: 89.99
+                subtotal: 89.99
+                shipping: 0.00
+                total: 89.99
+                ordered_at: "2026-05-28T10:14:00Z"
+                estimated_delivery: "2026-06-07"
+                can_cancel: false
+                can_return: false
+                return_eligible_from: "2026-06-07"
+                return_deadline: "2026-07-07"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /customers/{customer_id}/orders:
+    get:
+      operationId: get_customer_orders
+      summary: List orders for a customer
+      description: >
+        List all orders placed by a customer. Optionally filter by order status.
+        Use when the user wants to see all orders for a customer rather than a specific order.
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: The customer ID (e.g. C-4821)
+          schema:
+            type: string
+            example: C-4821
+        - name: status
+          in: query
+          required: false
+          description: Filter by status (processing, in_transit, delivered, cancelled)
+          schema:
+            type: string
+            enum: [processing, in_transit, delivered, cancelled]
+      responses:
+        "200":
+          description: List of orders for the customer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Order"
+                  total:
+                    type: integer
+        "404":
+          description: No orders found for this customer
+
+components:
+  schemas:
+    OrderItem:
+      type: object
+      properties:
+        sku:        { type: string }
+        name:       { type: string }
+        qty:        { type: integer }
+        unit_price: { type: number, format: float }
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          example: O-9901
+        customer_id:
+          type: string
+        status:
+          type: string
+          enum: [processing, in_transit, delivered, cancelled]
+        status_label:
+          type: string
+        carrier:
+          type: string
+          nullable: true
+        tracking_number:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        subtotal:
+          type: number
+          format: float
+        shipping:
+          type: number
+          format: float
+        total:
+          type: number
+          format: float
+        ordered_at:
+          type: string
+          format: date-time
+        estimated_delivery:
+          type: string
+          format: date
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        can_cancel:
+          type: boolean
+        can_return:
+          type: boolean
+        return_eligible_from:
+          type: string
+          format: date
+          nullable: true
+        return_deadline:
+          type: string
+          format: date
+          nullable: true
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string

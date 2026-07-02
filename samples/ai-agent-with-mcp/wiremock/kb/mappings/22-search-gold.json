@@ -1,0 +1,18 @@
+{
+  "name": "kb-search-gold",
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.method == 'tools/call')]" },
+      { "matchesJsonPath": "$[?(@.params.name == 'search_kb')]" },
+      { "matchesJsonPath": "$[?(@.params.arguments.query =~ /.*gold.*/i)]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "kb-search-gold.json"
+  }
+}

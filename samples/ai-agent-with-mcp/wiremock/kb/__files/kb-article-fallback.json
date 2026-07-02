@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":{{jsonPath request.body '$.id'}},"result":{"content":[{"type":"text","text":"{\"error\":\"Article not found\"}"}],"isError":true}}

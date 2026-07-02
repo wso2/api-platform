@@ -1,0 +1,133 @@
+openapi: 3.0.3
+info:
+  title: Knowledge Base API
+  description: >
+    Internal Knowledge Base API. Provides full-text search across policy
+    articles, FAQs, shipping guides, membership documentation, and
+    procedures for handling defective or returned items.
+  version: "1.0"
+
+servers:
+  - url: https://<your-tunnel-url>/kb
+    description: >
+      Replace <your-tunnel-url> with your VS Code port-forwarding URL
+      (e.g. https://abc123-8000.app.github.dev).
+      This is the backend endpoint Bijira will call when routing requests through the proxy.
+
+paths:
+  /search:
+    get:
+      operationId: search_kb
+      summary: Search knowledge base articles
+      description: >
+        Search the internal knowledge base for articles matching a query.
+        Use when the user asks about policies, procedures, FAQs, or any
+        topic that may be documented internally — especially return policies,
+        shipping timelines, membership benefits, and handling defective items.
+        Pass the user's question or relevant keywords as the query.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: >
+            Search query — plain natural language or keywords.
+            Examples: "return policy", "how long does a refund take",
+            "gold membership benefits", "damaged item replacement".
+          schema:
+            type: string
+            example: return policy
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of articles to return (1–10, default 3)
+          schema:
+            type: integer
+            default: 3
+            minimum: 1
+            maximum: 10
+        - name: category
+          in: query
+          required: false
+          description: Narrow results to a category (returns, shipping, membership)
+          schema:
+            type: string
+            enum: [returns, shipping, membership]
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query:
+                    type: string
+                  total_results:
+                    type: integer
+                  articles:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Article"
+              example:
+                query: return policy
+                total_results: 2
+                articles:
+                  - id: KB-001
+                    title: Standard Return Policy
+                    category: returns
+                    summary: Our standard return policy allows returns within 30 days of delivery for most items.
+                    body: >
+                      Customers may return most items within 30 days of delivery for a full refund.
+                      Items must be in their original condition and packaging...
+                    url: https://help.example.com/returns/standard-policy
+
+  /articles/{article_id}:
+    get:
+      operationId: get_article
+      summary: Get a specific knowledge base article by ID
+      description: >
+        Retrieve the full content of a knowledge base article by its ID.
+        Use this when you already know the article ID from a prior search result
+        and need the complete body text.
+      parameters:
+        - name: article_id
+          in: path
+          required: true
+          description: The article ID (e.g. KB-001)
+          schema:
+            type: string
+            example: KB-001
+      responses:
+        "200":
+          description: Full article
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Article"
+        "404":
+          description: Article not found
+
+components:
+  schemas:
+    Article:
+      type: object
+      properties:
+        id:
+          type: string
+          example: KB-001
+        title:
+          type: string
+          example: Standard Return Policy
+        category:
+          type: string
+          enum: [returns, shipping, membership]
+        summary:
+          type: string
+          description: One-sentence summary of the article
+        body:
+          type: string
+          description: Full article text
+        url:
+          type: string
+          format: uri
+          description: Canonical URL for the article in the help center
