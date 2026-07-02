@@ -129,8 +129,18 @@ func (s *WebSubAPIDeploymentService) GetWebSubAPIDeploymentsByHandle(apiHandle, 
 
 	var gatewayIdPtr *string
 	var statusPtr *string
-	if gatewayID != "" {
-		gatewayIdPtr = &gatewayID
+	if handle := strings.TrimSpace(gatewayID); handle != "" {
+		// The gatewayId filter is a gateway handle (matching deploy/undeploy); resolve
+		// it to the internal gateway UUID stored in deployments before filtering.
+		gateway, err := s.gatewayRepo.GetByHandleAndOrgID(handle, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve gateway handle: %w", err)
+		}
+		if gateway == nil {
+			// The filter names a gateway that does not exist in this org: no match.
+			return &api.DeploymentListResponse{Count: 0, List: []api.DeploymentResponse{}}, nil
+		}
+		gatewayIdPtr = &gateway.ID
 	}
 	if status != "" {
 		statusPtr = &status
