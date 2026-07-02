@@ -232,11 +232,11 @@ function closeSubUnsub() {
 async function confirmSubUnsub() {
     if (!_manageSub) return;
     closeSubUnsub();
-    await executeDeleteSubscription(_manageSub.id);
+    await executeSubRowDelete(_manageSub.id);
 }
 
 /* ── Delete / unsubscribe (API call) ────────────────────────────── */
-async function executeDeleteSubscription(subscriptionId) {
+async function executeSubRowDelete(subscriptionId) {
     try {
         const response = await fetch(
             devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
