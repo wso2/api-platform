@@ -89,7 +89,9 @@ type ApplicationRepository interface {
 	ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error)
 	AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
 	AddApplicationAssociations(applicationUUID string, targetUUIDs []string) error
+	GetApplicationsByAPIKeyID(apiKeyID, orgID string) ([]*model.Application, error)
 	RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error
+	RemoveAPIKeyFromAllApplications(apiKeyID string) error
 	RemoveApplicationAssociation(applicationUUID, targetUUID string) error
 }
 
@@ -203,6 +205,7 @@ type SubscriptionRepository interface {
 	// CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
 	CountByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string) (int, error)
 	Update(sub *model.Subscription) error
+	UpdateToken(subscriptionID, orgUUID, newToken string) error
 	Delete(subscriptionID, orgUUID string) error
 	ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID string) (bool, error)
 }

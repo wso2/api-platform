@@ -101,7 +101,7 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
 		return
 	}
-	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, req.Status)
+	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))

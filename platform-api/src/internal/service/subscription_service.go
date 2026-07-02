@@ -18,6 +18,7 @@
 package service
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -151,7 +152,7 @@ func (s *SubscriptionService) GetArtifactMetadataMap(uuids []string, orgUUID str
 
 // CreateSubscription creates a new subscription for an artifact of the given kind.
 // apiId is the artifact handle; kind selects the artifact table it is resolved against.
-func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, status string) (*model.Subscription, error) {
+func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string) (*model.Subscription, error) {
 	apiUUID, err := s.resolveArtifactUUIDByKind(apiId, kind, orgUUID)
 	if err != nil {
 		return nil, err
@@ -177,21 +178,31 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 		return nil, constants.ErrSubscriptionAlreadyExists
 	}
 
+	// subscriptionPlanId carries the Developer Portal subscription plan handle. Resolve it to the
+	// plan's UUID, which is what the subscriptions.subscription_plan_uuid foreign key references.
 	if subscriptionPlanId != nil && *subscriptionPlanId != "" {
 		plan, err := s.planRepo.GetByHandleAndOrg(*subscriptionPlanId, orgUUID)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, constants.ErrSubscriptionPlanNotFound
+			}
 			return nil, err
 		}
 		if plan == nil {
 			return nil, constants.ErrSubscriptionPlanNotFound
 		}
+		subscriptionPlanId = &plan.UUID
 	}
 
+	// A non-empty subscriptionToken is the token imported from the Developer Portal (the
+	// value shown to the user); the repository persists it as-is. When empty (interactive
+	// creation), the repository generates a fresh token.
 	sub := &model.Subscription{
 		ArtifactUUID:       apiUUID,
 		SubscriberID:       subscriberID,
 		ApplicationID:      applicationId,
 		SubscriptionPlanID: subscriptionPlanId,
+		SubscriptionToken:  subscriptionToken,
 		OrganizationUUID:   orgUUID,
 		Status:             st,
 		CreatedBy:          subscriberID,
@@ -274,6 +285,26 @@ func (s *SubscriptionService) ListSubscriptionsByFilters(orgUUID string, apiId *
 	return list, total, nil
 }
 
+// FindByArtifactKindAndSubscriber locates a single subscription by (API, subscriber) within the org,
+// resolving the API by handle + kind so the lookup is scoped to the artifact table backing that kind
+// (a handle shared across kinds resolves unambiguously). Returns (nil, nil) when none exists and
+// ErrAPINotFound when the artifact itself cannot be resolved.
+func (s *SubscriptionService) FindByArtifactKindAndSubscriber(orgUUID, apiHandle, kind, subscriberID string) (*model.Subscription, error) {
+	apiUUID, err := s.resolveArtifactUUIDByKind(apiHandle, kind, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	sub := subscriberID
+	list, err := s.subscriptionRepo.ListByFilters(orgUUID, &apiUUID, &sub, nil, nil, 1, 0)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, nil
+	}
+	return list[0], nil
+}
+
 // UpdateSubscription updates a subscription (e.g. status). subscriberID must match the stored subscriber_id.
 func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscriberID, status string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
@@ -330,6 +361,127 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 				}
 				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
 					s.slogger.Warn("Failed to broadcast subscription.updated event",
+						"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
+				}
+			}
+		}
+	}
+
+	return sub, nil
+}
+
+// ChangePlan switches the subscription plan of an existing subscription and broadcasts the change
+// to the gateways where the API is deployed. subscriberID must match the stored subscriber_id.
+func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, planHandle string) (*model.Subscription, error) {
+	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
+	if err != nil {
+		if errors.Is(err, constants.ErrSubscriptionNotFound) {
+			return nil, constants.ErrSubscriptionNotFound
+		}
+		return nil, err
+	}
+	if sub == nil {
+		return nil, constants.ErrSubscriptionNotFound
+	}
+	if sub.SubscriberID != subscriberID {
+		return nil, constants.ErrSubscriptionSubscriberMismatch
+	}
+
+	// planHandle carries the Developer Portal subscription plan handle. Resolve it to the plan's
+	// UUID, which is what the subscriptions.subscription_plan_uuid foreign key references.
+	planRecord, err := s.planRepo.GetByHandleAndOrg(planHandle, orgUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrSubscriptionPlanNotFound
+		}
+		return nil, err
+	}
+	if planRecord == nil {
+		return nil, constants.ErrSubscriptionPlanNotFound
+	}
+	plan := planRecord.UUID
+	sub.SubscriptionPlanID = &plan
+	if err := s.subscriptionRepo.Update(sub); err != nil {
+		return nil, err
+	}
+
+	if s.gatewayEvents != nil {
+		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to load gateways for subscription plan change broadcast",
+				"apiId", sub.ArtifactUUID, "subscriptionId", sub.UUID, "error", err)
+		} else {
+			event := &model.SubscriptionUpdatedEvent{
+				ApiId:              sub.ArtifactUUID,
+				SubscriptionId:     sub.UUID,
+				ApplicationId:      derefString(sub.ApplicationID),
+				SubscriptionToken:  sub.SubscriptionToken,
+				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
+				Status:             string(sub.Status),
+			}
+			for _, gw := range gateways {
+				if gw == nil || gw.ID == "" {
+					continue
+				}
+				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
+					s.slogger.Warn("Failed to broadcast subscription plan change event",
+						"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
+				}
+			}
+		}
+	}
+
+	return sub, nil
+}
+
+// RegenerateToken rotates the subscription's token to the value provided by the Developer Portal
+// (delivered encrypted in the subscription.token_regenerated event). The old token is invalidated;
+// the new token is persisted (hashed + encrypted) and broadcast to the gateways where the API is
+// deployed. subscriberID must match the stored subscriber_id.
+func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscriberID, newToken string) (*model.Subscription, error) {
+	if newToken == "" {
+		return nil, fmt.Errorf("subscription token is required")
+	}
+	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
+	if err != nil {
+		if errors.Is(err, constants.ErrSubscriptionNotFound) {
+			return nil, constants.ErrSubscriptionNotFound
+		}
+		return nil, err
+	}
+	if sub == nil {
+		return nil, constants.ErrSubscriptionNotFound
+	}
+	if sub.SubscriberID != subscriberID {
+		return nil, constants.ErrSubscriptionSubscriberMismatch
+	}
+
+	if err := s.subscriptionRepo.UpdateToken(subscriptionId, orgUUID, newToken); err != nil {
+		return nil, err
+	}
+	sub.SubscriptionToken = newToken
+	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, subscriberID)
+
+	if s.gatewayEvents != nil {
+		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to load gateways for subscription token regeneration broadcast",
+				"apiUUID", sub.ArtifactUUID, "subscriptionId", sub.UUID, "error", err)
+		} else {
+			event := &model.SubscriptionUpdatedEvent{
+				ApiId:              sub.ArtifactUUID,
+				SubscriptionId:     sub.UUID,
+				ApplicationId:      derefString(sub.ApplicationID),
+				SubscriptionToken:  sub.SubscriptionToken,
+				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
+				Status:             string(sub.Status),
+			}
+			for _, gw := range gateways {
+				if gw == nil || gw.ID == "" {
+					continue
+				}
+				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
+					s.slogger.Warn("Failed to broadcast subscription token regeneration event",
 						"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
 				}
 			}

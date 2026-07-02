@@ -39,6 +39,7 @@ type ProjectService struct {
 	orgRepo        repository.OrganizationRepository
 	apiRepo        repository.APIRepository
 	mcpProxyRepo   repository.MCPProxyRepository
+	appRepo        repository.ApplicationRepository
 	deletionGuards []ProjectDeletionGuard
 	auditRepo      repository.AuditRepository
 	slogger        *slog.Logger
@@ -46,12 +47,14 @@ type ProjectService struct {
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
-	auditRepo repository.AuditRepository, slogger *slog.Logger) *ProjectService {
+	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
+	slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
 		projectRepo:  projectRepo,
 		orgRepo:      orgRepo,
 		apiRepo:      apiRepo,
 		mcpProxyRepo: mcpProxyRepo,
+		appRepo:      appRepo,
 		auditRepo:    auditRepo,
 		slogger:      slogger,
 	}
@@ -269,6 +272,17 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	}
 	if mcpProxiesCount > 0 {
 		return constants.ErrProjectHasAssociatedMCPProxies
+	}
+
+	// applications no longer cascade-delete with the project (the project_uuid foreign key was
+	// removed), so refuse deletion while any application still references this project. The caller
+	// must reassign or delete those applications first.
+	appCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgId)
+	if err != nil {
+		return err
+	}
+	if appCount > 0 {
+		return constants.ErrProjectHasAssociatedApplications
 	}
 
 	for _, guard := range s.deletionGuards {

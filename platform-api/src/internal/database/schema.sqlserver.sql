@@ -52,7 +52,7 @@ IF OBJECT_ID(N'dbo.applications', N'U') IS NULL
 CREATE TABLE dbo.applications (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    project_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40),
     organization_uuid VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
@@ -62,12 +62,7 @@ CREATE TABLE dbo.applications (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    -- NO ACTION (not CASCADE) to avoid the SQL Server multiple-cascade-paths
-    -- restriction (error 1785). Deleting an organization still removes its
-    -- applications via organizations -> projects -> applications, so no
-    -- cleanup behavior is lost relative to the Postgres schema.
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
 
