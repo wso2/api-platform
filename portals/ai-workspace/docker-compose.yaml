@@ -50,7 +50,7 @@ services:
   # Platform API  (Go HTTPS backend)
   # ---------------------------------------------------------------------------
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.11.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
@@ -101,7 +101,7 @@ services:
   # browser never holds a token.
   # ---------------------------------------------------------------------------
   ai-workspace:
-    image: ghcr.io/wso2/api-platform/ai-workspace:0.2.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-alpha-SNAPSHOT
     container_name: ai-workspace
     restart: unless-stopped
     depends_on:
