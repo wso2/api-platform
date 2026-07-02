@@ -50,7 +50,8 @@ function decryptSubRecord(sub) {
 const INCLUDE_API_AND_PLAN = [
     {
         model: APIMetadata,
-        attributes: ['uuid', 'name', 'version', 'handle', 'ref_id'],
+        as: 'dp_api_metadata',
+        attributes: ['uuid', 'name', 'version', 'handle', 'ref_id', 'type'],
         required: false,
     },
     {

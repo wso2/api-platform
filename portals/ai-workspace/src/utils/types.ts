@@ -383,6 +383,7 @@ export interface LLMProvider {
   policies?: Policy[];
   security?: SecurityConfig;
   status?: 'Active' | 'Degraded' | 'Paused' | string;
+  readOnly?: boolean;
   createdAt?: string;
   createdBy?: string;
   updatedAt?: string;
@@ -470,6 +471,14 @@ export interface ProviderTemplate {
   version: string;
   isLatest?: boolean;
   enabled?: boolean;
+  /**
+   * True when the template was pushed up from a data-plane gateway (origin
+   * "gateway_api"). Its gateway-consumed configuration — the Connection
+   * (endpoint/auth) and Token Mapping (extraction identifiers + resource
+   * mappings) sections — is owned by the gateway and read-only in the control
+   * plane; name/description/OpenAPI/logo remain editable.
+   */
+  readOnly?: boolean;
   promptTokens?: TokenLocation;
   completionTokens?: TokenLocation;
   totalTokens?: TokenLocation;
@@ -595,6 +604,7 @@ export interface Proxy {
   operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   security?: ProxySecurityConfig;
+  readOnly?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -776,6 +786,7 @@ export interface MCPServer {
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;
+  readOnly?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

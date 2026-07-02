@@ -47,7 +47,7 @@ function mapKey(k) {
         revokedAt: k.revoked_at || undefined,
         apiId: k.api_uuid,
         appId: app ? app.uuid : null,
-        appName: app ? app.name : null
+        appDisplayName: app ? app.display_name : null
     };
 }
 
@@ -123,12 +123,12 @@ async function listApiKeys(req, res) {
 
 /**
  * POST /devportal/v1/apis/:apiId/api-keys/regenerate
- * Body: { keyId }
+ * Body: { keyId, expiresAt? }
  */
 async function regenerateApiKey(req, res) {
     const orgId = req.orgId;
     const apiId = req.params.apiId;
-    const { keyId } = req.body || {};
+    const { keyId, expiresAt } = req.body || {};
 
     if (!keyId || typeof keyId !== 'string' || !keyId.trim()) {
         return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
@@ -136,7 +136,7 @@ async function regenerateApiKey(req, res) {
 
     try {
         const result = await apiKeyService.regenerate({
-            orgId, apiId, keyId: keyId.trim(), actor: req.user.sub, userToken: req.user.accessToken,
+            orgId, apiId, keyId: keyId.trim(), expiresAt, actor: req.user.sub, userToken: req.user.accessToken,
         });
         logUserAction('API_KEY_REGENERATED', req, { orgId, apiId, keyId });
         return res.status(200).json(result);

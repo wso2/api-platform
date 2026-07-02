@@ -19,6 +19,7 @@
 metadata:
   name: azure-openai
 spec:
+  groupId: azure-openai
   displayName: Azure OpenAI
   managedBy: wso2
   version: v1.0

@@ -62,21 +62,13 @@ import {
 
 const MAX_DESCRIPTION_LENGTH = 200;
 
-const VERSION_PATTERN = /^[vV]\d+\.\d+$/;
+const VERSION_PATTERN = /^[vV][1-9]\d*\.\d+$/;
 
 function suggestNextVersion(current?: string): string {
   const match = /^[vV](\d+)\.\d+$/.exec((current ?? '').trim());
   if (!match) return 'v2.0';
   const major = parseInt(match[1], 10);
   return `v${major + 1}.0`;
-}
-
-function toTemplateId(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
 }
 
 // Parse an OpenAPI spec (JSON or YAML) and return its first server URL.
@@ -250,10 +242,10 @@ function CreateProviderTemplateVersionForm({
     if (openapiSpecUrl.trim()) metadata.openapiSpecUrl = openapiSpecUrl.trim();
     else delete metadata.openapiSpecUrl;
 
-    const payload: ProviderTemplate = {
-      id: toTemplateId(`${template.displayName ?? ''} ${version.trim()}`),
+    // The new version is cloned from the current version server-side; the body
+    // only carries the fields the user may change.
+    const overrides: Partial<ProviderTemplate> = {
       displayName: template.displayName,
-      version: version.trim(),
       description: description.trim() || undefined,
       resourceMappings: template.resourceMappings,
       ...tokenFields,
@@ -261,12 +253,20 @@ function CreateProviderTemplateVersionForm({
       openapi: specContent.trim() ? specContent : undefined,
     };
 
+    const groupId = template.groupId ?? templateId;
+    const trimmedVersion = version.trim();
+    // Matches the server's handle derivation: <groupId>-<version with '.'→'-'>.
+    const derivedToId = `${groupId}-${trimmedVersion
+      .toLowerCase()
+      .replace(/\./g, '-')}`;
+
     setIsSubmitting(true);
     try {
       const created = await providerTemplateApis.createProviderTemplateVersion(
-        templateId,
-        payload,
-        organizationId,
+        template.id,
+        derivedToId,
+        trimmedVersion,
+        overrides,
         PLATFORM_API_BASE_URL
       );
       await refreshTemplates();
@@ -352,7 +352,7 @@ function CreateProviderTemplateVersionForm({
                   error={version.trim().length > 0 && !isVersionValid}
                   helperText={
                     version.trim().length > 0 && !isVersionValid
-                      ? 'Expected: v<major>.<minor>'
+                      ? 'Expected: v<major>.<minor>, starting from v1.0'
                       : ''
                   }
                 />
@@ -589,7 +589,7 @@ export default function CreateProviderTemplateVersion() {
     setIsLoading(true);
     setError(null);
     providerTemplateApis
-      .getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplate(templateId, PLATFORM_API_BASE_URL)
       .then((full) => {
         if (isMounted) setTemplate(full);
       })

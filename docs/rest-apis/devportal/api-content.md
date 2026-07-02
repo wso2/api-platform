@@ -445,7 +445,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
-|fileName|query|string|false|File name selector used by file retrieval and organization content deletion.|
+|fileName|query|string|false|File name selector used to delete a single stored API content file.|
 |apiId|path|string|true|none|
 
 > Example responses
@@ -515,4 +515,3 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|
 |status|error|
 |status|error|
-

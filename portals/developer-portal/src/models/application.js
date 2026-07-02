@@ -40,7 +40,7 @@ const Application = sequelize.define('dp_application', {
         type: DataTypes.STRING,
         allowNull: false
     },
-    name: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },
@@ -194,7 +194,7 @@ SubscriptionPlan.belongsToMany(APIMetadata, {
     otherKey: "api_uuid",
 });
 
-SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'api_uuid' });
+SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'api_uuid', as: 'dp_api_metadata' });
 SubscriptionMapping.belongsTo(SubscriptionPlan, { foreignKey: 'plan_uuid' });
 
 Application.belongsTo(Organization, {

@@ -82,6 +82,7 @@ const createAPIMetadata = async (req, res) => {
             }
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
+            apiMetadata.type = util.resolveApiType(apiMetadata.type);
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
@@ -408,6 +409,7 @@ const updateAPIMetadata = async (req, res) => {
             }
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
+            apiMetadata.type = util.resolveApiType(apiMetadata.type);
             if (req.files?.apiDefinition?.[0]) {
                 const file = req.files.apiDefinition[0];
                 const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
@@ -981,7 +983,7 @@ const getAPIFile = async (req, res) => {
 
             if (apiFileResponse) {
                 // Send file content as text
-                return res.status(200).send(Buffer.isBuffer(apiFile) ? apiFile : constants.CHARSET_UTF8);
+                return res.status(200).send(apiFile);
             } else {
                 res.status(404).send("API File not found");
             }
@@ -1094,11 +1096,6 @@ const createSubscriptionPlan = async (req, res) => {
         return res.status(400).json({ message: "Request body is missing or invalid" });
     }
 
-    const validTypes = ["requestcount", "eventcount"];
-    if (!subscriptionPlan.type || typeof subscriptionPlan.type !== 'string' || !validTypes.includes(subscriptionPlan.type.toLowerCase())) {
-        return res.status(400).json({ message: "Invalid or missing subscription plan type" });
-    }
-
     try {
         await sequelize.transaction({
             timeout: 60000,
@@ -1145,24 +1142,16 @@ const createSubscriptionPlans = async (req, res) => {
             await sequelize.transaction({
                 timeout: 60000,
             }, async (t) => {
-                // TODO: Try using SubscriptionPlan.bulkCreate() once Table is finalised and manipulating each data is not needed
                 for (const plan of subscriptionPlans) {
-                    if (typeof plan.type !== 'string') {
-                        throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPlan.type must be a string');
+                    const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
+                    if (!created) {
+                        throw new CustomError(
+                            500,
+                            constants.ERROR_CODE[500],
+                            `Failed to create plan: ${plan.handle || "unknown"}`
+                        );
                     }
-                    if (plan.type.toLowerCase() == "requestcount" || plan.type.toLowerCase() == "eventcount") {
-                        const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
-                        if (!created) {
-                            throw new CustomError(
-                                500,
-                                constants.ERROR_CODE[500],
-                                `Failed to create plan: ${plan.handle || "unknown"}`
-                            );
-                        }
-                        createdPlans.push(new subscriptionPlanDTO(created));
-                    } else {
-                        throw new CustomError(400, constants.ERROR_CODE[400], `Unsupported plan type: ${plan.type}`);
-                    }
+                    createdPlans.push(new subscriptionPlanDTO(created));
                 }
             });
             logger.info('Created subscription plans', {
@@ -1192,11 +1181,6 @@ const updateSubscriptionPlan = async (req, res) => {
         return res.status(400).json({ message: "Request body is missing or invalid" });
     }
 
-    const validTypes = ["requestcount", "eventcount"];
-    if (!subscriptionPlan.type || typeof subscriptionPlan.type !== 'string' || !validTypes.includes(subscriptionPlan.type.toLowerCase())) {
-        return res.status(400).json({ message: "Invalid or missing subscription plan type" });
-    }
-    
     try {
         await sequelize.transaction({
             timeout: 60000,
@@ -1241,22 +1225,15 @@ const updateSubscriptionPlans = async (req, res) => {
                 timeout: 60000,
             }, async (t) => {
                 for (const plan of subscriptionPlans) {
-                    if (typeof plan.type !== 'string') {
-                        throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPlan.type must be a string');
+                    const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
+                    if (!result?.subscriptionPlanResponse) {
+                        throw new CustomError(
+                            500,
+                            constants.ERROR_CODE[500],
+                            `Failed to upsert plan: ${plan.handle || "unknown"}`
+                        );
                     }
-                    if (plan.type.toLowerCase() == "requestcount" || plan.type.toLowerCase() == "eventcount") {
-                        const created = await subscriptionPlanDao.put(orgId, plan, userId, t);
-                        if (!created) {
-                            throw new CustomError(
-                                500,
-                                constants.ERROR_CODE[500],
-                                `Failed to create plan: ${plan.handle || "unknown"}`
-                            );
-                        }
-                        updatedPlans.push(new subscriptionPlanDTO(created.subscriptionPlanResponse));
-                    } else {
-                        throw new CustomError(400, constants.ERROR_CODE[400], `Unsupported plan type: ${plan.type}`);
-                    }
+                    updatedPlans.push(new subscriptionPlanDTO(result.subscriptionPlanResponse));
                 }
             });
 
@@ -1829,6 +1806,15 @@ function parseApiMetadataFromYamlRequest(req) {
     return parseApiMetadataFromYamlFile(apiFile.originalname, apiFile.buffer);
 }
 
+function legacyLimitsFromSpec(spec) {
+    const type = (spec.type || '').toLowerCase();
+    if (type === 'requestcount' && spec.requestCount != null)
+        return [{ limitType: 'REQUEST_COUNT', limitCount: spec.requestCount, timeUnit: null, timeAmount: 1 }];
+    if (type === 'eventcount' && spec.eventCount != null)
+        return [{ limitType: 'EVENT_COUNT', limitCount: spec.eventCount, timeUnit: null, timeAmount: 1 }];
+    return [];
+}
+
 function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
@@ -1836,9 +1822,7 @@ function mapYamlToSubscriptionPlan(item) {
         name: spec.displayName,
         description: spec.description,
         refId: spec.refId,
-        type: spec.type,
-        requestCount: spec.requestCount,
-        eventCount: spec.eventCount,
+        limits: Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec),
     };
 }
 

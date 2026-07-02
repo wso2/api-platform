@@ -55,7 +55,6 @@ import { getMCPProxyOption } from './mcpProxyOption';
 import { getProviderProxyOption } from './providerProxyOption';
 import type { QuickStartOption, QuickStartOptionId } from './types';
 
-const MAX_LLM_PROVIDERS_PER_ORG = 5;
 const MAX_GATEWAYS_PER_ORG = 3;
 
 type GatewayCounts = {
@@ -239,7 +238,7 @@ export default function QuickStart(): JSX.Element {
     providersResponse.count ??
     providersResponse.pagination?.total ??
     providers.length;
-  const isProviderQuotaReached = providerCount >= MAX_LLM_PROVIDERS_PER_ORG;
+  const isProviderQuotaReached = false;
   const isGatewayQuotaReached =
     gatewayCounts.ai + gatewayCounts.api >= MAX_GATEWAYS_PER_ORG;
   const nextButtonTooltip =

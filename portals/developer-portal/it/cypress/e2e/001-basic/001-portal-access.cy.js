@@ -23,6 +23,6 @@ describe('Developer Portal — Portal Access', () => {
 
     it('portal home loads and shows the hero section', () => {
         cy.visitPortal();
-        cy.get('.hero-section').should('be.visible');
+        cy.get('.hero').should('be.visible');
     });
 });

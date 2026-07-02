@@ -99,7 +99,7 @@ const loadAPIApiKeys = async (req, res, next) => {
                 revokedAt: k.revoked_at || undefined,
                 apiId: k.api_uuid,
                 appId: k.dp_api_key_app_mapping?.app_uuid || null,
-                appName: k.dp_api_key_app_mapping?.dp_application?.name || null,
+                appDisplayName: k.dp_api_key_app_mapping?.dp_application?.display_name || null,
                 maskedApiKey: '••••••••'
             }));
             apiKeysCount = apiKeys.length;
@@ -114,7 +114,7 @@ const loadAPIApiKeys = async (req, res, next) => {
 
         try {
             const apps = await applicationDao.list(orgId, req.user.sub);
-            applications = (apps || []).map((a) => ({ appId: a.uuid, name: a.name }));
+            applications = (apps || []).map((a) => ({ appId: a.uuid, displayName: a.display_name }));
         } catch (dbError) {
             logger.warn('Failed to load applications for API key association', {
                 error: dbError.message,

@@ -201,27 +201,43 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, err
 	}
 
+	// Validate the request-supplied metadata (e.g. endpointUrl) before it is used to seed
+	// a new association's metadata, so an invalid override is rejected up-front rather
+	// than persisted onto the association.
+	if _, err := extractEndpointURLOverride(metadata); err != nil {
+		return nil, err
+	}
+
+	// Ensure a gateway association exists for the target gateway before deploying, and
+	// resolve the deployment metadata. The first deployment to a gateway creates the
+	// association and seeds its metadata from this deployment. For an existing
+	// association the deploy request value overrides for this deployment; when the
+	// metadata field is omitted, the association's stored metadata is used. An existing
+	// association's metadata is never modified at deploy time.
+	metadataProvided := req.Metadata != nil
+	deployMetaJSON, err := marshalDeploymentMetadata(metadata)
+	if err != nil {
+		return nil, err
+	}
+	effectiveMetaJSON, err := s.mcpRepo.EnsureGatewayAssociation(mcpProxy.UUID, gatewayID, orgId, deployMetaJSON, metadataProvided)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+	}
+	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
+		return nil, err
+	}
+
 	// Generate deployment ID
 	deploymentID, err := utils.GenerateUUID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
 	}
 
-	// Collect endpoint URL override from metadata
-	var endpointURL *string
-	if req.Metadata != nil {
-		if v, exists := metadata["endpointUrl"]; exists {
-			eu, ok := v.(string)
-			if !ok {
-				return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: expected string, got %T", constants.ErrInvalidInput, v)
-			}
-			if eu != "" {
-				if err := validateEndpointURL(eu); err != nil {
-					return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: %v", constants.ErrInvalidInput, err)
-				}
-				endpointURL = &eu
-			}
-		}
+	// Collect endpoint URL override from the effective metadata so a value stored on the
+	// association (when the request omits metadata) is honored, not just request values.
+	endpointURL, err := extractEndpointURLOverride(metadata)
+	if err != nil {
+		return nil, err
 	}
 
 	var baseDeploymentID *string
@@ -331,6 +347,27 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		deployment.UpdatedAt,
 		nil,
 	)
+}
+
+// extractEndpointURLOverride reads and validates the optional "endpointUrl" override from
+// a deployment metadata map. It returns nil (no override) when the key is absent or empty,
+// and ErrInvalidInput when the value is not a string or is not a valid endpoint URL.
+func extractEndpointURLOverride(metadata map[string]interface{}) (*string, error) {
+	v, exists := metadata["endpointUrl"]
+	if !exists {
+		return nil, nil
+	}
+	eu, ok := v.(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: expected string, got %T", constants.ErrInvalidInput, v)
+	}
+	if eu == "" {
+		return nil, nil
+	}
+	if err := validateEndpointURL(eu); err != nil {
+		return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: %v", constants.ErrInvalidInput, err)
+	}
+	return &eu, nil
 }
 
 // UndeployMCPProxyDeployment undeploys an MCP proxy from a gateway

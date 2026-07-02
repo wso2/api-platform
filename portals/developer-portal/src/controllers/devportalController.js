@@ -34,7 +34,6 @@ const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManagerDao');
 const { generateToken } = require('../services/oauthTokenService');
 const { CustomError } = require('../utils/errors/customErrors');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -50,16 +49,14 @@ function parseApplicationDataFromRequest(req) {
             throw new CustomError(400, "Bad Request", "Invalid application YAML: expected an object");
         }
         const spec = parsed.spec || {};
-        const name = spec.displayName || parsed.metadata?.name;
-        if (!name) {
-            throw new CustomError(400, "Bad Request", "Missing required application field: name");
-        }
-        if (!spec.description) {
-            throw new CustomError(400, "Bad Request", "Missing required application field: description");
+        const displayName = spec.displayName;
+        if (!displayName) {
+            throw new CustomError(400, "Bad Request", "Missing required application field: displayName");
         }
         return {
-            name,
+            displayName,
             description: spec.description,
+            handle: spec.handle || parsed.metadata?.name,
         };
     }
     return req.body;
@@ -84,13 +81,13 @@ const saveApplication = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
     try {
         const applicationData = parseApplicationDataFromRequest(req);
-        trackAppCreationStart({ orgId: orgId, appName: applicationData.name, idpId: userId }, req);
+        trackAppCreationStart({ orgId: orgId, appName: applicationData.displayName, idpId: userId }, req);
         const application = await appDao.create(orgId, userId, applicationData);
-        trackAppCreationEnd({ orgId: orgId, appName: applicationData.name, idpId: userId }, req);
+        trackAppCreationEnd({ orgId: orgId, appName: applicationData.displayName, idpId: userId }, req);
         const createdApp = application.dataValues;
         try {
             await sequelize.transaction((t) => publish('application.created',
-                { application_id: createdApp.uuid, name: createdApp.name, description: createdApp.description },
+                { application_id: createdApp.uuid, display_name: createdApp.display_name, handle: createdApp.handle, description: createdApp.description, type: 'web' },
                 { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: createdApp.uuid }
             ));
         } catch (pubErr) {
@@ -119,10 +116,9 @@ const updateApplication = async (req, res) => {
             const renamedApp = updatedApp[0].dataValues;
             await sequelize.transaction(async (t) => {
                 await publish('application.updated',
-                    { application_id: appId, name: renamedApp.name, description: renamedApp.description },
+                    { application_id: appId, display_name: renamedApp.display_name, handle: renamedApp.handle, description: renamedApp.description, type: 'web' },
                     { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: appId }
                 );
-                await apiKeyService.notifyApplicationKeysChanged(orgId, appId, { id: appId, name: renamedApp.name }, t);
             });
         } catch (pubErr) {
             logger.warn('Failed to publish webhook events after app update', { orgId: orgId, appId: appId, error: pubErr.message });
@@ -155,13 +151,13 @@ const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete
         await sequelize.transaction(async (t) => {
             if (appToDelete) {
                 await publish('application.deleted',
-                    { application_id: applicationId, name: appToDelete.name },
+                    { application_id: applicationId, display_name: appToDelete.display_name, handle: appToDelete.handle },
                     { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: applicationId }
                 );
             }
             for (const key of affectedKeys) {
                 const meta = key.dp_api_metadata;
-                const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
+                const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
                 await apiKeyService.publishKeyApplicationUpdated(orgId, key.uuid, key.name, api, null, t);
             }
         });
@@ -365,76 +361,6 @@ const revokeOAuthKeys = async (req, res) => {
     }
 };
 
-const login = async (req, res) => {
-    const { username, password } = req.body;
-
-    const platformApiUrl = config.platformApi?.baseUrl;
-    if (!platformApiUrl) {
-        return res.status(503).json({ message: 'Authentication service not configured' });
-    }
-
-    let platformToken;
-    try {
-        const response = await axios.post(
-            `${platformApiUrl}/api/portal/v0.9/auth/login`,
-            new URLSearchParams({ username, password }).toString(),
-            {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
-                timeout: 10000,
-            }
-        );
-        platformToken = response.data.token;
-    } catch (error) {
-        if (error.response?.status === 401) {
-            return res.status(401).json({ message: 'Invalid credentials' });
-        }
-        logger.error('Platform API login request failed', { error: error.message });
-        return res.status(503).json({ message: 'Authentication service unavailable' });
-    }
-
-    const claims = extractPlatformJwtClaims(platformToken, null);
-    if (!claims?.org_handle) {
-        logger.error('Platform API token missing required claims', { operation: 'devportalLogin' });
-        return res.status(503).json({ message: 'Authentication service error' });
-    }
-
-    const scopes = claims.scopes;
-    const adminRole = config.identityProvider.adminRole || 'admin';
-    const subscriberRole = config.identityProvider.subscriberRole || 'Internal/subscriber';
-    const isAdmin = scopes.some(s => s.endsWith('_manage'));
-
-    const profile = {
-        firstName: claims.username || username,
-        lastName: '',
-        email: claims.email || username,
-        [constants.ROLES.ORGANIZATION_CLAIM]: claims.org_handle || '',
-        [constants.ROLES.ROLE_CLAIM]: isAdmin ? [adminRole] : [subscriberRole],
-        [constants.ROLES.GROUP_CLAIM]: [],
-        [constants.USER_ID]: claims.sub || username,
-        accessToken: platformToken,
-        refreshToken: null,
-        authorizedOrgs: [claims.org_handle || ''],
-        userOrg: claims.org_handle || '',
-        isAdmin,
-        isSuperAdmin: false,
-        isLocalAuth: true,
-    };
-
-    req.session.regenerate((err) => {
-        if (err) {
-            logger.error('Session regeneration failed', { error: err.message });
-            return util.handleError(res, err);
-        }
-        req.logIn(profile, (loginErr) => {
-            if (loginErr) {
-                logger.error('Login session error', { error: loginErr.message });
-                return util.handleError(res, loginErr);
-            }
-            req.session.save(() => res.status(200).json({ message: 'Login successful' }));
-        });
-    });
-};
 module.exports = {
     listApplications,
     getApplication,
@@ -444,5 +370,4 @@ module.exports = {
     generateKeys,
     generateOAuthKeys,
     revokeOAuthKeys,
-    login
 };

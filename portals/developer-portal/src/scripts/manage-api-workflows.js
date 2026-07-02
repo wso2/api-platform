@@ -864,7 +864,7 @@ function buildPromptContext() {
     return { contextBlock, apiContext };
 }
 
-async function openInVSCode() {
+function openInVSCode() {
     if (createPathFormat === 'markdown') return; // button is hidden in markdown mode
 
     generateArazzoSpec();
@@ -876,97 +876,18 @@ async function openInVSCode() {
     }
 
     const name = document.getElementById('apiWorkflowName')?.value?.trim() || 'workflow';
-    const filename = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.arazzo.yaml';
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workflow';
+    const filename = slug + '.arazzo.yaml';
 
-    const btn = document.getElementById('openInVSCodeBtn');
-    const originalHtml = btn?.innerHTML;
-    if (btn) btn.innerHTML = '<span class="af-sd-checking-spinner"></span> Opening…';
-
-    try {
-        const res = await fetch(devportalApi.root('/temp-arazzo-file'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-            body: JSON.stringify({ content, filename }),
-            credentials: 'same-origin'
-        });
-
-        if (!res.ok) throw new Error('Server error');
-        const { path: filePath } = await res.json();
-
-        // Use vscode:// URI to open the file directly in VS Code
-        // filePath is absolute (starts with /), so omit the extra slash after "file"
-        const vscodeUri = `vscode://file${filePath}`;
-
-        await new Promise((resolve) => {
-            let handled = false;
-
-            const cleanup = () => {
-                clearTimeout(timer);
-                document.removeEventListener('visibilitychange', onVisibilityChange);
-                window.removeEventListener('pagehide', onPageHide);
-            };
-
-            const onVisibilityChange = () => {
-                if (document.hidden) {
-                    handled = true;
-                    cleanup();
-                    resolve();
-                }
-            };
-
-            const onPageHide = () => {
-                handled = true;
-                cleanup();
-                resolve();
-            };
-
-            document.addEventListener('visibilitychange', onVisibilityChange);
-            window.addEventListener('pagehide', onPageHide);
-
-            // Attempt to open via hidden iframe to avoid navigating away
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = vscodeUri;
-            document.body.appendChild(iframe);
-            setTimeout(() => document.body.removeChild(iframe), 2000);
-
-            const timer = setTimeout(() => {
-                cleanup();
-                if (!handled) {
-                    // VS Code protocol handler not available — offer download fallback
-                    const blob = new Blob([content], { type: 'application/yaml' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    showAlert(
-                        `VS Code does not appear to be installed or the protocol handler is not registered — "${filename}" downloaded instead.`,
-                        'warning'
-                    );
-                }
-                resolve();
-            }, 1200);
-        });
-
-    } catch (err) {
-        // Fallback: download the file
-        const blob = new Blob([content], { type: 'application/yaml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showAlert(`VS Code open failed (${err?.message || err}) — "${filename}" downloaded instead`, 'warning');
-    } finally {
-        if (btn && originalHtml) btn.innerHTML = originalHtml;
-    }
+    const blob = new Blob([content], { type: 'application/yaml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 // ─────────────────────────────────────────────

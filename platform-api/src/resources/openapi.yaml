@@ -1012,10 +1012,12 @@ paths:
 
   /llm-provider-templates:
     post:
-      summary: Create a new LLM provider template
+      summary: Create a new LLM provider template family
       description: |
-        Creates a new LLM provider template within the organization.
-        Organization is identified via the JWT token.
+        Creates a new template family, starting at v1.0, with an
+        `LLMProviderTemplate` body. To add a new version to an existing family,
+        use `POST /llm-provider-templates/copy` instead. Organization is
+        identified via the JWT token.
       operationId: createLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1025,6 +1027,7 @@ paths:
         - LLM Provider Templates
       requestBody:
         required: true
+        description: The template family to create (starts at v1.0).
         content:
           application/json:
             schema:
@@ -1042,15 +1045,26 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
-
     get:
-      summary: List all LLM provider templates
+      summary: List templates, list a family's versions, or get a single version
       description: |
-        Retrieve a list of all LLM provider templates for the organization.
+        Behavior depends on query params:
+          - no `query` (or `query=latest:true`) -> list templates. By default every version of every family (full history, e.g. all 5 openai + all 9 deepseek); with `latest=true` only the latest version of each family (built-in and custom)
+          - `query=groupId:<id>`              -> list all versions of that family
+          - `query=groupId:<id>&version:<ver>` -> return the single full template for that (groupId, version)
+        The `query` value is URL-encoded so its `:` and `&` survive query
+        parsing (?query=groupId%3Aopenai%26version%3Av1.0). Organization is
+        identified via the JWT token.
+
+        Note: with `version`, the response is a single `LLMProviderTemplate`
+        object (the same body as `GET /llm-provider-templates/{llmProviderTemplateId}`); otherwise
+        it is an `LLMProviderTemplateListResponse`.
       operationId: listLLMProviderTemplates
       security:
         - OAuth2Security:
@@ -1059,6 +1073,29 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
+        - name: query
+          in: query
+          required: false
+          description: >-
+            URL-encoded search DSL. `query=groupId:<id>` lists that family's
+            versions; adding `&version:<ver>` returns the single full template
+            for that version. Terms are `&`-separated and the whole value is
+            percent-encoded (e.g. groupId%3Aopenai%26version%3Av1.0). The version
+            may instead be supplied via the standalone `version` query param.
+          schema:
+            type: string
+          example: groupId:openai&version:v1.0
+        - name: version
+          in: query
+          required: false
+          description: >-
+            Selects a single version within the family named by `query=groupId:<id>`,
+            returning the full template for that (groupId, version). Alternative to
+            packing `&version:<ver>` inside the `query` value; ignored when `query`
+            has no groupId.
+          schema:
+            type: string
+          example: v1.0
         - name: limit
           in: query
           description: Maximum number of LLM provider templates to return
@@ -1074,32 +1111,120 @@ paths:
             type: integer
             minimum: 0
             default: 0
-        - name: versions
+        - name: latest
           in: query
           description: |
-            Which versions to include. The default ("latest") returns one entry
-            per template — its latest version, for the catalog. Use "all" to
-            return every version row across all templates.
+            Which versions to include. By default (false) the response contains
+            every version row across all templates (full history). Set to true
+            to return only the latest version of each family (one entry per
+            built-in/custom bucket), for the catalog listing. May also be passed
+            inside the query DSL as `query=latest:true`.
           schema:
-            type: string
-            enum: [latest, all]
-            default: latest
+            type: boolean
+            default: false
       responses:
         '200':
-          description: List of LLM provider templates
+          description: >-
+            Without `version`: a list response — either templates (all versions
+            by default, or the latest of each family when `latest=true`) or
+            a family's versions. With `groupId`+`version`: the single full
+            template for that version.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderTemplateListResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/LLMProviderTemplateListResponse'
+                  - $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-provider-templates/copy:
+    post:
+      summary: Create a new version by copying an existing one
+      description: |
+        Creates a new version within a template family by cloning an existing
+        version (`fromTemplateId`) and applying optional field overrides from
+        the body. The new version lands in the same family as the source and
+        becomes the latest.
+
+        Versions start at v1.0 and only go higher — `toVersion` must match the
+        `v<major>.<minor>` pattern with a major of at least 1 (e.g. v2.0); v0.x
+        is rejected. `toTemplateId`, when supplied, must equal the handle
+        derived from the family and `toVersion`. Organization is identified via
+        the JWT token.
+      operationId: copyLLMProviderTemplateVersion
+      security:
+        - OAuth2Security:
+            - ap:llm_template:create
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: fromTemplateId
+          in: query
+          required: true
+          description: Handle (id) of the source version to copy from.
+          schema:
+            type: string
+          example: openai-v3-0
+        - name: toTemplateId
+          in: query
+          required: false
+          description: >-
+            Expected handle of the new version. Must equal the handle derived
+            from the source family and toVersion; used to validate the target.
+          schema:
+            type: string
+          example: openai-v4-0
+        - name: toVersion
+          in: query
+          required: true
+          description: >-
+            New version identifier, e.g. v4.0. Must match v<major>.<minor> with
+            a major of at least 1, and be unique within the family.
+          schema:
+            type: string
+          example: v4.0
+      requestBody:
+        required: false
+        description: >-
+          Optional overrides applied on top of the copied config. Any field
+          present replaces the value cloned from the source version.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
+      responses:
+        '201':
+          description: New version created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
   /llm-provider-templates/{llmProviderTemplateId}:
     get:
       summary: Get LLM provider template by id
-      description: Retrieve the complete configuration for a specific LLM provider template.
+      description: |
+        Retrieve the complete configuration for a specific LLM provider template.
       operationId: getLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1111,7 +1236,7 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Unique handle of the template.
           schema:
             type: string
           example: openai
@@ -1132,9 +1257,9 @@ paths:
     put:
       summary: Update an existing LLM provider template
       description: |
-        Update the latest version of a template in place (name, description, and
-        other configuration). This does NOT create a new version — use
-        POST /llm-provider-templates/{llmProviderTemplateId}/versions to create a new version.
+        Update the configuration of an existing LLM provider template. The template
+        is identified by its unique handle (id). This operation updates the latest
+        version of the template.
       operationId: updateLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1174,184 +1299,16 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-    delete:
-      summary: Delete an LLM provider template
-      description: Remove an LLM provider template.
-      operationId: deleteLLMProviderTemplate
-      security:
-        - OAuth2Security:
-            - ap:llm_template:delete
-            - ap:llm_template:manage
-      tags:
-        - LLM Provider Templates
-      parameters:
-        - name: llmProviderTemplateId
-          in: path
-          required: true
-          description: Unique identifier of the template to delete
-          schema:
-            type: string
-          example: openai
-      responses:
-        '204':
-          description: LLM provider template deleted successfully
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /llm-provider-templates/{llmProviderTemplateId}/versions:
-    get:
-      summary: List versions of an LLM provider template
-      description: List all immutable versions of a template, newest first.
-      operationId: listLLMProviderTemplateVersions
-      security:
-        - OAuth2Security:
-            - ap:llm_template:read
-            - ap:llm_template:manage
-      tags:
-        - LLM Provider Templates
-      parameters:
-        - name: llmProviderTemplateId
-          in: path
-          required: true
-          description: Unique identifier for the LLM provider template
-          schema:
-            type: string
-          example: openai
-        - name: limit
-          in: query
-          description: Maximum number of versions to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of versions to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-      responses:
-        '200':
-          description: List of template versions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LLMProviderTemplateListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    post:
-      summary: Create a new version of an LLM provider template
-      description: |
-        Create a new version of an existing template. The version (e.g. v2.0)
-        must be supplied in the body, match the v<major>.<minor> pattern, and be
-        unique for the template. The new version becomes the latest.
-
-        The template family is identified by the path parameter; the new version's
-        handle is computed server-side from the family handle and the supplied version.
-      operationId: createLLMProviderTemplateVersion
-      security:
-        - OAuth2Security:
-            - ap:llm_template:create
-            - ap:llm_template:manage
-      tags:
-        - LLM Provider Templates
-      parameters:
-        - name: llmProviderTemplateId
-          in: path
-          required: true
-          description: Unique identifier for the LLM provider template
-          schema:
-            type: string
-          example: openai
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
-      responses:
-        '201':
-          description: New version created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LLMProviderTemplate'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /llm-provider-templates/{llmProviderTemplateId}/versions/{version}:
-    get:
-      summary: Get a specific version of an LLM provider template
-      description: Retrieve the complete configuration for a specific immutable version.
-      operationId: getLLMProviderTemplateVersion
-      security:
-        - OAuth2Security:
-            - ap:llm_template:read
-            - ap:llm_template:manage
-      tags:
-        - LLM Provider Templates
-      parameters:
-        - name: llmProviderTemplateId
-          in: path
-          required: true
-          description: Unique identifier for the LLM provider template
-          schema:
-            type: string
-          example: openai
-        - name: version
-          in: path
-          required: true
-          description: Version to retrieve (e.g. v2.0). Matched case-insensitively.
-          schema:
-            type: string
-          example: v2.0
-      responses:
-        '200':
-          description: LLM provider template version details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LLMProviderTemplate'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
     patch:
-      summary: Enable or disable a specific version of an LLM provider template
+      summary: Enable or disable a template version
       description: |
-        Toggle whether a version is offered when creating providers. Disabled
-        versions stay in the catalog but are hidden from the provider picker.
+        Enable or disable the single template version identified by its handle
+        (id). Only built-in templates can be toggled; disabling a version in use
+        by a provider is rejected (409).
       operationId: setLLMProviderTemplateVersionEnabled
       security:
         - OAuth2Security:
+            - ap:llm_template:update
             - ap:llm_template:manage
       tags:
         - LLM Provider Templates
@@ -1359,25 +1316,17 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Unique handle of the template version.
           schema:
             type: string
           example: openai
-        - name: version
-          in: path
-          required: true
-          description: Version to toggle (e.g. v1.0). Matched case-insensitively.
-          schema:
-            type: string
-          example: v1.0
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - enabled
+              required: [enabled]
               properties:
                 enabled:
                   type: boolean
@@ -1393,6 +1342,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1401,10 +1352,11 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
     delete:
-      summary: Delete a specific version of an LLM provider template
+      summary: Delete a template version
       description: |
-        Delete a single version. If it was the only version the template is
-        removed; otherwise the newest remaining version becomes the latest.
+        Delete the single template version identified by its handle (id).
+        Built-in versions are read-only (403); a version still in use by a
+        provider is blocked (409).
       operationId: deleteLLMProviderTemplateVersion
       security:
         - OAuth2Security:
@@ -1416,22 +1368,19 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Unique handle of the template version.
           schema:
             type: string
-          example: openai
-        - name: version
-          in: path
-          required: true
-          description: Version to delete (e.g. v2.0). Matched case-insensitively.
-          schema:
-            type: string
-          example: v2.0
+          example: deep-seek-v2-0
       responses:
         '204':
-          description: Version deleted
+          description: Version deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -6942,8 +6891,7 @@ components:
         groupId:
           type: string
           description: |
-            Stable identifier shared by every version of a template family
-            (defaults to the first version's handle). Read-only.
+            Stable identifier shared by every version of a template family.
           readOnly: true
           maxLength: 40
           example: openai
@@ -6958,8 +6906,6 @@ components:
           description: |
             Identifies who manages the template. Built-in templates use 'wso2';
             custom templates default to 'customer' and may be set to any value.
-            Optional on create/update — the server defaults it to 'customer' when
-            omitted, so a request/YAML without a managedBy is accepted.
           default: customer
           maxLength: 255
           example: wso2
@@ -6988,10 +6934,8 @@ components:
         version:
           type: string
           description: |
-            Content version, e.g. v1.0. Required. A new template starts at v1.0;
-            editing updates that version in place. Supply a new unique version
-            only when creating a new version via
-            POST /llm-provider-templates/{llmProviderTemplateId}/versions.
+            Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
+            Must be unique for this template.
           pattern: '^[vV]\d+\.\d+$'
           maxLength: 30
           example: v1.0
@@ -7003,10 +6947,8 @@ components:
         enabled:
           type: boolean
           description: |
-            Whether this version is offered when creating providers. Disabled
-            versions stay in the catalog but are hidden from the provider picker.
-            Response-only: create/update default new versions to enabled; toggle
-            via PATCH /llm-provider-templates/{llmProviderTemplateId}/versions/{version}.
+            Whether this version is offered when creating providers. If false, the
+            template version is hidden from the provider creation UI and API.
           readOnly: true
           example: true
         openapi:
@@ -7053,12 +6995,14 @@ components:
     CreateLLMProviderTemplateVersionRequest:
       type: object
       required:
-        - displayName
         - version
       properties:
         displayName:
           type: string
-          description: Human-readable LLM Template name
+          description: |
+            Human-readable LLM Template name. Optional — when omitted, the new
+            version inherits the family's existing name. Supplying a different
+            value renames the template family.
           minLength: 1
           maxLength: 128
           example: OpenAI
@@ -7110,6 +7054,7 @@ components:
       properties:
         id:
           type: string
+          description: Unique handle for this specific template version.
           minLength: 3
           maxLength: 40
           example: openai

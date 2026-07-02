@@ -58,7 +58,8 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
       })
       .then((response) => {
         expect(response.status).to.eq(200);
-        organizationId = response.body?.id ?? '';
+        const orgs = response.body?.list ?? [];
+        organizationId = orgs[0]?.id ?? '';
         expect(organizationId).to.not.equal('');
       });
   });
@@ -68,8 +69,8 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
     const targeted = (authToken && organizationId)
       ? deleteProvider(authToken, organizationId, targetProviderId)
           .then(() => waitForProviderGone(authToken, organizationId, targetProviderId))
-          .then(() => deleteProviderTemplate(authToken, organizationId, templateV2Id))
-          .then(() => deleteProviderTemplate(authToken, organizationId, templateV1Id))
+          .then(() => deleteTemplateVersion(authToken, organizationId, templateV2Id))
+          .then(() => deleteTemplateVersion(authToken, organizationId, templateV1Id))
       : cy.wrap(null);
 
     return targeted.then(() => cy.sweepE2EProviders(authToken, organizationId));
@@ -249,13 +250,16 @@ function deleteProvider(authToken, organizationId, targetProviderId) {
   });
 }
 
-function deleteProviderTemplate(authToken, organizationId, templateId) {
+function deleteTemplateVersion(authToken, organizationId, templateId) {
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api/proxy/api/v0.9/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api/proxy/api/v0.9/llm-provider-templates/${encodeURIComponent(templateId)}`,
     failOnStatusCode: false,
   }).then((response) => {
-    expect(response.status).to.be.oneOf([200, 204, 404, 409]);
+    if (response.status === 409) {
+      throw new Error(`Template version ${templateId} is still in use during cleanup`);
+    }
+    expect(response.status).to.be.oneOf([200, 204, 404]);
   });
 }
 

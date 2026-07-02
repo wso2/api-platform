@@ -77,11 +77,11 @@ module.exports = {
         REVOKED: "REVOKED",
     },
     API_TYPE: {
-        REST: "REST",
+        REST: "RestApi",
         SOAP: "SOAP",
-        MCP: "MCP",
+        MCP: "Mcp",
         WS: "WS",
-        WEBSUB: "WEBSUB",
+        WEBSUB: "WebSubApi",
         GRAPHQL: "GRAPHQL",
     },
     DEVPORTAL_MODE: {
@@ -217,38 +217,33 @@ module.exports = {
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
             "handle": "Bronze",
-            "description": "Allows 1000 requests per minute",
-            "requestCount": 1000,
             "name": "Bronze",
-            "type": "requestcount",
-        },
-        {
-            "handle": "Gold",
-            "description": "Allows 5000 requests per minute",
-            "name": "Gold",
-            "requestCount": 5000,
-            "type": "requestcount",
+            "description": "Allows 1000 requests per minute",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 1000 }],
         },
         {
             "handle": "Silver",
-            "description": "Allows 2000 requests per minute",
             "name": "Silver",
-            "requestCount": 2000,
-            "type": "requestcount",
+            "description": "Allows 2000 requests per minute",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 2000 }],
+        },
+        {
+            "handle": "Gold",
+            "name": "Gold",
+            "description": "Allows 5000 requests per minute",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 5000 }],
         },
         {
             "handle": "Unlimited",
-            "description": "Allows unlimited requests",
             "name": "Unlimited",
-            "requestCount": -1,
-            "type": "requestcount",
+            "description": "Allows unlimited requests",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
         },
         {
             "handle": "AsyncUnlimited",
-            "description": "Allows unlimited requests for Async APIs",
             "name": "AsyncUnlimited",
-            "requestCount": -1,
-            "type": "requestcount",
+            "description": "Allows unlimited requests for Async APIs",
+            "limits": [{ "limitType": "EVENT_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
         }
     ],
     ERROR_MESSAGE: {

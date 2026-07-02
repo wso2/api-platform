@@ -46,7 +46,6 @@ type ProviderTemplatesContextValue = {
   error: Error | null;
   createTemplate: (template: CreateProviderTemplateRequest) => Promise<ProviderTemplate>;
   updateTemplate: (templateId: string, updates: UpdateProviderTemplateRequest) => Promise<ProviderTemplate>;
-  deleteTemplate: (templateId: string) => Promise<void>;
   refreshTemplates: () => Promise<void>;
   getTemplateById: (templateId: string) => ProviderTemplate | undefined;
 };
@@ -59,9 +58,6 @@ const ProviderTemplatesContext = createContext<ProviderTemplatesContextValue>({
     throw new Error('ProviderTemplatesContext not initialized');
   },
   updateTemplate: async () => {
-    throw new Error('ProviderTemplatesContext not initialized');
-  },
-  deleteTemplate: async () => {
     throw new Error('ProviderTemplatesContext not initialized');
   },
   refreshTemplates: async () => {
@@ -93,7 +89,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
     try {
       setIsLoading(true);
       setError(null);
-      const response = await providerTemplateApis.getProviderTemplates(organizationId, PLATFORM_API_BASE_URL);
+      const response = await providerTemplateApis.getProviderTemplates(PLATFORM_API_BASE_URL);
       // Load latest-first by creation time. (Not updatedAt: the backend seeder
       // re-touches built-in templates on every restart, which would otherwise
       // float them to the top. createdAt also bumps when a new version is added.)
@@ -113,7 +109,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
+  }, [PLATFORM_API_BASE_URL]);
 
   useEffect(() => {
     fetchTemplates();
@@ -124,7 +120,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       throw new Error('Organization ID is missing');
     }
     try {
-      const newTemplate = await providerTemplateApis.createProviderTemplate(template, organizationId, PLATFORM_API_BASE_URL);
+      const newTemplate = await providerTemplateApis.createProviderTemplate(template, PLATFORM_API_BASE_URL);
       setTemplatesResponse((prev) => ({
         ...prev,
         count: prev.count + 1,
@@ -136,7 +132,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       logger.error('Failed to create provider template:', err);
       throw err;
     }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
+  }, [PLATFORM_API_BASE_URL]);
 
   const updateTemplate = useCallback(async (
     templateId: string,
@@ -146,7 +142,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       throw new Error('Organization ID is missing');
     }
     try {
-      const updatedTemplate = await providerTemplateApis.updateProviderTemplate(templateId, updates, organizationId, PLATFORM_API_BASE_URL);
+      const updatedTemplate = await providerTemplateApis.updateProviderTemplate(templateId, updates, PLATFORM_API_BASE_URL);
       setTemplatesResponse((prev) => ({
         ...prev,
         list: prev.list.map((template) =>
@@ -158,25 +154,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       logger.error('Failed to update provider template:', err);
       throw err;
     }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
-
-  const deleteTemplate = useCallback(async (templateId: string): Promise<void> => {
-    if (!organizationId) {
-      throw new Error('Organization ID is missing');
-    }
-    try {
-      await providerTemplateApis.deleteProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL);
-      setTemplatesResponse((prev) => ({
-        ...prev,
-        count: Math.max(0, prev.count - 1),
-        list: prev.list.filter((template) => template.id !== templateId),
-        pagination: { ...prev.pagination, total: Math.max(0, prev.pagination.total - 1) },
-      }));
-    } catch (err) {
-      logger.error('Failed to delete provider template:', err);
-      throw err;
-    }
-  }, [organizationId, PLATFORM_API_BASE_URL]);
+  }, [PLATFORM_API_BASE_URL]);
 
   const refreshTemplates = useCallback(async (): Promise<void> => {
     await fetchTemplates();
@@ -193,11 +171,10 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       error,
       createTemplate,
       updateTemplate,
-      deleteTemplate,
       refreshTemplates,
       getTemplateById,
     }),
-    [templatesResponse, isLoading, error, createTemplate, updateTemplate, deleteTemplate, refreshTemplates, getTemplateById]
+    [templatesResponse, isLoading, error, createTemplate, updateTemplate, refreshTemplates, getTemplateById]
   );
 
   return (

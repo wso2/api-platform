@@ -75,6 +75,7 @@ import type {
   UpdateProviderTemplateRequest,
 } from '../../../../utils/types';
 import { downloadTemplateYaml } from '../../../../utils/providerTemplateManifest';
+import { GatewayArtifactReadOnlyBanner } from '../../../../utils/readOnlyArtifacts';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import TemplateTokenMapping from './TemplateTokenMapping';
 
@@ -186,7 +187,7 @@ export default function ProviderTemplateOverview() {
     setIsLoading(true);
     setError(null);
     providerTemplateApis
-      .getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplate(templateId, PLATFORM_API_BASE_URL)
       .then((full) => {
         if (isMounted) setTemplate(full);
       })
@@ -206,12 +207,14 @@ export default function ProviderTemplateOverview() {
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
-    if (!templateId || !organizationId) return;
     setVersions([]);
+
+    const groupId = template?.groupId ?? template?.id;
+    if (!groupId || !organizationId) return;
 
     let isMounted = true;
     providerTemplateApis
-      .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplateVersions(groupId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (isMounted) {
           setVersions(list);
@@ -224,7 +227,7 @@ export default function ProviderTemplateOverview() {
     return () => {
       isMounted = false;
     };
-  }, [templateId, currentOrganization?.uuid]);
+  }, [template?.groupId, template?.id, currentOrganization?.uuid]);
 
   useEffect(() => {
     if (template?.version) setSelectedVersion(template.version);
@@ -235,10 +238,11 @@ export default function ProviderTemplateOverview() {
     if (!templateId || !organizationId || version === selectedVersion) return;
     setIsLoading(true);
     try {
-      const full = await providerTemplateApis.getProviderTemplateVersion(
-        templateId,
-        version,
-        organizationId,
+      
+      const targetHandle =
+        versions.find((v) => v.version === version)?.id ?? templateId;
+      const full = await providerTemplateApis.getProviderTemplate(
+        targetHandle,
         PLATFORM_API_BASE_URL
       );
       setSelectedVersion(version);
@@ -527,6 +531,13 @@ export default function ProviderTemplateOverview() {
   const isReadOnly = isBuiltIn;
   const canEdit = !isReadOnly;
   const canDelete = !isReadOnly;
+  // Data-plane-originated (gateway-pushed) template: the gateway owns the runtime
+  // configuration, so the Connection (endpoint/auth) and Token Mapping (extraction +
+  // resource mappings) sections are read-only in the control plane. Name/description/
+  // OpenAPI/logo stay editable, so the Update button remains active — the locked
+  // sections simply can't contribute a change.
+  const isDpOrigin = Boolean(template.readOnly);
+  const isSectionReadOnly = isReadOnly || isDpOrigin;
   const isEnabled = template.enabled !== false;
 
   const handleToggleEnabled = async (next: boolean) => {
@@ -554,9 +565,7 @@ export default function ProviderTemplateOverview() {
       const updated =
         await providerTemplateApis.setProviderTemplateVersionEnabled(
           template.id,
-          currentVersion,
           next,
-          organizationId,
           PLATFORM_API_BASE_URL
         );
       setTemplate(updated);
@@ -609,8 +618,7 @@ export default function ProviderTemplateOverview() {
       if (allVersions.length === 0) {
         try {
           allVersions = await providerTemplateApis.getProviderTemplateVersions(
-            template.id,
-            organizationId,
+            template.groupId ?? template.id,
             PLATFORM_API_BASE_URL
           );
         } catch {
@@ -620,8 +628,6 @@ export default function ProviderTemplateOverview() {
 
       await providerTemplateApis.deleteProviderTemplateVersion(
         template.id,
-        currentVersion,
-        organizationId,
         PLATFORM_API_BASE_URL
       );
       await refreshTemplates();
@@ -1018,9 +1024,12 @@ export default function ProviderTemplateOverview() {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
+              {isDpOrigin && !isReadOnly && (
+                <GatewayArtifactReadOnlyBanner message="Connection settings are managed by the gateway that created this template and are read-only here." />
+              )}
               <Box
                 sx={
-                  isReadOnly
+                  isSectionReadOnly
                     ? { pointerEvents: 'none', opacity: 0.7 }
                     : undefined
                 }
@@ -1098,9 +1107,12 @@ export default function ProviderTemplateOverview() {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={2}>
+              {isDpOrigin && !isReadOnly && (
+                <GatewayArtifactReadOnlyBanner message="Token mapping is managed by the gateway that created this template and is read-only here." />
+              )}
               <Box
                 sx={
-                  isReadOnly
+                  isSectionReadOnly
                     ? { pointerEvents: 'none', opacity: 0.7 }
                     : undefined
                 }
@@ -1114,7 +1126,7 @@ export default function ProviderTemplateOverview() {
                     setIsDirty(true);
                   }}
                   spec={parsedSpec}
-                  hidePerResource={isReadOnly}
+                  hidePerResource={isSectionReadOnly}
                 />
               </Box>
             </TabPanel>

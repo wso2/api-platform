@@ -46,7 +46,8 @@ const loadViewSettingsPage = async (req, res) => {
         baseUrl,
         viewName,
         csrfToken,
-        showApiWorkflowsNav: config.features?.apiWorkflows?.enabled === true
+        showApiWorkflowsNav: config.features?.apiWorkflows?.enabled === true,
+        demoMode: config.demo?.enabled === true
     };
     try {
         const orgName = req.params.orgName;
@@ -61,7 +62,8 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.apiWorkflows = apiWorkflows;
 
         const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
-        templateContent.orgAPIs = await Promise.all(allAPIs.map(async api => ({
+        const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
+        templateContent.orgAPIs = allAPIs.map(api => ({
             apiId: api.uuid,
             apiName: api.name,
             apiHandle: api.handle,
@@ -74,8 +76,8 @@ const loadViewSettingsPage = async (req, res) => {
             tags: (api.dp_tags || []).map(tag => tag.name),
             agentVisibility: api.agent_visibility,
             subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.name),
-            existingDocs: await apiFileDao.listDocNames(orgId, api.uuid),
-        })));
+            existingDocs: docNamesByApiId[api.uuid] || [],
+        }));
 
         let orgLabels = [];
         try {
@@ -91,11 +93,16 @@ const loadViewSettingsPage = async (req, res) => {
             const plansRaw = await subscriptionPlanDao.list(orgId);
             orgPlans = plansRaw.map(p => ({
                 planId: p.uuid,
-                planName: p.name,
-                displayName: p.display_name,
+                planName: p.handle,
+                displayName: p.name,
                 description: p.description || '',
-                requestCount: p.request_count,
                 refId: p.ref_id || '',
+                limits: (p.limits || []).map(l => ({
+                    limitType:  l.limit_type,
+                    timeUnit:   l.time_unit ?? null,
+                    timeAmount: l.time_amount,
+                    limitCount: Number(l.limit_count),
+                })),
             }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });

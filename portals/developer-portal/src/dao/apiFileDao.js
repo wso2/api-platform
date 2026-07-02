@@ -641,6 +641,33 @@ const listDocNames = async (orgId, apiId) => {
     }
 };
 
+const listDocNamesForApis = async (orgId, apiIds) => {
+    try {
+        const rows = await APIContent.findAll({
+            attributes: ['file_name', 'api_uuid'],
+            where: {
+                api_uuid: { [Op.in]: apiIds },
+                type: { [Op.like]: `${constants.DOC_TYPES.DOC_ID}%` },
+            },
+            include: [{
+                model: APIMetadata,
+                required: true,
+                attributes: [],
+                where: { org_uuid: orgId }
+            }]
+        });
+        const docNamesByApiId = {};
+        for (const apiId of apiIds) docNamesByApiId[apiId] = [];
+        for (const row of rows) {
+            docNamesByApiId[row.dataValues.api_uuid].push(row.dataValues.file_name);
+        }
+        return docNamesByApiId;
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) throw error;
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
 const deleteByFileName = async (fileName, orgId, apiId, t) => {
     try {
         const contentsToDelete = await APIContent.findAll({
@@ -676,5 +703,6 @@ module.exports = {
     getDocs,
     getDocLinks,
     listDocNames,
+    listDocNamesForApis,
     deleteByFileName,
 };

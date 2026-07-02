@@ -16,41 +16,60 @@
  * under the License.
  */
 const SubscriptionPlan = require('../models/subscriptionPlan');
+const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
 const APISubscriptionPlan = require('../models/apiSubscriptionPlan');
 const { APIMetadata } = require('../models/apiMetadata');
 const { Sequelize } = require('sequelize');
+const { v4: uuidv4 } = require('uuid');
 
-const toUpper = (v) => (v ? String(v).toUpperCase() : null);
-
-const computeRequestCount = (plan) => {
-  const type = (plan.type || "").toLowerCase();
-
-  if (type === "requestcount") {
-    if (plan.requestCount === undefined || plan.requestCount === null) return null;
-    return plan.requestCount === -1 ? "Unlimited" : String(plan.requestCount);
-  }
-  if (type === "eventcount") {
-    if (plan.eventCount === undefined || plan.eventCount === null) return null;
-    return plan.eventCount === -1 ? "Unlimited" : String(plan.eventCount);
-  }
-  return null;
-};
+const PLAN_INCLUDE = [{ model: SubscriptionPlanLimit, as: 'limits' }];
+const LIMIT_ORDER = [[{ model: SubscriptionPlanLimit, as: 'limits' }, 'uuid', 'ASC']];
+const VALID_LIMIT_TYPES = ['REQUEST_COUNT', 'EVENT_COUNT', 'BANDWIDTH', 'TOTAL_TOKEN_COUNT'];
 
 const buildSubscriptionPlanRow = (orgId, plan) => {
-  const requestCount = computeRequestCount(plan);
-
   return {
     org_uuid: orgId,
-
-    // Store the APIM plan UUID if provided
     uuid: plan.id ?? undefined,
-
     handle: plan.handle,
     name: plan.name,
     description: plan.description,
-    request_count: requestCount,
     ref_id: plan.refId ?? null,
   };
+};
+
+const normalizeLimits = (limits) => {
+  if (!Array.isArray(limits)) return [];
+  return limits.map(l => {
+    if (typeof l.limitCount !== 'number' || !Number.isFinite(l.limitCount) ||
+        (l.limitCount !== -1 && l.limitCount <= 0)) {
+      throw new Sequelize.ValidationError('limitCount must be -1 (unlimited) or a positive number for each limit');
+    }
+    const limitType = (l.limitType || 'REQUEST_COUNT').toUpperCase();
+    if (!VALID_LIMIT_TYPES.includes(limitType)) {
+      throw new Sequelize.ValidationError(`limitType must be one of ${VALID_LIMIT_TYPES.join(', ')}`);
+    }
+    if (l.timeAmount !== undefined && l.timeAmount !== null &&
+        (typeof l.timeAmount !== 'number' || !Number.isFinite(l.timeAmount) || l.timeAmount <= 0)) {
+      throw new Sequelize.ValidationError('timeAmount must be a positive number when provided');
+    }
+    return {
+      uuid: uuidv4(),
+      limit_type: limitType,
+      time_unit: l.timeUnit ? l.timeUnit.toUpperCase() : null,
+      time_amount: l.timeAmount || 1,
+      limit_count: l.limitCount,
+    };
+  });
+};
+
+const replaceLimits = async (planId, limits, t) => {
+  await SubscriptionPlanLimit.destroy({ where: { plan_uuid: planId }, transaction: t });
+  const rows = normalizeLimits(limits);
+  if (rows.length === 0) return;
+  await SubscriptionPlanLimit.bulkCreate(
+    rows.map(r => ({ ...r, plan_uuid: planId })),
+    { transaction: t }
+  );
 };
 
 const create = async (orgId, plan, createdBy, t) => {
@@ -59,7 +78,9 @@ const create = async (orgId, plan, createdBy, t) => {
     row.created_by = createdBy;
     row.updated_by = createdBy;
 
-    return await SubscriptionPlan.create(row, { transaction: t });
+    const created = await SubscriptionPlan.create(row, { transaction: t });
+    await replaceLimits(created.uuid, plan.limits || [], t);
+    return await SubscriptionPlan.findOne({ where: { uuid: created.uuid }, include: PLAN_INCLUDE, order: LIMIT_ORDER, transaction: t });
   } catch (error) {
     if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
       throw error;
@@ -70,13 +91,14 @@ const create = async (orgId, plan, createdBy, t) => {
 
 const createMany = async (orgId, plans, createdBy, t) => {
   try {
-    const rows = plans.map((plan) => ({
-      ...buildSubscriptionPlanRow(orgId, plan),
-      created_by: createdBy,
-      updated_by: createdBy,
-    }));
-
-    return await SubscriptionPlan.bulkCreate(rows, { transaction: t });
+    const uuids = [];
+    for (const plan of plans) {
+      const row = { ...buildSubscriptionPlanRow(orgId, plan), created_by: createdBy, updated_by: createdBy };
+      const p = await SubscriptionPlan.create(row, { transaction: t });
+      await replaceLimits(p.uuid, plan.limits || [], t);
+      uuids.push(p.uuid);
+    }
+    return await SubscriptionPlan.findAll({ where: { uuid: uuids }, include: PLAN_INCLUDE, order: LIMIT_ORDER, transaction: t });
   } catch (error) {
     if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
       throw error;
@@ -113,10 +135,14 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
       transaction: t
     });
 
-    // `returning: true` only yields row instances on Postgres; re-fetch
-    // explicitly so the result is reliable on SQLite too.
+    if (Object.prototype.hasOwnProperty.call(plan, 'limits')) {
+      await replaceLimits(planId, plan.limits || [], t);
+    }
+
     return await SubscriptionPlan.findOne({
       where: { uuid: planId, org_uuid: orgId },
+      include: PLAN_INCLUDE,
+      order: LIMIT_ORDER,
       transaction: t
     });
   } catch (error) {
@@ -173,6 +199,8 @@ const getByName = async (orgId, planName, t) => {
                 handle: planName,
                 org_uuid: orgId
             },
+            include: PLAN_INCLUDE,
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlanResponse;
@@ -191,6 +219,8 @@ const get = async (planId, orgId, t) => {
                 org_uuid: orgId,
                 uuid: planId
             },
+            include: PLAN_INCLUDE,
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlanResponse;
@@ -211,8 +241,10 @@ const listByApi = async (apiId, t) => {
                     model: APIMetadata,
                     where: { uuid: apiId },
                     through: { attributes: [] }
-                }
+                },
+                ...PLAN_INCLUDE,
             ],
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlanResponse;
@@ -231,6 +263,8 @@ const list = async (orgId, t) => {
             where: {
                 org_uuid: orgId
             },
+            include: PLAN_INCLUDE,
+            order: LIMIT_ORDER,
             transaction: t
         });
         return subscriptionPlansResponse;

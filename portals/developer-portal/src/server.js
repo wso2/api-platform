@@ -50,6 +50,14 @@ function logStartupBanner() {
     const visitUrl = `${config.baseUrl}${orgSegment}/views/default`;
     const line = '='.repeat(72);
     logger.info(`\n${line}\n\n\n\tDeveloper Portal Started.\n\tVisit Portal: ${visitUrl}\n\n\n${line}`);
+
+    if (config.demo?.enabled) {
+        logger.warn(
+            'DEMO MODE is ENABLED (DP_DEMO_ENABLED=true) — sample APIs/MCPs can be seeded ' +
+            'via Settings > Manage APIs or the onboarding overlay. Do not enable this in ' +
+            'production deployments.'
+        );
+    }
 }
 
 async function onListening() {

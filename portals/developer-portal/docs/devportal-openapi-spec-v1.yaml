@@ -49,8 +49,6 @@ tags:
   - name: Views
   - name: Application Keys
   - name: API Workflows
-  - name: Utilities
-  - name: Authentication
   - name: Key Managers
   - name: Webhook Events
   - name: Webhook Subscribers
@@ -172,69 +170,17 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /devportal/v1/views/{viewName}/layout:
+  /devportal/v1/views/{viewName}/asset:
     parameters:
       - $ref: "#/components/parameters/viewName"
-    post:
-      tags:
-        - Organization Content
-      summary: Upload organization layout content
-      description: >-
-        Uploads a ZIP file containing organization layout assets for the selected view. The service extracts the
-        archive, reads supported files, and stores each content item under the view.
-      operationId: createOrgContent
-      requestBody:
-        $ref: "#/components/requestBodies/FileUploadBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/OrganizationContentUploadResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:org_content_create
-            - dp:org_content_manage
-            - dp:org_manage
-    put:
-      tags:
-        - Organization Content
-      summary: Replace organization layout content
-      description: >-
-        Uploads a ZIP file and upserts the extracted organization layout assets for the selected view. Existing content
-        records are updated and missing content records are created.
-      operationId: updateOrgContent
-      requestBody:
-        $ref: "#/components/requestBodies/FileUploadBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/OrganizationContentUploadResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:org_content_update
-            - dp:org_content_manage
-            - dp:org_manage
     get:
       tags:
         - Organization Content
-      summary: Get a single organization layout asset
+      summary: Get a theme asset
       description: >-
-        Retrieves one organization layout asset when `fileType` and `fileName` are supplied as query parameters. The
-        response content type is derived from the stored file type and extension.
-      operationId: getOrgLayoutContent
+        Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and `fileName` query parameters.
+        The response content type is derived from the stored file type and extension.
+      operationId: getOrgAsset
       parameters:
         - $ref: "#/components/parameters/orgContentFileTypeQuery"
         - $ref: "#/components/parameters/orgContentFileNameQuery"
@@ -243,52 +189,60 @@ paths:
         "200":
           $ref: "#/components/responses/OrganizationContentAssetResponse"
         "400":
-          $ref: "#/components/responses/TextMessageResponse"
+          description: Invalid or missing `fileType`/`fileName` query parameters.
+          content:
+            text/plain:
+              schema:
+                type: string
         "404":
-          $ref: "#/components/responses/TextMessageResponse"
+          description: No matching organization content asset was found.
+          content:
+            text/plain:
+              schema:
+                type: string
       security: []
-    delete:
+  /devportal/v1/views/{viewName}/apply-theme:
+    parameters:
+      - $ref: "#/components/parameters/viewName"
+    post:
       tags:
         - Organization Content
-      summary: Delete organization layout content
+      summary: Apply a theme
       description: >-
-        Deletes all organization layout content for the selected view, or deletes one content item when `fileName` is
-        supplied as a query parameter.
-      operationId: deleteOrgContent
-      parameters:
-        - $ref: "#/components/parameters/fileNameQuery"
+        Uploads a ZIP file and atomically replaces all existing theme assets for the view. All previously stored
+        files are deleted before the new ones are extracted and stored.
+      operationId: applyTheme
+      requestBody:
+        $ref: "#/components/requestBodies/FileUploadBody"
       responses:
-        "204":
-          description: Organization content deleted successfully.
+        "200":
+          $ref: "#/components/responses/OrganizationContentUploadResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_content_delete
             - dp:org_content_manage
             - dp:org_manage
-  /devportal/v1/views/{viewName}/layout/{fileType}:
+  /devportal/v1/views/{viewName}/reset-theme:
     parameters:
       - $ref: "#/components/parameters/viewName"
-      - $ref: "#/components/parameters/fileType"
-    get:
+    post:
       tags:
         - Organization Content
-      summary: List organization layout assets by file type
-      description: Returns all stored organization layout content records for the selected file type and view.
-      operationId: getOrgLayoutContentByFileType
-      security: []
+      summary: Reset theme to defaults
+      description: Deletes all stored theme assets for the view, reverting it to built-in defaults.
+      operationId: resetTheme
       responses:
-        "200":
-          $ref: "#/components/responses/OrganizationContentListResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/TextMessageResponse"
+        "204":
+          description: Theme reset successfully.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:org_content_manage
+            - dp:org_manage
   /devportal/v1/apis:
     post:
       tags:
@@ -813,7 +767,7 @@ paths:
                 $ref: "#/components/schemas/ApplicationResponse"
               example:
                 id: app-12345
-                name: Weather App
+                displayName: Weather App
                 description: Application used to call Weather APIs.
                 appKeyMappings: []
         "400":
@@ -853,8 +807,7 @@ paths:
       description: >-
         Updates an application owned by the authenticated user in the specified organization. The request may be JSON,
         multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated`
-        webhook event is published, plus one `apikey.application_updated` event per API key currently associated with
-        the application.
+        webhook event is published.
       operationId: updateApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -1629,30 +1582,6 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_create
             - dp:api_workflow_manage
-  /temp-arazzo-file:
-    post:
-      tags:
-        - Utilities
-      operationId: createTempArazzoFile
-      summary: Create a temporary Arazzo file
-      description: Writes supplied Arazzo YAML content to a temporary file and returns its path.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TempArazzoFileRequest"
-      responses:
-        "200":
-          $ref: "#/components/responses/TempArazzoFileResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:utility_create
-            - dp:utility_manage
   /devportal/v1/key-managers:
     post:
       tags:
@@ -1695,34 +1624,15 @@ paths:
       summary: List key managers
       operationId: getKeyManagers
       description: >-
-        Returns all key manager configurations for the organization. Admin appKeyMappings are never included in the response. Admin use
-        only.
+        Returns key manager configurations for the organization. Admins receive the full configuration for every key
+        manager, including disabled ones; other callers receive the minimal, developer-facing view of enabled key
+        managers only, with no admin credentials. Admin appKeyMappings are never included in the response.
       parameters:
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/KeyManagerListResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:km_read
-  /devportal/v1/key-managers/discover:
-    get:
-      tags:
-        - Key Managers
-      summary: Discover available key managers
-      operationId: discoverKeyManagers
-      description: >-
-        Returns the minimal public view of enabled key managers for developer use. Does not include admin credentials.
-        Endpoint data such as tokenEndpoint is included so clients can direct token requests to the correct server.
-      parameters:
-        - $ref: "#/components/parameters/limit"
-        - $ref: "#/components/parameters/offset"
-      responses:
-        "200":
-          $ref: "#/components/responses/KeyManagerPublicListResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1935,44 +1845,6 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /login:
-    post:
-      tags:
-        - Authentication
-      operationId: login
-      summary: Log in
-      description: >-
-        Authenticates against the Platform API and establishes a session cookie. The Platform API base URL must be
-        configured; otherwise the service is unavailable.
-      security: []
-      requestBody:
-        $ref: "#/components/requestBodies/LoginBody"
-      responses:
-        "200":
-          description: Login successful. A session cookie is set.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-              example:
-                message: Login successful
-        "401":
-          description: Invalid appKeyMappings.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-              example:
-                message: Invalid appKeyMappings
-        "503":
-          description: >-
-            The Platform API is not configured, unreachable, or returned a token missing required claims.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-              example:
-                message: Authentication service unavailable
   /devportal/v1/webhook-events:
     get:
       tags:
@@ -2044,11 +1916,8 @@ components:
             dp:org_update: Update organizations.
             dp:org_delete: Delete organizations.
             dp:org_manage: Manage organizations (including creating, updating, and deleting).
-            dp:org_content_read: Read organization layout or content.
-            dp:org_content_create: Create organization layout or content.
-            dp:org_content_update: Update organization layout or content.
-            dp:org_content_delete: Delete organization layout or content.
-            dp:org_content_manage: Manage organization layout or content.
+            dp:org_content_read: Read organization theme assets.
+            dp:org_content_manage: Apply or reset organization theme.
             dp:api_read: Read API metadata.
             dp:api_create: Create API metadata.
             dp:api_update: Update API metadata.
@@ -2102,8 +1971,6 @@ components:
             dp:api_workflow_delete: Delete API workflows.
             dp:api_workflow_manage: Manage API workflows.
             dp:event_read: Read webhook events and delivery details.
-            dp:utility_create: Create temporary utility files.
-            dp:utility_manage: Manage utility operations.
             dp:km_read: Read key manager configurations.
             dp:km_create: Create key manager configurations.
             dp:km_update: Update key manager configurations.
@@ -2228,7 +2095,7 @@ components:
       schema:
         type: string
         example: getting-started.md
-      description: File name selector used by file retrieval and organization content deletion.
+      description: File name selector used to delete a single stored API content file.
     orgContentFileNameQuery:
       name: fileName
       in: query
@@ -2498,7 +2365,9 @@ components:
                 name: weather_sandbox_key
     ApiKeyRegenerateBody:
       required: true
-      description: Identifies the API key to regenerate by its `keyId`.
+      description: >-
+        Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided,
+        updates the key's expiry; the key's `name` cannot be changed by this operation.
       content:
         application/json:
           schema:
@@ -2510,6 +2379,15 @@ components:
                 type: string
                 description: Developer Portal key ID returned by generate or list.
                 example: key-12345
+              expiresAt:
+                oneOf:
+                  - type: string
+                    format: date-time
+                  - type: number
+                description: >-
+                  New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or
+                  epoch milliseconds. Omit to leave the current expiry unchanged.
+                example: "2027-01-01T00:00:00Z"
             additionalProperties: true
           example:
             keyId: key-12345
@@ -2761,12 +2639,6 @@ components:
             apis:
               - name: Weather API
                 version: v1
-    LoginBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/LoginRequest"
     FileUploadBody:
       required: true
       description: ZIP file upload. Organization content uploads are limited to 50 MB.
@@ -2855,14 +2727,15 @@ components:
       required: true
       description: >-
         Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field.
-        When YAML is used, the service reads `spec.displayName` or `metadata.name` as the application name and
-        `spec.description` as the description.
+        When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description`
+        as the description, and `spec.handle` or `metadata.name` as the handle.
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ApplicationRequest"
           example:
-            name: Weather App
+            displayName: Weather App
+            handle: weather-app
             description: Application used to call Weather APIs.
         multipart/form-data:
           schema:
@@ -2872,16 +2745,22 @@ components:
                 type: string
                 format: binary
                 description: Application YAML file field named `application`.
-              name:
+              displayName:
                 type: string
-                description: Application name when sending form fields instead of YAML.
+                description: Application display name when sending form fields instead of YAML.
+              handle:
+                type: string
+                description: >-
+                  Immutable, org-scoped slug for the application. Optional — defaults to `displayName`
+                  when omitted.
               description:
                 type: string
           examples:
             formFields:
               summary: Multipart form fields
               value:
-                name: Weather App
+                displayName: Weather App
+                handle: weather-app
                 description: Application used to call Weather APIs.
             yamlFile:
               summary: Application YAML upload
@@ -3295,7 +3174,8 @@ components:
             $ref: "#/components/schemas/ApplicationResponse"
           example:
             id: app-12345
-            name: Weather App
+            displayName: Weather App
+            handle: weather-app
             description: Application used to call Weather APIs.
             appKeyMappings: []
     ApplicationListResponse:
@@ -3314,7 +3194,7 @@ components:
           example:
             list:
               - id: app-12345
-                name: Weather App
+                displayName: Weather App
                 description: Application used to call Weather APIs.
                 appKeyMappings:
                   - asClientId: asgardeo-client-abc123
@@ -3383,7 +3263,9 @@ components:
           schema:
             $ref: "#/components/schemas/KeyManagerResponseSchema"
     KeyManagerListResponse:
-      description: List of key manager configurations.
+      description: >-
+        List of key manager configurations. Admins receive KeyManagerResponseSchema items; other callers receive
+        the minimal KeyManagerPublicResponseSchema items.
       content:
         application/json:
           schema:
@@ -3392,20 +3274,9 @@ components:
               list:
                 type: array
                 items:
-                  $ref: "#/components/schemas/KeyManagerResponseSchema"
-              pagination:
-                $ref: "#/components/schemas/Pagination"
-    KeyManagerPublicListResponse:
-      description: List of enabled key managers (developer-facing, minimal view).
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              list:
-                type: array
-                items:
-                  $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
+                  oneOf:
+                    - $ref: "#/components/schemas/KeyManagerResponseSchema"
+                    - $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
               pagination:
                 $ref: "#/components/schemas/Pagination"
     WebhookSubscriberResponse:
@@ -3510,14 +3381,6 @@ components:
             $ref: "#/components/schemas/APIWorkflowPromptResponse"
           example:
             agentPrompt: You are an API workflow assistant. Help the user complete Weather onboarding.
-    TempArazzoFileResponse:
-      description: Path of the temporary Arazzo file.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/TempArazzoFileResponse"
-          example:
-            path: /tmp/arazzo-abc123/workflow.arazzo.yaml
     ViewResponse:
       description: View DTO response.
       content:
@@ -3978,9 +3841,12 @@ components:
         id:
           type: string
           example: app-12345
-        name:
+        displayName:
           type: string
           example: Weather App
+        handle:
+          type: string
+          example: weather-app
         description:
           type: string
           example: Application used to call Weather APIs.
@@ -4159,12 +4025,18 @@ components:
     ApplicationRequest:
       type: object
       required:
-        - name
+        - displayName
         - description
       properties:
-        name:
+        displayName:
           type: string
           example: Weather App
+        handle:
+          type: string
+          description: >-
+            Immutable, org-scoped slug for the application. Optional — defaults to the application's
+            `displayName` when omitted.
+          example: weather-app
         description:
           type: string
           example: Application used to call Weather APIs.
@@ -4200,6 +4072,14 @@ components:
       required:
         - planId
       properties:
+        apiId:
+          type: string
+          description: >-
+            Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated
+            against the API derived from the existing subscription record and the request is rejected with
+            400 if they don't match. It is never used as a fallback: if the API cannot be derived from the
+            subscription record, the request fails with 400 regardless of this value.
+          example: api-5f2b8c1a
         planId:
           type: string
           description: Developer Portal subscription plan ID to switch to.
@@ -4287,10 +4167,10 @@ components:
           nullable: true
           description: ID of the application this key is associated with, if any. Analytics attribution only.
           example: app-12345
-        appName:
+        appDisplayName:
           type: string
           nullable: true
-          description: Name of the associated application, if any.
+          description: Display name of the associated application, if any.
           example: My Mobile App
         status:
           type: string
@@ -4315,7 +4195,7 @@ components:
       type: object
       description: >-
         API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include
-        apiId, appId, appName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
       properties:
         keyId:
           type: string
@@ -4352,7 +4232,7 @@ components:
             id:
               type: string
               example: app-12345
-            name:
+            displayName:
               type: string
               example: My Mobile App
     KeyManagerRequest:
@@ -4787,13 +4667,6 @@ components:
         agentPrompt:
           type: string
       additionalProperties: false
-    TempArazzoFileResponse:
-      type: object
-      properties:
-        path:
-          type: string
-          example: /tmp/arazzo-abc123/workflow.arazzo.yaml
-      additionalProperties: false
     APIWorkflowCreateRequest:
       type: object
       required:
@@ -4906,35 +4779,6 @@ components:
         handle:
           type: string
           example: weather-onboarding
-    LoginRequest:
-      type: object
-      required:
-        - username
-        - password
-      properties:
-        username:
-          type: string
-        password:
-          type: string
-          format: password
-    TempArazzoFileRequest:
-      type: object
-      required:
-        - content
-      properties:
-        content:
-          type: string
-          description: Arazzo YAML content to write to a temporary file.
-          example: |
-            arazzo: 1.0.1
-            info:
-              title: Weather onboarding
-              version: 1.0.0
-            workflows: []
-        filename:
-          type: string
-          example: workflow.arazzo.yaml
-          default: workflow.arazzo.yaml
     WebhookEventDelivery:
       type: object
       description: A single webhook delivery attempt.

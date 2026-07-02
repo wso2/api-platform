@@ -17,6 +17,7 @@
  */
 const { APIMetadata, APILabels, APITags } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
+const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
 const APIContent = require('../models/apiContent');
 const Labels = require('../models/label');
 const Tags = require('../models/tag');
@@ -152,7 +153,8 @@ const get = async (orgId, apiId, t) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
@@ -205,7 +207,8 @@ const getByCondition = async (condition, t, tags) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             tagsInclude
             ],
@@ -239,7 +242,8 @@ const list = async (orgId, viewName, t) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
@@ -287,7 +291,8 @@ const listFromAllViews = async (orgId, t) => {
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
@@ -348,7 +353,7 @@ const searchFallback = async (orgId, searchTerm, viewName, t) => {
         },
         include: [
             { model: APIContent, where: { type: constants.DOC_TYPES.IMAGES }, required: false },
-            { model: SubscriptionPlan, through: { attributes: [] }, required: false },
+            { model: SubscriptionPlan, through: { attributes: [] }, required: false, include: [{ model: SubscriptionPlanLimit, as: 'limits' }] },
             {
                 model: Labels,
                 attributes: ['name'],

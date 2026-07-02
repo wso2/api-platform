@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelNameBtn.disabled = true;
 
             const result = await saveApplicationChanges(applicationId, {
-                name: newName,
+                displayName: newName,
                 description: applicationDescription.dataset.original
             }, nameEditError);
 
@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelDescriptionBtn.disabled = true;
 
             const result = await saveApplicationChanges(applicationId, {
-                name: applicationName.dataset.original,
+                displayName: applicationName.dataset.original,
                 description: newDescription
             }, descriptionEditError);
 

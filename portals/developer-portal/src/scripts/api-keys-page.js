@@ -188,7 +188,7 @@
                 applications.forEach(function (app) {
                     const opt = document.createElement('option');
                     opt.value = app.appId;
-                    opt.textContent = app.name;
+                    opt.textContent = app.displayName;
                     if (app.appId === currentAppId) opt.selected = true;
                     select.appendChild(opt);
                 });
@@ -347,11 +347,7 @@
             const nameField = document.getElementById('regenerate-api-key-name');
             const expField = document.getElementById('regenerate-api-key-expires');
             const name = (nameField && nameField.value) ? nameField.value.trim() : '';
-            if (!namePattern.test(name)) {
-                if (typeof showAlert === 'function') await showAlert('Enter a valid name for the new key.', 'error');
-                return;
-            }
-            const body = { name: name };
+            const body = {};
             const iso = expField ? expiresToIso(expField.value) : null;
             if (iso) body.expiresAt = iso;
             submitRegenBtn.dataset.loading = 'true';

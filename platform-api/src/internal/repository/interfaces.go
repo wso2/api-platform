@@ -224,7 +224,6 @@ type LLMProviderTemplateRepository interface {
 	RenameFamily(baseHandle, orgUUID, name string) error
 	SetEnabled(templateID, orgUUID, version string, enabled bool) error
 	DeleteVersion(templateID, orgUUID, version string) error
-	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
 	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)
@@ -240,6 +239,9 @@ type LLMProviderRepository interface {
 	Update(p *model.LLMProvider) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the provider if one
+	// does not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // APIKeyRepository defines the interface for API key persistence
@@ -267,6 +269,9 @@ type LLMProxyRepository interface {
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
+	// not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -281,6 +286,7 @@ type MCPProxyRepository interface {
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence

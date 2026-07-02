@@ -4,7 +4,7 @@
 <section class="section keys-section">
     <div class="mk-header">
         <h2 class="mk-title">Manage Keys</h2>
-        <p class="mk-subtitle">Generate and govern OAuth2 credentials for <strong>{{applicationMetadata.name}}</strong>. Each key manager issues its own consumer key &amp; secret.</p>
+        <p class="mk-subtitle">Generate and govern OAuth2 credentials for <strong>{{applicationMetadata.displayName}}</strong>. Each key manager issues its own consumer key &amp; secret.</p>
     </div>
 
     {{!-- Environment selector — card-style tab triggers --}}
@@ -52,7 +52,7 @@
                 keys=keys
                 tokenEndpoint=../tokenEndpoint
                 appId=@root.applicationMetadata.id
-                appName=@root.applicationMetadata.name
+                appName=@root.applicationMetadata.displayName
                 orgId=@root.orgId
                 subscriptionScopes=@root.subscriptionScopes
                 isReadOnlyMode=@root.isReadOnlyMode
@@ -90,7 +90,7 @@
                 keys=keys
                 tokenEndpoint=../tokenEndpoint
                 appId=@root.applicationMetadata.id
-                appName=@root.applicationMetadata.name
+                appName=@root.applicationMetadata.displayName
                 orgId=@root.orgId
                 subscriptionScopes=@root.subscriptionScopes
                 isReadOnlyMode=@root.isReadOnlyMode
