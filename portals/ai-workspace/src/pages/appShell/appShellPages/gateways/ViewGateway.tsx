@@ -768,7 +768,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
               <FormControl fullWidth>
                 <FormLabel>URL</FormLabel>
                 <TextField
-                  value={getDisplayUrl(gateway.vhost || "")}
+                  value={getDisplayUrl(gateway.endpoints?.[0] || gateway.vhost || "")}
                   fullWidth
                   slotProps={{ input: { readOnly: true } }}
                 />

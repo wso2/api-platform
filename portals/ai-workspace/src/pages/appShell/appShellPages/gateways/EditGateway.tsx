@@ -88,7 +88,7 @@ export default function EditGateway() {
           setDisplayName(foundGateway.displayName || foundGateway.name);
           setDescription(foundGateway.description || '');
           setFunctionalityType(foundGateway.functionalityType || 'regular');
-          setVhost(foundGateway.vhost || '');
+          setVhost(foundGateway.endpoints?.[0] || foundGateway.vhost || '');
         } else {
           setError('Gateway not found');
         }
@@ -117,9 +117,10 @@ export default function EditGateway() {
     if (!gatewayId) return;
 
     try {
+      const normalizedVhost = normalizeVhost(vhost);
       await updateGatewayById(gatewayId, {
         displayName,
-        vhost: normalizeVhost(vhost),
+        endpoints: normalizedVhost ? [normalizedVhost] : undefined,
         functionalityType,
         description: description || undefined,
       });
