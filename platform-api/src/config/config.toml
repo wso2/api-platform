@@ -69,6 +69,10 @@ enabled = false
 id           = "default"            # organization handle (URL-safe slug)
 display_name = "Default"
 region       = "us"
+# uuid is the platform organization UUID. It is stored as idp_organization_ref_uuid
+# and emitted as the `organization` claim in issued tokens. Leave unset to have one
+# generated at startup, or pin it to keep the org stable across fresh databases.
+# uuid       = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 
 [[auth.file_based.users]]
 username      = "admin"
