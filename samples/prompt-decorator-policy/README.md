@@ -25,13 +25,13 @@ By working through this sample you will understand how to:
 
 ### Scenario 1 — Chat Prompt Decoration (prepend)
 
-**What it does:** The `persona-proxy` prepends a `system` message to the `messages` array, giving the model a hotel-receptionist persona for the imaginary "Azure Horizon Resort". The caller sends only a plain user message.
+**What it does:** The `persona-proxy` prepends a `system` message to the `messages` array, giving the model a hotel-receptionist persona for the imaginary "ABC Horizon Resort". The caller sends only a plain user message.
 
 **JSONPath:** `$.messages` · **append:** `false` (prepend)
 
 ### Scenario 2 — Text Prompt Decoration (append)
 
-**What it does:** The `suffix-proxy` appends an instruction to the last message's `content`, telling the model to end every reply with the exact tag `[AZURE-HORIZON-OK]`. The caller never asks for that tag.
+**What it does:** The `suffix-proxy` appends an instruction to the last message's `content`, telling the model to end every reply with the exact tag `[ABC-HORIZON-OK]`. The caller never asks for that tag.
 
 **JSONPath:** `$.messages[-1].content` · **append:** `true`
 
@@ -41,18 +41,18 @@ By working through this sample you will understand how to:
 
 ### Scenario 1 — Chat Prompt Decoration
 
-A bare user message (`"Hi, I would like to book a room."`) is sent with **no** system message. Because the gateway injects the persona, the reply should welcome the guest to **Azure Horizon Resort** — a name the caller never typed.
+A bare user message (`"Hi, I would like to book a room."`) is sent with **no** system message. Because the gateway injects the persona, the reply should welcome the guest to **ABC Horizon Resort** — a name the caller never typed.
 
 ```
-[PASS] Chat decoration applied — persona injected ('Azure Horizon' present though the caller never sent it).
+[PASS] Chat decoration applied — persona injected ('ABC Horizon' present though the caller never sent it).
 ```
 
 ### Scenario 2 — Text Prompt Decoration
 
-A plain question (`"What is the capital of France?"`) is sent with no formatting instructions. Because the gateway appends the suffix instruction, the reply should end with the tag `[AZURE-HORIZON-OK]`.
+A plain question (`"What is the capital of France?"`) is sent with no formatting instructions. Because the gateway appends the suffix instruction, the reply should end with the tag `[ABC-HORIZON-OK]`.
 
 ```
-[PASS] Text decoration applied — appended instruction honored ('[AZURE-HORIZON-OK]' present though the caller never sent it).
+[PASS] Text decoration applied — appended instruction honored ('[ABC-HORIZON-OK]' present though the caller never sent it).
 ```
 
 ---

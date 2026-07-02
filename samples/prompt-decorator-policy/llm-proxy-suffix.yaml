@@ -19,6 +19,6 @@ spec:
         - path: /chat/completions
           methods: ["*"]
           params:
-            promptDecoratorConfig: '{"text": "\n\nImportant: end your entire response with the exact tag [AZURE-HORIZON-OK] on its own line."}'
+            promptDecoratorConfig: '{"text": "\n\nImportant: end your entire response with the exact tag [ABC-HORIZON-OK] on its own line."}'
             jsonPath: "$.messages[-1].content"
             append: true

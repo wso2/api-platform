@@ -2,14 +2,14 @@
 # Test: Text Prompt Decoration (Mode 1 — append)
 #   Sends a plain question. The suffix-proxy APPENDS an instruction to the
 #   user's message telling the model to end its reply with the exact tag
-#   [AZURE-HORIZON-OK]. The caller never asks for that tag, so its presence
+#   [ABC-HORIZON-OK]. The caller never asks for that tag, so its presence
 #   in the reply proves the gateway appended the decoration before
 #   forwarding the request to OpenAI.
 set -uo pipefail
 
 CHAT_URL="http://localhost:8080/suffix-proxy/chat/completions"
 HEALTH_URL="http://localhost:9094/health"
-MARKER="[AZURE-HORIZON-OK]"
+MARKER="[ABC-HORIZON-OK]"
 
 GREEN="\033[0;32m"; RED="\033[0;31m"; BLUE="\033[0;34m"; NC="\033[0m"
 # Use printf, not `echo -e`: some shells' echo prints "-e" literally and/or

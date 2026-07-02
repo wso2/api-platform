@@ -2,14 +2,14 @@
 # Test: Chat Prompt Decoration (Mode 2 — prepend)
 #   Sends a bare user message with NO system message. The persona-proxy
 #   prepends a system message that gives the model a hotel-receptionist
-#   persona for "Azure Horizon Resort". Because the caller never mentions
+#   persona for "ABC Horizon Resort". Because the caller never mentions
 #   the hotel, the only way its name can appear in the reply is if the
 #   gateway injected the system message before forwarding to OpenAI.
 set -uo pipefail
 
 CHAT_URL="http://localhost:8080/persona-proxy/chat/completions"
 HEALTH_URL="http://localhost:9094/health"
-MARKER="Azure Horizon"
+MARKER="ABC Horizon"
 
 GREEN="\033[0;32m"; RED="\033[0;31m"; BLUE="\033[0;34m"; NC="\033[0m"
 # Use printf, not `echo -e`: some shells' echo prints "-e" literally and/or

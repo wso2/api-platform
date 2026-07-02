@@ -20,6 +20,6 @@ spec:
         - path: /chat/completions
           methods: ["*"]
           params:
-            promptDecoratorConfig: '{"messages": [{"role": "system", "content": "You are a booking receptionist for the imaginary hotel Azure Horizon Resort. Always welcome the guest to Azure Horizon Resort and mention the hotel name Azure Horizon Resort in every reply."}]}'
+            promptDecoratorConfig: '{"messages": [{"role": "system", "content": "You are a booking receptionist for the imaginary hotel ABC Horizon Resort. Always welcome the guest to ABC Horizon Resort and mention the hotel name ABC Horizon Resort in every reply."}]}'
             jsonPath: "$.messages"
             append: false
