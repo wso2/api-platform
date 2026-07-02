@@ -104,11 +104,11 @@
                   {{#if (eq type "GRAPHQL")}}dp-badge--graphql
                   {{else if (eq type "WS")}}dp-badge--ws
                   {{else if (eq type "SOAP")}}dp-badge--soap
-                  {{else if (eq type "WEBSUB")}}dp-badge--ws
+                  {{else if (eq type "WebSubApi")}}dp-badge--ws
                   {{else}}dp-badge--rest{{/if}}">
                   {{#if (eq type "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
                   {{else if (eq type "WS")}}<i class="bi bi-broadcast"></i> WebSocket
-                  {{else if (eq type "WEBSUB")}}<i class="bi bi-broadcast-pin"></i> WebSub
+                  {{else if (eq type "WebSubApi")}}<i class="bi bi-broadcast-pin"></i> WebSub
                   {{else if (eq type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
                   {{else}}<i class="bi bi-braces"></i> REST{{/if}}
                 </span>

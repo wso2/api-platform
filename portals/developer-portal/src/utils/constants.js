@@ -77,11 +77,11 @@ module.exports = {
         REVOKED: "REVOKED",
     },
     API_TYPE: {
-        REST: "REST",
+        REST: "RestApi",
         SOAP: "SOAP",
-        MCP: "MCP",
+        MCP: "Mcp",
         WS: "WS",
-        WEBSUB: "WEBSUB",
+        WEBSUB: "WebSubApi",
         GRAPHQL: "GRAPHQL",
     },
     DEVPORTAL_MODE: {

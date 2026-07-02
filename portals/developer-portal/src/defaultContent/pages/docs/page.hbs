@@ -18,7 +18,7 @@
  -->
  <div class="page-container">
 <nav class="dp-breadcrumb">
-  {{#if (eq apiType "MCP")}}
+  {{#if (eq apiType "Mcp")}}
     <a class="dp-breadcrumb-item" href="{{baseUrl}}/mcp">MCP Servers</a>
   {{else}}
     <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
@@ -43,14 +43,14 @@
         <a href="{{../baseDocUrl}}/docs/specification"
           class="adoc-nav-item doc-link{{#if ../isAPIDefinition}} adoc-nav-item--active{{/if}}">
           <i class="bi bi-code-slash"></i>
-          <span>{{#if (eq ../apiType "MCP")}}MCP Playground{{else}}API Definition{{/if}}</span>
+          <span>{{#if (eq ../apiType "Mcp")}}MCP Playground{{else}}API Definition{{/if}}</span>
         </a>
         {{#if (eq ../apiType "WS")}}
         <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
           <i class="bi bi-play-circle"></i><span>Tryout</span>
         </a>
         {{/if}}
-        {{#if (eq ../apiType "WEBSUB")}}
+        {{#if (eq ../apiType "WebSubApi")}}
         <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
           <i class="bi bi-play-circle"></i><span>Tryout</span>
         </a>

@@ -890,13 +890,19 @@ function resolveApiType(apiType) {
         return constants.API_TYPE.REST;
     }
 
-    const resolvedType = apiType.replace(/\s+/g, '').toUpperCase();
-    if (!Object.values(constants.API_TYPE).includes(resolvedType)) {
+    // Accept the stored value as-is (e.g. "RestApi", sent by devportal's own UI),
+    // otherwise fall back to the short authoring keyword (e.g. "REST" in an uploaded api.yaml).
+    if (Object.values(constants.API_TYPE).includes(apiType)) {
+        return apiType;
+    }
+
+    const keyword = apiType.replace(/\s+/g, '').toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(constants.API_TYPE, keyword)) {
         throw new Sequelize.ValidationError(
             "Invalid api type. Supported values: REST, WS, GRAPHQL, SOAP, WEBSUB, MCP"
         );
     }
-    return resolvedType;
+    return constants.API_TYPE[keyword];
 }
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {

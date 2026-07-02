@@ -272,7 +272,7 @@ const loadAPIContent = async (req, res, next) => {
                         apiDetails["serverDetails"] = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
                             ? metaData.endPoints : "";
                     }
-                    if (metaData.type === "WS" || metaData.type === "WEBSUB") {
+                    if (metaData.type === constants.API_TYPE.WS || metaData.type === constants.API_TYPE.WEBSUB) {
                         apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
                         apiDetails = await parseAsyncAPI(parseApiDefinitionContent(apiDefinition))
                         if (metaData.endPoints.productionURL === "" && metaData.endPoints.sandboxURL === "") {
@@ -408,7 +408,7 @@ const loadAPIContent = async (req, res, next) => {
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
-            if (metaData.type == "MCP") {
+            if (metaData.type == constants.API_TYPE.MCP) {
                 html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/mcp-landing", viewName);
             } else {
                 html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/api-landing", viewName);

@@ -48,6 +48,14 @@ function loadSubscriptionPlans() {
     }
 }
 
+// Sample api.yaml files author `type` using the short keyword form (REST, MCP, WEBSUB, ...);
+// map it to the same stored values constants.API_TYPE uses elsewhere.
+function normalizeSampleApiType(rawType) {
+    if (!rawType || typeof rawType !== 'string') return constants.API_TYPE.REST;
+    const keyword = rawType.replace(/\s+/g, '').toUpperCase();
+    return constants.API_TYPE[keyword] || constants.API_TYPE.REST;
+}
+
 function parseApiYaml(apiHandle, samplesDir) {
     const apiYamlPath = path.join(resolveDir(samplesDir), apiHandle, 'api.yaml');
     if (!fs.existsSync(apiYamlPath)) return null;
@@ -95,7 +103,7 @@ function parseApiYaml(apiHandle, samplesDir) {
         name: spec.displayName || name,
         version: spec.version || '',
         description: spec.description || '',
-        type: spec.type || 'REST',
+        type: normalizeSampleApiType(spec.type),
         status: spec.status || 'PUBLISHED',
         tags: spec.tags || [],
         labels: spec.labels || [],

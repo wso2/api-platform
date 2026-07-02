@@ -77,7 +77,8 @@ async function resolveApi(orgId, apiId) {
         id: dv.uuid,
         name: dv.name || null,
         version: dv.version || null,
-        refId: dv.ref_id || ''
+        refId: dv.ref_id || '',
+        type: dv.type || null
     };
 }
 
@@ -88,7 +89,8 @@ async function resolveApiDirect(orgId, apiId) {
     return {
         name: dv.name || null,
         version: dv.version || null,
-        refId: dv.ref_id || ''
+        refId: dv.ref_id || '',
+        type: dv.type || null
     };
 }
 
@@ -167,7 +169,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
                     key_id: keyId,
                     name: normalizedName,
                     expires_at: expiry.date ? expiry.date.toISOString() : null,
-                    api: { name: api.name, version: api.version, ref_id: api.refId },
+                    api: { name: api.name, version: api.version, ref_id: api.refId, type: api.type },
                     ...(subscription && { subscription }),
                     ...(application && { application })
                 },
@@ -177,7 +179,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
 
             if (application) {
                 await publishKeyApplicationUpdated(orgId, keyId, normalizedName,
-                    { name: api.name, version: api.version, ref_id: api.refId },
+                    { name: api.name, version: api.version, ref_id: api.refId, type: api.type },
                     application, t);
             }
         });
@@ -223,7 +225,7 @@ async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
                     key_id: keyId,
                     name: existing.name,
                     expires_at: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
-                    api: { name: apiInfo ? apiInfo.name : null, version: apiInfo ? apiInfo.version : null, ref_id: apiInfo ? apiInfo.refId : '' },
+                    api: { name: apiInfo ? apiInfo.name : null, version: apiInfo ? apiInfo.version : null, ref_id: apiInfo ? apiInfo.refId : '', type: apiInfo ? apiInfo.type : null },
                     ...(subscription && { subscription }),
                     ...(application && { application })
                 },
@@ -261,7 +263,7 @@ async function revoke({ orgId, apiId, keyId, actor }) {
             {
                 key_id: keyId,
                 name: existing.name,
-                api: { name: revokeApiInfo ? revokeApiInfo.name : null, version: revokeApiInfo ? revokeApiInfo.version : null, ref_id: revokeApiInfo ? revokeApiInfo.refId : '' },
+                api: { name: revokeApiInfo ? revokeApiInfo.name : null, version: revokeApiInfo ? revokeApiInfo.version : null, ref_id: revokeApiInfo ? revokeApiInfo.refId : '', type: revokeApiInfo ? revokeApiInfo.type : null },
                 ...(subscription && { subscription })
             },
             { transaction: t, orgId,
@@ -298,7 +300,7 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
         if (!updated) throw Object.assign(new Error('API key not found'), { status: 404 });
 
         const meta = existing.dp_api_metadata;
-        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
+        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
         await publishKeyApplicationUpdated(orgId, keyId, existing.name, api, application, t);
     });
 
@@ -322,7 +324,7 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
     await sequelize.transaction(async (t) => {
         await apiKeyDao.setApplication(orgId, keyId, null, actor, t);
         const meta = existing.dp_api_metadata;
-        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '' };
+        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
         await publishKeyApplicationUpdated(orgId, keyId, existing.name, api, null, t);
     });
 
