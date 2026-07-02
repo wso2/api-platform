@@ -1,0 +1,24 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: suffix-proxy
+spec:
+  displayName: Suffix Proxy (Text Decoration)
+  version: v1.0
+  context: /suffix-proxy
+  provider:
+    id: wso2-openai-provider
+  policies:
+    # Mode 1 — Text Prompt Decoration (append).
+    # The JSONPath targets a string field (the last message's content), so the
+    # decoration is a plain string. With append: true the gateway APPENDS this
+    # instruction to the end of the user's message before it reaches OpenAI.
+    - name: prompt-decorator
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: ["*"]
+          params:
+            promptDecoratorConfig: '{"text": "\n\nImportant: end your entire response with the exact tag [AZURE-HORIZON-OK] on its own line."}'
+            jsonPath: "$.messages[-1].content"
+            append: true

@@ -1,0 +1,25 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: persona-proxy
+spec:
+  displayName: Persona Proxy (Chat Decoration)
+  version: v1.0
+  context: /persona-proxy
+  provider:
+    id: wso2-openai-provider
+  policies:
+    # Mode 2 — Chat Prompt Decoration (prepend).
+    # The JSONPath targets the messages array, so the decoration must be an
+    # array of message objects. The gateway PREPENDS this system message to
+    # every request before it reaches OpenAI, giving the model a persona the
+    # caller never has to send.
+    - name: prompt-decorator
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: ["*"]
+          params:
+            promptDecoratorConfig: '{"messages": [{"role": "system", "content": "You are a booking receptionist for the imaginary hotel Azure Horizon Resort. Always welcome the guest to Azure Horizon Resort and mention the hotel name Azure Horizon Resort in every reply."}]}'
+            jsonPath: "$.messages"
+            append: false
