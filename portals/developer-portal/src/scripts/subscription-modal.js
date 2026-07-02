@@ -77,7 +77,7 @@ async function prepareSubscriptionModal(modalId) {
     }
 
     try {
-        const resp = await fetch(devportalApi.org(`/subscriptions?apiId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        const resp = await fetch(devportalApi.root(`/subscriptions?apiId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
         if (!resp.ok) throw new Error('Failed to fetch subscriptions');
         const data = await resp.json();
 
@@ -197,7 +197,7 @@ async function prepareSubscriptionModal(modalId) {
                 col.innerHTML = `
                     <div class="card dev-card subscription-card">
                         <div class="card-body align-items-center text-center p-0">
-                            <span class="subscription-plans-card-title">${escapeHtml(plan.name || plan.subscriptionPlanName || '')}</span>
+                            <span class="subscription-plans-card-title">${escapeHtml(plan.displayName || plan.subscriptionPlanName || '')}</span>
                             <h1 class="subscription-plans-request-count">${escapeHtml(formatPlanLimitSummary(plan))}</h1>
                             <p class="subscription-plans-card-subtitle pt-0">${escapeHtml(formatPlanLimitSubtitle(plan))}</p>
                         </div>
@@ -214,7 +214,7 @@ async function prepareSubscriptionModal(modalId) {
                 btn.dataset.apiId = apiId;
                 btn.dataset.planId = plan.id || '';
                 btn.dataset.planName = plan.id || plan.subscriptionPlanName || '';
-                btn.dataset.displayName = plan.name || plan.subscriptionPlanName || '';
+                btn.dataset.displayName = plan.displayName || plan.subscriptionPlanName || '';
                 if (window.isReadOnly) {
                     btn.disabled = true;
                     btn.setAttribute('aria-disabled', 'true');

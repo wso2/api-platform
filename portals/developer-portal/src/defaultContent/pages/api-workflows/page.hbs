@@ -22,9 +22,9 @@
   {{#if apiWorkflows.length}}
   <div class="wf-grid">
     {{#each apiWorkflows}}
-    <div class="wf-card" onclick="window.location.href='{{@root.baseUrl}}/api-workflows/{{this.apiWorkflowId}}';">
+    <div class="wf-card" onclick="window.location.href='{{@root.baseUrl}}/api-workflows/{{this.id}}';">
       <div class="wf-card-head">
-        <h3 class="wf-card-name">{{this.name}}</h3>
+        <h3 class="wf-card-name">{{this.displayName}}</h3>
       </div>
       <div class="wf-card-body">
         <p class="wf-card-desc">{{this.description}}</p>

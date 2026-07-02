@@ -29,7 +29,11 @@ const KeyManager = sequelize.define('dp_key_manager', {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    name: {
+    handle: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },
@@ -70,9 +74,9 @@ const KeyManager = sequelize.define('dp_key_manager', {
     returning: true,
     indexes: [
         {
-            name: 'uq_key_manager_org_name',
+            name: 'uq_key_manager_org_handle',
             unique: true,
-            fields: ['org_uuid', 'name']
+            fields: ['org_uuid', 'handle']
         }
     ]
 });

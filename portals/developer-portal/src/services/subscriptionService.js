@@ -38,14 +38,23 @@ async function safePublish(eventType, payload, opts) {
     }
 }
 
-function buildWebhookPayload(sub, apiMetadata, plan) {
+// The webhook subscriber_id must be the user's IdP subject (idp_id) — the same identity
+// the REST API exposes as `createdBy` — not the portal-internal user UUID stored in
+// created_by. Machine-credential callers carry no user identity (created_by === SYSTEM_ACTOR),
+// so pass that through verbatim instead of running it through the reference lookup.
+async function resolveSubscriberId(createdBy) {
+    if (!createdBy || createdBy === constants.SYSTEM_ACTOR) return createdBy;
+    return userIdpReferenceDao.resolveDisplay(createdBy);
+}
+
+async function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
         subscription_id: sub.uuid,
-        subscriber_id: sub.created_by,
+        subscriber_id: await resolveSubscriberId(sub.created_by),
         status: sub.status,
         subscription_plan: {
             ref_id: plan ? (plan.ref_id || null) : null,
-            name: plan ? (plan.name || null) : null,
+            name: plan ? (plan.display_name || null) : null,
         },
         api: {
             name: apiMetadata ? apiMetadata.name : null,
@@ -64,7 +73,7 @@ function formatSubscriptionResponse(sub, audit) {
         subscriptionToken: sub.token,
         status: sub.status,
         apiId: api.handle || sub.api_uuid,
-        subscriptionPlanName: plan.name || null,
+        subscriptionPlanName: plan.display_name || null,
         ...audit,
     };
 }
@@ -73,6 +82,7 @@ const createSubscription = async (req, res) => {
     const orgId = req.orgId;
     const { apiId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
     const createdBy = util.resolveActor(req);
+    let apiId;
 
     if (!apiHandle || typeof apiHandle !== 'string' || !apiHandle.trim()) {
         return res.status(400).json({
@@ -81,7 +91,7 @@ const createSubscription = async (req, res) => {
     }
 
     try {
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'API not found',
@@ -118,7 +128,7 @@ const createSubscription = async (req, res) => {
             newSub = await subDao.create(
                 orgId, apiId, planId, createdBy, t
             );
-            await safePublish('subscription.created', buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
+            await safePublish('subscription.created', await buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
                 transaction: t,
                 orgId: orgId,
                 aggregateType: 'subscription',
@@ -218,7 +228,7 @@ const updateSubscription = async (req, res) => {
                 throw err;
             }
             await publishWebhookEvent('subscription.updated',
-                buildWebhookPayload({ ...existing.get({ plain: true }), status: status }, existing.dp_api_metadata, existing.dp_subscription_plan),
+                await buildWebhookPayload({ ...existing.get({ plain: true }), status: status }, existing.dp_api_metadata, existing.dp_subscription_plan),
                 { transaction: t, orgId: orgId, aggregateType: 'subscription', aggregateId: subscriptionId });
         });
         sub = await subDao.get(orgId, subscriptionId, actorId);
@@ -288,10 +298,10 @@ const changePlan = async (req, res) => {
                 throw err;
             }
             const payload = {
-                ...buildWebhookPayload(existing, apiMetadata, newPlan),
+                ...(await buildWebhookPayload(existing, apiMetadata, newPlan)),
                 previous_plan: {
                     ref_id: previousPlan ? (previousPlan.ref_id || null) : null,
-                    name: previousPlan ? (previousPlan.name || null) : null,
+                    name: previousPlan ? (previousPlan.display_name || null) : null,
                 },
             };
             await safePublish('subscription.plan_changed', payload, {
@@ -336,7 +346,7 @@ const regenerateSubscriptionToken = async (req, res) => {
                 err.status = 404;
                 throw err;
             }
-            await safePublish('subscription.token_regenerated', buildWebhookPayload(existing, apiMetadata, plan), {
+            await safePublish('subscription.token_regenerated', await buildWebhookPayload(existing, apiMetadata, plan), {
                 transaction: t, orgId, aggregateType: 'subscription', aggregateId: subscriptionId,
                 secretFields: { token: newToken },
             });
@@ -374,7 +384,7 @@ const deleteSubscription = async (req, res) => {
         await sequelize.transaction(async (t) => {
             const deleted = await subDao.delete(orgId, subscriptionId, actorId, t);
             if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
-            await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, plan), {
+            await safePublish('subscription.deleted', await buildWebhookPayload(existing, apiMetadata, plan), {
                 transaction: t,
                 orgId: orgId,
                 aggregateType: 'subscription',

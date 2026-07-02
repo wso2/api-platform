@@ -25,7 +25,7 @@ const create = async (orgId, viewId, apiWorkflowData, createdBy, t) => {
         const apiWorkflow = await APIWorkflow.create({
             org_uuid: orgId,
             view_uuid: viewId,
-            name: apiWorkflowData.name,
+            display_name: apiWorkflowData.displayName,
             handle: apiWorkflowData.handle,
             description: apiWorkflowData.description,
             agent_prompt: apiWorkflowData.agentPrompt,
@@ -50,7 +50,7 @@ const create = async (orgId, viewId, apiWorkflowData, createdBy, t) => {
 
 const update = async (orgId, viewId, apiWorkflowId, apiWorkflowData, updatedBy, t) => {
     const updateFields = { updated_at: new Date(), updated_by: updatedBy };
-    if (apiWorkflowData.name !== undefined) updateFields.name = apiWorkflowData.name;
+    if (apiWorkflowData.displayName !== undefined) updateFields.display_name = apiWorkflowData.displayName;
     if (apiWorkflowData.handle !== undefined) updateFields.handle = apiWorkflowData.handle;
     if (apiWorkflowData.description !== undefined) updateFields.description = apiWorkflowData.description;
     if (apiWorkflowData.agentPrompt !== undefined) updateFields.agent_prompt = apiWorkflowData.agentPrompt;

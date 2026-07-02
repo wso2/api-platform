@@ -52,7 +52,7 @@
       <tbody>
         {{#each associatedApiKeys}}
         <tr>
-          <td><span class="ak-key-name">{{this.name}}</span></td>
+          <td><span class="ak-key-name">{{this.displayName}}</span></td>
           <td>{{this.apiName}}</td>
           <td>
             <span class="ak-status {{#if (eq this.status 'active')}}ak-status--active{{else}}ak-status--inactive{{/if}}">
@@ -62,7 +62,7 @@
           <td>
             {{#unless @root.isReadOnlyMode}}
             <div class="ak-actions">
-              <button type="button" class="ak-btn-revoke btn-remove-key-association" data-key-id="{{this.keyId}}" data-api-id="{{this.apiId}}" data-key-name="{{this.name}}">
+              <button type="button" class="ak-btn-revoke btn-remove-key-association" data-key-id="{{this.id}}" data-api-id="{{this.apiId}}" data-key-name="{{this.displayName}}">
                 <i class="bi bi-x-circle"></i> Remove
               </button>
             </div>

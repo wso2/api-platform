@@ -4,13 +4,13 @@
 
 <a id="opIdlistSubscriptionPlans"></a>
 
-`GET /api/v0.9/subscription-plans`
+`GET /subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/subscription-plans \
+curl -X GET https://localhost:3000/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -41,7 +41,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "id": "string",
-      "name": "string",
+      "displayName": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -117,7 +117,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
 |»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
-|»» name|string|false|none|none|
+|»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
 |»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
@@ -142,13 +142,13 @@ Status Code **200**
 
 <a id="opIdaddSubscriptionPlans"></a>
 
-`POST /api/v0.9/subscription-plans`
+`POST /subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/subscription-plans \
+curl -X POST https://localhost:3000/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -165,7 +165,7 @@ Creates one subscription plan when the request body is an object, or multiple su
 {
   "id": "Gold",
   "refId": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -176,7 +176,7 @@ Creates one subscription plan when the request body is an object, or multiple su
 ```yaml
 id: Gold
 refId: string
-name: string
+displayName: string
 description: string
 type: requestcount
 requestCount: 0
@@ -282,13 +282,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdputSubscriptionPlans"></a>
 
-`PUT /api/v0.9/subscription-plans`
+`PUT /subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/subscription-plans \
+curl -X PUT https://localhost:3000/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -305,7 +305,7 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 {
   "id": "Gold",
   "refId": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -316,7 +316,7 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 ```yaml
 id: Gold
 refId: string
-name: string
+displayName: string
 description: string
 type: requestcount
 requestCount: 0
@@ -344,7 +344,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "requestCount": "string",
   "refId": "string",
@@ -442,13 +442,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetSubscriptionPlan"></a>
 
-`GET /api/v0.9/subscription-plans/{planId}`
+`GET /subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/subscription-plans/{planId} \
+curl -X GET https://localhost:3000/api/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -477,7 +477,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "id": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "requestCount": "string",
   "refId": "string",
@@ -563,13 +563,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscriptionPlan"></a>
 
-`DELETE /api/v0.9/subscription-plans/{planId}`
+`DELETE /subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/subscription-plans/{planId} \
+curl -X DELETE https://localhost:3000/api/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

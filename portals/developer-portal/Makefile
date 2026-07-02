@@ -33,7 +33,7 @@ DEVPORTAL_IMAGE := $(DOCKER_REGISTRY)/developer-portal
 REPO_ROOT         := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR      := $(REPO_ROOT)/docs/rest-apis/devportal
-OPENAPI_SPEC      := docs/devportal-openapi-spec-v1.yaml
+OPENAPI_SPEC      := docs/devportal-openapi-spec-v0.9.yaml
 
 .DEFAULT_GOAL := help
 

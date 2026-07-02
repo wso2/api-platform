@@ -19,24 +19,19 @@
 openapi: 3.0.3
 info:
   title: WSO2 API Developer Portal Core - Devportal Routes
-  version: 1.0.0
+  version: 0.9.0
   description: |
     Fine-grained Developer Portal API for managing organizations,
     API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
-    Most organization-scoped resources are served under `/api/v0.9`; organization
-    lifecycle endpoints (`/organizations`, `/organizations/{orgId}`) are unprefixed.
+    All resources, including organization lifecycle endpoints
+    (`/api/v0.9/organizations`, `/api/v0.9/organizations/{orgId}`), are served under `/api/v0.9`.
     Operations declare the least-privilege OAuth2 scopes required for each resource action.
 servers:
-  - url: https://devportal.api-platform.io
-    description: Production
-  - url: http://localhost:3000
-    description: Local development server
-  - url: https://localhost:{port}
+  - url: https://localhost:3000/api/v0.9
     description: Local HTTPS server
-    variables:
-      port:
-        default: "9443"
+  - url: http://localhost:3000/api/v0.9
+    description: Local development server
 tags:
   - name: Organizations
   - name: Organization Content
@@ -174,7 +169,7 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /api/v0.9/views/{viewId}/asset:
+  /views/{viewId}/asset:
     parameters:
       - $ref: "#/components/parameters/viewId"
     get:
@@ -205,7 +200,7 @@ paths:
               schema:
                 type: string
       security: []
-  /api/v0.9/views/{viewId}/apply-theme:
+  /views/{viewId}/apply-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -229,7 +224,7 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
-  /api/v0.9/views/{viewId}/reset-theme:
+  /views/{viewId}/reset-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -247,7 +242,7 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
-  /api/v0.9/apis:
+  /apis:
     post:
       tags:
         - APIs
@@ -312,7 +307,7 @@ paths:
         - OAuth2Security:
             - dp:api_read
             - dp:api_manage
-  /api/v0.9/apis/{apiId}:
+  /apis/{apiId}:
     parameters:
       - $ref: "#/components/parameters/apiId"
     get:
@@ -382,7 +377,7 @@ paths:
         - OAuth2Security:
             - dp:api_delete
             - dp:api_manage
-  /api/v0.9/subscription-plans:
+  /subscription-plans:
     get:
       tags:
         - Subscription Plans
@@ -463,7 +458,7 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_update
             - dp:sub_plan_manage
-  /api/v0.9/subscription-plans/{planId}:
+  /subscription-plans/{planId}:
     parameters:
       - $ref: "#/components/parameters/planId"
     get:
@@ -504,7 +499,7 @@ paths:
         - OAuth2Security:
             - dp:sub_plan_delete
             - dp:sub_plan_manage
-  /api/v0.9/apis/{apiId}/assets:
+  /apis/{apiId}/assets:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -615,7 +610,7 @@ paths:
         - OAuth2Security:
             - dp:api_content_delete
             - dp:api_content_manage
-  /api/v0.9/labels:
+  /labels:
     post:
       tags:
         - Labels
@@ -664,12 +659,12 @@ paths:
         - OAuth2Security:
             - dp:label_read
             - dp:label_manage
-  /api/v0.9/labels/{labelId}:
+  /labels/{labelId}:
     get:
       tags:
         - Labels
       summary: Get a label
-      description: Retrieves a single label by name.
+      description: Retrieves a single label by handle.
       operationId: getLabel
       parameters:
         - $ref: "#/components/parameters/labelId"
@@ -688,7 +683,7 @@ paths:
       tags:
         - Labels
       summary: Update a label
-      description: Updates an existing label by name.
+      description: Updates an existing label by handle.
       operationId: updateLabel
       parameters:
         - $ref: "#/components/parameters/labelId"
@@ -713,7 +708,7 @@ paths:
       tags:
         - Labels
       summary: Delete a label
-      description: Deletes a label by name.
+      description: Deletes a label by handle.
       operationId: deleteLabel
       parameters:
         - $ref: "#/components/parameters/labelId"
@@ -728,7 +723,7 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /api/v0.9/applications:
+  /applications:
     get:
       tags:
         - Applications
@@ -786,7 +781,7 @@ paths:
         - OAuth2Security:
             - dp:app_create
             - dp:app_manage
-  /api/v0.9/applications/{applicationId}:
+  /applications/{applicationId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     get:
@@ -854,7 +849,7 @@ paths:
         - OAuth2Security:
             - dp:app_delete
             - dp:app_manage
-  /api/v0.9/subscriptions:
+  /subscriptions:
     post:
       tags:
         - Subscriptions
@@ -929,7 +924,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_read
             - dp:subscription_manage
-  /api/v0.9/subscriptions/{subId}:
+  /subscriptions/{subId}:
     parameters:
       - $ref: "#/components/parameters/subId"
     get:
@@ -987,7 +982,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_delete
             - dp:subscription_manage
-  /api/v0.9/subscriptions/{subId}/change-plan:
+  /subscriptions/{subId}/change-plan:
     parameters:
       - $ref: "#/components/parameters/subId"
     post:
@@ -1014,7 +1009,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_update
             - dp:subscription_manage
-  /api/v0.9/subscriptions/{subId}/regenerate-token:
+  /subscriptions/{subId}/regenerate-token:
     parameters:
       - $ref: "#/components/parameters/subId"
     post:
@@ -1037,7 +1032,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:subscription_manage
-  /api/v0.9/apis/{apiId}/api-keys/generate:
+  /apis/{apiId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1048,7 +1043,7 @@ paths:
       description: >-
         Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is
         returned once in the response and never persisted. A `apikey.generated` webhook event is published to the
-        organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key names
+        organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id`
         must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601
         string.
       requestBody:
@@ -1068,7 +1063,8 @@ paths:
                 $ref: "#/components/schemas/ApiKeyResponse"
               example:
                 keyId: key-12345
-                name: weather_prod_key
+                id: weather_prod_key
+                displayName: Weather Prod Key
                 key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
                 expiresAt: "2026-12-31T23:59:59Z"
                 status: ACTIVE
@@ -1084,7 +1080,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_create
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys:
+  /apis/{apiId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/apiId"
     get:
@@ -1108,7 +1104,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/regenerate:
+  /apis/{apiId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1144,7 +1140,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/revoke:
+  /apis/{apiId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1180,7 +1176,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/associate:
+  /apis/{apiId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1222,7 +1218,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /api/v0.9/apis/{apiId}/api-keys/dissociate:
+  /apis/{apiId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/apiId"
     post:
@@ -1248,7 +1244,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
-  /api/v0.9/mcp-servers:
+  /mcp-servers:
     post:
       tags:
         - MCP Servers
@@ -1302,7 +1298,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_read
             - dp:mcp_manage
-  /api/v0.9/mcp-servers/{mcpServerId}:
+  /mcp-servers/{mcpServerId}:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     get:
@@ -1369,7 +1365,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_delete
             - dp:mcp_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/assets:
+  /mcp-servers/{mcpServerId}/assets:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1461,7 +1457,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_content_delete
             - dp:mcp_content_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate:
+  /mcp-servers/{mcpServerId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1498,7 +1494,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_create
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys:
+  /mcp-servers/{mcpServerId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     get:
@@ -1522,7 +1518,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_read
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate:
+  /mcp-servers/{mcpServerId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1557,7 +1553,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke:
+  /mcp-servers/{mcpServerId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1592,7 +1588,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_revoke
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate:
+  /mcp-servers/{mcpServerId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1633,7 +1629,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate:
+  /mcp-servers/{mcpServerId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
     post:
@@ -1659,7 +1655,7 @@ paths:
         - OAuth2Security:
             - dp:mcp_key_update
             - dp:mcp_key_manage
-  /api/v0.9/applications/{applicationId}/api-keys:
+  /applications/{applicationId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     get:
@@ -1684,7 +1680,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /api/v0.9/views:
+  /views:
     post:
       tags:
         - Views
@@ -1728,7 +1724,7 @@ paths:
         - OAuth2Security:
             - dp:view_read
             - dp:view_manage
-  /api/v0.9/views/{viewId}:
+  /views/{viewId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
     put:
@@ -1737,8 +1733,9 @@ paths:
       operationId: updateView
       summary: Update a view
       description: >-
-        Updates the view display name and label associations. `addedLabels` are attached to the view and `removedLabels`
-        are detached. The service returns the accepted request payload.
+        Updates the view display name and/or label associations. When `labels` is supplied, it fully replaces the
+        view's label set — labels present in the list are attached and any others are detached. The service returns
+        the accepted request payload.
       requestBody:
         $ref: "#/components/requestBodies/ViewUpdateBody"
       responses:
@@ -1794,7 +1791,7 @@ paths:
         - OAuth2Security:
             - dp:view_delete
             - dp:view_manage
-  /api/v0.9/applications/{applicationId}/generate-keys:
+  /applications/{applicationId}/generate-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
     post:
@@ -1823,7 +1820,7 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
+  /applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
     parameters:
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
@@ -1850,7 +1847,7 @@ paths:
         - OAuth2Security:
             - dp:app_key_create
             - dp:app_key_manage
-  /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}:
+  /applications/{applicationId}/oauth-keys/{keyMappingId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
       - $ref: "#/components/parameters/keyMappingId"
@@ -1872,7 +1869,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:app_key_revoke
-  /api/v0.9/views/{viewId}/api-workflows:
+  /views/{viewId}/api-workflows:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -1881,7 +1878,7 @@ paths:
       operationId: createApiWorkflow
       summary: Create an API workflow
       description: >-
-        Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the name.
+        Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the display name.
         `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
       requestBody:
         $ref: "#/components/requestBodies/APIWorkflowCreateBody"
@@ -1916,7 +1913,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_read
             - dp:api_workflow_manage
-  /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}:
+  /views/{viewId}/api-workflows/{apiWorkflowId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
       - $ref: "#/components/parameters/apiWorkflowId"
@@ -1977,7 +1974,7 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_delete
             - dp:api_workflow_manage
-  /api/v0.9/views/{viewId}/api-workflows/generate-prompt:
+  /views/{viewId}/api-workflows/generate-prompt:
     parameters:
       - $ref: "#/components/parameters/viewId"
     post:
@@ -1999,16 +1996,17 @@ paths:
         - OAuth2Security:
             - dp:api_workflow_create
             - dp:api_workflow_manage
-  /api/v0.9/key-managers:
+  /key-managers:
     post:
       tags:
         - Key Managers
       summary: Create a key manager
       description: >-
-        Creates a key manager configuration for the organization. Accepts either a `application/json` body or a
-        `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications
-        are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint
-        to proxy `client_appKeyMappings` token requests.
+        Creates a key manager configuration for the organization. If `id` is omitted, the service generates one from
+        the display name. Accepts either a `application/json` body or a `multipart/form-data` upload with a
+        `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key
+        manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings`
+        token requests.
       operationId: createKeyManager
       requestBody:
         $ref: "#/components/requestBodies/KeyManagerBody"
@@ -2055,7 +2053,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:km_read
-  /api/v0.9/key-managers/{kmId}:
+  /key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/kmId"
     get:
@@ -2118,7 +2116,7 @@ paths:
         - OAuth2Security:
             - dp:km_delete
             - dp:km_manage
-  /api/v0.9/webhook-subscribers:
+  /webhook-subscribers:
     post:
       tags:
         - Webhook Subscribers
@@ -2171,7 +2169,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /api/v0.9/webhook-subscribers/{subscriberId}:
+  /webhook-subscribers/{subscriberId}:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
     get:
@@ -2233,7 +2231,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_delete
             - dp:webhook_subscriber_manage
-  /api/v0.9/webhook-subscribers/{subscriberId}/deliveries:
+  /webhook-subscribers/{subscriberId}/deliveries:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
     get:
@@ -2262,7 +2260,7 @@ paths:
         - OAuth2Security:
             - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
-  /api/v0.9/webhook-events:
+  /webhook-events:
     get:
       tags:
         - Webhook Events
@@ -2295,7 +2293,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:event_read
-  /api/v0.9/webhook-events/{eventId}:
+  /webhook-events/{eventId}:
     parameters:
       - $ref: "#/components/parameters/eventId"
     get:
@@ -2492,8 +2490,8 @@ components:
       required: true
       schema:
         type: string
-        example: km-uuid-12345
-      description: Key manager ID (UUID).
+        example: Asgardeo
+      description: The key manager's handle (its `id` in request/response payloads), not the internal database uuid.
     subscriberId:
       name: subscriberId
       in: path
@@ -2635,8 +2633,8 @@ components:
       required: true
       schema:
         type: string
-        example: label-12345
-      description: The label ID.
+        example: premium
+      description: The label's handle (its `id` in request/response payloads), not the internal database uuid.
     limit:
       name: limit
       in: query
@@ -2663,9 +2661,9 @@ components:
         Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field.
         The JSON example below applies only to the `application/json` content type. When an organization YAML
         **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
-        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName`; all other fields
         (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of
-        `{name, displayName}`) and `views` (array of `{id, name, labels}` — `id` becomes the view's handle) to
+        `{name, displayName}`) and `views` (array of `{id, displayName, labels}` — `id` becomes the view's handle) to
         bootstrap labels and views at creation time — these are not available via the `application/json` content
         type.
       content:
@@ -2673,7 +2671,7 @@ components:
           schema:
             $ref: "#/components/schemas/OrganizationCreateRequest"
           example:
-            name: Acme Corporation
+            displayName: Acme Corporation
             businessOwner: Jane Doe
             businessOwnerContact: +1-202-555-0147
             businessOwnerEmail: jane.doe@acme.example
@@ -2700,7 +2698,7 @@ components:
         Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field.
         The JSON example below applies only to the `application/json` content type. When an organization YAML
         **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
-        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName`; all other fields
         (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by
         name) and `views` (upserted by `id`, which becomes the view's handle, with `labels` replacing the view's
         label set) — these are not available via the `application/json` content type.
@@ -2766,7 +2764,7 @@ components:
           schema:
             $ref: "#/components/schemas/LabelRequest"
           example:
-            name: premium
+            id: premium
             displayName: Premium APIs
     SubscriptionCreateBody:
       required: true
@@ -2799,9 +2797,10 @@ components:
     ApiKeyBody:
       required: true
       description: >-
-        API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can
-        be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP
-        server, depending on the path) is identified by the corresponding path parameter.
+        API key payload. `id` must be lowercase and may contain numbers, underscores, and hyphens. `displayName` is
+        an optional human-readable label that defaults to `id` when omitted. `expiresAt` can be an ISO-8601 datetime
+        with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the
+        path) is identified by the corresponding path parameter.
       content:
         application/json:
           schema:
@@ -2810,17 +2809,17 @@ components:
             expiringKey:
               summary: Generate an expiring key
               value:
-                name: weather_prod_key
+                id: weather_prod_key
                 expiresAt: "2026-12-31T23:59:59Z"
             nonExpiringKey:
               summary: Generate a key without expiry
               value:
-                name: weather_sandbox_key
+                id: weather_sandbox_key
     ApiKeyRegenerateBody:
       required: true
       description: >-
         Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided,
-        updates the key's expiry; the key's `name` cannot be changed by this operation.
+        updates the key's expiry; the key's `id`/`displayName` cannot be changed by this operation.
       content:
         application/json:
           schema:
@@ -2830,8 +2829,8 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
               expiresAt:
                 oneOf:
                   - type: string
@@ -2843,7 +2842,7 @@ components:
                 example: "2027-01-01T00:00:00Z"
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
     ApiKeyRevokeBody:
       required: true
       description: Identifies the API key to revoke by its `keyId`.
@@ -2856,11 +2855,11 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
     ApiKeyAssociateBody:
       required: true
       description: Identifies the API key and the application to associate it with.
@@ -2874,15 +2873,15 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
               appId:
                 type: string
                 description: Developer Portal application ID to associate the key with.
                 example: my-weather-app
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
             appId: my-weather-app
     ApiKeyDissociateBody:
       required: true
@@ -2896,11 +2895,11 @@ components:
             properties:
               keyId:
                 type: string
-                description: Developer Portal key ID returned by generate or list.
-                example: key-12345
+                description: The key's handle — the `id` returned by generate or list.
+                example: weather_prod_key
             additionalProperties: false
           example:
-            keyId: key-12345
+            keyId: weather_prod_key
     AppKeyMappingBody:
       required: true
       description: >-
@@ -2929,36 +2928,35 @@ components:
               summary: Create a partner APIs view
               value:
                 id: partner-apis
-                name: Partner APIs
+                displayName: Partner APIs
                 labels:
                   - partner
                   - public
             internalView:
-              summary: Create a view using the handle as name
+              summary: Create a view using the handle as display name
               value:
                 id: internal-apis
                 labels:
                   - internal
     ViewUpdateBody:
       required: true
-      description: View update payload. Include only the name or label changes that should be applied.
+      description: View update payload. Include only the display name or label changes that should be applied.
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ViewUpdateRequest"
           examples:
             renameAndRelabel:
-              summary: Rename a view and adjust labels
+              summary: Rename a view and replace its labels
               value:
-                name: Partner and Public APIs
-                addedLabels:
+                displayName: Partner and Public APIs
+                labels:
+                  - partner
                   - premium
-                removedLabels:
-                  - internal
-            addLabelsOnly:
-              summary: Add labels without renaming
+            relabelOnly:
+              summary: Replace labels without renaming
               value:
-                addedLabels:
+                labels:
                   - beta
     OAuthGenerateTokenBody:
       required: false
@@ -2980,7 +2978,8 @@ components:
           schema:
             $ref: "#/components/schemas/KeyManagerRequest"
           example:
-            name: Asgardeo
+            displayName: Asgardeo
+            id: asgardeo-prod
             type: ASGARDEO
             enabled: true
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -3023,6 +3022,7 @@ components:
           schema:
             $ref: "#/components/schemas/KeyManagerUpdateRequest"
           example:
+            displayName: Asgardeo
             enabled: false
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
         multipart/form-data:
@@ -3046,7 +3046,7 @@ components:
             arazzoWorkflow:
               summary: Create an Arazzo API workflow
               value:
-                name: Weather onboarding
+                displayName: Weather onboarding
                 id: weather-onboarding
                 description: Guides users through the Weather API onboarding workflow.
                 contentType: ARAZZO
@@ -3059,7 +3059,7 @@ components:
             markdownWorkflow:
               summary: Create a Markdown API workflow
               value:
-                name: Weather guide
+                displayName: Weather guide
                 description: Human-readable guide for Weather API users.
                 contentType: MD
                 markdownContent: |-
@@ -3073,7 +3073,7 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowUpdateRequest"
           example:
-            name: Weather onboarding v2
+            displayName: Weather onboarding v2
             status: PUBLISHED
             agentVisibility: VISIBLE
     APIWorkflowPromptBody:
@@ -3084,7 +3084,7 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowPromptRequest"
           example:
-            name: Weather onboarding
+            displayName: Weather onboarding
             description: Guides users through the Weather API onboarding workflow.
             orgHandle: acme
             viewName: default
@@ -3674,7 +3674,7 @@ components:
           example:
             list:
               - id: string
-                name: string
+                displayName: string
                 description: string
                 requestCount: string
                 refId: string
@@ -3818,7 +3818,8 @@ components:
             $ref: "#/components/schemas/ApiKeyResponse"
           example:
             keyId: key-12345
-            name: weather_prod_key
+            id: weather_prod_key
+            displayName: Weather Prod Key
             key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
             expiresAt: "2026-12-31T23:59:59Z"
             status: ACTIVE
@@ -3860,9 +3861,9 @@ components:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
-              - id: km-uuid-12345
+              - id: asgardeo-prod
+                displayName: Asgardeo
                 orgId: org-12345
-                name: Asgardeo
                 type: ASGARDEO
                 enabled: true
                 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
@@ -3932,8 +3933,8 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowCreateResponse"
           example:
-            apiWorkflowId: workflow-12345
-            name: Weather onboarding
+            id: workflow-12345
+            displayName: Weather onboarding
             status: PUBLISHED
     APIWorkflowResponse:
       description: API workflow DTO.
@@ -3942,8 +3943,8 @@ components:
           schema:
             $ref: "#/components/schemas/APIWorkflowResponse"
           example:
-            apiWorkflowId: workflow-12345
-            name: Weather onboarding
+            id: workflow-12345
+            displayName: Weather onboarding
             description: Guides users through the Weather API onboarding workflow.
             agentPrompt: Follow this workflow to onboard a Weather API user.
             status: PUBLISHED
@@ -3982,7 +3983,7 @@ components:
             $ref: "#/components/schemas/ViewResponse"
           example:
             id: partner-apis
-            name: Partner APIs
+            displayName: Partner APIs
             labels:
               - partner
               - public
@@ -4010,11 +4011,10 @@ components:
           schema:
             $ref: "#/components/schemas/ViewUpdateRequest"
           example:
-            name: Partner and Public APIs
-            addedLabels:
+            displayName: Partner and Public APIs
+            labels:
+              - partner
               - premium
-            removedLabels:
-              - internal
     WebhookEventListResponse:
       description: Paginated list of webhook events.
       content:
@@ -4176,8 +4176,9 @@ components:
           type: string
           description: The organization's handle (unique). Not the internal database uuid.
           example: acme
-        name:
+        displayName:
           type: string
+          example: Acme Corporation
         businessOwner:
           type: string
           nullable: true
@@ -4417,7 +4418,7 @@ components:
         id:
           type: string
           description: The plan's handle (unique per org). Not the internal database uuid.
-        name:
+        displayName:
           type: string
         description:
           type: string
@@ -4457,10 +4458,8 @@ components:
       properties:
         id:
           type: string
-          example: label-12345
-        name:
-          type: string
           example: premium
+          description: The label's handle (unique per org). Not the internal database uuid.
         displayName:
           type: string
           example: Premium APIs
@@ -4527,14 +4526,14 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - labels
       properties:
         id:
           type: string
           description: The view's handle (unique per org). Not the internal database uuid.
           example: partner-apis
-        name:
+        displayName:
           type: string
           example: Partner APIs
         labels:
@@ -4566,12 +4565,13 @@ components:
     OrganizationCreateRequest:
       type: object
       required:
-        - name
+        - displayName
         - id
         - idpRefId
       properties:
-        name:
+        displayName:
           type: string
+          example: Acme Corporation
         businessOwner:
           type: string
         businessOwnerContact:
@@ -4607,12 +4607,13 @@ components:
     OrganizationUpdateRequest:
       type: object
       required:
-        - name
+        - displayName
         - id
         - idpRefId
       properties:
-        name:
+        displayName:
           type: string
+          example: Acme Corporation
         businessOwner:
           type: string
         businessOwnerContact:
@@ -4648,7 +4649,7 @@ components:
       type: object
       required:
         - id
-        - name
+        - displayName
         - type
       properties:
         id:
@@ -4660,7 +4661,7 @@ components:
         refId:
           type: string
           description: Platform API subscription plan UUID to associate with this plan.
-        name:
+        displayName:
           type: string
         description:
           type: string
@@ -4683,12 +4684,13 @@ components:
     LabelRequest:
       type: object
       required:
-        - name
+        - id
         - displayName
       properties:
-        name:
+        id:
           type: string
           example: premium
+          description: Desired handle for the label (unique per org), stored as-is.
         displayName:
           type: string
           example: Premium APIs
@@ -4805,12 +4807,16 @@ components:
     ApiKeyRequest:
       type: object
       required:
-        - name
+        - id
       properties:
-        name:
+        id:
           type: string
           pattern: ^[a-z0-9][a-z0-9_-]{0,127}$
           example: weather_prod_key
+        displayName:
+          type: string
+          description: Optional human-readable name for the key. Defaults to `id` when omitted.
+          example: Weather Prod Key
         subscriptionId:
           type: string
           description: Optional subscription ID to associate the key with.
@@ -4837,9 +4843,12 @@ components:
           type: string
           description: Developer Portal key identifier.
           example: key-12345
-        name:
+        id:
           type: string
           example: weather_prod_key
+        displayName:
+          type: string
+          example: Weather Prod Key
         apiId:
           type: string
           description: Developer Portal API ID the key belongs to.
@@ -4877,15 +4886,18 @@ components:
       type: object
       description: >-
         API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include
-        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
       properties:
         keyId:
           type: string
           description: Developer Portal key identifier.
           example: key-12345
-        name:
+        id:
           type: string
           example: weather_prod_key
+        displayName:
+          type: string
+          example: Weather Prod Key
         key:
           type: string
           description: One-time plaintext API key secret.
@@ -4920,14 +4932,19 @@ components:
     KeyManagerRequest:
       type: object
       required:
-        - name
+        - displayName
         - type
         - tokenEndpoint
       properties:
-        name:
+        displayName:
           type: string
-          description: Unique name within the organization.
           example: Asgardeo
+        id:
+          type: string
+          description: >-
+            Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key
+            manager's `displayName` when omitted.
+          example: asgardeo-prod
         type:
           type: string
           enum:
@@ -4954,10 +4971,13 @@ components:
         Partial update payload for a key manager. All fields are optional; only supplied fields are applied. Omitted
         fields retain their stored values.
       properties:
-        name:
+        displayName:
           type: string
-          description: Unique name within the organization.
           example: Asgardeo
+        id:
+          type: string
+          description: Desired handle for the key manager (unique per org), stored as-is.
+          example: asgardeo-prod
         type:
           type: string
           enum:
@@ -4981,14 +5001,14 @@ components:
       properties:
         id:
           type: string
-          description: Key manager UUID.
-          example: km-uuid-12345
+          description: The key manager's handle (unique per org). Not the internal database uuid.
+          example: asgardeo-prod
+        displayName:
+          type: string
+          example: Asgardeo
         orgId:
           type: string
           example: org-12345
-        name:
-          type: string
-          example: Asgardeo
         type:
           type: string
           enum:
@@ -5029,8 +5049,9 @@ components:
       properties:
         id:
           type: string
-          example: km-uuid-12345
-        name:
+          description: The key manager's handle (unique per org). Not the internal database uuid.
+          example: asgardeo-prod
+        displayName:
           type: string
           example: Asgardeo
         type:
@@ -5049,7 +5070,7 @@ components:
     WebhookSubscriberRequest:
       type: object
       required:
-        - name
+        - displayName
         - targetUrl
       properties:
         name:
@@ -5217,7 +5238,7 @@ components:
           type: string
           description: Desired handle for the view (unique per org), stored as-is.
           example: partner-apis
-        name:
+        displayName:
           type: string
           description: Optional display name. Defaults to the handle when omitted.
           example: Partner APIs
@@ -5234,23 +5255,19 @@ components:
     ViewUpdateRequest:
       type: object
       properties:
-        name:
+        displayName:
           type: string
           example: Partner and Public APIs
-        addedLabels:
+        labels:
           type: array
-          description: Label names to attach to the view.
+          description: >-
+            Full desired set of label names for the view. Labels present here but not currently attached are
+            attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.
           items:
             type: string
           example:
+            - partner
             - premium
-        removedLabels:
-          type: array
-          description: Label names to detach from the view.
-          items:
-            type: string
-          example:
-            - internal
       additionalProperties: false
     OAuthGenerateTokenRequest:
       type: object
@@ -5321,10 +5338,10 @@ components:
     APIWorkflowCreateResponse:
       type: object
       properties:
-        apiWorkflowId:
+        id:
           type: string
           example: workflow-12345
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         status:
@@ -5337,11 +5354,11 @@ components:
     APIWorkflowResponse:
       type: object
       properties:
-        apiWorkflowId:
+        id:
           type: string
           example: workflow-12345
           description: The workflow's handle (unique per org and view). Not the internal database uuid.
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         description:
@@ -5387,10 +5404,10 @@ components:
     APIWorkflowCreateRequest:
       type: object
       required:
-        - name
+        - displayName
         - description
       properties:
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         id:
@@ -5435,7 +5452,7 @@ components:
     APIWorkflowUpdateRequest:
       type: object
       properties:
-        name:
+        displayName:
           type: string
           example: Weather onboarding v2
         id:
@@ -5474,10 +5491,10 @@ components:
     APIWorkflowPromptRequest:
       type: object
       required:
-        - name
+        - displayName
         - description
       properties:
-        name:
+        displayName:
           type: string
           example: Weather onboarding
         description:

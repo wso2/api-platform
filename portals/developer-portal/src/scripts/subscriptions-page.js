@@ -79,7 +79,7 @@ async function fetchSubToken(subId) {
     if (!orgId) return null;
     try {
         const resp = await fetch(
-            devportalApi.org(`/subscriptions/${encodeURIComponent(subId)}`),
+            devportalApi.root(`/subscriptions/${encodeURIComponent(subId)}`),
             { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
         if (!resp.ok) return null;
@@ -149,7 +149,7 @@ async function confirmRegenerateToken() {
     _regenerateInFlight = true;
     try {
         const resp = await fetch(
-            devportalApi.org(`/subscriptions/${encodeURIComponent(subId)}/regenerate-token`),
+            devportalApi.root(`/subscriptions/${encodeURIComponent(subId)}/regenerate-token`),
             { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
         if (resp.ok) {
@@ -186,7 +186,7 @@ async function toggleSubSuspend() {
     const newStatus = _manageSub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
         const resp = await fetch(
-            devportalApi.org(`/subscriptions/${encodeURIComponent(_manageSub.id)}`),
+            devportalApi.root(`/subscriptions/${encodeURIComponent(_manageSub.id)}`),
             {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
@@ -232,14 +232,14 @@ function closeSubUnsub() {
 async function confirmSubUnsub() {
     if (!_manageSub) return;
     closeSubUnsub();
-    await executeDeleteSubscription(_manageSub.id);
+    await executeSubRowDelete(_manageSub.id);
 }
 
 /* ── Delete / unsubscribe (API call) ────────────────────────────── */
-async function executeDeleteSubscription(subscriptionId) {
+async function executeSubRowDelete(subscriptionId) {
     try {
         const response = await fetch(
-            devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
+            devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
 

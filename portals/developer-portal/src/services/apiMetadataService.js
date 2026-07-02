@@ -1447,6 +1447,9 @@ const createLabel = async (req, res) => {
 
     const orgId = req.orgId;
     const label = req.body;
+    if (label && label.id) {
+        label.handle = label.id;
+    }
     const userId = util.resolveActor(req);
     try {
         const record = await labelDao.create(orgId, label, userId);
@@ -1460,8 +1463,12 @@ const createLabel = async (req, res) => {
 const getLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const { labelId } = req.params;
+    const { labelId: labelHandle } = req.params;
     try {
+        const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
+        if (!labelId) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+        }
         const record = await labelDao.findById(orgId, labelId);
         res.status(200).json(new LabelDTO(record));
     } catch (error) {
@@ -1473,10 +1480,14 @@ const getLabel = async (req, res) => {
 const updateLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const { labelId } = req.params;
+    const { labelId: labelHandle } = req.params;
     const label = req.body;
     const userId = util.resolveActor(req);
     try {
+        const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
+        if (!labelId) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+        }
         const record = await labelDao.updateById(orgId, labelId, label, userId);
         res.status(200).json(new LabelDTO(record));
     } catch (error) {
@@ -1488,8 +1499,12 @@ const updateLabel = async (req, res) => {
 const deleteLabel = async (req, res) => {
 
     const orgId = req.orgId;
-    const { labelId } = req.params;
+    const { labelId: labelHandle } = req.params;
     try {
+        const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
+        if (!labelId) {
+            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+        }
         await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
     } catch (error) {
@@ -1555,8 +1570,7 @@ const addView = async (req, res) => {
 const updateView = async (req, res) => {
 
     const orgId = req.orgId;
-    const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
-    const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
+    const labels = req.body.labels;
     const viewHandle = req.params.viewId;
     const userId = util.resolveActor(req);
     try {
@@ -1565,18 +1579,13 @@ const updateView = async (req, res) => {
         }, async (t) => {
 
             let viewId = "";
-            if (req.body.name) {
-                let viewResponse = await viewDao.update(orgId, viewHandle, req.body.name, userId, t);
+            if (req.body.displayName) {
+                let viewResponse = await viewDao.update(orgId, viewHandle, req.body.displayName, userId, t);
                 viewId = viewResponse.dataValues.uuid;
             }
-            if (removedLabels.length !== 0 || addedLabels.length !== 0) {
+            if (Array.isArray(labels)) {
                 viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
-            }
-            if (removedLabels.length !== 0) {
-                await viewDao.deleteLabels(orgId, viewId, removedLabels, t);
-            }
-            if (addedLabels.length !== 0) {
-                await viewDao.addLabels(orgId, viewId, addedLabels, userId, t);
+                await viewDao.replaceLabels(orgId, viewId, labels, userId, t);
             }
             viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
             logUserAction('VIEW_UPDATED', req, { orgId, viewId: viewHandle, resourceUuid: viewId, resourceType: 'view' });
@@ -1943,7 +1952,7 @@ function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
         handle: metadata.name,
-        name: spec.displayName,
+        displayName: spec.displayName,
         description: spec.description,
         refId: spec.refId,
         limits: Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec),

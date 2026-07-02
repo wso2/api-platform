@@ -174,7 +174,7 @@ const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete
             for (const key of affectedKeys) {
                 const meta = key.dp_api_metadata;
                 const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
-                await apiKeyService.publishKeyApplicationUpdated(orgId, key.uuid, key.name, api, null, t);
+                await apiKeyService.publishKeyApplicationUpdated(orgId, key.uuid, key.handle, key.display_name, api, null, t);
             }
         });
     } catch (pubErr) {
@@ -287,7 +287,7 @@ const generateKeys = async (req, res) => {
             return res.status(400).json({ message: 'consumerKey is required.' });
         }
 
-        const kmRecord = await kmDao.getByName(orgId, kmName);
+        const kmRecord = await kmDao.getByHandle(orgId, kmName);
         if (!kmRecord) {
             return res.status(404).json({ message: `Key manager '${kmName}' not found.` });
         }

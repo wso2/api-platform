@@ -2,7 +2,7 @@
 
 {{#if flows.length}}
 {{#each flows}}
-- [{{this.name}}]({{../baseUrl}}/api-workflows/{{this.handle}}.md)
+- [{{this.displayName}}]({{../baseUrl}}/api-workflows/{{this.handle}}.md)
 {{/each}}
 {{else}}
 No published workflows found.

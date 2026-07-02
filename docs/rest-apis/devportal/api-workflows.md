@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiWorkflow"></a>
 
-`POST /api/v0.9/views/{viewId}/api-workflows`
+`POST /views/{viewId}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows \
+curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/api-workflows \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,13 +19,13 @@ curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workf
 
 ```
 
-Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
+Creates an API workflow in the selected view. If `id` is omitted, the service generates one from the display name. `ARAZZO` content is parsed from JSON or YAML; invalid Arazzo content returns a bad request.
 
 > Payload
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "contentType": "ARAZZO",
@@ -60,8 +60,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "status": "PUBLISHED"
 }
 ```
@@ -87,13 +87,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllApiWorkflows"></a>
 
-`GET /api/v0.9/views/{viewId}/api-workflows`
+`GET /views/{viewId}/api-workflows`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows \
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/api-workflows \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -125,8 +125,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "apiWorkflowId": "workflow-12345",
-      "name": "Weather onboarding",
+      "id": "workflow-12345",
+      "displayName": "Weather onboarding",
       "description": "string",
       "agentPrompt": "string",
       "status": "PUBLISHED",
@@ -160,8 +160,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[APIWorkflowResponse](schemas.md#schemaapiworkflowresponse)]|false|none|none|
-|»» apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
-|»» name|string|false|none|none|
+|»» id|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
+|»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
 |»» agentPrompt|string|false|none|none|
 |»» status|string|false|none|none|
@@ -191,13 +191,13 @@ Status Code **200**
 
 <a id="opIdgetApiWorkflow"></a>
 
-`GET /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}`
+`GET /views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -226,8 +226,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
@@ -260,13 +260,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApiWorkflow"></a>
 
-`PUT /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}`
+`PUT /views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
+curl -X PUT https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -281,7 +281,7 @@ Updates API workflow metadata and content for the selected view. Duplicate handl
 
 ```json
 {
-  "name": "Weather onboarding v2",
+  "displayName": "Weather onboarding v2",
   "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
@@ -332,13 +332,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiWorkflow"></a>
 
-`DELETE /api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}`
+`DELETE /views/{viewId}/api-workflows/{apiWorkflowId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
+curl -X DELETE https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -383,13 +383,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgeneratePrompt"></a>
 
-`POST /api/v0.9/views/{viewId}/api-workflows/generate-prompt`
+`POST /views/{viewId}/api-workflows/generate-prompt`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/api-workflows/generate-prompt \
+curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/generate-prompt \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -404,7 +404,7 @@ Generates the default agent prompt text for a proposed API workflow using the su
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "apis": [
     {}

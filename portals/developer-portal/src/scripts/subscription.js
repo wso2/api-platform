@@ -20,7 +20,7 @@ async function subscribe(orgId, apiId, planName, planId) {
     try {
         const body = { apiId, subscriptionPlanId: planId };
 
-        const response = await fetch(devportalApi.org('/subscriptions'), {
+        const response = await fetch(devportalApi.root('/subscriptions'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             body: JSON.stringify(body),
@@ -106,7 +106,7 @@ async function handlePlanSubscription(btnElement) {
 
 async function toggleSubscriptionStatus(orgId, subscriptionId, newStatus) {
     try {
-        const response = await fetch(devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
+        const response = await fetch(devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             body: JSON.stringify({ status: newStatus }),
@@ -135,7 +135,7 @@ function confirmDeleteSubscription(orgId, subscriptionId) {
 
 async function executeDeleteSubscription(orgId, subscriptionId) {
     try {
-        const response = await fetch(devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
+        const response = await fetch(devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
         });
@@ -164,7 +164,7 @@ async function runPendingPlanSwitch(orgId, apiId, planName, displayName, subscri
 
     try {
         const response = await fetch(
-            devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan`),
+            devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan`),
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
@@ -209,7 +209,7 @@ async function refreshLandingPageSubscriptions() {
     if (!apiId) { window.location.reload(); return; }
 
     try {
-        var resp = await fetch(devportalApi.org('/subscriptions?apiId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        var resp = await fetch(devportalApi.root('/subscriptions?apiId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
         if (!resp.ok) { window.location.reload(); return; }
         var data = await resp.json();
         var existing = data.list || data || [];
@@ -399,7 +399,7 @@ async function fetchTokenIfNeeded(subscriptionId) {
     const orgId = window.__subscriptionOrgId;
     if (!orgId) return null;
     try {
-        const resp = await fetch(devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        const resp = await fetch(devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
         if (!resp.ok) return null;
         const data = await resp.json();
         const token = data.subscriptionToken;

@@ -18,16 +18,16 @@
 const View = require('../models/view');
 const ViewLabels = require('../models/viewLabel');
 const Labels = require('../models/label');
-const { Sequelize, Op } = require('sequelize');
+const { Sequelize } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
 const create = async (orgId, payload, createdBy, t) => {
 
-    let name = payload.name ? payload.name : payload.handle;
+    let displayName = payload.displayName ? payload.displayName : payload.handle;
     try {
         const viewResponse = await View.create({
-            name: name,
+            display_name: displayName,
             handle: payload.handle,
             org_uuid: orgId,
             created_by: createdBy,
@@ -42,7 +42,7 @@ const create = async (orgId, payload, createdBy, t) => {
     }
 }
 
-const update = async (orgId, handle, name, updatedBy, t) => {
+const update = async (orgId, handle, displayName, updatedBy, t) => {
 
     try {
         let [record, created] = await View.findOrCreate({
@@ -52,7 +52,7 @@ const update = async (orgId, handle, name, updatedBy, t) => {
             },
             defaults: {
                 handle: handle,
-                name: name ? name : handle,
+                display_name: displayName ? displayName : handle,
                 created_by: updatedBy,
                 updated_by: updatedBy
             },
@@ -62,7 +62,7 @@ const update = async (orgId, handle, name, updatedBy, t) => {
         if (!created) {
             record = await record.update({
                 handle: handle,
-                ...(name && { name: name }),
+                ...(displayName && { display_name: displayName }),
                 updated_by: updatedBy,
                 updated_at: new Date()
             }, { transaction: t }); // Update if found
@@ -104,7 +104,7 @@ const get = async (orgId, handle) => {
             },
             include: {
                 model: Labels,
-                attributes: ["name"],
+                attributes: ["handle"],
                 through: { attributes: [] }
             },
         });
@@ -126,7 +126,7 @@ const getId = async (orgId, viewName, t) => {
         });
         if (!viewResponse) {
             viewResponse = await View.findOne({
-                where: { name: viewName, org_uuid: orgId },
+                where: { display_name: viewName, org_uuid: orgId },
                 transaction: t
             });
         }
@@ -151,7 +151,7 @@ const list = async (orgId) => {
             },
             include: {
                 model: Labels,
-                attributes: ["name"],
+                attributes: ["handle"],
                 through: {
                     attributes: []
                 }
@@ -202,26 +202,7 @@ const replaceLabels = async (orgId, viewId, labelNames, createdBy, t) => {
     }
 }
 
-const deleteLabels = async (orgId, viewId, labels, t) => {
-
-    const IDList = await getLabelId(orgId, labels, t);
-    try {
-        return await ViewLabels.destroy({
-            where: {
-                label_uuid: { [Op.in]: IDList },
-                view_uuid: viewId,
-            },
-            transaction: t
-        });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-// Internal helper used by addLabels, replaceLabels, deleteLabels
+// Internal helper used by addLabels, replaceLabels
 async function getLabelId(orgId, labels, t) {
     const labelDao = require('./labelDao');
     return labelDao.getId(orgId, labels, t);
@@ -236,5 +217,4 @@ module.exports = {
     list,
     addLabels,
     replaceLabels,
-    deleteLabels,
 };

@@ -32,7 +32,7 @@ const View = sequelize.define('dp_view', {
         type: DataTypes.STRING,
         allowNull: false
     },
-    name: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },

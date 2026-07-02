@@ -4,13 +4,13 @@
 
 <a id="opIdcreateWebhookSubscriber"></a>
 
-`POST /api/v0.9/webhook-subscribers`
+`POST /webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/webhook-subscribers \
+curl -X POST https://localhost:3000/api/v0.9/webhook-subscribers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -156,13 +156,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetWebhookSubscribers"></a>
 
-`GET /api/v0.9/webhook-subscribers`
+`GET /webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/webhook-subscribers \
+curl -X GET https://localhost:3000/api/v0.9/webhook-subscribers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -265,13 +265,13 @@ Status Code **200**
 
 <a id="opIdgetWebhookSubscriber"></a>
 
-`GET /api/v0.9/webhook-subscribers/{subscriberId}`
+`GET /webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/webhook-subscribers/{subscriberId} \
+curl -X GET https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -350,13 +350,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateWebhookSubscriber"></a>
 
-`PUT /api/v0.9/webhook-subscribers/{subscriberId}`
+`PUT /webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/webhook-subscribers/{subscriberId} \
+curl -X PUT https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -508,13 +508,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteWebhookSubscriber"></a>
 
-`DELETE /api/v0.9/webhook-subscribers/{subscriberId}`
+`DELETE /webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/webhook-subscribers/{subscriberId} \
+curl -X DELETE https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -570,13 +570,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetWebhookSubscriberDeliveries"></a>
 
-`GET /api/v0.9/webhook-subscribers/{subscriberId}/deliveries`
+`GET /webhook-subscribers/{subscriberId}/deliveries`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/webhook-subscribers/{subscriberId}/deliveries \
+curl -X GET https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}/deliveries \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

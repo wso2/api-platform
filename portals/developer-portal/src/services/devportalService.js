@@ -38,7 +38,7 @@ const getOrganizationDetails = async (orgId) => {
     const audit = await userIdpReferenceDao.buildSingleAuditFields(organization);
     return {
         id: organization.handle,
-        name: organization.name,
+        displayName: organization.display_name,
         businessOwner: organization.business_owner,
         businessOwnerContact: organization.business_owner_contact,
         businessOwnerEmail: organization.business_owner_email,

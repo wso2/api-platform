@@ -84,7 +84,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
                     try {
                         const km = await kmDao.get(mapping.km_uuid);
                         keyList.push({
-                            keyManager: km.name,
+                            keyManager: km.handle,
                             consumerKey: mapping.as_client_id,
                             keyMappingId: mapping.uuid,
                             keyType: mapping.type || constants.KEY_TYPE.PRODUCTION,
@@ -111,8 +111,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
         const dbKeyManagers = await kmDao.listEnabled(orgId);
         for (const km of dbKeyManagers) {
             kMmetaData.push({
-                id: km.uuid,
-                name: km.name,
+                id: km.handle,
                 type: km.type,
                 enabled: true,
                 tokenEndpoint: km.token_endpoint,
@@ -143,12 +142,12 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
 
     kMmetaData.forEach(keyManager => {
         productionKeys.forEach(productionKey => {
-            if (productionKey.keyManager === keyManager.name) {
+            if (productionKey.keyManager === keyManager.id) {
                 keyManager.productionKeys = productionKey;
             }
         });
         sandboxKeys.forEach(sandboxKey => {
-            if (sandboxKey.keyManager === keyManager.name) {
+            if (sandboxKey.keyManager === keyManager.id) {
                 keyManager.sandboxKeys = sandboxKey;
             }
         });
@@ -257,7 +256,7 @@ const loadApplication = async (req, res, next) => {
         const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
-        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId);
+        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId, resolveActor(req));
 
         templateContent = {
             orgId: data.orgId,
@@ -378,28 +377,29 @@ function formatApiDisplayName(apiMetadata, fallbackId) {
     return apiMetadata.handle ? `${namePart} (${apiMetadata.handle})` : namePart;
 }
 
-async function loadApplicationApiKeysData(orgId, applicationId) {
+async function loadApplicationApiKeysData(orgId, applicationId, userId) {
     let associatedApiKeys = [];
     let availableKeysByApi = [];
     try {
         const associated = await apiKeyService.list(orgId, { appId: applicationId });
         associatedApiKeys = associated.map((k) => ({
             keyId: k.uuid,
-            name: k.name,
+            id: k.handle,
+            displayName: k.display_name,
             status: String(k.status || 'ACTIVE').toLowerCase(),
             apiId: k.dp_api_metadata?.handle,
             apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
         }));
 
-        // Capped — this just populates a UI picker, not a full export of the org's keys.
-        const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', limit: 200 });
+        // Capped — this just populates a UI picker of the caller's own keys, not a full export of the org's keys.
+        const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', createdBy: userId, limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
             if (k.dp_api_key_app_mapping?.app_uuid === applicationId) return;
             const apiId = k.dp_api_metadata?.handle || k.api_uuid;
             const apiName = formatApiDisplayName(k.dp_api_metadata, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
-            byApi.get(apiId).keys.push({ keyId: k.uuid, name: k.name });
+            byApi.get(apiId).keys.push({ keyId: k.uuid, id: k.handle, displayName: k.display_name });
         });
         availableKeysByApi = Array.from(byApi.values());
     } catch (error) {

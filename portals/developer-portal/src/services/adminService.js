@@ -43,7 +43,7 @@ function mapYamlToOrganization(parsed) {
     const { metadata = {}, spec = {} } = parsed;
     return {
         handle: metadata.name,
-        name: spec.displayName,
+        displayName: spec.displayName,
         idpRefId: spec.idpRefId,
         cpRefId: spec.cpRefId,
         businessOwner: spec.businessOwner,
@@ -72,8 +72,8 @@ function parseOrganizationFromYamlFile(fileBuffer) {
     }
     const { spec = {} } = parsed;
     if (spec.labels !== undefined && spec.labels !== null) {
-        if (!Array.isArray(spec.labels) || spec.labels.some(l => typeof l !== 'object' || !l.name)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.labels' must be an array of objects with a 'name' field");
+        if (!Array.isArray(spec.labels) || spec.labels.some(l => typeof l !== 'object' || !l.id)) {
+            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.labels' must be an array of objects with an 'id' field");
         }
     }
     if (spec.views !== undefined && spec.views !== null) {
@@ -86,7 +86,7 @@ function parseOrganizationFromYamlFile(fileBuffer) {
     // checks that the multipart file field is present; it cannot inspect the file's
     // contents, so the required fields from OrganizationCreate/UpdateRequest are
     // enforced here. Keep this list in sync with those spec schemas.
-    const requiredFields = ['name', 'handle', 'idpRefId'];
+    const requiredFields = ['displayName', 'handle', 'idpRefId'];
     const missingFields = requiredFields.filter((field) => !organization[field]);
     if (missingFields.length > 0) {
         throw new Sequelize.ValidationError(
@@ -126,20 +126,20 @@ const createOrganization = async (req, res) => {
             const orgId = organization.uuid;
             logger.info('Organization created successfully', {
                 orgId,
-                orgName: organization.name
+                orgName: organization.display_name
             });
 
             // Labels: use YAML-defined if provided, else fall back to default
             const labelDefs = payload.labels?.length
                 ? payload.labels
-                : [{ name: 'default', displayName: 'default' }];
+                : [{ id: 'default', displayName: 'default' }];
 
-            const createdLabels = await labelDao.createMany(orgId, labelDefs, userId, t);
+            const createdLabels = await labelDao.createMany(orgId, labelDefs.map(l => ({ ...l, handle: l.id })), userId, t);
             logger.info('Labels created successfully', { orgId });
 
-            // Build name→UUID map for view→label linking
+            // Build handle→UUID map for view→label linking
             const labelMap = {};
-            createdLabels.forEach(l => { labelMap[l.dataValues.name] = l.dataValues.uuid; });
+            createdLabels.forEach(l => { labelMap[l.dataValues.handle] = l.dataValues.uuid; });
 
             // Views: use YAML-defined if provided, else fall back to default
             if (payload.views?.length) {
@@ -153,7 +153,7 @@ const createOrganization = async (req, res) => {
             }
             const viewDefs = (payload.views?.length
                 ? payload.views
-                : [{ id: 'default', name: 'default', labels: [labelDefs[0].name] }]
+                : [{ id: 'default', displayName: 'default', labels: [labelDefs[0].id] }]
             ).map(v => ({ ...v, handle: v.id }));
 
             for (const viewDef of viewDefs) {
@@ -193,7 +193,7 @@ const createOrganization = async (req, res) => {
         }
         const orgCreationResponse = {
             id: organization.handle,
-            name: organization.name,
+            displayName: organization.display_name,
             businessOwner: organization.business_owner,
             businessOwnerContact: organization.business_owner_contact,
             businessOwnerEmail: organization.business_owner_email,
@@ -204,11 +204,11 @@ const createOrganization = async (req, res) => {
         };
         logger.info('Organization creation flow completed successfully', {
             orgId: orgCreationResponse.id,
-            orgName: orgCreationResponse.name,
+            orgName: orgCreationResponse.displayName,
         });
         logUserAction('ORG_CREATED', req, {
             orgId: orgCreationResponse.id,
-            orgName: orgCreationResponse.name,
+            orgName: orgCreationResponse.displayName,
             resourceUuid: organization.uuid,
             resourceType: 'organization',
             orgUuid: organization.uuid,
@@ -239,7 +239,7 @@ const getAllOrganizations = async () => {
         const auditList = await userIdpReferenceDao.buildListAuditFields(organizations.map(o => o.dataValues));
         organizations.forEach((organization, i) => {
             orgList.push({
-                name: organization.dataValues.name,
+                displayName: organization.dataValues.display_name,
                 id: organization.dataValues.handle,
                 businessOwner: organization.dataValues.business_owner,
                 businessOwnerContact: organization.dataValues.business_owner_contact,
@@ -291,7 +291,7 @@ const updateOrganization = async (req, res) => {
             // Labels upsert — only if present in payload
             if (payload.labels?.length) {
                 for (const label of payload.labels) {
-                    await labelDao.update(resolvedOrgId, label, userId, t);
+                    await labelDao.update(resolvedOrgId, { ...label, handle: label.id }, userId, t);
                 }
                 logger.info('Labels upserted successfully', { orgId });
             }
@@ -304,7 +304,7 @@ const updateOrganization = async (req, res) => {
                             "Invalid organization payload: each entry in 'views' must have a non-empty 'id'"
                         );
                     }
-                    const view = await viewDao.update(resolvedOrgId, viewDef.id, viewDef.name, userId, t);
+                    const view = await viewDao.update(resolvedOrgId, viewDef.id, viewDef.displayName, userId, t);
                     if (Array.isArray(viewDef.labels)) {
                         await viewDao.replaceLabels(resolvedOrgId, view.dataValues.uuid, viewDef.labels, userId, t);
                     }
@@ -325,7 +325,7 @@ const updateOrganization = async (req, res) => {
         }
         res.status(200).json({
             id: updatedOrg[0].dataValues.handle,
-            name: updatedOrg[0].dataValues.name,
+            displayName: updatedOrg[0].dataValues.display_name,
             businessOwner: updatedOrg[0].dataValues.business_owner,
             businessOwnerContact: updatedOrg[0].dataValues.business_owner_contact,
             businessOwnerEmail: updatedOrg[0].dataValues.business_owner_email,

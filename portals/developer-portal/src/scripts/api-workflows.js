@@ -50,7 +50,7 @@ function openAgentPromptModal(handle, flowName) {
         showNotification('No prompt available for this workflow.', 'error');
         return;
     }
-    const flow = flows.find(f => f.apiWorkflowId === handle);
+    const flow = flows.find(f => f.id === handle);
     if (!flow || !flow.agentPrompt) {
         showNotification('No prompt available for this workflow.', 'error');
         return;

@@ -4,13 +4,13 @@
 
 <a id="opIdcreateMcpServerContent"></a>
 
-`POST /api/v0.9/mcp-servers/{mcpServerId}/assets`
+`POST /mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets \
+curl -X POST https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -143,13 +143,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdreplaceMcpServerContent"></a>
 
-`PUT /api/v0.9/mcp-servers/{mcpServerId}/assets`
+`PUT /mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets \
+curl -X PUT https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -282,13 +282,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdgetMcpServerContentFile"></a>
 
-`GET /api/v0.9/mcp-servers/{mcpServerId}/assets`
+`GET /mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
@@ -400,13 +400,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteMcpServerContentFile"></a>
 
-`DELETE /api/v0.9/mcp-servers/{mcpServerId}/assets`
+`DELETE /mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document \
+curl -X DELETE https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

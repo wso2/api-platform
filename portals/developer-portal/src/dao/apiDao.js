@@ -158,7 +158,7 @@ const get = async (orgId, apiId, t) => {
             },
             {
                 model: Labels,
-                attributes: ["name"],
+                attributes: ["handle"],
                 through: { attributes: [] }
             },
             {
@@ -247,7 +247,7 @@ const list = async (orgId, viewName, t) => {
             },
             {
                 model: Labels,
-                attributes: ["name"],
+                attributes: ["handle"],
                 required: true,
                 through: { attributes: [] },
                 where: {
@@ -296,7 +296,7 @@ const listFromAllViews = async (orgId, t) => {
             },
             {
                 model: Labels,
-                attributes: ["name"],
+                attributes: ["handle"],
                 required: true,
                 through: { attributes: [] }
             },
@@ -356,7 +356,7 @@ const searchFallback = async (orgId, searchTerm, viewName, t) => {
             { model: SubscriptionPlan, through: { attributes: [] }, required: false, include: [{ model: SubscriptionPlanLimit, as: 'limits' }] },
             {
                 model: Labels,
-                attributes: ['name'],
+                attributes: ['handle'],
                 required: true,
                 through: { attributes: [] },
                 where: {

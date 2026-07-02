@@ -15,7 +15,7 @@
         <span class="aov-plan-icon" style="background:#eef1f5;color:#3a4f6a;">
           <i class="bi bi-lightning-charge-fill"></i>
         </span>
-        <span class="aov-plan-name">{{#if name}}{{name}}{{else}}{{id}}{{/if}}</span>
+        <span class="aov-plan-name">{{#if displayName}}{{displayName}}{{else}}{{id}}{{/if}}</span>
       </div>
       {{#unless (isCurrentPlan id @root.subscriptions)}}
       <span class="aov-recommended-badge" style="display:none;">RECOMMENDED</span>
@@ -40,7 +40,7 @@
           data-org-id="{{@root.orgId}}"
           data-api-id="{{../apiMetadata.id}}"
           data-policy-name="{{id}}"
-          data-display-name="{{name}}">
+          data-display-name="{{displayName}}">
           <i class="bi bi-eye"></i> View subscription
         </button>
         {{else}}
@@ -50,7 +50,7 @@
           data-api-id="{{../apiMetadata.id}}"
           data-plan-id="{{id}}"
           data-plan-name="{{id}}"
-          data-display-name="{{name}}"
+          data-display-name="{{displayName}}"
           onclick="handlePlanSubscription(this)"
           {{#if @root.isReadOnlyMode}}disabled{{/if}}><span class="aov-plan-spinner"></span>Subscribe</button>
         {{/if}}
@@ -105,7 +105,7 @@
         var meta = (window.__tokenMeta || {})[subscriptionId];
         if (meta && meta._fullToken) return meta._fullToken;
         try {
-          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(subscriptionId)), {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(subscriptionId)), {
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
           if (!resp.ok) return null;
@@ -202,7 +202,7 @@
         var orgId = window.__subscriptionOrgId;
         var newStatus = _sub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
         try {
-          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             body: JSON.stringify({ status: newStatus }),
@@ -276,7 +276,7 @@
           closeUnsub();
           try {
             var resp = await fetch(
-              devportalApi.org('/subscriptions/' + encodeURIComponent(args.subscriptionId) + '/change-plan'),
+              devportalApi.root('/subscriptions/' + encodeURIComponent(args.subscriptionId) + '/change-plan'),
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
@@ -298,7 +298,7 @@
         if (!_sub) return;
         var orgId = window.__subscriptionOrgId;
         try {
-          var resp = await fetch(devportalApi.org('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });

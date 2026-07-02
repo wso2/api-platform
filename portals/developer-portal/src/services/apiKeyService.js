@@ -27,7 +27,7 @@ const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 
-const KEY_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+const KEY_HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const EXPIRES_AT_HAS_TZ = /(?:Z|[+-]\d{2}:\d{2})$/;
 const MIN_EXPIRY_MS = Date.UTC(1970, 0, 1);
 const MAX_EXPIRY_MS = Date.UTC(2100, 11, 31, 23, 59, 59, 999);
@@ -36,10 +36,10 @@ function generateSecret() {
     return crypto.randomBytes(32).toString('base64url');
 }
 
-function parseAndValidateName(raw) {
+function parseAndValidateHandle(raw) {
     if (typeof raw !== 'string') return null;
     const n = raw.trim();
-    return KEY_NAME_PATTERN.test(n) ? n : null;
+    return KEY_HANDLE_PATTERN.test(n) ? n : null;
 }
 
 function parseExpiresAt(raw) {
@@ -103,7 +103,7 @@ async function resolveSubscription(orgId, subscriptionId) {
     return {
         ref_id: sub.uuid,
         plan_ref_id: plan ? (plan.ref_id || null) : null,
-        plan_name: plan ? (plan.name || plan.display_name || null) : null
+        plan_name: plan ? (plan.display_name || null) : null
     };
 }
 
@@ -124,25 +124,26 @@ function applicationOf(key) {
 }
 
 /**
- * Publish apikey.application_updated for a single key — { key_id, name, api, application }.
- * `application` is { id, name } when associated, or null when cleared.
+ * Publish apikey.application_updated for a single key — { key_id, handle, display_name, api, application }.
+ * `application` is { id, display_name, handle } when associated, or null when cleared.
  */
-async function publishKeyApplicationUpdated(orgId, keyId, name, api, application, transaction) {
+async function publishKeyApplicationUpdated(orgId, keyId, handle, displayName, api, application, transaction) {
     await publish('apikey.application_updated',
-        { key_id: keyId, name, api, application },
+        { key_id: keyId, handle, display_name: displayName, api, application },
         { transaction, orgId, aggregateType: 'apikey', aggregateId: keyId }
     );
 }
 
 /**
- * Generate a new API key. Returns { keyId, name, plaintext, expiresAt, status }.
+ * Generate a new API key. Returns { keyId, id, displayName, key, expiresAt, status }.
  * The plaintext is shown to the caller exactly once and never persisted.
  */
-async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, actor }) {
+async function generate({ orgId, apiId, subscriptionId, appId, handle, displayName, expiresAt, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
-    const normalizedName = parseAndValidateName(name);
-    if (!normalizedName) throw Object.assign(new Error('name must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    const normalizedHandle = parseAndValidateHandle(handle);
+    if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    const normalizedDisplayName = typeof displayName === 'string' && displayName.trim() ? displayName.trim() : normalizedHandle;
 
     const expiry = parseExpiresAt(expiresAt);
     if (!expiry.ok) throw Object.assign(new Error(expiry.description), { status: 400 });
@@ -161,7 +162,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
         await sequelize.transaction(async (t) => {
             const key = await apiKeyDao.create(
                 { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
-                  name: normalizedName, expiresAt: expiry.date, createdBy: actor },
+                  handle: normalizedHandle, displayName: normalizedDisplayName, expiresAt: expiry.date, createdBy: actor },
                 t
             );
             keyId = key.uuid;
@@ -170,7 +171,8 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
             await publish('apikey.generated',
                 {
                     key_id: keyId,
-                    name: normalizedName,
+                    handle: normalizedHandle,
+                    display_name: normalizedDisplayName,
                     expires_at: expiry.date ? expiry.date.toISOString() : null,
                     api: { name: api.name, version: api.version, ref_id: api.refId, type: api.type },
                     ...(subscription && { subscription }),
@@ -181,7 +183,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
             );
 
             if (application) {
-                await publishKeyApplicationUpdated(orgId, keyId, normalizedName,
+                await publishKeyApplicationUpdated(orgId, keyId, normalizedHandle, normalizedDisplayName,
                     { name: api.name, version: api.version, ref_id: api.refId, type: api.type },
                     application, t);
             }
@@ -192,7 +194,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
     }
 
     logger.info('API key generated', { keyId, orgId, apiId, appId: application ? application.id : null, actor });
-    return { keyId, name: normalizedName, key: plaintext, expiresAt: expiry.date, status: constants.API_KEY_STATUS.ACTIVE, ...audit };
+    return { keyId, id: normalizedHandle, displayName: normalizedDisplayName, key: plaintext, expiresAt: expiry.date, status: constants.API_KEY_STATUS.ACTIVE, ...audit };
 }
 
 /**
@@ -226,7 +228,8 @@ async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
             await publish('apikey.regenerated',
                 {
                     key_id: keyId,
-                    name: existing.name,
+                    handle: existing.handle,
+                    display_name: existing.display_name,
                     expires_at: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
                     api: { name: apiInfo ? apiInfo.name : null, version: apiInfo ? apiInfo.version : null, ref_id: apiInfo ? apiInfo.refId : '', type: apiInfo ? apiInfo.type : null },
                     ...(subscription && { subscription }),
@@ -242,7 +245,7 @@ async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
     }
 
     logger.info('API key regenerated', { keyId, orgId, actor });
-    return { keyId, name: existing.name, key: plaintext, expiresAt: newExpiresAt, status: constants.API_KEY_STATUS.ACTIVE };
+    return { keyId, id: existing.handle, displayName: existing.display_name, key: plaintext, expiresAt: newExpiresAt, status: constants.API_KEY_STATUS.ACTIVE };
 }
 
 /**
@@ -265,7 +268,8 @@ async function revoke({ orgId, apiId, keyId, actor }) {
         await publish('apikey.revoked',
             {
                 key_id: keyId,
-                name: existing.name,
+                handle: existing.handle,
+                display_name: existing.display_name,
                 api: { name: revokeApiInfo ? revokeApiInfo.name : null, version: revokeApiInfo ? revokeApiInfo.version : null, ref_id: revokeApiInfo ? revokeApiInfo.refId : '', type: revokeApiInfo ? revokeApiInfo.type : null },
                 ...(subscription && { subscription })
             },
@@ -304,7 +308,7 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
 
         const meta = existing.dp_api_metadata;
         const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
-        await publishKeyApplicationUpdated(orgId, keyId, existing.name, api, application, t);
+        await publishKeyApplicationUpdated(orgId, keyId, existing.handle, existing.display_name, api, application, t);
     });
 
     logger.info('API key associated to application', { keyId, orgId, appId: application.id, actor });
@@ -328,7 +332,7 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
         await apiKeyDao.setApplication(orgId, keyId, null, actor, t);
         const meta = existing.dp_api_metadata;
         const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
-        await publishKeyApplicationUpdated(orgId, keyId, existing.name, api, null, t);
+        await publishKeyApplicationUpdated(orgId, keyId, existing.handle, existing.display_name, api, null, t);
     });
 
     logger.info('API key application association removed', { keyId, orgId, actor });

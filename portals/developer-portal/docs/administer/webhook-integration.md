@@ -154,7 +154,8 @@ Fired when a developer generates a new API key for an API.
   "encrypted_fields": ["key"],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "expires_at": "2027-01-01T00:00:00.000Z",
     "api": {
       "name": "Order API",
@@ -188,7 +189,7 @@ Fired when a developer generates a new API key for an API.
 
 ### `apikey.regenerated`
 
-Fired when a developer rotates an existing key. The `key_id` and `name` are unchanged; the new secret is delivered in `key`.
+Fired when a developer rotates an existing key. The `key_id`, `handle`, and `display_name` are unchanged; the new secret is delivered in `key`.
 
 ```json
 {
@@ -196,7 +197,8 @@ Fired when a developer rotates an existing key. The `key_id` and `name` are unch
   "encrypted_fields": ["key"],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "expires_at": null,
     "api": {
       "name": "Order API",
@@ -226,7 +228,8 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
   "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "api": {
       "name": "Order API",
       "version": "v1.0",
@@ -254,7 +257,8 @@ Fired whenever a single key's application association changes: the key is associ
   "encrypted_fields": [],
   "data": {
     "key_id": "key-uuid",
-    "name": "my-key",
+    "handle": "my-key",
+    "display_name": "My Key",
     "api": {
       "name": "Order API",
       "version": "v1.0",
@@ -285,6 +289,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
   "data": {
     "subscription_id": "sub-uuid",
     "subscriber_id": "user@example.com",
+    "status": "ACTIVE",
     "subscription_plan": {
       "ref_id": "plan-uuid",
       "name": "Gold"
@@ -305,7 +310,8 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 }
 ```
 
-- `subscriber_id` is the identity of the user who created the subscription
+- `subscriber_id` is the **IdP subject** (`sub` claim) of the user who created the subscription — the same identity the REST API returns as `createdBy`. Its exact format depends on your identity provider (e.g. an email like `user@example.com`, or an opaque subject such as `auth0|abc123`). For subscriptions created by a machine credential (API key / mTLS, which carry no user identity) the value is the literal string `"system"`
+- `status` is the subscription's current state (`ACTIVE` / `INACTIVE`) — present on every subscription event, not only `subscription.updated`
 - `token` decrypts to the subscription token — the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement
 - `token` and its entry in `encrypted_fields` are present only when a public key is configured for the subscriber; if no public key is configured, the token is not delivered
 
@@ -320,6 +326,7 @@ Fired when a subscription's status changes (ACTIVE ↔ INACTIVE). No encrypted f
   "data": {
     "subscription_id": "sub-uuid",
     "subscriber_id": "user@example.com",
+    "status": "INACTIVE",
     "subscription_plan": {
       "ref_id": "plan-uuid",
       "name": "Gold"
@@ -329,8 +336,7 @@ Fired when a subscription's status changes (ACTIVE ↔ INACTIVE). No encrypted f
       "version": "v1.0",
       "ref_id": "cp-api-uuid",
       "type": "RestApi"
-    },
-    "status": "INACTIVE"
+    }
   }
 }
 ```
@@ -346,6 +352,7 @@ Fired when a developer switches their subscription to a different plan. The subs
   "data": {
     "subscription_id": "sub-uuid",
     "subscriber_id": "user@example.com",
+    "status": "ACTIVE",
     "subscription_plan": {
       "ref_id": "new-plan-uuid",
       "name": "Platinum"
@@ -378,6 +385,7 @@ Fired when a developer regenerates a subscription token. The old token is immedi
   "data": {
     "subscription_id": "sub-uuid",
     "subscriber_id": "user@example.com",
+    "status": "ACTIVE",
     "subscription_plan": {
       "ref_id": "plan-uuid",
       "name": "Gold"
@@ -413,6 +421,7 @@ Fired when a developer unsubscribes. Your subscriber should revoke access for th
   "data": {
     "subscription_id": "sub-uuid",
     "subscriber_id": "user@example.com",
+    "status": "ACTIVE",
     "subscription_plan": {
       "ref_id": "plan-uuid",
       "name": "Gold"

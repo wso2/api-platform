@@ -25,7 +25,7 @@ async function addClientId(kmId, keyType, appId, orgId, keyManager) {
     }
 
     try {
-        const response = await fetch(devportalApi.org(`/applications/${appId}/generate-keys`), {
+        const response = await fetch(devportalApi.root(`/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ keyManager, type: keyType, consumerKey }),
@@ -108,7 +108,7 @@ async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
         return;
     }
     try {
-        const response = await fetch(devportalApi.org(`/applications/${applicationId}/oauth-keys/${keyMappingId}`), {
+        const response = await fetch(devportalApi.root(`/applications/${applicationId}/oauth-keys/${keyMappingId}`), {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -270,7 +270,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     }
 
     try {
-        const response = await fetch(devportalApi.org(`/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`), {
+        const response = await fetch(devportalApi.root(`/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

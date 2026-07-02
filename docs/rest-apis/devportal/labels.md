@@ -4,13 +4,13 @@
 
 <a id="opIdcreateLabel"></a>
 
-`POST /api/v0.9/labels`
+`POST /labels`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/labels \
+curl -X POST https://localhost:3000/api/v0.9/labels \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -25,7 +25,7 @@ Creates a label for the organization.
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -49,8 +49,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -135,13 +134,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistLabels"></a>
 
-`GET /api/v0.9/labels`
+`GET /labels`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/labels \
+curl -X GET https://localhost:3000/api/v0.9/labels \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -165,8 +164,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "id": "label-12345",
-      "name": "premium",
+      "id": "premium",
       "displayName": "Premium APIs"
     }
   ],
@@ -235,8 +233,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[LabelResponse](schemas.md#schemalabelresponse)]|false|none|none|
-|»» id|string|false|none|none|
-|»» name|string|false|none|none|
+|»» id|string|false|none|The label's handle (unique per org). Not the internal database uuid.|
 |»» displayName|string|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -254,20 +251,20 @@ Status Code **200**
 
 <a id="opIdgetLabel"></a>
 
-`GET /api/v0.9/labels/{labelId}`
+`GET /labels/{labelId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/labels/{labelId} \
+curl -X GET https://localhost:3000/api/v0.9/labels/{labelId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single label by name.
+Retrieves a single label by handle.
 
 ### Authentication
 
@@ -280,7 +277,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|labelId|path|string|true|The label ID.|
+|labelId|path|string|true|The label's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -288,8 +285,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -326,13 +322,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateLabel"></a>
 
-`PUT /api/v0.9/labels/{labelId}`
+`PUT /labels/{labelId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/labels/{labelId} \
+curl -X PUT https://localhost:3000/api/v0.9/labels/{labelId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -341,13 +337,13 @@ curl -X PUT https://devportal.api-platform.io/api/v0.9/labels/{labelId} \
 
 ```
 
-Updates an existing label by name.
+Updates an existing label by handle.
 
 > Payload
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -363,7 +359,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|labelId|path|string|true|The label ID.|
+|labelId|path|string|true|The label's handle (its `id` in request/response payloads), not the internal database uuid.|
 |body|body|[LabelRequest](schemas.md#schemalabelrequest)|true|Label payload.|
 
 > Example responses
@@ -372,8 +368,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 ```
@@ -463,20 +458,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteLabel"></a>
 
-`DELETE /api/v0.9/labels/{labelId}`
+`DELETE /labels/{labelId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/labels/{labelId} \
+curl -X DELETE https://localhost:3000/api/v0.9/labels/{labelId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes a label by name.
+Deletes a label by handle.
 
 ### Authentication
 
@@ -489,7 +484,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|labelId|path|string|true|The label ID.|
+|labelId|path|string|true|The label's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 

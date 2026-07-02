@@ -25,7 +25,7 @@ const Organization = sequelize.define('dp_organization', {
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    name: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true

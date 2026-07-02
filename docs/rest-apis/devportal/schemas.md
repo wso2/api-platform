@@ -250,7 +250,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 ```json
 {
   "id": "acme",
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -268,7 +268,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|The organization's handle (unique). Not the internal database uuid.|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |businessOwner|string¦null|false|none|none|
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
@@ -382,7 +382,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "subscriptionPlans": [
     {
       "id": "string",
-      "name": "string",
+      "displayName": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -468,7 +468,7 @@ and
   "subscriptionPlans": [
     {
       "id": "string",
-      "name": "string",
+      "displayName": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -673,7 +673,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 ```json
 {
   "id": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "requestCount": "string",
   "refId": "string",
@@ -691,7 +691,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |description|string|false|none|none|
 |requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
@@ -710,8 +710,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```json
 {
-  "id": "label-12345",
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 
@@ -721,8 +720,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|The label's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
 
 <h2 id="tocS_ApplicationResponse">ApplicationResponse</h2>
@@ -808,7 +806,7 @@ OAuth client ID mapping entry attached to an application.
 ```json
 {
   "id": "partner-apis",
-  "name": "Partner APIs",
+  "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -826,7 +824,7 @@ OAuth client ID mapping entry attached to an application.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |labels|[string]|true|none|none|
 |createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
@@ -842,7 +840,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -860,7 +858,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
@@ -887,7 +885,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "name": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
@@ -905,7 +903,7 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
@@ -934,7 +932,7 @@ OAuth client ID mapping entry attached to an application.
 {
   "id": "Gold",
   "refId": "string",
-  "name": "string",
+  "displayName": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -949,7 +947,7 @@ OAuth client ID mapping entry attached to an application.
 |---|---|---|---|---|
 |id|string|true|none|Desired handle for the plan (unique per org), stored as-is. When the plan is created from a SubscriptionPlan YAML artifact instead, the handle is always taken from `metadata.name`.|
 |refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
 |requestCount|any|false|none|Required for request-count plans. Use -1 for unlimited.|
@@ -1000,7 +998,7 @@ xor
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 
@@ -1010,7 +1008,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|id|string|true|none|Desired handle for the label (unique per org), stored as-is.|
 |displayName|string|true|none|none|
 
 <h2 id="tocS_ApplicationRequest">ApplicationRequest</h2>
@@ -1162,7 +1160,8 @@ Subscription payload.
 
 ```json
 {
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "subscriptionId": "sub-abc123",
   "appId": "my-weather-app",
   "expiresAt": "2026-12-31T23:59:59Z"
@@ -1174,7 +1173,8 @@ Subscription payload.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|id|string|true|none|none|
+|displayName|string|false|none|Optional human-readable name for the key. Defaults to `id` when omitted.|
 |subscriptionId|string|false|none|Optional subscription ID to associate the key with.|
 |appId|string|false|none|Optional application ID to associate the key with, for analytics attribution only — it has no effect on the key's validity or authorization. Must belong to the same organization and be owned by the caller.|
 |expiresAt|any|false|none|Optional ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
@@ -1201,7 +1201,8 @@ xor
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "apiId": "weather-api-v1",
   "appId": "my-weather-app",
   "appDisplayName": "My Mobile App",
@@ -1220,7 +1221,8 @@ API key metadata returned by list operations. Secret material is omitted.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyId|string|false|none|Developer Portal key identifier.|
-|name|string|false|none|none|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
@@ -1246,7 +1248,8 @@ API key metadata returned by list operations. Secret material is omitted.
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
@@ -1254,14 +1257,15 @@ API key metadata returned by list operations. Secret material is omitted.
 
 ```
 
-API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyId|string|false|none|Developer Portal key identifier.|
-|name|string|false|none|none|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
 |key|string|false|none|One-time plaintext API key secret.|
 |expiresAt|string(date-time)¦null|false|none|none|
 |status|string|false|none|none|
@@ -1309,7 +1313,8 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "name": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -1321,7 +1326,8 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|Unique name within the organization.|
+|displayName|string|true|none|none|
+|id|string|false|none|Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key manager's `displayName` when omitted.|
 |type|string|true|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
@@ -1344,7 +1350,8 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "name": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
@@ -1358,7 +1365,8 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|Unique name within the organization.|
+|displayName|string|false|none|none|
+|id|string|false|none|Desired handle for the key manager (unique per org), stored as-is.|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
@@ -1381,9 +1389,9 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
@@ -1401,9 +1409,9 @@ Key manager configuration.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|Key manager UUID.|
+|id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |orgId|string|false|none|none|
-|name|string|false|none|none|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
@@ -1430,8 +1438,8 @@ Key manager configuration.
 
 ```json
 {
-  "id": "km-uuid-12345",
-  "name": "Asgardeo",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "type": "ASGARDEO",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -1444,8 +1452,8 @@ Minimal developer-facing key manager view.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |type|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 
@@ -1485,7 +1493,7 @@ Minimal developer-facing key manager view.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|Unique name within the organization.|
+|name|string|false|none|Unique name within the organization.|
 |targetUrl|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
@@ -1628,7 +1636,7 @@ A single delivery attempt made to a webhook subscriber.
 ```json
 {
   "id": "partner-apis",
-  "name": "Partner APIs",
+  "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -1642,7 +1650,7 @@ A single delivery attempt made to a webhook subscriber.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Desired handle for the view (unique per org), stored as-is.|
-|name|string|false|none|Optional display name. Defaults to the handle when omitted.|
+|displayName|string|false|none|Optional display name. Defaults to the handle when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
@@ -1654,12 +1662,10 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "name": "Partner and Public APIs",
-  "addedLabels": [
+  "displayName": "Partner and Public APIs",
+  "labels": [
+    "partner",
     "premium"
-  ],
-  "removedLabels": [
-    "internal"
   ]
 }
 
@@ -1669,9 +1675,8 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
-|addedLabels|[string]|false|none|Label names to attach to the view.|
-|removedLabels|[string]|false|none|Label names to detach from the view.|
+|displayName|string|false|none|none|
+|labels|[string]|false|none|Full desired set of label names for the view. Labels present here but not currently attached are attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.|
 
 <h2 id="tocS_OAuthGenerateTokenRequest">OAuthGenerateTokenRequest</h2>
 
@@ -1768,8 +1773,8 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "status": "PUBLISHED"
 }
 
@@ -1779,8 +1784,8 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiWorkflowId|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
 |status|string|false|none|none|
 
 #### Enumerated Values
@@ -1799,8 +1804,8 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```json
 {
-  "apiWorkflowId": "workflow-12345",
-  "name": "Weather onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
@@ -1818,8 +1823,8 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiWorkflowId|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
-|name|string|false|none|none|
+|id|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
@@ -1870,7 +1875,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
@@ -1887,7 +1892,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
@@ -1934,7 +1939,7 @@ continued
 
 ```json
 {
-  "name": "Weather onboarding v2",
+  "displayName": "Weather onboarding v2",
   "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
@@ -1951,7 +1956,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
@@ -1998,7 +2003,7 @@ continued
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "apis": [
     {}
@@ -2014,7 +2019,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |description|string|true|none|none|
 |apis|[object]|false|none|none|
 |orgHandle|string|false|none|none|

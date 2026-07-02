@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 errorElement.style.display = 'none';
             }
 
-            const response = await fetch(devportalApi.org(`/applications/${applicationId}`), {
+            const response = await fetch(devportalApi.root(`/applications/${applicationId}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

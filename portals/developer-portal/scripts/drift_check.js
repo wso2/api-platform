@@ -47,7 +47,7 @@ const yaml = require('js-yaml');
 const Ajv = require('ajv');
 
 const SPEC = yaml.load(
-    fs.readFileSync(path.join(__dirname, '..', 'docs/devportal-openapi-spec-v1.yaml'), 'utf8')
+    fs.readFileSync(path.join(__dirname, '..', 'docs/devportal-openapi-spec-v0.9.yaml'), 'utf8')
 );
 
 function deref(ref) {

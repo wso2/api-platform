@@ -52,10 +52,9 @@ enabled = false
 enabled = true
 
 [auth.file_based.organization]
-id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
-name   = "Default Organization"
-handle = "default"
-region = "us"
+id           = "default"          # Required: organization handle (URL-safe slug)
+display_name = "Default"
+region       = "us"
 
 # Admin user — password: admin
 # Change this before deploying to a shared environment.

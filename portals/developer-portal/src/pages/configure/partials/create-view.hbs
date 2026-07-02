@@ -24,7 +24,7 @@
             <select id="labelSelect{{id}}" class="form-select"
                 onchange="addViewLabel('labelSelect{{id}}', 'labelsContainer{{id}}')">
                 {{#each @root.orgLabels as |orgLabelGroup|}}
-                <option>{{orgLabelGroup.name}}</option>
+                <option>{{orgLabelGroup.id}}</option>
                 {{/each}}
             </select>
         </div>
@@ -43,7 +43,7 @@
         <div class="col-md-4">
             <button type="button" class="btn btn-secondary" id="cancelViewBtn">Cancel</button>
             <button type="button" class="common-btn-outlined"
-                onclick="editView('{{json labels}}', 'labelsContainer{{id}}', 'viewDisplayName{{id}}', 'viewHandle{{id}}', '{{@root.orgId}}')">
+                onclick="editView('labelsContainer{{id}}', 'viewDisplayName{{id}}', 'viewHandle{{id}}', '{{@root.orgId}}')">
                 +View
             </button>
         </div>

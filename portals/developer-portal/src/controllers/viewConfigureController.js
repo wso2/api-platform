@@ -75,14 +75,14 @@ const loadViewSettingsPage = async (req, res) => {
             sandboxUrl: api.sandbox_url,
             tags: (api.dp_tags || []).map(tag => tag.name),
             agentVisibility: api.agent_visibility,
-            subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.name),
+            subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.display_name),
             existingDocs: docNamesByApiId[api.uuid] || [],
         }));
 
         let orgLabels = [];
         try {
             const labelsRaw = await labelDao.list(orgId);
-            orgLabels = labelsRaw.map(l => ({ labelId: l.uuid, name: l.name, displayName: l.display_name }));
+            orgLabels = labelsRaw.map(l => ({ labelId: l.uuid, id: l.handle, displayName: l.display_name }));
         } catch (err) {
             logger.warn('Failed to load labels for settings page', { error: err.message });
         }
@@ -94,7 +94,7 @@ const loadViewSettingsPage = async (req, res) => {
             orgPlans = plansRaw.map(p => ({
                 planId: p.handle,
                 planName: p.handle,
-                displayName: p.name,
+                displayName: p.display_name,
                 description: p.description || '',
                 refId: p.ref_id || '',
                 limits: (p.limits || []).map(l => ({

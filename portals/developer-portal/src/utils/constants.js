@@ -217,31 +217,31 @@ module.exports = {
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
             "handle": "Bronze",
-            "name": "Bronze",
+            "displayName": "Bronze",
             "description": "Allows 1000 requests per minute",
             "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 1000 }],
         },
         {
             "handle": "Silver",
-            "name": "Silver",
+            "displayName": "Silver",
             "description": "Allows 2000 requests per minute",
             "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 2000 }],
         },
         {
             "handle": "Gold",
-            "name": "Gold",
+            "displayName": "Gold",
             "description": "Allows 5000 requests per minute",
             "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 5000 }],
         },
         {
             "handle": "Unlimited",
-            "name": "Unlimited",
+            "displayName": "Unlimited",
             "description": "Allows unlimited requests",
             "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
         },
         {
             "handle": "AsyncUnlimited",
-            "name": "AsyncUnlimited",
+            "displayName": "AsyncUnlimited",
             "description": "Allows unlimited requests for Async APIs",
             "limits": [{ "limitType": "EVENT_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
         }

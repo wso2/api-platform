@@ -70,14 +70,14 @@ class APIInfo {
             this.tags = apiInfo.dp_tags.map(tag => tag.dataValues ? tag.dataValues.name : tag);
         }
         if (apiInfo.dp_labels) {
-            this.labels = apiInfo.dp_labels.map(label => label.dataValues ? label.dataValues.name : label);
+            this.labels = apiInfo.dp_labels.map(label => label.dataValues ? label.dataValues.handle : label);
         }
     }
 }
 
 class APISubscriptionPlan {
     constructor(apiSubscriptionPlan) {
-        this.name = apiSubscriptionPlan.name;
+        this.displayName = apiSubscriptionPlan.display_name;
         this.id = apiSubscriptionPlan.handle;
         this.description = apiSubscriptionPlan.description;
         this.limits = (apiSubscriptionPlan.limits || []).map(l => ({

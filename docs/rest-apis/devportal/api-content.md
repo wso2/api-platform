@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiContent"></a>
 
-`POST /api/v0.9/apis/{apiId}/assets`
+`POST /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets \
+curl -X POST https://localhost:3000/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -150,13 +150,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdreplaceApiContent"></a>
 
-`PUT /api/v0.9/apis/{apiId}/assets`
+`PUT /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets \
+curl -X PUT https://localhost:3000/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -293,13 +293,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdgetApiContentFile"></a>
 
-`GET /api/v0.9/apis/{apiId}/assets`
+`GET /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
@@ -415,13 +415,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiContentFile"></a>
 
-`DELETE /api/v0.9/apis/{apiId}/assets`
+`DELETE /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets?type=document \
+curl -X DELETE https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

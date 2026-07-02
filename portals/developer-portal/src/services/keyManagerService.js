@@ -42,7 +42,8 @@ const SUPPORTED_KM_TYPES = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
 function mapYamlToKeyManager(yamlDoc) {
     const spec = yamlDoc.spec || {};
     return {
-        name: yamlDoc.metadata?.name || spec.name,
+        handle: yamlDoc.metadata?.name || spec.name,
+        displayName: spec.displayName || spec.name,
         type: spec.type,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
@@ -91,11 +92,26 @@ function _resolvePayload(req) {
     if (file) {
         return parseKeyManagerFromYamlFile(file.buffer);
     }
-    return req.body;
+    const payload = req.body;
+    if (payload && payload.id) {
+        payload.handle = payload.id;
+    }
+    return payload;
 }
 
+const generateHandle = (name) =>
+    name.toLowerCase().trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 100);
+
+// Handles are used to build route segments, so user-supplied ids must be restricted
+// to the same safe character set generateHandle() produces.
+const HANDLE_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 function _validateRequiredFields(payload) {
-    const missing = ['name', 'type', 'tokenEndpoint']
+    const missing = ['displayName', 'type', 'tokenEndpoint']
         .filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
@@ -129,9 +145,14 @@ const createKeyManager = async (req, res) => {
         if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
             return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
         }
+        const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
+        const resolvedHandle = hadExplicitHandle ? payload.handle.trim() : generateHandle(payload.displayName);
+        if (hadExplicitHandle && !HANDLE_PATTERN.test(resolvedHandle)) {
+            return res.status(400).json({ error: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
+        }
 
         const userId = util.resolveActor(req);
-        const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
+        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle, type: resolvedType }, userId);
         logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
         let audit;
         try {
@@ -148,7 +169,7 @@ const createKeyManager = async (req, res) => {
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             return res.status(409).json({
-                error: `A key manager with name "${req.body?.name}" already exists in this organization.`
+                error: `A key manager with id "${req.body?.id}" already exists in this organization.`
             });
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
@@ -161,7 +182,8 @@ const createKeyManager = async (req, res) => {
 
 const updateKeyManager = async (req, res) => {
     try {
-        const { kmId } = req.params;
+        const orgId = req.orgId;
+        const { kmId: kmHandle } = req.params;
         const payload = _resolvePayload(req);
 
         if (payload.type !== undefined) {
@@ -172,9 +194,14 @@ const updateKeyManager = async (req, res) => {
             payload.type = resolvedType;
         }
 
+        const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
+        if (!kmId) {
+            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+        }
+
         const userId = util.resolveActor(req);
         const [, updatedRows] = await kmDao.update(kmId, payload, userId);
-        logUserAction('KEY_MANAGER_UPDATED', req, { orgId: req.orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
+        logUserAction('KEY_MANAGER_UPDATED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         let audit;
         try {
             audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
@@ -193,7 +220,7 @@ const updateKeyManager = async (req, res) => {
         }
         if (error instanceof Sequelize.UniqueConstraintError) {
             return res.status(409).json({
-                error: `A key manager with that name already exists in this organization.`
+                error: `A key manager with that id already exists in this organization.`
             });
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
@@ -224,7 +251,12 @@ const getKeyManagers = async (req, res) => {
 
 const getKeyManager = async (req, res) => {
     try {
-        const { kmId } = req.params;
+        const orgId = req.orgId;
+        const { kmId: kmHandle } = req.params;
+        const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
+        if (!kmId) {
+            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+        }
         const record = await kmDao.get(kmId);
         const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
         const dto = new KeyManagerDTO(record, audit);
@@ -240,9 +272,14 @@ const getKeyManager = async (req, res) => {
 
 const deleteKeyManager = async (req, res) => {
     try {
-        const { kmId } = req.params;
+        const orgId = req.orgId;
+        const { kmId: kmHandle } = req.params;
+        const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
+        if (!kmId) {
+            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+        }
         await kmDao.delete(kmId);
-        logUserAction('KEY_MANAGER_DELETED', req, { orgId: req.orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
+        logUserAction('KEY_MANAGER_DELETED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

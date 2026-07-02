@@ -76,7 +76,7 @@ function parseApiYaml(apiHandle, samplesDir) {
         const ec = plan?.eventCount;
         return {
             handle: p,
-            name: plan?.name ?? p,
+            displayName: plan?.displayName ?? p,
             description: plan?.description ?? '',
             limits: Array.isArray(plan?.limits) ? plan.limits
                 : rc != null ? [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: rc }]

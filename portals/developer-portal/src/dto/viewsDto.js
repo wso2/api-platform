@@ -21,8 +21,8 @@ const { applyAudit } = require('./dtoUtils');
 class ViewDTO {
     constructor(view, audit) {
         this.id = view.handle;
-        this.name = view.name;
-        this.labels = view.dp_labels.map(label => label.dataValues.name);
+        this.displayName = view.display_name;
+        this.labels = view.dp_labels.map(label => label.dataValues.handle);
         applyAudit(this, audit);
     }
 
