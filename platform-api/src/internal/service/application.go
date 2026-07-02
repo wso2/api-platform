@@ -52,12 +52,12 @@ type AddApplicationAssociationsRequest struct {
 }
 
 type ApplicationAssociation struct {
-	Id        string     `json:"id"`
-	Name      string     `json:"name"`
-	Version   string     `json:"version"`
-	Kind      string     `json:"kind"`
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	Id          string     `json:"id"`
+	DisplayName string     `json:"displayName"`
+	Version     string     `json:"version"`
+	Kind        string     `json:"kind"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
 }
 
 type ApplicationAssociationListResponse struct {
@@ -844,11 +844,11 @@ func (s *ApplicationService) modelToApplicationAssociation(association *model.Ap
 	}
 
 	return ApplicationAssociation{
-		Id:        association.TargetHandle,
-		Name:      association.TargetName,
-		Version:   association.TargetVersion,
-		Kind:      association.Type,
-		CreatedAt: utils.TimePtrIfNotZero(association.CreatedAt),
+		Id:          association.TargetHandle,
+		DisplayName: association.TargetName,
+		Version:     association.TargetVersion,
+		Kind:        association.Type,
+		CreatedAt:   utils.TimePtrIfNotZero(association.CreatedAt),
 	}
 }
 

@@ -507,10 +507,21 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 		}
 	}
 
+	// The gatewayId filter is a gateway handle (matching deploy/undeploy); resolve it
+	// to the internal gateway UUID stored in deployments.gateway_uuid before filtering.
+	gatewayUUID, found, err := resolveGatewayFilter(s.gatewayRepo, gatewayID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// The filter names a gateway that does not exist in this org: no deployment matches.
+		return &api.DeploymentListResponse{Count: 0, List: []api.DeploymentResponse{}}, nil
+	}
+
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
 		return nil, fmt.Errorf("MaxPerAPIGateway config value must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
-	deployments, err := s.deploymentRepo.GetDeploymentsWithState(provider.UUID, orgUUID, gatewayID, status, s.cfg.Deployments.MaxPerAPIGateway)
+	deployments, err := s.deploymentRepo.GetDeploymentsWithState(provider.UUID, orgUUID, gatewayUUID, status, s.cfg.Deployments.MaxPerAPIGateway)
 	if err != nil {
 		return nil, err
 	}
@@ -1642,10 +1653,21 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 		}
 	}
 
+	// The gatewayId filter is a gateway handle (matching deploy/undeploy); resolve it
+	// to the internal gateway UUID stored in deployments.gateway_uuid before filtering.
+	gatewayUUID, found, err := resolveGatewayFilter(s.gatewayRepo, gatewayID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// The filter names a gateway that does not exist in this org: no deployment matches.
+		return &api.DeploymentListResponse{Count: 0, List: []api.DeploymentResponse{}}, nil
+	}
+
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
 		return nil, fmt.Errorf("MaxPerAPIGateway config value must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
-	deployments, err := s.deploymentRepo.GetDeploymentsWithState(proxy.UUID, orgUUID, gatewayID, status, s.cfg.Deployments.MaxPerAPIGateway)
+	deployments, err := s.deploymentRepo.GetDeploymentsWithState(proxy.UUID, orgUUID, gatewayUUID, status, s.cfg.Deployments.MaxPerAPIGateway)
 	if err != nil {
 		return nil, err
 	}
