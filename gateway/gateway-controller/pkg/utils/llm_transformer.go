@@ -226,7 +226,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 
 	// Step 3.5: Apply proxy-level provider auth for proxy->provider loopback upstream
+	// and inline translators declared per additional provider. Both are attached as
+	// conditional policies so they run only when their provider is selected.
 	var upstreamAuthPolicies []api.Policy
+	var transformerPolicies []api.Policy
 	if proxy.Spec.Provider.Auth != nil {
 		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, "provider.auth")
 		if err != nil {
@@ -238,20 +241,28 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 	if proxy.Spec.AdditionalProviders != nil {
 		for _, ap := range *proxy.Spec.AdditionalProviders {
-			if ap.Auth == nil {
-				continue
-			}
 			name := ap.Id
 			if ap.As != nil && *ap.As != "" {
 				name = *ap.As
 			}
-			pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, fmt.Sprintf("additionalProviders[%s].auth", name))
-			if err != nil {
-				return nil, err
+
+			if ap.Auth != nil {
+				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, fmt.Sprintf("additionalProviders[%s].auth", name))
+				if err != nil {
+					return nil, err
+				}
+				condition := selectedProviderExecutionCondition(name, false)
+				pol.ExecutionCondition = &condition
+				upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
 			}
-			condition := selectedProviderExecutionCondition(name, false)
-			pol.ExecutionCondition = &condition
-			upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+
+			if ap.Transformer != nil {
+				pol, err := t.proxyTransformerPolicy(ap.Transformer, name, fmt.Sprintf("additionalProviders[%s].transformer", name))
+				if err != nil {
+					return nil, err
+				}
+				transformerPolicies = append(transformerPolicies, *pol)
+			}
 		}
 	}
 
@@ -324,6 +335,15 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		ops = append(ops, *op)
 	}
 	ops = sortOperationsBySpecificity(ops)
+	// Translators must run before upstream auth so the request is rewritten into
+	// the selected provider's shape before the upstream key is added.
+	if len(transformerPolicies) > 0 {
+		for i := range ops {
+			for _, transformerPolicy := range transformerPolicies {
+				appendOperationPolicy(&ops[i], transformerPolicy)
+			}
+		}
+	}
 	if len(upstreamAuthPolicies) > 0 {
 		for i := range ops {
 			for _, upstreamAuthPolicy := range upstreamAuthPolicies {
@@ -691,6 +711,38 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 	}
+}
+
+// proxyTransformerPolicy builds a translator policy for an additional provider's
+// inline transformer. The provider's upstream name is passed to the translator as
+// its "id" param so it targets the correct upstream, and gates execution so the
+// translator runs only when this provider is the selected upstream.
+func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string) (*api.Policy, error) {
+	if transformer == nil {
+		return nil, nil
+	}
+	if transformer.Type == "" {
+		return nil, fmt.Errorf("%s.type is required", field)
+	}
+	if transformer.Version == "" {
+		return nil, fmt.Errorf("%s.version is required", field)
+	}
+
+	params := map[string]interface{}{}
+	if transformer.Params != nil {
+		for k, v := range *transformer.Params {
+			params[k] = v
+		}
+	}
+	params["id"] = name
+
+	condition := selectedProviderExecutionCondition(name, false)
+	return &api.Policy{
+		Name:               transformer.Type,
+		Version:            transformer.Version,
+		Params:             &params,
+		ExecutionCondition: &condition,
+	}, nil
 }
 
 func selectedProviderExecutionCondition(providerName string, includeDefault bool) string {

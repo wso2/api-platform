@@ -595,3 +595,348 @@ Feature: LLM Proxy Management Operations
     Then the response should be successful
     When I delete the LLM provider "multi-request-provider"
     Then the response status code should be 200
+
+  # ==================== MULTI-PROVIDER ROUTING WITH executionCondition ====================
+
+  Scenario: Multi-provider proxy routes to correct provider based on x-provider header
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ec-primary-provider
+      spec:
+        displayName: EC Primary Provider
+        version: v1.0
+        template: openai
+        context: /ec-primary
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ec-secondary-provider
+      spec:
+        displayName: EC Secondary Provider
+        version: v1.0
+        template: openai
+        context: /ec-secondary
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: ec-multi-provider-proxy
+      spec:
+        displayName: EC Multi Provider Proxy
+        version: v1.0
+        context: /ec-multi-proxy
+        provider:
+          id: ec-primary-provider
+        additionalProviders:
+          - id: ec-secondary-provider
+        policies:
+          - name: openai-header-router
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  headerName: x-provider
+                  defaultProvider: ec-primary-provider
+                  mappings:
+                    - headerValue: primary
+                      provider: ec-primary-provider
+                    - headerValue: secondary
+                      provider: ec-secondary-provider
+      """
+    Then the response status should be 201
+    And I wait for 3 seconds
+
+    # No x-provider header — falls back to the defaultProvider (ec-primary-provider)
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/ec-multi-proxy/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hello"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # x-provider: secondary routes to ec-secondary-provider
+    When I set header "x-provider" to "secondary"
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/ec-multi-proxy/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hello"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # x-provider: primary explicitly selects ec-primary-provider
+    When I set header "x-provider" to "primary"
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/ec-multi-proxy/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hello"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/ec-multi-provider-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "ec-primary-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "ec-secondary-provider"
+    Then the response status code should be 200
+
+  # ==================== INLINE TRANSFORMER IN ADDITIONAL PROVIDERS ====================
+
+  Scenario: Create LLM proxy with additionalProviders transformer missing type returns validation error
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: transformer-val-primary
+      spec:
+        displayName: Transformer Validation Primary
+        version: v1.0
+        template: openai
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: transformer-val-secondary
+      spec:
+        displayName: Transformer Validation Secondary
+        version: v1.0
+        template: openai
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: transformer-missing-type-proxy
+      spec:
+        displayName: Transformer Missing Type Proxy
+        version: v1.0
+        provider:
+          id: transformer-val-primary
+        additionalProviders:
+          - id: transformer-val-secondary
+            transformer:
+              version: v1.0.0
+              params:
+                model: claude-sonnet-4-5-20250929
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    # Cleanup
+    When I delete the LLM provider "transformer-val-primary"
+    Then the response status code should be 200
+    When I delete the LLM provider "transformer-val-secondary"
+    Then the response status code should be 200
+
+  Scenario: Create LLM proxy with additionalProviders transformer missing version returns validation error
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: transformer-ver-primary
+      spec:
+        displayName: Transformer Version Primary
+        version: v1.0
+        template: openai
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: transformer-ver-secondary
+      spec:
+        displayName: Transformer Version Secondary
+        version: v1.0
+        template: openai
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: transformer-missing-ver-proxy
+      spec:
+        displayName: Transformer Missing Version Proxy
+        version: v1.0
+        provider:
+          id: transformer-ver-primary
+        additionalProviders:
+          - id: transformer-ver-secondary
+            transformer:
+              type: openai-to-anthropic
+              params:
+                model: claude-sonnet-4-5-20250929
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    # Cleanup
+    When I delete the LLM provider "transformer-ver-primary"
+    Then the response status code should be 200
+    When I delete the LLM provider "transformer-ver-secondary"
+    Then the response status code should be 200
+
+  Scenario: Create LLM proxy with valid inline transformer in additionalProviders persists config
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: inline-transformer-primary
+      spec:
+        displayName: Inline Transformer Primary
+        version: v1.0
+        template: openai
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: inline-transformer-secondary
+      spec:
+        displayName: Inline Transformer Secondary
+        version: v1.0
+        template: openai
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: inline-transformer-proxy
+      spec:
+        displayName: Inline Transformer Proxy
+        version: v1.0
+        provider:
+          id: inline-transformer-primary
+        additionalProviders:
+          - id: inline-transformer-secondary
+            transformer:
+              type: openai-to-anthropic
+              version: v1.0.0
+              params:
+                model: claude-sonnet-4-5-20250929
+      """
+    Then the response status should be 201
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Verify the transformer config is persisted
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies/inline-transformer-proxy"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the response body should contain "openai-to-anthropic"
+    And the response body should contain "inline-transformer-secondary"
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/inline-transformer-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "inline-transformer-primary"
+    Then the response status code should be 200
+    When I delete the LLM provider "inline-transformer-secondary"
+    Then the response status code should be 200

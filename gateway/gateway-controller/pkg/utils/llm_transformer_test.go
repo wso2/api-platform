@@ -313,6 +313,102 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 	assert.Equal(t, "anthropic-loopback", firstRequestHeaderValue(t, authPolicies[1].Params))
 }
 
+func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsConditional(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000003",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	saveProvider := func(name, context string) {
+		providerSourceConfig := api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: name},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   name,
+				Version:       "v1.0",
+				Context:       stringPtr(context),
+				Template:      "openai",
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		}
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:                name + "-uuid",
+			Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+			Handle:              name,
+			DisplayName:         name,
+			Version:             "v1.0",
+			SourceConfiguration: providerSourceConfig,
+			DesiredState:        models.StateDeployed,
+		}))
+	}
+	saveProvider("openai-provider", "/openai-provider")
+	saveProvider("anthropic-provider", "/anthropic-provider")
+
+	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "openai-multi"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "openai-multi",
+			Version:     "v1.0",
+			Provider:    api.LLMProxyProvider{Id: "openai-provider"},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{
+				Id: "anthropic-provider",
+				Transformer: &api.LLMProxyTransformer{
+					Type:    "openai-to-anthropic",
+					Version: "v1",
+					Params: &map[string]interface{}{
+						"model": "claude-sonnet-4-5-20250929",
+					},
+				},
+			}},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+
+	// The translator is attached conditionally to every operation, so locate it
+	// wherever it lands rather than assuming a specific route.
+	var transformerPolicy *api.Policy
+	for i := range result.Spec.Operations {
+		op := result.Spec.Operations[i]
+		if op.Policies == nil {
+			continue
+		}
+		for j := range *op.Policies {
+			if (*op.Policies)[j].Name == "openai-to-anthropic" {
+				transformerPolicy = &(*op.Policies)[j]
+				break
+			}
+		}
+		if transformerPolicy != nil {
+			break
+		}
+	}
+	require.NotNil(t, transformerPolicy)
+	assert.Equal(t, "v1", transformerPolicy.Version)
+	require.NotNil(t, transformerPolicy.ExecutionCondition)
+	assert.Contains(t, *transformerPolicy.ExecutionCondition, "anthropic-provider")
+	require.NotNil(t, transformerPolicy.Params)
+	assert.Equal(t, "anthropic-provider", (*transformerPolicy.Params)["id"])
+	assert.Equal(t, "claude-sonnet-4-5-20250929", (*transformerPolicy.Params)["model"])
+}
+
 func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
 	t.Run("Valid parameters", func(t *testing.T) {
 		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearer token123")

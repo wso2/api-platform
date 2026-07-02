@@ -608,9 +608,30 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 			if provider.Auth != nil {
 				errors = append(errors, v.validateLLMUpstreamAuth(fieldPrefix+".auth", provider.Auth)...)
 			}
+
+			if provider.Transformer != nil {
+				errors = append(errors, v.validateLLMProxyTransformer(fieldPrefix+".transformer", provider.Transformer)...)
+			}
 		}
 	}
 
+	return errors
+}
+
+func (v *LLMValidator) validateLLMProxyTransformer(fieldPrefix string, transformer *api.LLMProxyTransformer) []ValidationError {
+	var errors []ValidationError
+	if transformer.Type == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Transformer type is required",
+		})
+	}
+	if transformer.Version == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".version",
+			Message: "Transformer version is required",
+		})
+	}
 	return errors
 }
 

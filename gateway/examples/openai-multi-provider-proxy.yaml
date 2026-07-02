@@ -46,18 +46,33 @@ spec:
         type: api-key
         header: X-API-Key
         value: azure_openai_provider_loopback_key_1234567890abcdef
+      transformer:
+        type: openai-to-azure-openai
+        version: v1
+        params:
+          model: gpt-4o
+          apiVersion: "2024-02-15-preview"
     - id: mistral-provider
       auth:
         type: api-key
         header: X-API-Key
         value: mistral_provider_loopback_key_1234567890abcdef
-        #mistral_provider_loopback_key_1234567890abcdef
+      transformer:
+        type: openai-to-mistral
+        version: v1
+        params:
+          model: mistral-large-latest
     - id: gemini-provider
       auth:
         type: api-key
         header: X-API-Key
         value: gemini_provider_loopback_key_1234567890abcdef
-
+      transformer:
+        type: openai-to-gemini
+        version: v1
+        params:
+          model: gemini-2.5-flash
+          apiVersion: v1beta
   policies:
     - name: api-key-auth
       version: v1
@@ -98,46 +113,6 @@ spec:
     #             duration: "1m"
     #         algorithm: fixed-window
     #         backend: memory
-
-    - name: openai-to-anthropic
-      executionCondition: metadata["selected_provider"] == "anthropic-provider"
-      version: v1
-      paths:
-        - path: /chat/completions
-          methods: [POST]
-          params:
-            model: claude-sonnet-4-5-20250929
-            id: anthropic-provider
-
-    - name: openai-to-azure-openai
-      version: v1
-      paths:
-        - path: /chat/completions
-          methods: [POST]
-          params:
-            apiVersion: "2024-02-15-preview"
-            model: gpt-4o
-            id: azure-openai-provider
-
-    - name: openai-to-mistral
-      version: v1
-      paths:
-        - path: /chat/completions
-          methods: [POST]
-          params:
-            model: mistral-large-latest
-            id: mistral-provider
-
-    - name: openai-to-gemini
-      version: v1
-      paths:
-        - path: /chat/completions
-          methods: [POST]
-          params:
-            model: gemini-2.5-flash
-            id: gemini-provider
-            apiVersion: v1beta
-
 ---
 # Client API key for this proxy. The api-key-auth policy above validates
 # the X-API-Key header against the key the gateway issues for this resource.
