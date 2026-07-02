@@ -22,7 +22,7 @@ CREATE TABLE dbo.organizations (
     handle VARCHAR(40) UNIQUE NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
-    idp_organization_ref_uuid VARCHAR(40) NOT NULL DEFAULT '',
+    idp_organization_ref_uuid VARCHAR(40) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
