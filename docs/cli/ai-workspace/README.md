@@ -188,6 +188,26 @@ For each configured entry, the build:
 
 All resolved paths are constrained to the project directory; a path that escapes the project root fails the build for that entry.
 
+#### Associating gateways (`metadata.yaml`)
+
+Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in a top-level `associatedGateways` section of `metadata.yaml` (a sibling of `spec`, **not** nested under it). This applies to all artifact kinds (`LlmProxy`, `LlmProvider`, `Mcp`). Each entry is keyed by the gateway `id`. The build copies this list into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
+
+```yaml
+# metadata.yaml
+kind: LlmProvider
+metadata:
+  name: wso2-claude-provider
+spec:
+  displayName: wso2 claude provider
+  version: v1.0
+associatedGateways:
+  - id: default
+    configurations:
+      host: prod-gw.example.com
+```
+
+`configurations` is a free-form object — the supported keys depend on the artifact type.
+
 ### What it generates
 
 One JSON file per configured AI-Workspace entry, written to the build output.
@@ -203,6 +223,7 @@ One JSON file per configured AI-Workspace entry, written to the build output.
 | `provider` (`id`, `auth.{type,header,value}`) | `runtime.yaml` → `spec.provider` |
 | `policies[]` (`name`, `version`, `paths[].{path,methods,params}`) | `runtime.yaml` → `spec.policies` |
 | `openapi` | content of `definition.yaml` with `--use-spec`, otherwise empty |
+| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `associatedGateways` (top-level) (omitted when absent) |
 | `vhost` | always empty (filled in at publish time) |
 | `projectId` | intentionally omitted |
 
@@ -221,6 +242,7 @@ One JSON file per configured AI-Workspace entry, written to the build output.
 | `rateLimiting` | the `*-ratelimit` policies (see below) |
 | `policies[]` (`name`, `version`, `paths[].{path,methods,params}`) | every other `runtime.yaml` → `spec.policies` entry (i.e. not `api-key-auth` or `*-ratelimit`) |
 | `openapi` | content of `definition.yaml` (**required** for providers) |
+| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `associatedGateways` (top-level) (omitted when absent) |
 
 **rateLimiting mapping.** Each policy whose name ends with `-ratelimit` becomes a rate-limiting dimension, selected by name:
 
@@ -248,6 +270,7 @@ A limit whose path is `/*` is applied as a `global` limit for its scope; a limit
 | `upstream` (`main.{url,auth}`) | `runtime.yaml` → `spec.upstream` |
 | `policies[]` (`name`, `version`, `params`) | `runtime.yaml` → `spec.policies` (auth/authz/etc.) |
 | `capabilities` (`prompts`, `resources`, `tools`) | `definition.yaml` (**required** for MCP) |
+| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `associatedGateways` (top-level) (omitted when absent) |
 | `description` | empty |
 
 `definition.yaml` for an MCP proxy holds `prompts`, `resources`, and `tools`. `prompts` and `tools` are passed through unchanged; `resources` are trimmed to `uri`, `name`, and `mimeType` (any inline `text`/`blob` content is dropped). `projectId` is omitted and injected at publish time.

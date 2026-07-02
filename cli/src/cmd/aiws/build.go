@@ -378,12 +378,13 @@ func loadAIWorkspaceSpec(projectRoot, baseDir string, config *project.AIWorkspac
 // command's pending design questions) and are omitted from the payload.
 func buildLLMProviderPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProviderPayload {
 	payload := llmProviderPayload{
-		ID:       name,
-		Name:     name,
-		Version:  strings.TrimSpace(metadata.Spec.Version),
-		Context:  strings.TrimSpace(runtime.Spec.Context),
-		Template: strings.TrimSpace(runtime.Spec.Template),
-		OpenAPI:  openapi,
+		ID:                 name,
+		Name:               name,
+		Version:            strings.TrimSpace(metadata.Spec.Version),
+		Context:            strings.TrimSpace(runtime.Spec.Context),
+		Template:           strings.TrimSpace(runtime.Spec.Template),
+		OpenAPI:            openapi,
+		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
 	}
 
 	if up := runtime.Spec.Upstream; up != nil {
@@ -451,6 +452,7 @@ func buildMCPProxyPayload(name string, metadata aiWorkspaceMetadata, runtime aiW
 			Resources: mcpResources(definition.Resources),
 			Tools:     definition.Tools,
 		},
+		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
 	}
 
 	if up := runtime.Spec.Upstream; up != nil {
@@ -485,6 +487,25 @@ func mcpResources(resources []map[string]interface{}) []map[string]interface{} {
 			}
 		}
 		out = append(out, trimmed)
+	}
+	return out
+}
+
+// normalizeAssociatedGateways trims the associatedGateways read from
+// metadata.yaml: gateway ids are trimmed and entries without an id are
+// dropped. It returns nil when nothing remains so the payload omits the field
+// (matching the optional schema in openapi.yaml).
+func normalizeAssociatedGateways(gateways []associatedGateway) []associatedGateway {
+	out := make([]associatedGateway, 0, len(gateways))
+	for _, gateway := range gateways {
+		id := strings.TrimSpace(gateway.ID)
+		if id == "" {
+			continue
+		}
+		out = append(out, associatedGateway{ID: id, Configurations: gateway.Configurations})
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -760,14 +781,15 @@ func buildSecurityFromPolicies(policies []runtimeProviderPolicy) *securityConfig
 // caller to fill in at publish time.
 func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProxyPayload {
 	payload := llmProxyPayload{
-		ID:       proxyName,
-		Name:     proxyName,
-		Version:  strings.TrimSpace(metadata.Spec.Version),
-		Context:  strings.TrimSpace(runtime.Spec.Context),
-		Vhost:    "",
-		OpenAPI:  openapi,
-		Provider: llmProxyProvider{ID: strings.TrimSpace(runtime.Spec.Provider.ID)},
-		Policies: []llmPolicy{},
+		ID:                 proxyName,
+		Name:               proxyName,
+		Version:            strings.TrimSpace(metadata.Spec.Version),
+		Context:            strings.TrimSpace(runtime.Spec.Context),
+		Vhost:              "",
+		OpenAPI:            openapi,
+		Provider:           llmProxyProvider{ID: strings.TrimSpace(runtime.Spec.Provider.ID)},
+		Policies:           []llmPolicy{},
+		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
 	}
 
 	if auth := runtime.Spec.Provider.Auth; auth != nil {
@@ -818,6 +840,17 @@ type aiWorkspaceMetadata struct {
 		DisplayName string `yaml:"displayName"`
 		Version     string `yaml:"version"`
 	} `yaml:"spec"`
+	// AssociatedGateways is a top-level section in metadata.yaml (a sibling of
+	// spec), not nested under spec.
+	AssociatedGateways []associatedGateway `yaml:"associatedGateways"`
+}
+
+// associatedGateway mirrors the AssociatedGateway schema (openapi.yaml): the
+// gateway id plus a free-form per-gateway configuration override. The same
+// shape is used to parse metadata.yaml and to emit the build payload.
+type associatedGateway struct {
+	ID             string                 `json:"id" yaml:"id"`
+	Configurations map[string]interface{} `json:"configurations,omitempty" yaml:"configurations"`
 }
 
 type aiWorkspaceRuntime struct {
@@ -882,14 +915,15 @@ type runtimePolicyPath struct {
 // --- createLLMProxy request body (subset; see openapi.yaml LLMProxy schema) ---
 
 type llmProxyPayload struct {
-	ID       string           `json:"id"`
-	Name     string           `json:"name"`
-	Version  string           `json:"version"`
-	Context  string           `json:"context,omitempty"`
-	Vhost    string           `json:"vhost"`
-	Provider llmProxyProvider `json:"provider"`
-	OpenAPI  string           `json:"openapi"`
-	Policies []llmPolicy      `json:"policies"`
+	ID                 string              `json:"id"`
+	Name               string              `json:"name"`
+	Version            string              `json:"version"`
+	Context            string              `json:"context,omitempty"`
+	Vhost              string              `json:"vhost"`
+	Provider           llmProxyProvider    `json:"provider"`
+	OpenAPI            string              `json:"openapi"`
+	Policies           []llmPolicy         `json:"policies"`
+	AssociatedGateways []associatedGateway `json:"associatedGateways,omitempty"`
 }
 
 type llmProxyProvider struct {
@@ -926,15 +960,16 @@ type mcpDefinition struct {
 }
 
 type mcpProxyPayload struct {
-	ID             string           `json:"id"`
-	Name           string           `json:"name"`
-	Version        string           `json:"version"`
-	Context        string           `json:"context,omitempty"`
-	Description    string           `json:"description"`
-	MCPSpecVersion string           `json:"mcpSpecVersion,omitempty"`
-	Upstream       *llmUpstream     `json:"upstream,omitempty"`
-	Capabilities   *mcpCapabilities `json:"capabilities,omitempty"`
-	Policies       []mcpPolicy      `json:"policies,omitempty"`
+	ID                 string              `json:"id"`
+	Name               string              `json:"name"`
+	Version            string              `json:"version"`
+	Context            string              `json:"context,omitempty"`
+	Description        string              `json:"description"`
+	MCPSpecVersion     string              `json:"mcpSpecVersion,omitempty"`
+	Upstream           *llmUpstream        `json:"upstream,omitempty"`
+	Capabilities       *mcpCapabilities    `json:"capabilities,omitempty"`
+	Policies           []mcpPolicy         `json:"policies,omitempty"`
+	AssociatedGateways []associatedGateway `json:"associatedGateways,omitempty"`
 }
 
 type mcpCapabilities struct {
@@ -952,17 +987,18 @@ type mcpPolicy struct {
 // --- createLLMProvider request body (subset; see openapi.yaml LLMProvider schema) ---
 
 type llmProviderPayload struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Version       string            `json:"version"`
-	Context       string            `json:"context,omitempty"`
-	Template      string            `json:"template"`
-	Upstream      *llmUpstream      `json:"upstream,omitempty"`
-	AccessControl *llmAccessControl `json:"accessControl,omitempty"`
-	OpenAPI       string            `json:"openapi"`
-	RateLimiting  *llmRateLimiting  `json:"rateLimiting,omitempty"`
-	Security      *securityConfig   `json:"security,omitempty"`
-	Policies      []llmPolicy       `json:"policies,omitempty"`
+	ID                 string              `json:"id"`
+	Name               string              `json:"name"`
+	Version            string              `json:"version"`
+	Context            string              `json:"context,omitempty"`
+	Template           string              `json:"template"`
+	Upstream           *llmUpstream        `json:"upstream,omitempty"`
+	AccessControl      *llmAccessControl   `json:"accessControl,omitempty"`
+	OpenAPI            string              `json:"openapi"`
+	RateLimiting       *llmRateLimiting    `json:"rateLimiting,omitempty"`
+	Security           *securityConfig     `json:"security,omitempty"`
+	Policies           []llmPolicy         `json:"policies,omitempty"`
+	AssociatedGateways []associatedGateway `json:"associatedGateways,omitempty"`
 }
 
 type llmRateLimiting struct {

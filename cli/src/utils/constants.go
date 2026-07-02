@@ -37,12 +37,16 @@ const (
 	DefaultGatewayRuntime    = "ghcr.io/wso2/api-platform/gateway-runtime:%s"    // %s = version
 
 	// REST API Endpoints
-	GatewayHealthPath       = "/health"
-	GatewayAPIsPath         = "/rest-apis"
-	GatewayAPIByIDPath      = "/rest-apis/%s"
-	GatewayMCPProxiesPath   = "/mcp-proxies"
-	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
-	DevPortalHealthPath     = "/health"
+	GatewayHealthPath          = "/health"
+	GatewayAPIsPath            = "/rest-apis"
+	GatewayAPIByIDPath         = "/rest-apis/%s"
+	GatewayMCPProxiesPath      = "/mcp-proxies"
+	GatewayMCPProxyByIDPath    = "/mcp-proxies/%s"
+	GatewayLLMProvidersPath    = "/llm-providers"
+	GatewayLLMProviderByIDPath = "/llm-providers/%s"
+	GatewayLLMProxiesPath      = "/llm-proxies"
+	GatewayLLMProxyByIDPath    = "/llm-proxies/%s"
+	DevPortalHealthPath        = "/health"
 
 	// API Key Endpoints (scoped to a REST API)
 	GatewayAPIKeysPath          = "/rest-apis/%s/api-keys"    // %s = REST API id
@@ -84,9 +88,9 @@ const (
 	AIWorkspaceAPIHeader   = "x-wso2-api-key"
 
 	// AI Workspace REST API Endpoints
-	AIWorkspaceLLMProvidersPath = "/api-proxy/api/v1/llm-providers"
-	AIWorkspaceLLMProxiesPath   = "/api-proxy/api/v1/llm-proxies"
-	AIWorkspaceMCPProxiesPath   = "/api-proxy/api/v1/mcp-proxies"
+	AIWorkspaceLLMProvidersPath = "/api-proxy/api/v0.9/llm-providers"
+	AIWorkspaceLLMProxiesPath   = "/api-proxy/api/v0.9/llm-proxies"
+	AIWorkspaceMCPProxiesPath   = "/api-proxy/api/v0.9/mcp-proxies"
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
