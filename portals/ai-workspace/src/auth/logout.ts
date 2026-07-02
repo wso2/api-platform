@@ -24,6 +24,7 @@ import { logger } from '../utils/logger';
 type SignOutFunction = () => Promise<void>;
 
 const BFF_LOGOUT_URL = '/api/logout';
+const LOGOUT_REQUEST_TIMEOUT_MS = 5000;
 
 const AUTH_SESSION_KEYS = [
   'platform_auth_token',
@@ -94,11 +95,14 @@ export const forceLogoutAndRedirect = async (): Promise<void> => {
   };
 
   let logoutUrl: string | undefined;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), LOGOUT_REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(BFF_LOGOUT_URL, {
       method: 'POST',
       credentials: 'include',
       headers: { Accept: 'application/json', [CSRF_HEADER]: CSRF_VALUE },
+      signal: controller.signal,
     });
     if (res.ok) {
       const body = (await res.json().catch(() => ({}))) as { logoutUrl?: string };
@@ -106,6 +110,8 @@ export const forceLogoutAndRedirect = async (): Promise<void> => {
     }
   } catch (error) {
     logger.warn('Force logout: BFF logout call failed:', error);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 
   runStep('clear auth data', clearAuthData);

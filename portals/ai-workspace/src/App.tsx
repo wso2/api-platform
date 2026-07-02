@@ -222,8 +222,7 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
               Oops! This is embarrassing
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Something went terribly wrong. Will you please refresh and try
-              again.
+              Something went wrong. Please log out and sign in again.
             </Typography>
             <Button variant="contained" onClick={onLogout}>
               Logout
