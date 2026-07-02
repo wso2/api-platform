@@ -33,13 +33,15 @@ import (
 // APIKeyUserHandler handles listing API keys for a user across artifact types.
 type APIKeyUserHandler struct {
 	apiKeyUserService *service.APIKeyUserService
+	identity          *service.IdentityService
 	slogger           *slog.Logger
 }
 
 // NewAPIKeyUserHandler creates a new APIKeyUserHandler.
-func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, slogger *slog.Logger) *APIKeyUserHandler {
+func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, identity *service.IdentityService, slogger *slog.Logger) *APIKeyUserHandler {
 	return &APIKeyUserHandler{
 		apiKeyUserService: apiKeyUserService,
+		identity:          identity,
 		slogger:           slogger,
 	}
 }
@@ -53,7 +55,10 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	callerUserID := r.Header.Get("x-user-id")
+	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "list user API keys")
+	if !ok {
+		return
+	}
 
 	var types []string
 	if typeParam := r.URL.Query().Get("type"); typeParam != "" {

@@ -17,6 +17,7 @@
  */
 const apiDao = require('../dao/apiDao');
 const subDao = require('../dao/subscriptionDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
@@ -55,7 +56,7 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
     };
 }
 
-function formatSubscriptionResponse(sub) {
+function formatSubscriptionResponse(sub, audit) {
     const plan = sub.dp_subscription_plan || {};
     const api = sub.dp_api_metadata || {};
     return {
@@ -64,15 +65,14 @@ function formatSubscriptionResponse(sub) {
         status: sub.status,
         apiId: api.handle || sub.api_uuid,
         subscriptionPlanName: plan.name || null,
-        createdBy: sub.created_by || null,
-        createdAt: sub.created_at || null,
+        ...audit,
     };
 }
 
 const createSubscription = async (req, res) => {
     const orgId = req.orgId;
     const { apiId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
-    const createdBy = req.user.sub;
+    const createdBy = util.resolveActor(req);
 
     if (!apiHandle || typeof apiHandle !== 'string' || !apiHandle.trim()) {
         return res.status(400).json({
@@ -128,8 +128,9 @@ const createSubscription = async (req, res) => {
         });
 
         const created = await subDao.get(orgId, newSub.uuid, createdBy);
-        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgId, apiId, subscriptionId: newSub.uuid });
-        return res.status(201).json(formatSubscriptionResponse(created));
+        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgId, apiId, subscriptionId: newSub.uuid, resourceUuid: newSub.uuid, resourceType: 'subscription' });
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
+        return res.status(201).json(formatSubscriptionResponse(created, audit));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(409).json({
@@ -159,8 +160,9 @@ const listSubscriptions = async (req, res) => {
             }
         }
 
-        const subs = await subDao.list(orgId, { apiId, createdBy: req.user.sub });
-        return res.status(200).json(util.toPaginatedList(subs.map(formatSubscriptionResponse), req));
+        const subs = await subDao.list(orgId, { apiId, createdBy: util.resolveActor(req) });
+        const auditList = await userIdpReferenceDao.buildListAuditFields(subs);
+        return res.status(200).json(util.toPaginatedList(subs.map((sub, i) => formatSubscriptionResponse(sub, auditList[i])), req));
     } catch (error) {
         logger.error('Error listing subscriptions', {
             error: error.message, orgId,
@@ -174,13 +176,14 @@ const getSubscription = async (req, res) => {
     const subscriptionId = req.params.subId;
 
     try {
-        const sub = await subDao.get(orgId, subscriptionId, req.user.sub);
+        const sub = await subDao.get(orgId, subscriptionId, util.resolveActor(req));
         if (!sub) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
             });
         }
-        return res.status(200).json(formatSubscriptionResponse(sub));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(sub);
+        return res.status(200).json(formatSubscriptionResponse(sub, audit));
     } catch (error) {
         logger.error('Error getting subscription', {
             error: error.message, subscriptionId,
@@ -197,8 +200,9 @@ const updateSubscription = async (req, res) => {
         return res.status(400).json({ code: '400', message: 'Bad Request', description: `Invalid status. Must be one of: ${Object.values(constants.SUBSCRIPTION_STATUS).join(', ')}.` });
     }
 
+    const actorId = util.resolveActor(req);
     try {
-        const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
+        const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -207,7 +211,7 @@ const updateSubscription = async (req, res) => {
 
         let sub;
         await sequelize.transaction(async (t) => {
-            const updated = await subDao.updateStatus(orgId, subscriptionId, status, req.user.sub, t);
+            const updated = await subDao.updateStatus(orgId, subscriptionId, status, actorId, t);
             if (!updated) {
                 const err = new Error('Subscription not found');
                 err.status = 404;
@@ -217,8 +221,9 @@ const updateSubscription = async (req, res) => {
                 buildWebhookPayload({ ...existing.get({ plain: true }), status: status }, existing.dp_api_metadata, existing.dp_subscription_plan),
                 { transaction: t, orgId: orgId, aggregateType: 'subscription', aggregateId: subscriptionId });
         });
-        sub = await subDao.get(orgId, subscriptionId, req.user.sub);
-        return res.status(200).json(formatSubscriptionResponse(sub));
+        sub = await subDao.get(orgId, subscriptionId, actorId);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(sub);
+        return res.status(200).json(formatSubscriptionResponse(sub, audit));
     } catch (error) {
         if (error.status === 404) {
             return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
@@ -234,9 +239,10 @@ const changePlan = async (req, res) => {
     const orgId = req.orgId;
     const subscriptionId = req.params.subId;
     const { apiId: reqApiHandle, planId: reqPlanHandle } = req.body;
+    const actorId = util.resolveActor(req);
 
     try {
-        const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
+        const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -275,7 +281,7 @@ const changePlan = async (req, res) => {
         const previousPlan = existing.dp_subscription_plan;
 
         await sequelize.transaction(async (t) => {
-            const updated = await subDao.updatePlan(orgId, subscriptionId, planId, req.user.sub, t);
+            const updated = await subDao.updatePlan(orgId, subscriptionId, planId, actorId, t);
             if (!updated) {
                 const err = new Error('Subscription not found');
                 err.status = 404;
@@ -293,9 +299,10 @@ const changePlan = async (req, res) => {
             });
         });
 
-        logUserAction('SUBSCRIPTION_PLAN_CHANGED', req, { orgId, subscriptionId, planId });
-        const updated = await subDao.get(orgId, subscriptionId, req.user.sub);
-        return res.status(200).json(formatSubscriptionResponse(updated));
+        logUserAction('SUBSCRIPTION_PLAN_CHANGED', req, { orgId, subscriptionId, planId, resourceUuid: subscriptionId, resourceType: 'subscription' });
+        const updated = await subDao.get(orgId, subscriptionId, actorId);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updated);
+        return res.status(200).json(formatSubscriptionResponse(updated, audit));
     } catch (error) {
         if (error.status === 404) {
             return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
@@ -308,9 +315,10 @@ const changePlan = async (req, res) => {
 const regenerateSubscriptionToken = async (req, res) => {
     const orgId = req.orgId;
     const subscriptionId = req.params.subId;
+    const actorId = util.resolveActor(req);
 
     try {
-        const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
+        const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -322,7 +330,7 @@ const regenerateSubscriptionToken = async (req, res) => {
         let newToken;
 
         await sequelize.transaction(async (t) => {
-            newToken = await subDao.regenerateToken(orgId, subscriptionId, req.user.sub, t);
+            newToken = await subDao.regenerateToken(orgId, subscriptionId, actorId, t);
             if (!newToken) {
                 const err = new Error('Subscription not found');
                 err.status = 404;
@@ -334,9 +342,10 @@ const regenerateSubscriptionToken = async (req, res) => {
             });
         });
 
-        logUserAction('SUBSCRIPTION_TOKEN_REGENERATED', req, { orgId, subscriptionId });
-        const updated = await subDao.get(orgId, subscriptionId, req.user.sub);
-        return res.status(200).json(formatSubscriptionResponse(updated));
+        logUserAction('SUBSCRIPTION_TOKEN_REGENERATED', req, { orgId, subscriptionId, resourceUuid: subscriptionId, resourceType: 'subscription' });
+        const updated = await subDao.get(orgId, subscriptionId, actorId);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updated);
+        return res.status(200).json(formatSubscriptionResponse(updated, audit));
     } catch (error) {
         if (error.status === 404) {
             return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
@@ -349,9 +358,10 @@ const regenerateSubscriptionToken = async (req, res) => {
 const deleteSubscription = async (req, res) => {
     const orgId = req.orgId;
     const subscriptionId = req.params.subId;
+    const actorId = util.resolveActor(req);
 
     try {
-        const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
+        const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -362,7 +372,7 @@ const deleteSubscription = async (req, res) => {
         const plan = existing.dp_subscription_plan;
 
         await sequelize.transaction(async (t) => {
-            const deleted = await subDao.delete(orgId, subscriptionId, req.user.sub, t);
+            const deleted = await subDao.delete(orgId, subscriptionId, actorId, t);
             if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
             await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, plan), {
                 transaction: t,
@@ -372,7 +382,7 @@ const deleteSubscription = async (req, res) => {
             });
         });
 
-        logUserAction('SUBSCRIPTION_DELETED', req, { orgId: orgId, subscriptionId });
+        logUserAction('SUBSCRIPTION_DELETED', req, { orgId: orgId, subscriptionId, resourceUuid: subscriptionId, resourceType: 'subscription' });
         return res.status(200).json({ message: 'Subscription deleted successfully' });
     } catch (error) {
         if (error.statusCode === 404) {

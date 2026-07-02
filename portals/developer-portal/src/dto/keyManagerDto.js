@@ -15,19 +15,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
 
 /**
  * DTO for key manager responses.
  * Never exposes admin credentials in API responses.
  */
 class KeyManagerDTO {
-    constructor(km) {
+    constructor(km, audit) {
         this.id = km.uuid;
         this.orgId = km.org_uuid;
         this.name = km.name;
         this.type = km.type;
         this.enabled = !!km.enabled;
         this.tokenEndpoint = km.token_endpoint;
+        applyAudit(this, audit);
     }
 }
 

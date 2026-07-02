@@ -44,6 +44,7 @@ type WebBrokerAPIService struct {
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
+	identity             *coreservice.IdentityService
 }
 
 // NewWebBrokerAPIService creates a new WebBrokerAPIService instance
@@ -56,6 +57,7 @@ func NewWebBrokerAPIService(
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
 	cfg *config.Server,
+	identity *coreservice.IdentityService,
 ) *WebBrokerAPIService {
 	return &WebBrokerAPIService{
 		repo:                 repo,
@@ -66,7 +68,37 @@ func NewWebBrokerAPIService(
 		slogger:              slogger,
 		auditRepo:            auditRepo,
 		cfg:                  cfg,
+		identity:             identity,
 	}
+}
+
+// toWebBrokerAPI converts m via mapWebBrokerAPIModelToAPI and resolves its
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *WebBrokerAPIService) toWebBrokerAPI(m *model.WebBrokerAPI) (*api.WebBrokerAPI, error) {
+	resp := mapWebBrokerAPIModelToAPI(m, s.apiUtil)
+	if resp == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// webBrokerAPIListItemResolved converts m via mapWebBrokerAPIModelToListItem
+// and resolves its createdBy UUID to its raw external identity.
+func (s *WebBrokerAPIService) webBrokerAPIListItemResolved(m *model.WebBrokerAPI) (*api.WebBrokerAPIListItem, error) {
+	item := mapWebBrokerAPIModelToListItem(m)
+	if item == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 // Create creates a new WebBroker API
@@ -183,7 +215,7 @@ func (s *WebBrokerAPIService) Get(orgUUID, handle string) (*api.WebBrokerAPI, er
 		return nil, constants.ErrWebBrokerAPINotFound
 	}
 
-	return mapWebBrokerAPIModelToAPI(m, s.apiUtil), nil
+	return s.toWebBrokerAPI(m)
 }
 
 // List retrieves WebBroker APIs for an organization filtered by project
@@ -214,7 +246,13 @@ func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset in
 
 	resp.List = make([]api.WebBrokerAPIListItem, 0, len(apis))
 	for _, a := range apis {
-		resp.List = append(resp.List, *mapWebBrokerAPIModelToListItem(a))
+		item, err := s.webBrokerAPIListItemResolved(a)
+		if err != nil {
+			return nil, err
+		}
+		if item != nil {
+			resp.List = append(resp.List, *item)
+		}
 	}
 
 	return resp, nil
@@ -398,6 +436,7 @@ func mapWebBrokerAPIModelToAPI(m *model.WebBrokerAPI, apiUtil *utils.APIUtil) *a
 		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
+		UpdatedBy:         utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
 
 	return result
@@ -597,6 +636,7 @@ func mapWebBrokerAPIModelToListItem(m *model.WebBrokerAPI) *api.WebBrokerAPIList
 		Context:         m.Configuration.Context,
 		LifeCycleStatus: &lifeCycleStatus,
 		ReadOnly:        utils.BoolPtr(m.Origin == constants.OriginDP),
+		CreatedBy:       utils.StringPtrIfNotEmpty(m.CreatedBy),
 		CreatedAt:       utils.TimePtr(m.CreatedAt),
 		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
 	}

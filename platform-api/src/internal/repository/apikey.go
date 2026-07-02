@@ -140,7 +140,7 @@ func (r *APIKeyRepo) ListByArtifact(artifactUUID string) ([]*model.APIKey, error
 }
 
 // ListByGatewayAndKind retrieves all API keys for artifacts of the given kind that have
-// an active deployment association on the specified gateway within the organisation
+// an active deployment association on the specified gateway within the organization
 // (status_desired in DEPLOYED or UNDEPLOYED).
 // When issuer is non-empty only keys whose issuer column matches are returned;
 // an empty issuer returns keys regardless of their issuer value.

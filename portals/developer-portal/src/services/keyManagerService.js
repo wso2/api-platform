@@ -19,9 +19,11 @@ const yaml = require('js-yaml');
 const { Sequelize } = require('sequelize');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 
 /**
  * Supported key manager types. Every type proxies token requests identically
@@ -130,7 +132,18 @@ const createKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
-        const dto = new KeyManagerDTO(record);
+        logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after key manager creation', {
+                error: auditError.message,
+                kmId: record.uuid
+            });
+            audit = { createdAt: record.created_at, updatedAt: record.updated_at };
+        }
+        const dto = new KeyManagerDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -161,7 +174,18 @@ const updateKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await kmDao.update(kmId, payload, userId);
-        const dto = new KeyManagerDTO(updatedRows[0]);
+        logUserAction('KEY_MANAGER_UPDATED', req, { orgId: req.orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after key manager update', {
+                error: auditError.message,
+                kmId
+            });
+            audit = { createdAt: updatedRows[0].created_at, updatedAt: updatedRows[0].updated_at };
+        }
+        const dto = new KeyManagerDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -189,7 +213,8 @@ const getKeyManagers = async (req, res) => {
         const orgId = req.orgId;
         const isAdmin = req.user?.isAdmin;
         const records = isAdmin ? await kmDao.list(orgId) : await kmDao.listEnabled(orgId);
-        const dtos = records.map(r => (isAdmin ? new KeyManagerDTO(r) : new KeyManagerPublicDTO(r)));
+        const auditList = isAdmin ? await userIdpReferenceDao.buildListAuditFields(records) : [];
+        const dtos = records.map((r, i) => (isAdmin ? new KeyManagerDTO(r, auditList[i]) : new KeyManagerPublicDTO(r)));
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
@@ -201,7 +226,8 @@ const getKeyManager = async (req, res) => {
     try {
         const { kmId } = req.params;
         const record = await kmDao.get(kmId);
-        const dto = new KeyManagerDTO(record);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        const dto = new KeyManagerDTO(record, audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -216,6 +242,7 @@ const deleteKeyManager = async (req, res) => {
     try {
         const { kmId } = req.params;
         await kmDao.delete(kmId);
+        logUserAction('KEY_MANAGER_DELETED', req, { orgId: req.orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

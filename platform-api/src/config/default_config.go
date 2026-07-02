@@ -17,7 +17,11 @@
 
 package config
 
-import "time"
+import (
+	"time"
+
+	"platform-api/src/internal/constants"
+)
 
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
@@ -55,6 +59,7 @@ func defaultConfig() *Server {
 				"/api/internal/v1/secrets",
 				"/api/internal/v1/websub-apis",
 				"/api/internal/v1/webbroker-apis",
+				"/api/internal/" + constants.APIVersion + "/webhook/events",
 			},
 			JWT: JWT{
 				Enabled:        true,
@@ -137,6 +142,13 @@ func defaultConfig() *Server {
 			PollInterval:    3 * time.Second,
 			CleanupInterval: 10 * time.Minute,
 			RetentionPeriod: 1 * time.Hour,
+		},
+		Webhook: Webhook{
+			Enabled:            false,
+			GatewayType:        "wso2/api-platform",
+			SignatureTolerance: 5 * time.Minute,
+			MaxBodySize:        1 << 20, // 1 MiB
+			SignatureHeader:    "X-Devportal-Signature",
 		},
 	}
 }

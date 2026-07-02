@@ -64,7 +64,7 @@ const loadViewSettingsPage = async (req, res) => {
         const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
         const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
         templateContent.orgAPIs = allAPIs.map(api => ({
-            apiId: api.uuid,
+            apiId: api.handle,
             apiName: api.name,
             apiHandle: api.handle,
             apiDescription: api.description,
@@ -92,7 +92,7 @@ const loadViewSettingsPage = async (req, res) => {
         try {
             const plansRaw = await subscriptionPlanDao.list(orgId);
             orgPlans = plansRaw.map(p => ({
-                planId: p.uuid,
+                planId: p.handle,
                 planName: p.handle,
                 displayName: p.name,
                 description: p.description || '',

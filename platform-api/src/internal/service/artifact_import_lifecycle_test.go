@@ -815,6 +815,7 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 		newTestLogger(),
 		&noopAuditRepo{},
 		&config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
 	// DP-origin MCP proxy via the gateway import flow.
@@ -890,7 +891,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 
 	t.Run("LLMProviderTemplate", func(t *testing.T) {
 		d := setupImportTest(t)
-		svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{})
+		svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 		mustImport(t, d, dpTemplateReq("dp-t", "blk-tmpl", "T"))
 
 		// Changing a gateway-consumed field (a token-extraction identifier) is rejected.
@@ -915,7 +916,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 	t.Run("LLMProvider", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProviderService(repository.NewLLMProviderRepo(d.db), d.templateRepo,
-			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{})
+			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 		mustImport(t, d, dpTemplateReq("dp-t", "p-tmpl", "T"))
 		provReq := dpProviderReq("dp-p", "blk-prov", "P", "p-tmpl")
 		provReq.Configuration.Spec["upstream"] = map[string]interface{}{"url": "https://api.example.com"}
@@ -943,7 +944,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 	t.Run("LLMProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProxyService(repository.NewLLMProxyRepo(d.db), repository.NewLLMProviderRepo(d.db),
-			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{})
+			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 		mustImport(t, d, dpTemplateReq("dp-t", "px-tmpl", "T"))
 		mustImport(t, d, dpProviderReq("dp-p", "px-prov", "P", "px-tmpl"))
 		mustImport(t, d, dpProxyReq("dp-x", "blk-proxy", "X", "px-prov"))
@@ -966,7 +967,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 	t.Run("MCPProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewMCPProxyService(repository.NewMCPProxyRepo(d.db), repository.NewProjectRepo(d.db),
-			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{})
+			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 		mustImport(t, d, dpMCPReq("dp-m", "blk-mcp", "M"))
 
 		updated, err := svc.Update(importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{

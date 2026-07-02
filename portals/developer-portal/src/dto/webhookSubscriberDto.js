@@ -15,13 +15,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
 
 /**
  * DTO for webhook subscriber responses.
  * Never exposes the subscriber's secret in API responses.
  */
 class WebhookSubscriberDTO {
-    constructor(sub) {
+    constructor(sub, audit) {
         this.id = sub.uuid;
         this.orgId = sub.org_uuid;
         this.name = sub.name;
@@ -31,6 +32,7 @@ class WebhookSubscriberDTO {
         this.timeoutMs = sub.timeout_ms;
         this.hasSecret = !!sub.secret_enc;
         this.hasPublicKey = !!sub.public_key;
+        applyAudit(this, audit);
     }
 }
 

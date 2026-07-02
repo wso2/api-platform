@@ -85,15 +85,17 @@ const (
 // Publishing to the EventHub persists the event to the shared DB so any platform-api
 // replica can pick it up and deliver it to the gateway WebSocket it holds.
 type GatewayEventsService struct {
-	hub     eventhub.EventHub
-	slogger *slog.Logger
+	hub      eventhub.EventHub
+	identity *IdentityService
+	slogger  *slog.Logger
 }
 
 // NewGatewayEventsService creates a new gateway events service backed by the EventHub.
-func NewGatewayEventsService(hub eventhub.EventHub, slogger *slog.Logger) *GatewayEventsService {
+func NewGatewayEventsService(hub eventhub.EventHub, identity *IdentityService, slogger *slog.Logger) *GatewayEventsService {
 	return &GatewayEventsService{
-		hub:     hub,
-		slogger: slogger,
+		hub:      hub,
+		identity: identity,
+		slogger:  slogger,
 	}
 }
 
@@ -262,6 +264,14 @@ func (s *GatewayEventsService) broadcastEvent(gatewayID, eventType string, paylo
 // broadcastEventWithUserID serializes the payload into a GatewayEventDTO and publishes it
 // to the EventHub. The EventHub persists it to the shared DB; the EventDispatcher on
 // whichever replica holds the gateway WebSocket will pick it up and deliver it.
+//
+// userId is expected to be the internal UUID stored in the triggering audit column (or
+// empty when the event has no associated actor, e.g. system-triggered deployment events).
+// This is the single sink for every actor-bearing gateway event, so it is also the single
+// place the internal UUID is unwrapped to the raw external identity (constants.DeletedUser
+// if the UUID has no mapping) before the event leaves the process — the internal UUID must
+// never reach the data plane. An empty userId is left empty (no actor to resolve), not
+// turned into constants.DeletedUser.
 func (s *GatewayEventsService) broadcastEventWithUserID(gatewayID, userId, eventType string, payload interface{}) error {
 	correlationID := uuid.New().String()
 
@@ -276,12 +286,21 @@ func (s *GatewayEventsService) broadcastEventWithUserID(gatewayID, userId, event
 		}
 	}
 
+	resolvedUserId := userId
+	if userId != "" && s.identity != nil {
+		if resolved, err := s.identity.SubForUUID(userId); err != nil {
+			s.slogger.Error("Failed to resolve actor identity for gateway event", "eventType", eventType, "error", err)
+		} else {
+			resolvedUserId = resolved
+		}
+	}
+
 	eventDTO := dto.GatewayEventDTO{
 		Type:          eventType,
 		Payload:       payload,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
-		UserId:        userId,
+		UserId:        resolvedUserId,
 	}
 
 	eventJSON, err := json.Marshal(eventDTO)

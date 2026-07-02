@@ -82,11 +82,11 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 	// Insert into mcp_proxies table
 	query := `
 		INSERT INTO mcp_proxies (
-			uuid, handle, display_name, version, project_uuid, description, created_by, configuration, origin, created_at, updated_at, organization_uuid
+			uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, configuration, origin, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
+		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.UpdatedBy, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -113,17 +113,17 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
 
 	var p model.MCPProxy
-	var createdBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+		&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -131,6 +131,7 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 
 	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
@@ -154,17 +155,17 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE uuid = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
 
 	var p model.MCPProxy
-	var createdBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+		&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -172,6 +173,7 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 
 	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
@@ -190,7 +192,7 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -204,16 +206,17 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
@@ -236,7 +239,7 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
 		ORDER BY created_at DESC
@@ -250,16 +253,17 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)

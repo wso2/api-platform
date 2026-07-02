@@ -30,6 +30,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
+	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	egservice "platform-api/src/plugins/eventgateway/service"
 
@@ -39,13 +40,15 @@ import (
 // WebSubAPIHmacSecretHandler handles HMAC secret CRUD for WebSub APIs.
 type WebSubAPIHmacSecretHandler struct {
 	secretService *egservice.WebSubAPIHmacSecretService
+	identity      *service.IdentityService
 	slogger       *slog.Logger
 }
 
 // NewWebSubAPIHmacSecretHandler creates a new WebSubAPIHmacSecretHandler.
-func NewWebSubAPIHmacSecretHandler(secretService *egservice.WebSubAPIHmacSecretService, slogger *slog.Logger) *WebSubAPIHmacSecretHandler {
+func NewWebSubAPIHmacSecretHandler(secretService *egservice.WebSubAPIHmacSecretService, identity *service.IdentityService, slogger *slog.Logger) *WebSubAPIHmacSecretHandler {
 	return &WebSubAPIHmacSecretHandler{
 		secretService: secretService,
+		identity:      identity,
 		slogger:       slogger,
 	}
 }
@@ -100,7 +103,10 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(w http.ResponseWriter, r *
 		externalSecret = *req.Secret
 	}
 
-	userID, _ := middleware.GetUserIDFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "generate WebSub HMAC secret")
+	if !ok {
+		return
+	}
 	secret, plaintext, err := h.secretService.Generate(orgID, apiHandle, req.DisplayName, externalSecret, userID)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -111,9 +117,15 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(w http.ResponseWriter, r *
 	if externalSecret != "" {
 		msg = "HMAC secret stored successfully."
 	}
+	info, err := h.toSecretInfo(secret)
+	if err != nil {
+		h.slogger.Error("Failed to resolve HMAC secret identity", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to generate HMAC secret"))
+		return
+	}
 	httputil.WriteJSON(w, http.StatusCreated, api.WebSubAPIHmacSecretCreationResponse{
 		Secret:        plaintext,
-		WebhookSecret: secretToInfo(secret),
+		WebhookSecret: info,
 		Message:       msg,
 	})
 }
@@ -143,7 +155,13 @@ func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(w http.ResponseWriter, r *h
 
 	items := make([]api.WebSubAPIHmacSecretInfo, 0, len(secrets))
 	for _, s := range secrets {
-		items = append(items, *secretToInfo(s))
+		info, err := h.toSecretInfo(s)
+		if err != nil {
+			h.slogger.Error("Failed to resolve HMAC secret identity", "error", err)
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list HMAC secrets"))
+			return
+		}
+		items = append(items, *info)
 	}
 	httputil.WriteJSON(w, http.StatusOK, api.WebSubAPIHmacSecretListResponse{Secrets: items})
 }
@@ -208,7 +226,10 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(w http.ResponseWriter,
 		externalSecret = *req.Secret
 	}
 
-	userID, _ := middleware.GetUserIDFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "regenerate WebSub HMAC secret")
+	if !ok {
+		return
+	}
 	secret, plaintext, err := h.secretService.Regenerate(orgID, apiHandle, secretName, externalSecret, userID)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -219,9 +240,15 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(w http.ResponseWriter,
 	if externalSecret != "" {
 		msg = "HMAC secret rotated to the provided value successfully."
 	}
+	info, err := h.toSecretInfo(secret)
+	if err != nil {
+		h.slogger.Error("Failed to resolve HMAC secret identity", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to regenerate HMAC secret"))
+		return
+	}
 	httputil.WriteJSON(w, http.StatusOK, api.WebSubAPIHmacSecretCreationResponse{
 		Secret:        plaintext,
-		WebhookSecret: secretToInfo(secret),
+		WebhookSecret: info,
 		Message:       msg,
 	})
 }
@@ -254,7 +281,21 @@ func secretToInfo(s *model.WebSubAPIHmacSecret) *api.WebSubAPIHmacSecretInfo {
 		Name:        s.Handle,
 		DisplayName: s.Name,
 		Status:      s.Status,
+		CreatedBy:   utils.StringPtrIfNotEmpty(s.CreatedBy),
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,
 	}
+}
+
+// toSecretInfo converts s via secretToInfo and resolves its createdBy UUID to
+// its raw external identity.
+func (h *WebSubAPIHmacSecretHandler) toSecretInfo(s *model.WebSubAPIHmacSecret) (*api.WebSubAPIHmacSecretInfo, error) {
+	info := secretToInfo(s)
+	if info == nil {
+		return nil, nil
+	}
+	if err := h.identity.ResolveIdentityField(&info.CreatedBy); err != nil {
+		return nil, err
+	}
+	return info, nil
 }

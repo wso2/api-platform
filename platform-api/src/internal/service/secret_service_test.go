@@ -177,7 +177,7 @@ func (m *mockSecretRepo) Count(orgID string) (int, error) {
 
 func TestSecretService_Create_SetsOrgSharedValueScope(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle:      "my-secret",
@@ -200,7 +200,7 @@ func TestSecretService_Create_SetsOrgSharedValueScope(t *testing.T) {
 
 func TestSecretService_Create_ReturnsCleartextValue(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle: "secret-with-value",
@@ -216,7 +216,7 @@ func TestSecretService_Create_DuplicateHandle_ReturnsError(t *testing.T) {
 	// Pre-populate so Exists returns true
 	repo.secrets["dup"] = &model.Secret{Handle: "dup", Status: model.SecretStatusActive}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle: "dup",
 		Value:  "val",
@@ -233,7 +233,7 @@ func TestSecretService_Create_EncryptionError_PropagatesError(t *testing.T) {
 			return nil, errors.New("vault unavailable")
 		},
 	}
-	svc := NewSecretService(repo, v)
+	svc := NewSecretService(repo, v, newTestIdentityService())
 
 	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle: "new-secret",
@@ -246,7 +246,7 @@ func TestSecretService_Create_EncryptionError_PropagatesError(t *testing.T) {
 
 func TestSecretService_Create_DefaultsTypeToGeneric(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle: "typed-secret",
@@ -264,7 +264,7 @@ func TestSecretService_Create_DefaultsTypeToGeneric(t *testing.T) {
 
 func TestSecretService_Create_InvalidType_ReturnsError(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle: "bad-type-secret",
@@ -283,7 +283,7 @@ func TestSecretService_List_ReturnsPagination(t *testing.T) {
 		repo.secrets[h] = &model.Secret{Handle: h, Status: model.SecretStatusActive}
 	}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	resp, err := svc.List("org1", 10, 0, nil)
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -302,7 +302,7 @@ func TestSecretService_List_ReturnsPagination(t *testing.T) {
 
 func TestSecretService_List_PaginationReflectsOffset(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	resp, err := svc.List("org1", 5, 10, nil)
 	if err != nil {
@@ -320,7 +320,7 @@ func TestSecretService_List_PaginationReflectsOffset(t *testing.T) {
 
 func TestSecretService_Get_NotFound(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Get("org1", "missing")
 	if !errors.Is(err, constants.ErrSecretNotFound) {
@@ -336,7 +336,7 @@ func TestSecretService_Get_ReturnsSecret(t *testing.T) {
 		Status:      model.SecretStatusActive,
 	}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	summary, err := svc.Get("org1", "s1")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -350,7 +350,7 @@ func TestSecretService_Get_ReturnsSecret(t *testing.T) {
 
 func TestSecretService_Update_NotFound(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Update("org1", "ghost", "alice", &dto.UpdateSecretRequest{Value: "v"})
 	if !errors.Is(err, constants.ErrSecretNotFound) {
@@ -364,7 +364,7 @@ func TestSecretService_Update_EncryptsNewValue(t *testing.T) {
 		Handle: "upd",
 		Status: model.SecretStatusActive,
 	}
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Update("org1", "upd", "bob", &dto.UpdateSecretRequest{Value: "new-value"})
 	if err != nil {
@@ -386,7 +386,7 @@ func TestSecretService_Delete_BlockedWhenInUse(t *testing.T) {
 		}, nil
 	}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	err := svc.Delete("org1", "in-use", "alice")
 	if err == nil {
 		t.Fatal("expected error when secret is in use")
@@ -411,7 +411,7 @@ func TestSecretService_Delete_BlockedByArtifactLevelRef(t *testing.T) {
 		}, nil
 	}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	err := svc.Delete("org1", "config-secret", "alice")
 	if err == nil {
 		t.Fatal("should block deletion even for undeployed artifacts")
@@ -422,7 +422,7 @@ func TestSecretService_Delete_SucceedsWhenNotInUse(t *testing.T) {
 	repo := newMockRepo()
 	repo.secrets["unused"] = &model.Secret{Handle: "unused", Status: model.SecretStatusActive}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	if err := svc.Delete("org1", "unused", "alice"); err != nil {
 		t.Errorf("Delete: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestSecretService_Delete_SucceedsWhenNotInUse(t *testing.T) {
 
 func TestSecretService_Delete_NotFound(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	err := svc.Delete("org1", "ghost", "alice")
 	if !errors.Is(err, constants.ErrSecretNotFound) {
@@ -445,7 +445,7 @@ func TestSecretService_Delete_NotFound(t *testing.T) {
 
 func TestSecretService_ValidateSecretRefs_NoPlaceholders(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	if err := svc.ValidateSecretRefs("org1", `{"plain": "config"}`); err != nil {
 		t.Errorf("unexpected error for config without placeholders: %v", err)
@@ -457,7 +457,7 @@ func TestSecretService_ValidateSecretRefs_AllExist(t *testing.T) {
 	repo.secrets["key1"] = &model.Secret{Handle: "key1", Status: model.SecretStatusActive}
 	repo.secrets["key2"] = &model.Secret{Handle: "key2", Status: model.SecretStatusActive}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	config := `{{ secret "key1" }} {{ secret "key2" }}`
 	if err := svc.ValidateSecretRefs("org1", config); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -466,7 +466,7 @@ func TestSecretService_ValidateSecretRefs_AllExist(t *testing.T) {
 
 func TestSecretService_ValidateSecretRefs_MissingHandle(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	config := `{{ secret "missing-key" }}`
 	err := svc.ValidateSecretRefs("org1", config)
@@ -482,7 +482,7 @@ func TestSecretService_ValidateSecretRefs_JSONEscapedForm(t *testing.T) {
 	repo := newMockRepo()
 	repo.secrets["my-key"] = &model.Secret{Handle: "my-key", Status: model.SecretStatusActive}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	// Simulates what Go's json.Marshal produces when the placeholder is inside a string field:
 	// the surrounding quotes are escaped as \", giving {{ secret \"my-key\" }}.
 	config := `{{ secret \"my-key\" }}`
@@ -493,7 +493,7 @@ func TestSecretService_ValidateSecretRefs_JSONEscapedForm(t *testing.T) {
 
 func TestSecretService_ValidateSecretRefs_JSONEscapedForm_Missing(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	config := `{{ secret \"nonexistent-key\" }}`
 	err := svc.ValidateSecretRefs("org1", config)
@@ -513,7 +513,7 @@ func TestSecretService_ValidateSecretRefs_DeduplicatesHandles(t *testing.T) {
 		return true, nil
 	}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	config := `{{ secret "key1" }} {{ secret "key1" }} {{ secret "key1" }}`
 	if err := svc.ValidateSecretRefs("org1", config); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -533,7 +533,7 @@ func TestSecretService_Decrypt_ReturnsPlaintext(t *testing.T) {
 		Status:     model.SecretStatusActive,
 	}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	plain, err := svc.Decrypt("org1", "enc-secret")
 	if err != nil {
 		t.Fatalf("Decrypt: %v", err)
@@ -551,7 +551,7 @@ func TestSecretService_Decrypt_DeprecatedSecret_ReturnsError(t *testing.T) {
 		Status:     model.SecretStatusDeprecated,
 	}
 
-	svc := NewSecretService(repo, &mockVault{})
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 	_, err := svc.Decrypt("org1", "dep-secret")
 	if err == nil {
 		t.Fatal("expected error decrypting deprecated secret")

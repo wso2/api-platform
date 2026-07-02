@@ -125,6 +125,12 @@ const APIKeyAllowedTargetsAll = "ALL"
 // AdminRole is the role name that grants administrative privileges
 const AdminRole = "admin"
 
+// DeletedUser is returned for audit-identity fields (createdBy/updatedBy/
+// revokedBy/performedBy) and external/data-plane events when the stored
+// internal UUID has no entry in user_idp_references — an anonymous write, or
+// a user whose mapping was removed.
+const DeletedUser = "deleted_user"
+
 // Deployment limit constants
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement

@@ -35,14 +35,16 @@ import (
 )
 
 type MCPProxyHandler struct {
-	service *service.MCPProxyService
-	slogger *slog.Logger
+	service  *service.MCPProxyService
+	identity *service.IdentityService
+	slogger  *slog.Logger
 }
 
-func NewMCPProxyHandler(service *service.MCPProxyService, slogger *slog.Logger) *MCPProxyHandler {
+func NewMCPProxyHandler(service *service.MCPProxyService, identity *service.IdentityService, slogger *slog.Logger) *MCPProxyHandler {
 	return &MCPProxyHandler{
-		service: service,
-		slogger: slogger,
+		service:  service,
+		identity: identity,
+		slogger:  slogger,
 	}
 }
 
@@ -71,7 +73,10 @@ func (h *MCPProxyHandler) CreateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create MCP proxy")
+	if !ok {
+		return
+	}
 
 	if req.ProjectId == nil {
 		h.slogger.Debug("No project ID provided for MCP proxy, proceeding without project association", "mcpProxyId", req.Id)
@@ -170,7 +175,10 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	updatedBy, _ := middleware.GetUserIDFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update MCP proxy")
+	if !ok {
+		return
+	}
 	resp, err := h.service.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -189,7 +197,10 @@ func (h *MCPProxyHandler) DeleteMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	id := r.PathValue("mcpProxyId")
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
+	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete MCP proxy")
+	if !ok {
+		return
+	}
 
 	if err := h.service.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)

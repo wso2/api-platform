@@ -44,6 +44,7 @@ type WebSubAPIService struct {
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
+	identity             *coreservice.IdentityService
 }
 
 // NewWebSubAPIService creates a new WebSubAPIService instance
@@ -56,6 +57,7 @@ func NewWebSubAPIService(
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
 	cfg *config.Server,
+	identity *coreservice.IdentityService,
 ) *WebSubAPIService {
 	return &WebSubAPIService{
 		repo:                 repo,
@@ -66,7 +68,37 @@ func NewWebSubAPIService(
 		slogger:              slogger,
 		auditRepo:            auditRepo,
 		cfg:                  cfg,
+		identity:             identity,
 	}
+}
+
+// toWebSubAPI converts m via mapWebSubAPIModelToAPI and resolves its
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *WebSubAPIService) toWebSubAPI(m *model.WebSubAPI) (*api.WebSubAPI, error) {
+	resp := mapWebSubAPIModelToAPI(m, s.apiUtil)
+	if resp == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// webSubAPIListItemResolved converts m via mapWebSubAPIModelToListItem and
+// resolves its createdBy UUID to its raw external identity.
+func (s *WebSubAPIService) webSubAPIListItemResolved(m *model.WebSubAPI) (*api.WebSubAPIListItem, error) {
+	item := mapWebSubAPIModelToListItem(m)
+	if item == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 // Create creates a new WebSub API
@@ -182,7 +214,7 @@ func (s *WebSubAPIService) Get(orgUUID, handle string) (*api.WebSubAPI, error) {
 		return nil, constants.ErrWebSubAPINotFound
 	}
 
-	return mapWebSubAPIModelToAPI(m, s.apiUtil), nil
+	return s.toWebSubAPI(m)
 }
 
 // List retrieves WebSub APIs for an organization filtered by project
@@ -213,7 +245,13 @@ func (s *WebSubAPIService) List(orgUUID, projectUUID string, limit, offset int) 
 
 	resp.List = make([]api.WebSubAPIListItem, 0, len(apis))
 	for _, a := range apis {
-		resp.List = append(resp.List, *mapWebSubAPIModelToListItem(a))
+		item, err := s.webSubAPIListItemResolved(a)
+		if err != nil {
+			return nil, err
+		}
+		if item != nil {
+			resp.List = append(resp.List, *item)
+		}
 	}
 
 	return resp, nil
@@ -395,6 +433,7 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
+		UpdatedBy:         utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
 
 	return result
@@ -540,6 +579,7 @@ func mapWebSubAPIModelToListItem(m *model.WebSubAPI) *api.WebSubAPIListItem {
 		Context:         m.Configuration.Context,
 		LifeCycleStatus: &lifeCycleStatus,
 		ReadOnly:        utils.BoolPtr(m.Origin == constants.OriginDP),
+		CreatedBy:       utils.StringPtrIfNotEmpty(m.CreatedBy),
 		CreatedAt:       utils.TimePtr(m.CreatedAt),
 		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
 	}

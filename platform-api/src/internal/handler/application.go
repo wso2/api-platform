@@ -36,11 +36,12 @@ import (
 
 type ApplicationHandler struct {
 	applicationService *service.ApplicationService
+	identity           *service.IdentityService
 	slogger            *slog.Logger
 }
 
-func NewApplicationHandler(applicationService *service.ApplicationService, slogger *slog.Logger) *ApplicationHandler {
-	return &ApplicationHandler{applicationService: applicationService, slogger: slogger}
+func NewApplicationHandler(applicationService *service.ApplicationService, identity *service.IdentityService, slogger *slog.Logger) *ApplicationHandler {
+	return &ApplicationHandler{applicationService: applicationService, identity: identity, slogger: slogger}
 }
 
 func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +70,10 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	createdBy := h.resolveRequesterUserID(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create application")
+	if !ok {
+		return
+	}
 	app, err := h.applicationService.CreateApplication(&req, orgID, createdBy)
 	if err != nil {
 		h.writeApplicationError(w, r, err, "Failed to create application")
@@ -161,7 +165,10 @@ func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Re
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
-	userID := h.resolveRequesterUserID(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "update application")
+	if !ok {
+		return
+	}
 
 	var req api.Application
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -190,7 +197,10 @@ func (h *ApplicationHandler) DeleteApplication(w http.ResponseWriter, r *http.Re
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
-	userID := h.resolveRequesterUserID(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "delete application")
+	if !ok {
+		return
+	}
 
 	if err := h.applicationService.DeleteApplication(appID, orgID, userID); err != nil {
 		h.writeApplicationError(w, r, err, "Failed to delete application")
@@ -394,7 +404,10 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 	}
 
 	appID := r.PathValue("applicationId")
-	userID := h.resolveRequesterUserID(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "add application API keys")
+	if !ok {
+		return
+	}
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -429,7 +442,10 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *h
 	appID := r.PathValue("applicationId")
 	keyID := r.PathValue("apiKeyId")
 	entityID := strings.TrimSpace(r.URL.Query().Get("entityID"))
-	userID := h.resolveRequesterUserID(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "remove mapped application API key")
+	if !ok {
+		return
+	}
 	if strings.TrimSpace(appID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -466,19 +482,6 @@ func (h *ApplicationHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+base+"/{applicationId}/associations", h.AddApplicationAssociations)
 	mux.HandleFunc("GET "+base+"/{applicationId}/associations/{associationId}/api-keys", h.ListApplicationAssociationAPIKeys)
 	mux.HandleFunc("DELETE "+base+"/{applicationId}/associations/{associationId}", h.RemoveApplicationAssociation)
-}
-
-func (h *ApplicationHandler) resolveRequesterUserID(r *http.Request) string {
-	userID := strings.TrimSpace(r.Header.Get("x-user-id"))
-	if userID != "" {
-		return userID
-	}
-
-	if ctxUserID, ok := middleware.GetUserIDFromRequest(r); ok {
-		return strings.TrimSpace(ctxUserID)
-	}
-
-	return ""
 }
 
 func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *http.Request, err error, fallback string) {

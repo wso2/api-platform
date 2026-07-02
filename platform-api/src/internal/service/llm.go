@@ -44,6 +44,7 @@ const (
 type LLMProviderTemplateService struct {
 	repo      repository.LLMProviderTemplateRepository
 	auditRepo repository.AuditRepository
+	identity  *IdentityService
 }
 
 type LLMProviderService struct {
@@ -58,6 +59,7 @@ type LLMProviderService struct {
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
+	identity             *IdentityService
 }
 
 type LLMProxyService struct {
@@ -70,10 +72,37 @@ type LLMProxyService struct {
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
+	identity             *IdentityService
 }
 
-func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository) *LLMProviderTemplateService {
-	return &LLMProviderTemplateService{repo: repo, auditRepo: auditRepo}
+func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository, identity *IdentityService) *LLMProviderTemplateService {
+	return &LLMProviderTemplateService{repo: repo, auditRepo: auditRepo, identity: identity}
+}
+
+// toTemplateAPI converts m via mapTemplateModelToAPI and resolves its
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *LLMProviderTemplateService) toTemplateAPI(m *model.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
+	resp := mapTemplateModelToAPI(m)
+	if resp == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// templateListItemResolved converts t via templateListItem and resolves its
+// createdBy UUID to its raw external identity.
+func (s *LLMProviderTemplateService) templateListItemResolved(t *model.LLMProviderTemplate) (api.LLMProviderTemplateListItem, error) {
+	item := templateListItem(t)
+	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
+		return item, err
+	}
+	return item, nil
 }
 
 func NewLLMProviderService(
@@ -87,6 +116,7 @@ func NewLLMProviderService(
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
 	cfg *config.Server,
+	identity *IdentityService,
 ) *LLMProviderService {
 	return &LLMProviderService{
 		repo:                 repo,
@@ -99,6 +129,7 @@ func NewLLMProviderService(
 		slogger:              slogger,
 		auditRepo:            auditRepo,
 		cfg:                  cfg,
+		identity:             identity,
 	}
 }
 
@@ -106,6 +137,22 @@ func NewLLMProviderService(
 // Called after both services are constructed to avoid circular dependency.
 func (s *LLMProviderService) SetSecretService(ss *SecretService) {
 	s.secretService = ss
+}
+
+// toProviderAPI converts m via mapProviderModelToAPI and resolves its
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *LLMProviderService) toProviderAPI(m *model.LLMProvider, templateHandle string) (*api.LLMProvider, error) {
+	resp := mapProviderModelToAPI(m, templateHandle)
+	if resp == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func NewLLMProxyService(
@@ -118,6 +165,7 @@ func NewLLMProxyService(
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
 	cfg *config.Server,
+	identity *IdentityService,
 ) *LLMProxyService {
 	return &LLMProxyService{
 		repo:                 repo,
@@ -129,7 +177,24 @@ func NewLLMProxyService(
 		slogger:              slogger,
 		auditRepo:            auditRepo,
 		cfg:                  cfg,
+		identity:             identity,
 	}
+}
+
+// toProxyAPI converts m via mapProxyModelToAPI and resolves its
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *LLMProxyService) toProxyAPI(m *model.LLMProxy) (*api.LLMProxy, error) {
+	resp := mapProxyModelToAPI(m)
+	if resp == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
@@ -205,7 +270,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 
 	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_provider_template", orgUUID, createdBy)
 
-	return mapTemplateModelToAPI(m), nil
+	return s.toTemplateAPI(m)
 }
 
 func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, latestOnly bool) (*api.LLMProviderTemplateListResponse, error) {
@@ -233,7 +298,11 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, lat
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
 	for _, t := range items {
-		resp.List = append(resp.List, templateListItem(t))
+		item, err := s.templateListItemResolved(t)
+		if err != nil {
+			return nil, err
+		}
+		resp.List = append(resp.List, item)
 	}
 	return resp, nil
 }
@@ -249,7 +318,7 @@ func (s *LLMProviderTemplateService) Get(orgUUID, handle string) (*api.LLMProvid
 	if m == nil {
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
-	return mapTemplateModelToAPI(m), nil
+	return s.toTemplateAPI(m)
 }
 
 func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
@@ -351,7 +420,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider_template", orgUUID, updatedBy)
 
-	return mapTemplateModelToAPI(updated), nil
+	return s.toTemplateAPI(updated)
 }
 
 // templateRuntimeArtifact is the subset of an LLM provider template that the gateway
@@ -475,7 +544,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 		}
 	}
 
-	return mapTemplateModelToAPI(m), nil
+	return s.toTemplateAPI(m)
 }
 
 func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemplateID, toVersion, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
@@ -581,7 +650,11 @@ func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
 	for _, t := range items {
-		resp.List = append(resp.List, templateListItem(t))
+		item, err := s.templateListItemResolved(t)
+		if err != nil {
+			return nil, err
+		}
+		resp.List = append(resp.List, item)
 	}
 	return resp, nil
 }
@@ -603,7 +676,7 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, groupID, version string
 	if m == nil {
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
-	return mapTemplateModelToAPI(m), nil
+	return s.toTemplateAPI(m)
 }
 
 func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version string, enabled bool) (*api.LLMProviderTemplate, error) {
@@ -654,7 +727,7 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 	if m == nil {
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
-	return mapTemplateModelToAPI(m), nil
+	return s.toTemplateAPI(m)
 }
 
 func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version string) error {
@@ -874,7 +947,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 
 	_ = s.auditRepo.Record("CREATE", created.UUID, "llm_provider", orgUUID, createdBy)
 
-	return mapProviderModelToAPI(created, tpl.ID), nil
+	return s.toProviderAPI(created, tpl.ID)
 }
 
 func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMProviderListResponse, error) {
@@ -911,6 +984,9 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
+		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
+			return nil, err
+		}
 		version := p.Version
 		template := utils.StringPtrIfNotEmpty(tplHandle)
 		resp.List = append(resp.List, api.LLMProviderListItem{
@@ -950,7 +1026,7 @@ func (s *LLMProviderService) Get(orgUUID, handle string) (*api.LLMProvider, erro
 			tplHandle = tpl.ID
 		}
 	}
-	return mapProviderModelToAPI(m, tplHandle), nil
+	return s.toProviderAPI(m, tplHandle)
 }
 
 func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
@@ -1074,7 +1150,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider", orgUUID, updatedBy)
 
-	return mapProviderModelToAPI(updated, tpl.ID), nil
+	return s.toProviderAPI(updated, tpl.ID)
 }
 
 func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
@@ -1246,7 +1322,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if created == nil {
 		return nil, constants.ErrLLMProxyNotFound
 	}
-	return mapProxyModelToAPI(created), nil
+	return s.toProxyAPI(created)
 }
 
 func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, offset int) (*api.LLMProxyListResponse, error) {
@@ -1298,6 +1374,9 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
+		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
+			return nil, err
+		}
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -1360,6 +1439,9 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
+		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
+			return nil, err
+		}
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -1396,7 +1478,7 @@ func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 	if m == nil {
 		return nil, constants.ErrLLMProxyNotFound
 	}
-	return mapProxyModelToAPI(m), nil
+	return s.toProxyAPI(m)
 }
 
 func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
@@ -1494,7 +1576,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, constants.ErrLLMProxyNotFound
 	}
 	_ = s.auditRepo.Record("UPDATE", existing.UUID, "llm_proxy", orgUUID, updatedBy)
-	return mapProxyModelToAPI(updated), nil
+	return s.toProxyAPI(updated)
 }
 
 func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
@@ -2464,6 +2546,7 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
+		UpdatedBy:         utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
 	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
 		out.AssociatedGateways = associated
@@ -2814,6 +2897,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		ReadOnly:  utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
+		UpdatedBy: utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
 	if m.Configuration.UpstreamAuth != nil {
 		authType := (*api.UpstreamAuthType)(nil)

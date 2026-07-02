@@ -401,8 +401,8 @@ type APIKeyItem struct {
 	// CreatedAt Timestamp when the key was created
 	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
 
-	// CreatedBy User who created the key
-	CreatedBy string `binding:"required" json:"createdBy" yaml:"createdBy"`
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `binding:"required" json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable display name of the API key
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
@@ -480,7 +480,7 @@ type AddGatewayToRESTAPIRequest struct {
 type Application struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy Creator identifier
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// Description Description of the application
@@ -498,6 +498,9 @@ type Application struct {
 	// Type Type of the application
 	Type      ApplicationType `json:"type" yaml:"type"`
 	UpdatedAt *time.Time      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /applications/{appId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
 
 // ApplicationAssociation defines model for ApplicationAssociation.
@@ -647,9 +650,6 @@ type CreateAPIKeyResponseStatus string
 
 // CreateApplicationRequest Request body for creating an application.
 type CreateApplicationRequest struct {
-	// CreatedBy Creator identifier
-	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-
 	// Description Description of the application
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
@@ -818,7 +818,7 @@ type CreateRESTAPIRequest struct {
 	// CreatedAt Timestamp when the api was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
@@ -855,6 +855,9 @@ type CreateRESTAPIRequest struct {
 
 	// UpdatedAt Timestamp when the api was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /rest-apis/{apiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
@@ -1072,6 +1075,9 @@ type GatewayResponse struct {
 	// CreatedAt Timestamp when gateway was registered
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
 	// Description Description of the gateway
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
@@ -1101,6 +1107,9 @@ type GatewayResponse struct {
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /gateways/{gatewayId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
@@ -1199,7 +1208,7 @@ type LLMProvider struct {
 	// CreatedAt Timestamp when the resource was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy Username of the creator
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// Description Description of the LLM provider
@@ -1242,6 +1251,9 @@ type LLMProvider struct {
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-providers/{id}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
@@ -1263,9 +1275,11 @@ type LLMProviderAPIKeyListResponse struct {
 
 // LLMProviderListItem defines model for LLMProviderListItem.
 type LLMProviderListItem struct {
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the LLM provider
 	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
@@ -1296,7 +1310,7 @@ type LLMProviderTemplate struct {
 	// CreatedAt Timestamp when the resource was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy Username of the creator
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// Description Description of the LLM provider template
@@ -1340,7 +1354,7 @@ type LLMProviderTemplate struct {
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
-	// UpdatedBy Username of the last user to update the template
+	// UpdatedBy User identifier of the user who last updated this resource
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
 	// Version Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
@@ -1362,9 +1376,11 @@ type LLMProviderTemplateAuth struct {
 
 // LLMProviderTemplateListItem defines model for LLMProviderTemplateListItem.
 type LLMProviderTemplateListItem struct {
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the LLM provider template
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
@@ -1446,7 +1462,7 @@ type LLMProxy struct {
 	// CreatedAt Timestamp when the resource was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy Username of the creator
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// Description Description of the LLM proxy
@@ -1484,6 +1500,9 @@ type LLMProxy struct {
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-proxies/{id}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
 	// Version Semantic version of the LLM proxy
 	Version string `binding:"required" json:"version" yaml:"version"`
 
@@ -1503,10 +1522,12 @@ type LLMProxyAPIKeyListResponse struct {
 // LLMProxyListItem defines model for LLMProxyListItem.
 type LLMProxyListItem struct {
 	// Context Context path where the proxy is exposed
-	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the LLM proxy
 	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
@@ -1565,7 +1586,7 @@ type MCPProxy struct {
 	// CreatedAt Timestamp when the resource was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy Username of the creator
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// Description Description of the MCP proxy
@@ -1595,6 +1616,9 @@ type MCPProxy struct {
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /mcp-proxies/{id}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
@@ -1623,10 +1647,12 @@ type MCPProxyCapabilities struct {
 // MCPProxyListItem defines model for MCPProxyListItem.
 type MCPProxyListItem struct {
 	// Context Context path where the proxy is exposed
-	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the MCP proxy
 	DisplayName    string  `binding:"required" json:"displayName" yaml:"displayName"`
@@ -1703,7 +1729,7 @@ type MappedAPIKey struct {
 	// UpdatedAt Timestamp when the API key was updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
-	// UserId User id of the key creator
+	// UserId User identifier of the user who created this resource
 	UserId *string `json:"userId,omitempty" yaml:"userId,omitempty"`
 }
 
@@ -1770,6 +1796,9 @@ type Organization struct {
 	// CreatedAt Timestamp when the organization was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
 	// DisplayName Human-readable name for the organization
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
@@ -1781,6 +1810,9 @@ type Organization struct {
 
 	// UpdatedAt Timestamp when the organization was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
 
 // OrganizationListResponse defines model for OrganizationListResponse.
@@ -1823,6 +1855,9 @@ type Project struct {
 	// CreatedAt Timestamp when the project was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
 	// Description Description of the project
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
@@ -1837,6 +1872,9 @@ type Project struct {
 
 	// UpdatedAt Timestamp when the project was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /projects/{projectId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
 
 // ProjectListResponse defines model for ProjectListResponse.
@@ -1856,7 +1894,7 @@ type RESTAPI struct {
 	// CreatedAt Timestamp when the api was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy If the createdBy value is not given user invoking the api will be used as the createdBy.
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
@@ -1893,6 +1931,9 @@ type RESTAPI struct {
 
 	// UpdatedAt Timestamp when the api was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /rest-apis/{apiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
@@ -1932,6 +1973,9 @@ type RESTAPIGatewayResponse struct {
 	// CreatedAt Timestamp when gateway was registered
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
 	// Deployment Details about API deployment to a specific gateway
 	Deployment *RESTAPIDeploymentDetails `json:"deployment,omitempty" yaml:"deployment,omitempty"`
 
@@ -1967,6 +2011,9 @@ type RESTAPIGatewayResponse struct {
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /gateways/{gatewayId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
 	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
@@ -2096,16 +2143,25 @@ type SecretListResponse struct {
 type SecretResponse struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
 	// DisplayName Human-readable name for the secret
 	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`
 	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
 	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
 
 // SecretSummary Secret metadata — never includes the plaintext value.
 type SecretSummary struct {
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the secret
 	DisplayName string                 `binding:"required" json:"displayName" yaml:"displayName"`
@@ -2158,6 +2214,9 @@ type Subscription struct {
 	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
 	// Id Subscription ID
 	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
 
@@ -2180,6 +2239,9 @@ type Subscription struct {
 	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
 	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /subscriptions/{subscriptionId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
 
 // SubscriptionKind Type of the subscribed artifact
@@ -2200,6 +2262,9 @@ type SubscriptionListResponse struct {
 type SubscriptionPlan struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
 	// DisplayName Human-readable name for the subscription plan
 	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`
 	ExpiryTime  *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
@@ -2214,6 +2279,9 @@ type SubscriptionPlan struct {
 	OrganizationId *string                 `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	Status         *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	UpdatedAt      *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
@@ -2392,8 +2460,8 @@ type UserAPIKeyItem struct {
 	// CreatedAt Timestamp when the key was created
 	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
 
-	// CreatedBy User who created the key
-	CreatedBy string `binding:"required" json:"createdBy" yaml:"createdBy"`
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `binding:"required" json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable display name of the API key
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
@@ -2548,24 +2616,14 @@ type SyncCustomPolicyParams struct {
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
-	// Query URL-encoded search DSL. `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av1.0). The version may instead be supplied via the standalone `version` query param.
+	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av2.0).
 	Query *string `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
-
-	// Version Selects a single version within the family named by `query=groupId:<id>`, returning the full template for that (groupId, version). Alternative to packing `&version:<ver>` inside the `query` value; ignored when `query` has no groupId.
-	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Limit Maximum number of LLM provider templates to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
 	// Offset Number of LLM provider templates to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
-
-	// Latest Which versions to include. By default (false) the response contains
-	// every version row across all templates (full history). Set to true
-	// to return only the latest version of each family (one entry per
-	// built-in/custom bucket), for the catalog listing. May also be passed
-	// inside the query DSL as `query=latest:true`.
-	Latest *bool `form:"latest,omitempty" json:"latest,omitempty" yaml:"latest,omitempty"`
 }
 
 // CopyLLMProviderTemplateVersionParams defines parameters for CopyLLMProviderTemplateVersion.

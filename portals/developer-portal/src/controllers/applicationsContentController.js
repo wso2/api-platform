@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
+const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -204,7 +204,7 @@ const loadApplications = async (req, res, next) => {
     try {
         const orgName = req.params.orgName;
         const orgId = await orgIDValue(orgName);
-        const applications = await appDao.list(orgId, req.user.sub)
+        const applications = await appDao.list(orgId, resolveActor(req))
         const metaData = applications.map(application => new ApplicationDTO(application));
         let profile = null;
         if (req.user) {
@@ -387,7 +387,7 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
             keyId: k.uuid,
             name: k.name,
             status: String(k.status || 'ACTIVE').toLowerCase(),
-            apiId: k.api_uuid,
+            apiId: k.dp_api_metadata?.handle,
             apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
         }));
 
@@ -396,7 +396,7 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
         const byApi = new Map();
         allKeys.forEach((k) => {
             if (k.dp_api_key_app_mapping?.app_uuid === applicationId) return;
-            const apiId = k.api_uuid;
+            const apiId = k.dp_api_metadata?.handle || k.api_uuid;
             const apiName = formatApiDisplayName(k.dp_api_metadata, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
             byApi.get(apiId).keys.push({ keyId: k.uuid, name: k.name });

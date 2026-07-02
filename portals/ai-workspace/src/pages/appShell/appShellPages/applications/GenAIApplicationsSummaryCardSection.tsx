@@ -82,13 +82,15 @@ export default function GenAIApplicationsSummaryCardSection({
     refreshApplications,
   } = useApplications();
 
-  const applications = applicationsResponse.list;
+  const applications = applicationsResponse.list.filter(
+    (application) => application.type === 'genai'
+  );
   const errorStatusCode = getHttpStatusCode(error);
   const isNotFoundError = errorStatusCode === 404;
   const hasApplications = !error && applications.length > 0;
   const isEmptyState =
     !isLoading && (isNotFoundError || (!error && applications.length === 0));
-  const showSeeMore = applicationsResponse.count > 6;
+  const showSeeMore = applications.length > 6;
 
   return (
     <Card
@@ -115,7 +117,7 @@ export default function GenAIApplicationsSummaryCardSection({
               ? 'Loading…'
               : error && !isNotFoundError
                 ? 'Total: 0'
-                : `Total: ${applicationsResponse.count}`
+                : `Total: ${applications.length}`
           }
           slotProps={{
             title: { sx: { fontSize: '1rem', fontWeight: 700, marginBottom: 0.3 } },

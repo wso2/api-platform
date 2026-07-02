@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS applications (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
-    project_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40),
     organization_uuid VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
@@ -60,7 +60,6 @@ CREATE TABLE IF NOT EXISTS applications (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -573,3 +572,22 @@ CREATE INDEX IF NOT EXISTS idx_asr_org_handle
 
 CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
     ON artifact_secret_refs(organization_uuid, gateway_id);
+
+-- Maps our internal user UUID to the IdP actor identity. Audit columns store the
+-- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
+CREATE TABLE IF NOT EXISTS user_idp_references (
+    uuid       VARCHAR(40)  PRIMARY KEY,
+    idp_id     VARCHAR(255) NOT NULL,
+    created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(idp_id)
+);
+
+-- User-to-organization membership, populated on org onboarding.
+CREATE TABLE IF NOT EXISTS user_organization_mappings (
+    user_uuid  VARCHAR(40) NOT NULL,
+    org_uuid   VARCHAR(40) NOT NULL,
+    created_at DATETIME    DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_uuid, org_uuid),
+    FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
+);

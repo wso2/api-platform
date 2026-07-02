@@ -163,7 +163,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "subscriptionPlanName": "Gold",
       "status": "ACTIVE",
       "createdBy": "alice@example.com",
-      "createdAt": "2019-08-24T14:15:22Z"
+      "createdAt": "2026-05-07T08:30:00Z",
+      "updatedAt": "2026-05-07T08:30:00Z"
     }
   ],
   "pagination": {
@@ -214,8 +215,10 @@ Status Code **200**
 |»» subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |»» subscriptionPlanName|string|false|none|none|
 |»» status|string|false|none|none|
-|»» createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
+|»» createdBy|string|false|none|Identity of the user who created the subscription, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»» updatedBy|string|false|none|Identity of the user who last updated the subscription, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |»» createdAt|string(date-time)|false|none|none|
+|»» updatedAt|string(date-time)|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -272,7 +275,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
-  "createdAt": "2026-05-07T08:30:00Z"
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -359,7 +364,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
-  "createdAt": "2026-05-07T08:30:00Z"
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -528,7 +535,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
-  "createdAt": "2026-05-07T08:30:00Z"
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -615,7 +624,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
-  "createdAt": "2026-05-07T08:30:00Z"
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 

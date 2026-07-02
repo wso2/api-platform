@@ -5,9 +5,12 @@
 
 DROP TABLE IF EXISTS "dp_webhook_subscribers" CASCADE;
 DROP TABLE IF EXISTS "dp_view_label_mappings" CASCADE;
+DROP TABLE IF EXISTS "dp_user_organization_mappings" CASCADE;
+DROP TABLE IF EXISTS "dp_user_idp_references" CASCADE;
 DROP TABLE IF EXISTS "sessions" CASCADE;
 DROP TABLE IF EXISTS "dp_event_deliveries" CASCADE;
 DROP TABLE IF EXISTS "dp_events" CASCADE;
+DROP TABLE IF EXISTS "dp_audit" CASCADE;
 DROP TABLE IF EXISTS "dp_api_workflows" CASCADE;
 DROP TABLE IF EXISTS "dp_api_key_app_mappings" CASCADE;
 DROP TABLE IF EXISTS "dp_api_keys" CASCADE;
@@ -145,6 +148,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_api_workflow_org_view_handle" ON "dp_api_w
 CREATE INDEX IF NOT EXISTS "idx_api_workflow_view_uuid" ON "dp_api_workflows" ("view_uuid");
 CREATE INDEX IF NOT EXISTS "idx_api_workflow_status" ON "dp_api_workflows" ("status");
 
+-- dp_audit
+CREATE TABLE IF NOT EXISTS "dp_audit" ("uuid" VARCHAR(40) , "action" VARCHAR(50) NOT NULL, "resource_uuid" VARCHAR(40) NOT NULL, "resource_type" VARCHAR(50), "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "performed_by" VARCHAR(255), "performed_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+
+CREATE INDEX IF NOT EXISTS "idx_audit_org_uuid" ON "dp_audit" ("org_uuid");
+
 -- dp_events
 CREATE TABLE IF NOT EXISTS "dp_events" ("uuid" VARCHAR(40) , "type" VARCHAR(128) NOT NULL, "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "aggregate_type" VARCHAR(64) NOT NULL, "aggregate_uuid" VARCHAR(40) NOT NULL, "payload" JSONB NOT NULL DEFAULT '{}', "occurred_at" TIMESTAMP WITH TIME ZONE NOT NULL, "status" VARCHAR(20) NOT NULL DEFAULT 'PENDING', PRIMARY KEY ("uuid"));
 
@@ -161,6 +169,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_event_delivery_event_subscriber" ON "dp_ev
 CREATE TABLE IF NOT EXISTS "sessions" ("sid" VARCHAR(255) , "sess" JSON NOT NULL, "expire" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("sid"));
 
 CREATE INDEX IF NOT EXISTS "idx_session_expire" ON "sessions" ("expire");
+
+-- dp_user_idp_references
+CREATE TABLE IF NOT EXISTS "dp_user_idp_references" ("uuid" VARCHAR(40) , "idp_id" VARCHAR(255) NOT NULL UNIQUE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+
+
+-- dp_user_organization_mappings
+CREATE TABLE IF NOT EXISTS "dp_user_organization_mappings" ("user_uuid" VARCHAR(40) NOT NULL  REFERENCES "dp_user_idp_references" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "org_uuid" VARCHAR(40) NOT NULL  REFERENCES "dp_organizations" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, PRIMARY KEY ("user_uuid","org_uuid"));
+
+CREATE INDEX IF NOT EXISTS "idx_user_organization_mappings_org_uuid" ON "dp_user_organization_mappings" ("org_uuid");
 
 -- dp_view_label_mappings
 CREATE TABLE IF NOT EXISTS "dp_view_label_mappings" ("uuid" VARCHAR(40) , "view_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_views" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "label_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_labels" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));

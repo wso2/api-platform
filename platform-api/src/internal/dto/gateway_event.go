@@ -31,7 +31,10 @@ type GatewayEventDTO struct {
 	// CorrelationID provides request tracing identifier
 	CorrelationID string `json:"correlationId"`
 
-	// UserId is an optional temporary user identifier (from x-user-id header)
+	// UserId is the raw resolved actor identity (token "sub", falling back to
+	// the configured claim / user_id), or constants.DeletedUser if the actor's
+	// internal UUID has no mapping. Never the internal UUID — see
+	// service.IdentityService.SubForUUID.
 	UserId string `json:"userId,omitempty"`
 }
 

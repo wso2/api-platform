@@ -124,9 +124,14 @@ export default function ApplicationsList() {
     );
   };
 
+  const genAIApplications = useMemo(
+    () => applications.filter((app) => app.type === 'genai'),
+    [applications]
+  );
+
   const filteredApplications = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return applications;
+    if (!query) return genAIApplications;
 
     return applications.filter((app) =>
       [app.displayName, app.description]
@@ -135,7 +140,7 @@ export default function ApplicationsList() {
         .toLowerCase()
         .includes(query)
     );
-  }, [searchQuery, applications]);
+  }, [searchQuery, genAIApplications]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;

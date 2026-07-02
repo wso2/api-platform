@@ -4976,7 +4976,9 @@ components:
           description: Timestamp when the key was created
         createdBy:
           type: string
-          description: User who created the key
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
         updatedAt:
           type: string
           format: date-time
@@ -5080,6 +5082,16 @@ components:
           type: string
           description: Geographic region where the organization operates
           example: "us"
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -5150,6 +5162,16 @@ components:
           description: Handle (URL-friendly slug) of the organization this project belongs to
           readOnly: true
           example: "acme"
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /projects/{projectId}), omitted from list responses.
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -5203,10 +5225,6 @@ components:
           type: string
           description: Description of the application
           example: "Sample GenAI application"
-        createdBy:
-          type: string
-          description: Creator identifier
-          example: "admin"
 
     Application:
       type: object
@@ -5243,8 +5261,14 @@ components:
           example: "Sample GenAI application"
         createdBy:
           type: string
-          description: Creator identifier
-          example: "admin"
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /applications/{appId}), omitted from list responses.
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -5429,8 +5453,9 @@ components:
           example: "ACTIVE"
         userId:
           type: string
-          description: User id of the key creator
-          example: "user-123"
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -5506,9 +5531,15 @@ components:
         createdBy:
           maxLength: 200
           type: string
-          description: |
-            If the createdBy value is not given user invoking the api will be used as the createdBy.
-          example: admin
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /rest-apis/{apiId}), omitted from list responses.
+          example: "john.doe"
         projectId:
           type: string
           pattern: '^[a-z0-9-]+$'
@@ -6022,6 +6053,16 @@ components:
           type: boolean
           description: Indicates if the gateway is currently connected to the platform via WebSocket
           example: true
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /gateways/{gatewayId}), omitted from list responses.
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -6479,6 +6520,16 @@ components:
         status:
           type: string
           enum: [ACTIVE, INACTIVE]
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses.
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -6575,6 +6626,16 @@ components:
         status:
           type: string
           enum: [ACTIVE, INACTIVE, REVOKED]
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /subscriptions/{subscriptionId}), omitted from list responses.
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -6904,16 +6965,16 @@ components:
           example: Default OpenAI template
         createdBy:
           type: string
-          description: Username of the creator
+          description: User identifier of the user who created this resource
           readOnly: true
           maxLength: 200
-          example: jane.doe
+          example: "john.doe"
         updatedBy:
           type: string
-          description: Username of the last user to update the template
+          description: User identifier of the user who last updated this resource
           readOnly: true
           maxLength: 200
-          example: jane.doe
+          example: "john.doe"
         readOnly:
           type: boolean
           readOnly: true
@@ -7069,7 +7130,9 @@ components:
           example: Default OpenAI template
         createdBy:
           type: string
-          example: jane.doe
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
         version:
           type: string
           description: Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
@@ -7448,14 +7511,19 @@ components:
           example: Primary OpenAI provider
         createdBy:
           type: string
-          description: Username of the creator
+          description: User identifier of the user who created this resource
           readOnly: true
-          example: jane.doe
+          example: "john.doe"
         readOnly:
           type: boolean
           readOnly: true
           description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
           example: false
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-providers/{id}), omitted from list responses.
+          example: "john.doe"
         version:
           type: string
           description: Semantic version of the LLM Provider
@@ -7594,7 +7662,9 @@ components:
           example: Primary OpenAI provider
         createdBy:
           type: string
-          example: jane.doe
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
         readOnly:
           type: boolean
           description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
@@ -7711,14 +7781,19 @@ components:
           example: Customer support assistant
         createdBy:
           type: string
-          description: Username of the creator
+          description: User identifier of the user who created this resource
           readOnly: true
-          example: jane.doe
+          example: "john.doe"
         readOnly:
           type: boolean
           readOnly: true
           description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
           example: false
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-proxies/{id}), omitted from list responses.
+          example: "john.doe"
         version:
           type: string
           description: Semantic version of the LLM proxy
@@ -7820,7 +7895,9 @@ components:
           example: Customer support assistant
         createdBy:
           type: string
-          example: jane.doe
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
         context:
           type: string
           description: Context path where the proxy is exposed
@@ -8033,14 +8110,19 @@ components:
           example: An MCP server which provides weather information
         createdBy:
           type: string
-          description: Username of the creator
+          description: User identifier of the user who created this resource
           readOnly: true
-          example: jane.doe
+          example: "john.doe"
         readOnly:
           type: boolean
           readOnly: true
           description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
           example: false
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /mcp-proxies/{id}), omitted from list responses.
+          example: "john.doe"
         version:
           type: string
           description: Semantic version of the MCP proxy
@@ -8134,7 +8216,9 @@ components:
           example: An MCP server which provides weather information
         createdBy:
           type: string
-          example: jane.doe
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
         context:
           type: string
           description: Context path where the proxy is exposed
@@ -8317,6 +8401,16 @@ components:
           minLength: 1
           maxLength: 128
           example: WSO2 OpenAI API Key
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time
@@ -8355,6 +8449,11 @@ components:
         hash:
           type: string
           example: hmac-sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576d4b3d4c57e3f428a
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe"
         createdAt:
           type: string
           format: date-time

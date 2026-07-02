@@ -30,6 +30,8 @@ type Organization struct {
 	// IdpOrganizationRefUUID is the identity provider's organization UUID, sourced
 	// from the token's org_id claim. Empty for file-based auth (no external IDP).
 	IdpOrganizationRefUUID string    `json:"idpOrganizationRefUuid" db:"idp_organization_ref_uuid"`
+	CreatedBy              string    `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy              string    `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt              time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt              time.Time `json:"updatedAt" db:"updated_at"`
 }

@@ -815,9 +815,14 @@ components:
           example: false
         createdBy:
           type: string
-          description: Username of the creator
+          description: User identifier of the user who created this resource
           readOnly: true
-          example: jane.doe
+          example: "john.doe@example.com"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /websub-apis/{id}), omitted from list responses.
+          example: "john.doe@example.com"
         createdAt:
           type: string
           format: date-time
@@ -864,6 +869,11 @@ components:
           type: boolean
           description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
           example: false
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe@example.com"
         createdAt:
           type: string
           format: date-time
@@ -985,6 +995,11 @@ components:
           type: string
           description: Status of the HMAC secret.
           example: active
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe@example.com"
         createdAt:
           type: string
           format: date-time
@@ -1141,9 +1156,14 @@ components:
           example: false
         createdBy:
           type: string
-          description: Username of the creator
+          description: User identifier of the user who created this resource
           readOnly: true
-          example: jane.doe
+          example: "john.doe@example.com"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /webbroker-apis/{id}), omitted from list responses.
+          example: "john.doe@example.com"
         createdAt:
           type: string
           format: date-time
@@ -1190,6 +1210,11 @@ components:
           type: boolean
           description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
           example: false
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe@example.com"
         createdAt:
           type: string
           format: date-time

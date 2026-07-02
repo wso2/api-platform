@@ -35,11 +35,12 @@ import (
 
 type SecretHandler struct {
 	secretService *service.SecretService
+	identity      *service.IdentityService
 	slogger       *slog.Logger
 }
 
-func NewSecretHandler(secretService *service.SecretService, slogger *slog.Logger) *SecretHandler {
-	return &SecretHandler{secretService: secretService, slogger: slogger}
+func NewSecretHandler(secretService *service.SecretService, identity *service.IdentityService, slogger *slog.Logger) *SecretHandler {
+	return &SecretHandler{secretService: secretService, identity: identity, slogger: slogger}
 }
 
 func (h *SecretHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -59,7 +60,10 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := middleware.GetUserIDFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "create secret")
+	if !ok {
+		return
+	}
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		_ = r.ParseForm()
@@ -177,7 +181,10 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := middleware.GetUserIDFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "update secret")
+	if !ok {
+		return
+	}
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		_ = r.ParseForm()
@@ -219,7 +226,10 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := middleware.GetUserIDFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "delete secret")
+	if !ok {
+		return
+	}
 
 	err := h.secretService.Delete(orgID, handle, userID)
 	if err != nil {

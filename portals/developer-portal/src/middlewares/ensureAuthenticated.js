@@ -27,6 +27,7 @@ const jwt = require('jsonwebtoken');
 const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
+const { resolveUserUuid } = require('./authMiddleware');
 
 function enforceSecurity(scope) {
     return async function (req, res, next) {
@@ -58,7 +59,7 @@ function enforceSecurity(scope) {
                     }
                 }
                 const decodedAccessToken = jwt.decode(token);
-                req[constants.USER_ID] = decodedAccessToken?.[constants.USER_ID];
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
                 return validateAuthentication(scope)(req, res, next);
             } else if (config.advanced.apiKey.enabled) {
                 enforceAPIKey(req, res, next);
@@ -130,7 +131,8 @@ const ensureAuthenticated = async (req, res, next) => {
         if (req.isAuthenticated()) {
             // Config-auth: skip all token/exchange checks; roles already in session
             if (req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
-                req[constants.USER_ID] = req.user[constants.USER_ID];
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
                 if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
@@ -157,7 +159,8 @@ const ensureAuthenticated = async (req, res, next) => {
             const token = accessTokenPresent(req);
             if (token) {
                 const decodedAccessToken = jwt.decode(token);
-                req[constants.USER_ID] = decodedAccessToken?.[constants.USER_ID];
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
             }
             if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];

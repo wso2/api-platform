@@ -35,12 +35,14 @@ import (
 
 type DeploymentHandler struct {
 	deploymentService *service.DeploymentService
+	identity          *service.IdentityService
 	slogger           *slog.Logger
 }
 
-func NewDeploymentHandler(deploymentService *service.DeploymentService, slogger *slog.Logger) *DeploymentHandler {
+func NewDeploymentHandler(deploymentService *service.DeploymentService, identity *service.IdentityService, slogger *slog.Logger) *DeploymentHandler {
 	return &DeploymentHandler{
 		deploymentService: deploymentService,
+		identity:          identity,
 		slogger:           slogger,
 	}
 }
@@ -85,7 +87,10 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "deploy API")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -168,7 +173,10 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 			"API ID is required"))
 		return
 	}
-	actor, _ := middleware.GetUserIDFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "undeploy API")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
@@ -241,7 +249,10 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 			"API ID is required"))
 		return
 	}
-	actor, _ := middleware.GetUserIDFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "restore API deployment")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
@@ -305,7 +316,10 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	actor, _ := middleware.GetUserIDFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "delete API deployment")
+	if !ok {
+		return
+	}
 	err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {

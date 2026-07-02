@@ -36,12 +36,14 @@ import (
 
 type OrganizationHandler struct {
 	orgService *service.OrganizationService
+	identity   *service.IdentityService
 	slogger    *slog.Logger
 }
 
-func NewOrganizationHandler(orgService *service.OrganizationService, slogger *slog.Logger) *OrganizationHandler {
+func NewOrganizationHandler(orgService *service.OrganizationService, identity *service.IdentityService, slogger *slog.Logger) *OrganizationHandler {
 	return &OrganizationHandler{
 		orgService: orgService,
+		identity:   identity,
 		slogger:    slogger,
 	}
 }
@@ -80,7 +82,10 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 		handle = *req.Id
 	}
 
-	performedBy, _ := middleware.GetUserIDFromRequest(r)
+	performedBy, ok := resolveActor(w, r, h.identity, h.slogger, "register organization")
+	if !ok {
+		return
+	}
 	// The IDP's organization UUID is derived server-side from the token's raw
 	// organization claim (the IDP org id), never client-supplied. This uses the
 	// unresolved claim rather than the resolved platform UUID, since the

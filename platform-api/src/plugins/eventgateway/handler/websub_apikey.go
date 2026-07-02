@@ -40,14 +40,16 @@ import (
 type WebSubAPIKeyHandler struct {
 	websubAPIService *egservice.WebSubAPIService
 	apiKeyService    *service.APIKeyService
+	identity         *service.IdentityService
 	slogger          *slog.Logger
 }
 
 // NewWebSubAPIKeyHandler creates a new WebSubAPIKeyHandler instance
-func NewWebSubAPIKeyHandler(websubAPIService *egservice.WebSubAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebSubAPIKeyHandler {
+func NewWebSubAPIKeyHandler(websubAPIService *egservice.WebSubAPIService, apiKeyService *service.APIKeyService, identity *service.IdentityService, slogger *slog.Logger) *WebSubAPIKeyHandler {
 	return &WebSubAPIKeyHandler{
 		websubAPIService: websubAPIService,
 		apiKeyService:    apiKeyService,
+		identity:         identity,
 		slogger:          slogger,
 	}
 }
@@ -79,7 +81,10 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "create WebSub API key")
+	if !ok {
+		return
+	}
 
 	var req api.CreateAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -105,7 +110,7 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 		req.Id = &name
 	}
 
-	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, orgID, userId, &req); err != nil {
+	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, userId, &req); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
@@ -152,7 +157,10 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "update WebSub API key")
+	if !ok {
+		return
+	}
 
 	var req api.UpdateAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -174,7 +182,7 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, orgID, keyName, userId, &req); err != nil {
+	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId, &req); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
@@ -217,9 +225,12 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "revoke WebSub API key")
+	if !ok {
+		return
+	}
 
-	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, orgID, keyName, userId); err != nil {
+	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return

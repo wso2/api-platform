@@ -23,6 +23,7 @@ Documentation for self-hosted deployments of the AI Workspace control plane.
 - [MCP Proxies](features/mcp-proxies.md) — Model Context Protocol server proxies
 - [GenAI Applications](features/genai-applications.md) — Group consumers under named applications
 - [Policies](features/policies.md) — Guardrails, rate limits, and traffic controls
+- [Global Policies for LLM Providers and Proxies](features/global-policies-llm-providers-proxies.md) — Policies shared across every operation
 - [Insights](features/insights.md) — Usage analytics and monitoring
 - [Data Plane → Control Plane Sync](bottom-up-ai-artifact-deployment-guide.md) - Syncing gateway-created AI artifacts up to the AI Workspace
 

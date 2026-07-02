@@ -77,7 +77,7 @@ func baseRESTAPI(origin string) *model.API {
 }
 
 func TestRESTRuntimeArtifactGuard(t *testing.T) {
-	svc := &APIService{apiUtil: &utils.APIUtil{}}
+	svc := &APIService{apiUtil: &utils.APIUtil{}, identity: newTestIdentityService()}
 
 	t.Run("metadata-only edit allowed", func(t *testing.T) {
 		existing := baseRESTAPI(constants.OriginDP)

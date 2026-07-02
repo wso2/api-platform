@@ -20,6 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const apiKeyDao = require('../dao/apiKeyDao');
 const apiDao = require('../dao/apiDao');
 const applicationDao = require('../dao/applicationDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { publish } = require('./webhooks/eventPublisher');
 const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
@@ -154,6 +155,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
     let plaintext = generateSecret();
     const subscription = await resolveSubscription(orgId, subscriptionId);
     let keyId;
+    let audit;
 
     try {
         await sequelize.transaction(async (t) => {
@@ -163,6 +165,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
                 t
             );
             keyId = key.uuid;
+            audit = await userIdpReferenceDao.buildSingleAuditFields(key);
 
             await publish('apikey.generated',
                 {
@@ -189,7 +192,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
     }
 
     logger.info('API key generated', { keyId, orgId, apiId, appId: application ? application.id : null, actor });
-    return { keyId, name: normalizedName, key: plaintext, expiresAt: expiry.date, status: constants.API_KEY_STATUS.ACTIVE };
+    return { keyId, name: normalizedName, key: plaintext, expiresAt: expiry.date, status: constants.API_KEY_STATUS.ACTIVE, ...audit };
 }
 
 /**

@@ -38,6 +38,8 @@ const ViewDTO = require("../dto/viewsDto");
 const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
 const subscriptionPlanDTO = require("../dto/subscriptionPlanDto");
+const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
+const { logUserAction } = require('../middlewares/auditLogger');
 const { CustomError } = require("../utils/errors/customErrors");
 const LabelDTO = require("../dto/labelDto");
 
@@ -124,11 +126,13 @@ const createAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
+        let createdAPIRecord;
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, userId, t);
+            createdAPIRecord = createdAPI.dataValues;
             const apiId = createdAPI.dataValues.uuid;
             apiMetadata.handle = createdAPI.dataValues.handle;
             if (apiMetadata.subscriptionPlans) {
@@ -233,8 +237,18 @@ const createAPIMetadata = async (req, res) => {
             delete apiMetadata.handle;
         });
 
-
-        res.status(201).send(apiMetadata);
+        logUserAction('API_METADATA_CREATED', req, { orgId, apiId: createdAPIRecord.uuid, resourceUuid: createdAPIRecord.uuid, resourceType: 'rest_api' });
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(createdAPIRecord);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after API creation', {
+                error: auditError.message,
+                apiId: createdAPIRecord.uuid
+            });
+            audit = { createdAt: createdAPIRecord.created_at, updatedAt: createdAPIRecord.updated_at };
+        }
+        res.status(201).send({ ...apiMetadata, ...audit });
     } catch (error) {
         logger.error('API metadata creation failed', {
             error: error.message,
@@ -333,7 +347,8 @@ const getMetadataFromDB = async (orgId, apiId) => {
     }, async (t) => {
         const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, uuid: apiId }, t);
         if (retrievedAPI.length > 0) {
-            return new APIDTO(retrievedAPI[0]);
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(retrievedAPI[0]);
+            return new APIDTO(retrievedAPI[0], audit);
         } else {
             return "";
         }
@@ -383,7 +398,11 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
             retrievedAPIs = await apiDao.list(orgId, viewName, t);
         }
         // Create response object
-        const apiCreationResponse = retrievedAPIs ? retrievedAPIs.map((api) => new APIDTO(api)) : [];
+        let apiCreationResponse = [];
+        if (retrievedAPIs) {
+            const auditList = await userIdpReferenceDao.buildListAuditFields(retrievedAPIs);
+            apiCreationResponse = retrievedAPIs.map((api, i) => new APIDTO(api, auditList[i]));
+        }
         return apiCreationResponse;
     });
 };
@@ -630,7 +649,9 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
-            res.status(200).send(new APIDTO(updatedAPI[0].dataValues));
+            logUserAction('API_METADATA_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0].dataValues);
+            res.status(200).send(new APIDTO(updatedAPI[0].dataValues, audit));
         });
     } catch (error) {
         logger.error('API metadata update failed', {
@@ -667,6 +688,7 @@ const deleteAPIMetadata = async (req, res) => {
             if (apiDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
             } else {
+                logUserAction('API_METADATA_DELETED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
                 res.status(200).send("Resouce Deleted Successfully");
             }
         } catch (error) {
@@ -1188,7 +1210,8 @@ const createSubscriptionPlan = async (req, res) => {
                 logger.info('Created subscription plan', {
                     orgId
                 });
-                res.status(201).send(new subscriptionPlanDTO(subscriptionPlanResponse));
+                const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
+                res.status(201).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
             } else {
                 throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_CREATE_ERROR);
             }
@@ -1220,7 +1243,7 @@ const createSubscriptionPlans = async (req, res) => {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
             }
 
-            const createdPlans = [];
+            const createdRecords = [];
 
             await sequelize.transaction({
                 timeout: 60000,
@@ -1235,9 +1258,11 @@ const createSubscriptionPlans = async (req, res) => {
                             `Failed to create plan: ${plan.handle || "unknown"}`
                         );
                     }
-                    createdPlans.push(new subscriptionPlanDTO(created));
+                    createdRecords.push(created);
                 }
             });
+            const audits = await userIdpReferenceDao.buildListAuditFields(createdRecords);
+            const createdPlans = createdRecords.map((created, i) => new subscriptionPlanDTO(created, audits[i]));
             logger.info('Created subscription plans', {
                 orgId
             });
@@ -1271,7 +1296,8 @@ const updateSubscriptionPlan = async (req, res) => {
         }, async (t) => {
             const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
-                res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse));
+                const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
+                res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
             } else {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
@@ -1303,7 +1329,7 @@ const updateSubscriptionPlans = async (req, res) => {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
             }
 
-            const updatedPlans = [];
+            const updatedRecords = [];
 
             await sequelize.transaction({
                 timeout: 60000,
@@ -1318,9 +1344,11 @@ const updateSubscriptionPlans = async (req, res) => {
                             `Failed to upsert plan: ${plan.handle || "unknown"}`
                         );
                     }
-                    updatedPlans.push(new subscriptionPlanDTO(result.subscriptionPlanResponse));
+                    updatedRecords.push(result.subscriptionPlanResponse);
                 }
             });
+            const audits = await userIdpReferenceDao.buildListAuditFields(updatedRecords);
+            const updatedPlans = updatedRecords.map((record, i) => new subscriptionPlanDTO(record, audits[i]));
 
             res.status(201).send(updatedPlans);
         }
@@ -1372,7 +1400,8 @@ const getSubscriptionPlan = async (req, res) => {
     try {
         const subscriptionPlanResponse = await subscriptionPlanDao.getByName(orgId, planId);
         if (subscriptionPlanResponse) {
-            res.status(200).send(new subscriptionPlanDTO(subscriptionPlanResponse));
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
+            res.status(200).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
         } else {
             throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
@@ -1402,7 +1431,8 @@ const listSubscriptionPlans = async (req, res) => {
         } else {
             plans = await subscriptionPlanDao.list(orgId);
         }
-        res.status(200).json(util.toPaginatedList(plans.map((plan) => new subscriptionPlanDTO(plan)), req));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(plans);
+        res.status(200).json(util.toPaginatedList(plans.map((plan, i) => new subscriptionPlanDTO(plan, auditList[i])), req));
     } catch (error) {
         logger.error('subscription plan list failed', {
             error: error.message,
@@ -1548,6 +1578,8 @@ const updateView = async (req, res) => {
             if (addedLabels.length !== 0) {
                 await viewDao.addLabels(orgId, viewId, addedLabels, userId, t);
             }
+            viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
+            logUserAction('VIEW_UPDATED', req, { orgId, viewId: viewHandle, resourceUuid: viewId, resourceType: 'view' });
             res.status(200).send(req.body);
         });
     } catch (error) {
@@ -1565,10 +1597,12 @@ const deleteView = async (req, res) => {
     const orgId = req.orgId;
     const name = req.params.viewId;
     try {
+        const viewUuid = await viewDao.getId(orgId, name);
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
             throw new Sequelize.EmptyResultError("Resource not found to delete");
         } else {
+            logUserAction('VIEW_DELETED', req, { orgId, viewId: name, resourceUuid: viewUuid, resourceType: 'view' });
             res.status(204).send("View Deleted Successfully");
         }
     } catch (error) {
@@ -1606,7 +1640,8 @@ const getViewInfo = async (orgId, name) => {
 
     const view = await viewDao.get(orgId, name);
     if (view.dataValues) {
-        return new ViewDTO(view.dataValues);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(view.dataValues);
+        return new ViewDTO(view.dataValues, audit);
     } else {
         return null;
     }
@@ -1632,7 +1667,8 @@ const getViewsFromDB = async (orgId) => {
 
     const views = await viewDao.list(orgId);
     if (views.length > 0) {
-        return views.map((view) => new ViewDTO(view));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(views);
+        return views.map((view, i) => new ViewDTO(view, auditList[i]));
     } else {
         return [];
     }

@@ -53,13 +53,14 @@ type MCPProxyService struct {
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
+	identity             *IdentityService
 }
 
 // NewMCPProxyService creates a new MCPProxyService instance
 func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo repository.ProjectRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository,
-	cfg *config.Server) *MCPProxyService {
+	cfg *config.Server, identity *IdentityService) *MCPProxyService {
 	return &MCPProxyService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
@@ -69,7 +70,37 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 		slogger:              slogger,
 		auditRepo:            auditRepo,
 		cfg:                  cfg,
+		identity:             identity,
 	}
+}
+
+// toMCPProxyAPI converts m via mapMCPProxyModelToAPI and resolves its
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *MCPProxyService) toMCPProxyAPI(m *model.MCPProxy) (*api.MCPProxy, error) {
+	resp := mapMCPProxyModelToAPI(m)
+	if resp == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// mcpProxyListItemResolved converts m via mapMCPProxyModelToListItem and
+// resolves its createdBy UUID to its raw external identity.
+func (s *MCPProxyService) mcpProxyListItemResolved(m *model.MCPProxy) (*api.MCPProxyListItem, error) {
+	item := mapMCPProxyModelToListItem(m)
+	if item == nil {
+		return nil, nil
+	}
+	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 // WithSecretService injects the SecretService for secret-ref validation.
@@ -167,6 +198,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		Configuration: model.MCPProxyConfiguration{
 			Name:         req.DisplayName,
@@ -216,7 +248,13 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
 	for _, p := range proxies {
-		resp.List = append(resp.List, *mapMCPProxyModelToListItem(p))
+		item, err := s.mcpProxyListItemResolved(p)
+		if err != nil {
+			return nil, err
+		}
+		if item != nil {
+			resp.List = append(resp.List, *item)
+		}
 	}
 
 	return resp, nil
@@ -262,7 +300,13 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
 	for _, p := range proxies {
-		resp.List = append(resp.List, *mapMCPProxyModelToListItem(p))
+		item, err := s.mcpProxyListItemResolved(p)
+		if err != nil {
+			return nil, err
+		}
+		if item != nil {
+			resp.List = append(resp.List, *item)
+		}
 	}
 
 	return resp, nil
@@ -282,7 +326,7 @@ func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 		return nil, constants.ErrMCPProxyNotFound
 	}
 
-	return mapMCPProxyModelToAPI(m), nil
+	return s.toMCPProxyAPI(m)
 }
 
 // Update updates an existing MCP proxy
@@ -570,6 +614,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		ReadOnly:       utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
+		UpdatedBy:      utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
 	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
 		out.AssociatedGateways = associated

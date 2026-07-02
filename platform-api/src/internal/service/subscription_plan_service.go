@@ -96,6 +96,8 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 	}
 
 	plan.OrganizationUUID = orgUUID
+	plan.CreatedBy = actor
+	plan.UpdatedBy = actor
 	if plan.Status == "" {
 		plan.Status = model.SubscriptionPlanStatusActive
 	}
@@ -201,6 +203,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 		}
 	}
 
+	existing.UpdatedBy = actor
 	if err := s.planRepo.Update(existing); err != nil {
 		return nil, err
 	}

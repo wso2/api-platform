@@ -18,6 +18,7 @@
 /* eslint-disable no-undef */
 const { CustomError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
@@ -180,6 +181,16 @@ const createOrganization = async (req, res) => {
 
         });
 
+        let orgAudit;
+        try {
+            orgAudit = await userIdpReferenceDao.buildSingleAuditFields(organization.dataValues);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after organization creation', {
+                error: auditError.message,
+                orgId: organization.handle
+            });
+            orgAudit = { createdAt: organization.dataValues.created_at, updatedAt: organization.dataValues.updated_at };
+        }
         const orgCreationResponse = {
             id: organization.handle,
             name: organization.name,
@@ -188,13 +199,20 @@ const createOrganization = async (req, res) => {
             businessOwnerEmail: organization.business_owner_email,
             idpRefId: organization.idp_ref_id,
             cpRefId: organization.cp_ref_id,
-            configuration: organization.dataValues.configuration
+            configuration: organization.dataValues.configuration,
+            ...orgAudit,
         };
         logger.info('Organization creation flow completed successfully', {
             orgId: orgCreationResponse.id,
             orgName: orgCreationResponse.name,
         });
-        logUserAction('ORG_CREATED', req, { orgId: orgCreationResponse.id, orgName: orgCreationResponse.name });
+        logUserAction('ORG_CREATED', req, {
+            orgId: orgCreationResponse.id,
+            orgName: orgCreationResponse.name,
+            resourceUuid: organization.uuid,
+            resourceType: 'organization',
+            orgUuid: organization.uuid,
+        });
         res.status(201).send(orgCreationResponse);
     } catch (error) {
         logger.error('Organization creation failed', {
@@ -218,7 +236,8 @@ const getAllOrganizations = async () => {
     const organizations = await orgDao.list();
     const orgList = [];
     if (organizations.length > 0) {
-        for (const organization of organizations) {
+        const auditList = await userIdpReferenceDao.buildListAuditFields(organizations.map(o => o.dataValues));
+        organizations.forEach((organization, i) => {
             orgList.push({
                 name: organization.dataValues.name,
                 id: organization.dataValues.handle,
@@ -227,9 +246,10 @@ const getAllOrganizations = async () => {
                 businessOwnerEmail: organization.dataValues.business_owner_email,
                 idpRefId: organization.idp_ref_id,
                 cpRefId: organization.cp_ref_id,
-                configuration: organization.dataValues.configuration
+                configuration: organization.dataValues.configuration,
+                ...auditList[i],
             });
-        }
+        });
     }
     return orgList;
 }
@@ -293,6 +313,16 @@ const updateOrganization = async (req, res) => {
             }
         });
 
+        let updatedOrgAudit;
+        try {
+            updatedOrgAudit = await userIdpReferenceDao.buildSingleAuditFields(updatedOrg[0].dataValues);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after organization update', {
+                error: auditError.message,
+                orgId
+            });
+            updatedOrgAudit = { createdAt: updatedOrg[0].dataValues.created_at, updatedAt: updatedOrg[0].dataValues.updated_at };
+        }
         res.status(200).json({
             id: updatedOrg[0].dataValues.handle,
             name: updatedOrg[0].dataValues.name,
@@ -301,7 +331,8 @@ const updateOrganization = async (req, res) => {
             businessOwnerEmail: updatedOrg[0].dataValues.business_owner_email,
             idpRefId: updatedOrg[0].dataValues.idp_ref_id,
             cpRefId: updatedOrg[0].dataValues.cp_ref_id,
-            configuration: updatedOrg[0].dataValues.configuration
+            configuration: updatedOrg[0].dataValues.configuration,
+            ...updatedOrgAudit,
         });
     } catch (error) {
         logger.error('Organization update failed', {
@@ -319,12 +350,17 @@ const deleteOrganization = async (req, res) => {
         orgId
     });
     try {
+        // Resolved before delete: dp_audit.org_uuid has ON DELETE CASCADE, so once the
+        // org is gone this uuid can no longer satisfy that FK — the ORG_DELETED audit
+        // insert below will be dropped (caught, logged, non-fatal), same limitation
+        // platform-api's own audit table has for its own org-delete cascade.
+        const orgUuid = await orgDao.getId(orgId);
         const deletedRowsCount = await sequelize.transaction({ timeout: 60000 }, (t) => orgDao.delete(orgId, t));
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {
                 orgId
             });
-            logUserAction('ORG_DELETED', req, { orgId });
+            logUserAction('ORG_DELETED', req, { orgId, resourceUuid: orgUuid, resourceType: 'organization', orgUuid });
             res.status(204).send();
         } else {
             throw new CustomError(404, "Records Not Found", 'Organization not found');

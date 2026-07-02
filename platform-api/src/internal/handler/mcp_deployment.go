@@ -38,13 +38,15 @@ import (
 // MCPProxyDeploymentHandler handles MCP proxy deployment endpoints
 type MCPProxyDeploymentHandler struct {
 	deploymentService *service.MCPDeploymentService
+	identity          *service.IdentityService
 	slogger           *slog.Logger
 }
 
 // NewMCPProxyDeploymentHandler creates a new MCP proxy deployment handler
-func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentService, slogger *slog.Logger) *MCPProxyDeploymentHandler {
+func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentService, identity *service.IdentityService, slogger *slog.Logger) *MCPProxyDeploymentHandler {
 	return &MCPProxyDeploymentHandler{
 		deploymentService: deploymentService,
+		identity:          identity,
 		slogger:           slogger,
 	}
 }
@@ -97,7 +99,10 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *htt
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "deploy MCP proxy")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {

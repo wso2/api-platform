@@ -16,12 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
 
 class ViewDTO {
-    constructor(view) {
+    constructor(view, audit) {
         this.id = view.handle;
         this.name = view.name;
         this.labels = view.dp_labels.map(label => label.dataValues.name);
+        applyAudit(this, audit);
     }
 
     setResponseData(data) {
