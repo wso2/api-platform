@@ -256,7 +256,7 @@ const loadApplication = async (req, res, next) => {
         const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
-        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId);
+        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId, resolveActor(req));
 
         templateContent = {
             orgId: data.orgId,
@@ -377,7 +377,7 @@ function formatApiDisplayName(apiMetadata, fallbackId) {
     return apiMetadata.handle ? `${namePart} (${apiMetadata.handle})` : namePart;
 }
 
-async function loadApplicationApiKeysData(orgId, applicationId) {
+async function loadApplicationApiKeysData(orgId, applicationId, userId) {
     let associatedApiKeys = [];
     let availableKeysByApi = [];
     try {
@@ -391,8 +391,8 @@ async function loadApplicationApiKeysData(orgId, applicationId) {
             apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
         }));
 
-        // Capped — this just populates a UI picker, not a full export of the org's keys.
-        const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', limit: 200 });
+        // Capped — this just populates a UI picker of the caller's own keys, not a full export of the org's keys.
+        const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', createdBy: userId, limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
             if (k.dp_api_key_app_mapping?.app_uuid === applicationId) return;

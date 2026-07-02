@@ -93,7 +93,7 @@ const loadAPIApiKeys = async (req, res, next) => {
                 ? await applicationDao.getId(orgId, resolveActor(req), selectedAppHandle)
                 : undefined;
             const selectedAppId = selectedApp ? selectedApp.uuid : undefined;
-            const keys = await apiKeyService.list(orgId, { apiId: apiId, appId: selectedAppId || undefined });
+            const keys = await apiKeyService.list(orgId, { apiId: apiId, appId: selectedAppId || undefined, createdBy: resolveActor(req) });
             apiKeys = (keys || []).map((k) => ({
                 keyId: k.uuid,
                 id: k.handle,
