@@ -378,20 +378,25 @@ func LoadConfig(configPath string) (*Server, error) {
 	// server.go resolves the final key via: SecretEncryptionKey → EncryptionKey.
 	// Only fail (or auto-generate in demo mode) when no key source is available at all.
 	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
-		// Try the key file first — valid in both demo and non-demo mode.
 		if cfg.Database.SecretEncryptionKeyFile != "" {
-			hexKey, err := loadOrGenerateSecretKeyFile(cfg.Database.SecretEncryptionKeyFile)
-			if err == nil {
-				cfg.Database.SecretEncryptionKey = hexKey
+			demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+			isDemoMode := demoMode != "false" && demoMode != "0"
+			if isDemoMode {
+				// Demo mode: auto-generate the key file on first start, reload on subsequent starts.
+				hexKey, err := loadOrGenerateSecretKeyFile(cfg.Database.SecretEncryptionKeyFile)
+				if err == nil {
+					cfg.Database.SecretEncryptionKey = hexKey
+				} else {
+					slog.Warn("APIP_DEMO_MODE: could not initialise secret key file, falling back to ephemeral key",
+						slog.String("path", cfg.Database.SecretEncryptionKeyFile), slog.Any("err", err))
+				}
 			} else {
-				// Key file is inaccessible or unwritable.
-				// In non-demo mode this is fatal; in demo mode fall through to ephemeral.
-				demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-				if demoMode == "false" || demoMode == "0" {
+				// Non-demo mode: the key file must already exist — never auto-generate.
+				hexKey, err := loadSecretKeyFile(cfg.Database.SecretEncryptionKeyFile)
+				if err != nil {
 					return nil, fmt.Errorf("failed to load secret key file: %w", err)
 				}
-				slog.Warn("APIP_DEMO_MODE: could not initialise secret key file, falling back to ephemeral key",
-					slog.String("path", cfg.Database.SecretEncryptionKeyFile), slog.Any("err", err))
+				cfg.Database.SecretEncryptionKey = hexKey
 			}
 		}
 	}
