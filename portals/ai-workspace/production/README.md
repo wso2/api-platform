@@ -156,8 +156,10 @@ oidc_org_id_claim     = "org_id"
 oidc_org_name_claim   = "org_name"
 oidc_org_handle_claim = "org_handle"
 
-# Platform API base URL used by the UI to make API calls.
-platform_api_base_url = "https://<platform-api-host>/api/v1"
+# Platform API base URL the browser uses — the same-origin BFF proxy path
+# (proxy_prefix + /api/v0.9). Keep it relative; the BFF forwards these calls to the
+# upstream Platform API set via PLATFORM_API_URL, so this does not point at the host.
+platform_api_base_url = "/api/proxy/api/v0.9"
 
 # Externally reachable host:port that deployed gateways use to reach the Platform API.
 controlplane_host = "<platform-api-host>"
@@ -166,7 +168,8 @@ controlplane_host = "<platform-api-host>"
 default_org_region = "us"
 
 # Available gateway versions shown in the create-gateway version selector (JSON array string).
-platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel":"LTS"},{"version":"1.0","latestVersion":"v1.0.0","channel":"LTS"}]'
+# Each entry: version (helm chart minor), latestVersion (image/chart tag), channel ("STS" | "LTS").
+platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
 ```
 
 > **The client secret and redirect URLs are BFF settings, not `config.toml` keys** — the

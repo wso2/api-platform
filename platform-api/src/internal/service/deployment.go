@@ -943,16 +943,27 @@ func (s *DeploymentService) GetDeploymentsByHandle(apiHandle, gatewayID, status,
 	}
 
 	// Convert empty strings to nil for optional parameters
-	var gatewayIdPtr *string
+	var gatewayHandlePtr *string
 	var statusPtr *string
 	if gatewayID != "" {
-		gatewayIdPtr = &gatewayID
+		gatewayHandlePtr = &gatewayID
 	}
 	if status != "" {
 		statusPtr = &status
 	}
 
-	return s.GetDeployments(apiUUID, orgUUID, gatewayIdPtr, statusPtr)
+	// The gatewayId filter is a gateway handle (matching deploy/undeploy); resolve it
+	// to the internal gateway UUID stored in deployments before filtering.
+	gatewayUUID, found, err := resolveGatewayFilter(s.gatewayRepo, gatewayHandlePtr, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// The filter names a gateway that does not exist in this org: no deployment matches.
+		return &api.DeploymentListResponse{Count: 0, List: []api.DeploymentResponse{}}, nil
+	}
+
+	return s.GetDeployments(apiUUID, orgUUID, gatewayUUID, statusPtr)
 }
 
 // UndeployDeploymentByHandle undeploys a deployment using the API handle and the

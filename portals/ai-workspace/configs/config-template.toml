@@ -22,7 +22,7 @@
 # --------------------------------------------------------------------
 
 # Domain shown in the browser address bar (host:port, or just host for port 80/443).
-domain = "localhost:8080"
+domain = "localhost:5380"
 
 # Authentication mode for the UI: "basic" (local users) or "oidc" (external IDP).
 auth_mode = "basic"
@@ -59,12 +59,12 @@ auth_mode = "basic"
 # the OIDC_CLIENT_SECRET environment variable (e.g. in a .env file) so it never
 # lands in a committed config file.
 
-# Platform API base URL — used by the UI to make API calls. Use the relative
-# nginx-proxy path (/api-proxy → platform-api:9243) so the browser only talks to
-# the app origin and never hits the platform-api self-signed cert directly.
-# Use an absolute URL (e.g. https://localhost:9243/api/v0.9) only when calling
-# the platform API directly without the nginx proxy.
-platform_api_base_url = "/api-proxy/api/v0.9"
+# Platform API base URL the browser uses for API calls — the same-origin BFF
+# proxy path (proxy_prefix + /api/v0.9, default /api/proxy) so the browser only
+# talks to the app origin and never hits the platform-api self-signed cert
+# directly. The BFF always derives this from proxy_prefix, so keep it relative;
+# to move the upstream Platform API, set platform_api_url below instead.
+platform_api_base_url = "/api/proxy/api/v0.9"
 
 # Control-plane host — the host:port that deployed gateways use to reach
 # the Platform API. Shown in gateway setup instructions (keys.env, helm values).
@@ -73,6 +73,12 @@ controlplane_host = "localhost:9243"
 
 # Default region assigned to new organizations on first login.
 default_org_region = "us"
+
+# Gateway versions offered in the create-gateway version selector (JSON array string).
+# Each entry: version (helm chart minor), latestVersion (image/chart tag shown to
+# the user and used in the helm --version flag), channel ("STS" | "LTS"). The first
+# entry is the default selection. Leave unset to use the app's built-in default.
+platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
 
 
 # ====================================================================
