@@ -91,6 +91,7 @@ type Server struct {
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
+	Webhook          Webhook          `koanf:"webhook"`
 
 	EnableScopeValidation bool `koanf:"enable_scope_validation"`
 }
@@ -132,6 +133,28 @@ type EventHub struct {
 	PollInterval    time.Duration `koanf:"poll_interval"`
 	CleanupInterval time.Duration `koanf:"cleanup_interval"`
 	RetentionPeriod time.Duration `koanf:"retention_period"`
+}
+
+// Webhook holds configuration for the control-plane webhook receiver. The Developer Portal
+// delivers signed events (API key / subscription changes) to this endpoint. See
+// docs-local/platform-api-webhook.md.
+type Webhook struct {
+	// Enabled controls whether the webhook endpoint is registered.
+	Enabled bool `koanf:"enabled"`
+	// Secret is the HMAC-SHA256 shared secret used to verify request signatures.
+	Secret string `koanf:"secret"`
+	// PrivateKeyPath points to the PEM RSA private key used to decrypt encrypted_key fields.
+	// Optional: required only for events that carry encrypted secrets (API key generate/regenerate).
+	PrivateKeyPath string `koanf:"private_key_path"`
+	// GatewayType filters events meant for this platform type. Events with a different
+	// gateway_type are accepted as a no-op.
+	GatewayType string `koanf:"gateway_type"`
+	// SignatureTolerance bounds how old a signed request may be (replay protection).
+	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
+	// MaxBodySize caps the request body size in bytes.
+	MaxBodySize int64 `koanf:"max_body_size"`
+	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
+	SignatureHeader string `koanf:"signature_header"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -310,6 +333,9 @@ func LoadConfig(configPath string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
+		return nil, err
+	}
+	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
 		return nil, err
 	}
 	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
@@ -582,6 +608,22 @@ func envToKoanfKey(s string) string {
 	case "event_hub_retention_period":
 		return "event_hub.retention_period"
 
+	// Webhook
+	case "webhook_enabled":
+		return "webhook.enabled"
+	case "webhook_secret":
+		return "webhook.secret"
+	case "webhook_private_key_path":
+		return "webhook.private_key_path"
+	case "webhook_gateway_type":
+		return "webhook.gateway_type"
+	case "webhook_signature_tolerance":
+		return "webhook.signature_tolerance"
+	case "webhook_max_body_size":
+		return "webhook.max_body_size"
+	case "webhook_signature_header":
+		return "webhook.signature_header"
+
 	default:
 		return ""
 	}
@@ -688,6 +730,30 @@ func validateFileBasedConfig(cfg *FileBased) error {
 	}
 	if len(cfg.Users) == 0 {
 		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
+	}
+	return nil
+}
+
+// validateWebhookConfig validates and fills defaults for the webhook receiver config.
+// It is a no-op when the webhook is disabled.
+func validateWebhookConfig(w *Webhook) error {
+	if !w.Enabled {
+		return nil
+	}
+	if w.Secret == "" {
+		return fmt.Errorf("webhook.enabled=true requires webhook.secret to be configured")
+	}
+	if w.SignatureTolerance <= 0 {
+		w.SignatureTolerance = 5 * time.Minute
+	}
+	if w.MaxBodySize <= 0 {
+		w.MaxBodySize = 1 << 20 // 1 MiB
+	}
+	if w.SignatureHeader == "" {
+		w.SignatureHeader = "X-Devportal-Signature"
+	}
+	if w.GatewayType == "" {
+		w.GatewayType = "wso2/api-platform"
 	}
 	return nil
 }
