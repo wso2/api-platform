@@ -32,6 +32,12 @@ Register and monitor gateway runtimes. Each gateway is identified by a registrat
 
 See [AI Gateways](features/ai-gateways.md).
 
+### LLM Provider Templates
+
+Reusable blueprints for connecting to an upstream LLM service — endpoint, authentication, OpenAPI specification, and token/model mappings. Ships with built-in templates (OpenAI, Anthropic, Azure OpenAI, Azure AI Foundry, Gemini, Mistral, AWS Bedrock) and supports custom, versioned templates that providers can be created from.
+
+See [LLM Provider Templates](features/llm-provider-templates.md).
+
 ### LLM Providers
 
 Configure connections to upstream LLM services. Supported providers: OpenAI, Anthropic, Azure OpenAI, Azure AI Foundry, Google Gemini, and Mistral. Provider credentials and API keys are stored securely and deployed to gateways. You control which models from each provider are exposed.
