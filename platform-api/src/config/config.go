@@ -58,10 +58,10 @@ type FileBasedOrg struct {
 	// Region is the deployment region for the organization.
 	Region string `koanf:"region"`
 
-	// UUID is the platform-generated organization UUID. It is resolved at
-	// startup (see seedFileBasedOrg) rather than read from config, and is used
-	// as the `organization` claim in issued tokens.
-	UUID string `koanf:"-"`
+	// UUID is the platform organization UUID. File-based auth has no external
+	// IDP, so this value is stored as idp_organization_ref_uuid and emitted as
+	// the `organization` claim in issued tokens.
+	UUID string `koanf:"uuid"`
 }
 
 // FileBased holds configuration for local username/password authentication.
@@ -483,6 +483,8 @@ func envToKoanfKey(s string) string {
 		return "auth.file_based.enabled"
 	case "auth_file_based_organization_id":
 		return "auth.file_based.organization.id"
+	case "auth_file_based_organization_uuid":
+		return "auth.file_based.organization.uuid"
 	case "auth_file_based_organization_display_name":
 		return "auth.file_based.organization.display_name"
 	case "auth_file_based_organization_region":

@@ -828,9 +828,9 @@ func (s *Server) GetMux() *http.ServeMux {
 
 // seedFileBasedOrg ensures the file-based auth organization exists in the DB.
 // It fetches by the configured handle (Organization.ID) first; only creates the
-// org when no matching org is found. The resolved platform UUID is stored back
-// into cfg (Organization.UUID) so the login handler issues tokens carrying the
-// correct organization claim.
+// org when no matching org is found. The organization's idp_organization_ref_uuid
+// is stored back into cfg (Organization.UUID) so the login handler issues tokens
+// whose `organization` claim matches the value the organization resolver looks up.
 func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
 	ba := &cfg.Auth.FileBased
 
@@ -839,14 +839,22 @@ func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 		return fmt.Errorf("failed to check file-based organization: %w", err)
 	}
 	if existing != nil {
-		ba.Organization.UUID = existing.ID
+		// The `organization` claim is resolved via idp_organization_ref_uuid, so
+		// carry that value (not the PK) even though they coincide for file-based orgs.
+		ba.Organization.UUID = existing.IdpOrganizationRefUUID
 		slogger.Info("File-based organization already exists", "uuid", existing.ID, "handle", existing.Handle)
 		return nil
 	}
 
-	uuid, err := utils.GenerateUUID()
-	if err != nil {
-		return fmt.Errorf("failed to generate file-based organization UUID: %w", err)
+	// Honor an operator-pinned UUID (config/env) so the org — and therefore the
+	// `organization` claim — stays stable across restarts and fresh databases;
+	// generate one only when none is configured.
+	uuid := ba.Organization.UUID
+	if uuid == "" {
+		uuid, err = utils.GenerateUUID()
+		if err != nil {
+			return fmt.Errorf("failed to generate file-based organization UUID: %w", err)
+		}
 	}
 
 	now := time.Now()

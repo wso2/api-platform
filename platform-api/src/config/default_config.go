@@ -77,9 +77,11 @@ func defaultConfig() *Server {
 			FileBased: FileBased{
 				Enabled: false,
 				Organization: FileBasedOrg{
-					ID:          "ap-org",
-					DisplayName: "AP Organization",
+					ID:          "default",
+					DisplayName: "Default",
 					Region:      "us",
+					// UUID left empty: seedFileBasedOrg generates one at startup
+					// unless an operator pins it via config/env for a stable org.
 				},
 				Users: FileBasedUsers{
 					{

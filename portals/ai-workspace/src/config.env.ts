@@ -141,8 +141,7 @@ export interface GatewayVersionEntry {
 export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
   'VITE_PLATFORM_GATEWAY_VERSIONS',
   [
-    { version: '1.1', latestVersion: 'v1.1.0', channel: 'LTS' },
-    { version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+    { version: '1.2', latestVersion: 'v1.2.0-M1', channel: 'STS' }
   ]
 );
 
