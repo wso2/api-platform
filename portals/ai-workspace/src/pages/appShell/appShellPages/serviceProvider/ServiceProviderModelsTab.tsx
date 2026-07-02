@@ -312,7 +312,7 @@ export default function ServiceProviderModelsTab() {
     const alreadyExists = existingModels.some(
       (model) =>
         model.id.toLowerCase() === normalizedModelName ||
-        model.displayName.toLowerCase() === normalizedModelName
+        (model.displayName ?? '').toLowerCase() === normalizedModelName
     );
 
     if (alreadyExists) {
