@@ -4,13 +4,13 @@
 
 <a id="opIdgetOrgAsset"></a>
 
-`GET /devportal/v1/views/{viewId}/asset`
+`GET /api/v0.9/views/{viewId}/asset`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewId}/asset?fileType=string&fileName=string \
+curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId}/asset?fileType=string&fileName=string \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
@@ -47,13 +47,13 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 
 <a id="opIdapplyTheme"></a>
 
-`POST /devportal/v1/views/{viewId}/apply-theme`
+`POST /api/v0.9/views/{viewId}/apply-theme`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/apply-theme \
+curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/apply-theme \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -160,13 +160,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdresetTheme"></a>
 
-`POST /devportal/v1/views/{viewId}/reset-theme`
+`POST /api/v0.9/views/{viewId}/reset-theme`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views/{viewId}/reset-theme \
+curl -X POST https://devportal.api-platform.io/api/v0.9/views/{viewId}/reset-theme \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

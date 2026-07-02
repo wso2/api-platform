@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateMcpServerApiKey"></a>
 
-`POST /devportal/v1/mcp-servers/{mcpServerId}/api-keys/generate`
+`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/api-keys/generate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServ
 
 ```
 
-Generates an API key for an MCP server. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/generate`.
+Generates an API key for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/generate`.
 
 > Payload
 
@@ -117,20 +117,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistMcpServerApiKeys"></a>
 
-`GET /devportal/v1/mcp-servers/{mcpServerId}/api-keys`
+`GET /api/v0.9/mcp-servers/{mcpServerId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/api-keys \
+curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists API keys for the given MCP server. Mirrors `GET /devportal/v1/apis/{apiId}/api-keys`.
+Lists API keys for the given MCP server. Mirrors `GET /api/v0.9/apis/{apiId}/api-keys`.
 
 ### Authentication
 
@@ -264,13 +264,13 @@ Status Code **200**
 
 <a id="opIdregenerateMcpServerApiKey"></a>
 
-`POST /devportal/v1/mcp-servers/{mcpServerId}/api-keys/regenerate`
+`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/api-keys/regenerate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -279,7 +279,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServ
 
 ```
 
-Regenerates the secret for an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/regenerate`.
+Regenerates the secret for an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/regenerate`.
 
 > Payload
 
@@ -374,13 +374,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeMcpServerApiKey"></a>
 
-`POST /devportal/v1/mcp-servers/{mcpServerId}/api-keys/revoke`
+`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/api-keys/revoke \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -389,7 +389,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServ
 
 ```
 
-Revokes an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/revoke`.
+Revokes an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/revoke`.
 
 > Payload
 
@@ -468,13 +468,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdassociateMcpServerApiKeyApplication"></a>
 
-`POST /devportal/v1/mcp-servers/{mcpServerId}/api-keys/associate`
+`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/api-keys/associate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -483,7 +483,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServ
 
 ```
 
-Associates (or re-associates) an existing MCP server API key with an application, for analytics attribution only. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/associate`.
+Associates (or re-associates) an existing MCP server API key with an application, for analytics attribution only. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/associate`.
 
 > Payload
 
@@ -587,13 +587,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdremoveMcpServerApiKeyApplication"></a>
 
-`POST /devportal/v1/mcp-servers/{mcpServerId}/api-keys/dissociate`
+`POST /api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/api-keys/dissociate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -602,7 +602,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServ
 
 ```
 
-Removes the application association from an MCP server API key identified by `keyId` in the request body, if any. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/dissociate`.
+Removes the application association from an MCP server API key identified by `keyId` in the request body, if any. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/dissociate`.
 
 > Payload
 

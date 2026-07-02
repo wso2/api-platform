@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApplicationKeys"></a>
 
-`POST /devportal/v1/applications/{applicationId}/generate-keys`
+`POST /api/v0.9/applications/{applicationId}/generate-keys`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/generate-keys \
+curl -X POST https://devportal.api-platform.io/api/v0.9/applications/{applicationId}/generate-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -144,13 +144,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgenerateOAuthKeys"></a>
 
-`POST /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
+`POST /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
+curl -X POST https://devportal.api-platform.io/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -276,13 +276,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeOAuthKeys"></a>
 
-`DELETE /devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}`
+`DELETE /api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

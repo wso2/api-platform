@@ -61,7 +61,7 @@ Note the **Client ID** and **Client Secret** from the Protocol tab.
 
 ## 3. Register dp:* Scopes
 
-> The `dp:*` scopes are enforced per-operation by the devportal for machine API clients that call `/devportal/v1/*` directly with a Bearer token. Browser sessions (IDP login) are preauthorized — the portal trusts session-level authentication and skips per-operation scope checks for session users. The Platform API uses its own `ap:*` scopes and does not validate `dp:*`.
+> The `dp:*` scopes are enforced per-operation by the devportal for machine API clients that call `/api/v0.9/*` directly with a Bearer token. Browser sessions (IDP login) are preauthorized — the portal trusts session-level authentication and skips per-operation scope checks for session users. The Platform API uses its own `ap:*` scopes and does not validate `dp:*`.
 
 Create a system OIDC application (e.g. `DevPortal System`) and under **API Authorization** add:
 - **API Resource Management API** (Management APIs)
@@ -150,7 +150,7 @@ Asgardeo token
   └── roles    → role list             (→ roleClaim → isAdmin check)
 ```
 
-> Browser sessions are preauthorized — the `scope` claim is not checked against per-operation requirements for session users. Machine API clients calling `/devportal/v1/*` directly with a Bearer token have their `scope` claim enforced as usual.
+> Browser sessions are preauthorized — the `scope` claim is not checked against per-operation requirements for session users. Machine API clients calling `/api/v0.9/*` directly with a Bearer token have their `scope` claim enforced as usual.
 
 ---
 

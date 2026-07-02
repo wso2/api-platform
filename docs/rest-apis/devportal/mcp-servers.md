@@ -4,13 +4,13 @@
 
 <a id="opIdcreateMcpServer"></a>
 
-`POST /devportal/v1/mcp-servers`
+`POST /api/v0.9/mcp-servers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers \
+curl -X POST https://devportal.api-platform.io/api/v0.9/mcp-servers \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers \
 
 ```
 
-Creates Developer Portal MCP server metadata. Mirrors `POST /devportal/v1/apis` — same artifact ZIP, YAML (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is always typed `MCP`, regardless of what `type` is supplied.
+Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is always typed `MCP`, regardless of what `type` is supplied.
 
 > Payload
 
@@ -178,20 +178,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllMcpServersForOrganization"></a>
 
-`GET /devportal/v1/mcp-servers`
+`GET /api/v0.9/mcp-servers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers \
+curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists MCP server metadata for an organization. Mirrors `GET /devportal/v1/apis` but only returns MCP-typed records.
+Lists MCP server metadata for an organization. Mirrors `GET /api/v0.9/apis` but only returns MCP-typed records.
 
 ### Authentication
 
@@ -384,13 +384,13 @@ Status Code **200**
 
 <a id="opIdgetMcpServer"></a>
 
-`GET /devportal/v1/mcp-servers/{mcpServerId}`
+`GET /api/v0.9/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -513,13 +513,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateMcpServer"></a>
 
-`PUT /devportal/v1/mcp-servers/{mcpServerId}`
+`PUT /api/v0.9/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -528,7 +528,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServe
 
 ```
 
-Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /devportal/v1/apis/{apiId}`.
+Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`.
 
 > Payload
 
@@ -680,13 +680,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteMcpServer"></a>
 
-`DELETE /devportal/v1/mcp-servers/{mcpServerId}`
+`DELETE /api/v0.9/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'

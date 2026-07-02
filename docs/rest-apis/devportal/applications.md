@@ -4,13 +4,13 @@
 
 <a id="opIdlistApplications"></a>
 
-`GET /devportal/v1/applications`
+`GET /api/v0.9/applications`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/applications \
+curl -X GET https://devportal.api-platform.io/api/v0.9/applications \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -108,13 +108,13 @@ Status Code **200**
 
 <a id="opIdsaveApplication"></a>
 
-`POST /devportal/v1/applications`
+`POST /api/v0.9/applications`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/applications \
+curl -X POST https://devportal.api-platform.io/api/v0.9/applications \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -248,13 +248,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetApplication"></a>
 
-`GET /devportal/v1/applications/{applicationId}`
+`GET /api/v0.9/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -321,13 +321,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApplication"></a>
 
-`PUT /devportal/v1/applications/{applicationId}`
+`PUT /api/v0.9/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -467,13 +467,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApplication"></a>
 
-`DELETE /devportal/v1/applications/{applicationId}`
+`DELETE /api/v0.9/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'

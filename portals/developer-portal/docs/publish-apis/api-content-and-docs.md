@@ -34,7 +34,7 @@ At least one of `web/` or `docs/` must be present in the ZIP.
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
+  "http://localhost:3000/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
@@ -44,7 +44,7 @@ To update existing content, use `PUT`:
 
 ```bash
 curl -X PUT \
-  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
+  "http://localhost:3000/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content-v2.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
@@ -138,7 +138,7 @@ To link to externally hosted documentation (rather than uploaded files), pass `d
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/devportal/v1/apis/{apiId}/assets" \
+  "http://localhost:3000/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content.zip" \
   -F 'docMetadata=[{"name":"External Guide","url":"https://docs.example.com/guide","type":"LINK"}]'
@@ -147,7 +147,7 @@ curl -X POST \
 ## Get API Content
 
 ```bash
-curl http://localhost:3000/devportal/v1/apis/{apiId}/assets \
+curl http://localhost:3000/api/v0.9/apis/{apiId}/assets \
   -H "Authorization: Bearer $TOKEN"
 ```
 

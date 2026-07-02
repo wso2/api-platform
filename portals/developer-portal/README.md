@@ -431,7 +431,7 @@ ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
   https://localhost:3000/organizations | jq -r '.[0].id')
 
 # Create the API
-curl -sk -X POST "https://localhost:3000/devportal/v1/apis" \
+curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml;type=application/yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"

@@ -4,13 +4,13 @@
 
 <a id="opIdaddView"></a>
 
-`POST /devportal/v1/views`
+`POST /api/v0.9/views`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views \
+curl -X POST https://devportal.api-platform.io/api/v0.9/views \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -131,13 +131,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllViews"></a>
 
-`GET /devportal/v1/views`
+`GET /api/v0.9/views`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views \
+curl -X GET https://devportal.api-platform.io/api/v0.9/views \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -227,13 +227,13 @@ Status Code **200**
 
 <a id="opIdupdateView"></a>
 
-`PUT /devportal/v1/views/{viewId}`
+`PUT /api/v0.9/views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -373,13 +373,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetView"></a>
 
-`GET /devportal/v1/views/{viewId}`
+`GET /api/v0.9/views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -486,13 +486,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteView"></a>
 
-`DELETE /devportal/v1/views/{viewId}`
+`DELETE /api/v0.9/views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
