@@ -2100,9 +2100,6 @@ type SecretResponse struct {
 	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`
 	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
 	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid UUID of the secret
-	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SecretSummary Secret metadata — never includes the plaintext value.
@@ -2118,9 +2115,6 @@ type SecretSummary struct {
 	Status      *SecretSummaryStatus   `json:"status,omitempty" yaml:"status,omitempty"`
 	Type        *SecretSummaryType     `json:"type,omitempty" yaml:"type,omitempty"`
 	UpdatedAt   *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid UUID of the secret
-	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SecretSummaryProvider defines model for SecretSummary.Provider.
@@ -2164,6 +2158,9 @@ type Subscription struct {
 	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
+	// Id Subscription ID
+	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+
 	// Kind Type of the subscribed artifact
 	Kind *SubscriptionKind `json:"kind,omitempty" yaml:"kind,omitempty"`
 
@@ -2183,9 +2180,6 @@ type Subscription struct {
 	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
 	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid Subscription UUID
-	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SubscriptionKind Type of the subscribed artifact
