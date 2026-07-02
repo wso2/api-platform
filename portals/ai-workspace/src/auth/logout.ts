@@ -18,9 +18,12 @@
 
 import { clearStoredToken } from '../clients/choreoApiClient';
 import { clearBasicAuthSession } from '../contexts/BasicAuthProvider';
+import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { logger } from '../utils/logger';
 
 type SignOutFunction = () => Promise<void>;
+
+const BFF_LOGOUT_URL = '/api/logout';
 
 const AUTH_SESSION_KEYS = [
   'platform_auth_token',
@@ -68,13 +71,16 @@ const clearSiteCache = async (): Promise<void> => {
 };
 
 /**
- * Force a logout without an IDP round-trip and redirect to the login page.
+ * Force a logout and redirect to the login page.
  *
  * Used when the platform API rejects a request with 401 (expired/invalid
- * session): retrying is futile, so we clear all client-side session state and
- * the site cache, then do a full-page redirect to /login. The full reload
- * (rather than a router navigation) also discards any in-memory React state
- * tied to the dead session.
+ * session): retrying is futile. We first ask the BFF to tear down the session
+ * (`POST /api/logout`) so the HttpOnly `_bff_session` cookie is cleared
+ * server-side — clearing client storage alone leaves that cookie intact, which
+ * would silently re-hydrate the dead session on the next `/login` and loop the
+ * user back to the error screen. We then clear all client-side session state and
+ * the site cache and do a full-page redirect (which also discards in-memory
+ * React state tied to the dead session).
  */
 export const forceLogoutAndRedirect = async (): Promise<void> => {
   // Each cleanup step is isolated so a failure in one doesn't skip the rest;
@@ -87,12 +93,32 @@ export const forceLogoutAndRedirect = async (): Promise<void> => {
     }
   };
 
+  let logoutUrl: string | undefined;
+  try {
+    const res = await fetch(BFF_LOGOUT_URL, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json', [CSRF_HEADER]: CSRF_VALUE },
+    });
+    if (res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { logoutUrl?: string };
+      logoutUrl = body.logoutUrl;
+    }
+  } catch (error) {
+    logger.warn('Force logout: BFF logout call failed:', error);
+  }
+
   runStep('clear auth data', clearAuthData);
   // Wipe any remaining client-side state so nothing carries over the session.
   runStep('clear sessionStorage', () => sessionStorage.clear());
   runStep('clear localStorage', () => localStorage.clear());
   await clearSiteCache();
 
-  // Replace (not assign) so the broken page isn't left in history.
+  // Prefer the IDP end-session URL (fully logs out at the IDP); otherwise fall
+  // back to /login. Replace (not assign) so the broken page isn't left in history.
+  if (logoutUrl) {
+    window.location.replace(logoutUrl);
+    return;
+  }
   window.location.replace('/login');
 };
