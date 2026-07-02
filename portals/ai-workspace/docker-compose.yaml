@@ -101,7 +101,7 @@ services:
   # browser never holds a token.
   # ---------------------------------------------------------------------------
   ai-workspace:
-    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-alpha-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-alpha
     container_name: ai-workspace
     restart: unless-stopped
     depends_on:
