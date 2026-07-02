@@ -194,6 +194,18 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
     return { appToDelete, affectedKeys };
 };
 
+/**
+ * Revokes key mappings, deletes the application row, and publishes the resulting
+ * deletion events. Shared by deleteApplication's initial attempt and its
+ * already-deleted (404) retry path.
+ */
+const finalizeApplicationDeletion = async (orgId, applicationId, userId, idpId, req) => {
+    await revokeAppKeyMappings(orgId, applicationId);
+    const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
+    trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
+    await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
+};
+
 const getApplication = async (req, res) => {
     const orgId = req.orgId || '';
     const userId = req.auth?.userId || req.user?.sub;
@@ -232,17 +244,11 @@ const deleteApplication = async (req, res) => {
         }
         const idpId = req.auth?.rawSub || req.user?.sub;
         try {
-            await revokeAppKeyMappings(orgId, applicationId);
-            const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
-            trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
-            await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
+            await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
             res.status(200).send("Resource Deleted Successfully");
         } catch (error) {
             if (error.statusCode === 404) {
-                await revokeAppKeyMappings(orgId, applicationId);
-                const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
-                trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
-                await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
+                await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
                 return res.status(200).send("Resource Deleted Successfully");
             }
             logger.error('Error occurred while deleting the application', { orgId: orgId, appId: applicationId, error: error.message, stack: error.stack });

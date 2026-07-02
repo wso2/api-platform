@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS "dp_user_idp_references" ("uuid" VARCHAR(40) , "idp_i
 -- dp_user_organization_mappings
 CREATE TABLE IF NOT EXISTS "dp_user_organization_mappings" ("user_uuid" VARCHAR(40) NOT NULL  REFERENCES "dp_user_idp_references" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "org_uuid" VARCHAR(40) NOT NULL  REFERENCES "dp_organizations" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, PRIMARY KEY ("user_uuid","org_uuid"));
 
+CREATE INDEX IF NOT EXISTS "idx_user_organization_mappings_org_uuid" ON "dp_user_organization_mappings" ("org_uuid");
 
 -- dp_view_label_mappings
 CREATE TABLE IF NOT EXISTS "dp_view_label_mappings" ("uuid" VARCHAR(40) , "view_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_views" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "label_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_labels" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));

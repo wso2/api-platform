@@ -3667,6 +3667,21 @@ components:
                   $ref: "#/components/schemas/SubscriptionPlanResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
+          example:
+            list:
+              - id: string
+                name: string
+                description: string
+                requestCount: string
+                refId: string
+                orgId: string
+                createdBy: alice@example.com
+                createdAt: "2019-08-24T14:15:22Z"
+                updatedAt: "2019-08-24T14:15:22Z"
+            pagination:
+              total: 42
+              limit: 20
+              offset: 0
     SubscriptionPlanMutationResponse:
       description: Subscription plan create/update response for single or bulk operations.
       content:
@@ -3771,6 +3786,20 @@ components:
                   $ref: "#/components/schemas/SubscriptionResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
+          example:
+            list:
+              - subscriptionId: sub-12345
+                apiId: weather-api-v1
+                subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
+                subscriptionPlanName: Gold
+                status: ACTIVE
+                createdBy: alice@example.com
+                createdAt: "2019-08-24T14:15:22Z"
+                updatedAt: "2019-08-24T14:15:22Z"
+            pagination:
+              total: 42
+              limit: 20
+              offset: 0
     ApiKeyGenerateResponse:
       description: Generated or regenerated API key. The plaintext `key` is returned exactly once.
       content:
@@ -3819,6 +3848,21 @@ components:
                     - $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
               pagination:
                 $ref: "#/components/schemas/Pagination"
+          example:
+            list:
+              - id: km-uuid-12345
+                orgId: org-12345
+                name: Asgardeo
+                type: ASGARDEO
+                enabled: true
+                tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
+                createdBy: alice@example.com
+                createdAt: "2019-08-24T14:15:22Z"
+                updatedAt: "2019-08-24T14:15:22Z"
+            pagination:
+              total: 42
+              limit: 20
+              offset: 0
     WebhookSubscriberResponse:
       description: Webhook subscriber configuration response.
       content:

@@ -17,6 +17,7 @@
  * under the License.
  */
 const constants = require('../utils/constants');
+const { applyAudit } = require('./dtoUtils');
 
 class APIDTO {
     constructor(api, audit) {
@@ -30,9 +31,7 @@ class APIDTO {
             this.subscriptionPlans = api.dp_subscription_plans.map(plan => new APISubscriptionPlan(plan));
         }
 
-        if (audit) {
-            Object.assign(this, audit);
-        }
+        applyAudit(this, audit);
     }
 
     setResponseData(data) {

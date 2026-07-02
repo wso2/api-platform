@@ -15,6 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
 
 /**
  * DTO for key manager responses.
@@ -28,9 +29,7 @@ class KeyManagerDTO {
         this.type = km.type;
         this.enabled = !!km.enabled;
         this.tokenEndpoint = km.token_endpoint;
-        if (audit) {
-            Object.assign(this, audit);
-        }
+        applyAudit(this, audit);
     }
 }
 

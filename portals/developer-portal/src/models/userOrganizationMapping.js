@@ -39,7 +39,13 @@ const UserOrganizationMapping = sequelize.define('dp_user_organization_mapping',
 }, {
     timestamps: false,
     tableName: 'dp_user_organization_mappings',
-    returning: true
+    returning: true,
+    indexes: [
+        {
+            name: 'idx_user_organization_mappings_org_uuid',
+            fields: ['org_uuid'],
+        },
+    ],
 });
 
 UserOrganizationMapping.belongsTo(UserIdpReference, {

@@ -411,7 +411,9 @@ const toAPIWorkflowDTO = (apiWorkflow, audit) => {
     createdAt: apiWorkflow.created_at ? new Date(apiWorkflow.created_at).toLocaleDateString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric'
     }) : '',
-    updatedAt: apiWorkflow.updated_at,
+    updatedAt: apiWorkflow.updated_at ? new Date(apiWorkflow.updated_at).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric'
+    }) : '',
     createdBy: audit?.createdBy,
     updatedBy: audit?.updatedBy,
     };

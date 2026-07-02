@@ -47,7 +47,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "refId": "string",
       "orgId": "string",
       "createdBy": "alice@example.com",
-      "updatedBy": "alice@example.com",
       "createdAt": "2019-08-24T14:15:22Z",
       "updatedAt": "2019-08-24T14:15:22Z"
     }

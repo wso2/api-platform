@@ -54,6 +54,7 @@ const USER_UUID_CACHE_TTL_MS = 5 * 60 * 1000;
 const USER_UUID_CACHE_MAX_ENTRIES = 5000;
 const userUuidCache = new Map(); // sub -> { uuid, expiresAt }
 const orgMappingCache = new Map(); // `${userUuid}:${orgId}` -> expiresAt
+const pendingUserUuidLookups = new Map(); // sub -> in-flight resolveUuid() promise
 
 function getCached(cache, key) {
     const entry = cache.get(key);
@@ -86,8 +87,15 @@ async function resolveUserUuid(req, sub) {
 
     let userUuid = getCached(userUuidCache, sub)?.uuid;
     if (userUuid === undefined) {
+        let pending = pendingUserUuidLookups.get(sub);
+        if (!pending) {
+            pending = userIdpReferenceDao.resolveUuid(sub).finally(() => {
+                pendingUserUuidLookups.delete(sub);
+            });
+            pendingUserUuidLookups.set(sub, pending);
+        }
         try {
-            userUuid = await userIdpReferenceDao.resolveUuid(sub);
+            userUuid = await pending;
         } catch (err) {
             logger.error('Failed to resolve user identity reference; continuing without one', {
                 error: err.message, operation: 'resolveUserUuid',

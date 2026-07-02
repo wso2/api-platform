@@ -32,7 +32,7 @@ const findOrCreateSafe = async (Model, where, defaults) => {
             const instance = await Model.findOne({ where });
             if (instance) return instance;
         }
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
 };
 
