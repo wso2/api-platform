@@ -386,7 +386,7 @@ curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId} \
 
 ```
 
-Retrieves one view by name, including the label names attached to that view.
+Retrieves one view by its `viewId` handle, including the label names attached to that view.
 
 ### Authentication
 
@@ -499,7 +499,7 @@ curl -X DELETE https://devportal.api-platform.io/api/v0.9/views/{viewId} \
 
 ```
 
-Deletes a view by name. A missing view is returned as a not-found error.
+Deletes a view by its `viewId` handle. A missing view is returned as a not-found error.
 
 ### Authentication
 

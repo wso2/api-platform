@@ -65,7 +65,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -369,7 +369,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -538,7 +538,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 

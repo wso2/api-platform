@@ -1261,7 +1261,7 @@ paths:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
       responses:
         "201":
-          $ref: "#/components/responses/ApiMetadataCreateResponse"
+          $ref: "#/components/responses/McpServerCreateResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1292,7 +1292,7 @@ paths:
         - $ref: "#/components/parameters/offset"
       responses:
         "200":
-          $ref: "#/components/responses/ApiMetadataListResponse"
+          $ref: "#/components/responses/McpServerListResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "500":
@@ -1312,7 +1312,7 @@ paths:
       operationId: getMcpServer
       responses:
         "200":
-          $ref: "#/components/responses/ApiMetadataResponse"
+          $ref: "#/components/responses/McpServerResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1334,7 +1334,7 @@ paths:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
       responses:
         "200":
-          $ref: "#/components/responses/ApiMetadataResponse"
+          $ref: "#/components/responses/McpServerResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1760,7 +1760,7 @@ paths:
         - Views
       operationId: getView
       summary: Get a view
-      description: Retrieves one view by name, including the label names attached to that view.
+      description: Retrieves one view by its `viewId` handle, including the label names attached to that view.
       responses:
         "200":
           $ref: "#/components/responses/ViewResponse"
@@ -1779,7 +1779,7 @@ paths:
         - Views
       operationId: deleteView
       summary: Delete a view
-      description: Deletes a view by name. A missing view is returned as a not-found error.
+      description: Deletes a view by its `viewId` handle. A missing view is returned as a not-found error.
       responses:
         "204":
           description: View deleted successfully.
@@ -2660,11 +2660,13 @@ components:
       required: true
       description: >-
         Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field.
-        When YAML is used, the service always takes the handle from `metadata.name` (the `id` field is ignored) and
-        `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec`
-        block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{id, name,
-        labels}` — `id` becomes the view's handle) to bootstrap labels and views at creation time — these are not
-        available via the `application/json` content type.
+        The JSON example below applies only to the `application/json` content type. When an organization YAML
+        **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of
+        `{name, displayName}`) and `views` (array of `{id, name, labels}` — `id` becomes the view's handle) to
+        bootstrap labels and views at creation time — these are not available via the `application/json` content
+        type.
       content:
         application/json:
           schema:
@@ -2694,12 +2696,13 @@ components:
     OrganizationUpdateBody:
       required: true
       description: >-
-        Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When
-        YAML is used, the service always takes the handle from `metadata.name` (the `id` field is ignored) and
-        `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec`
-        block additionally accepts `labels` (upserted by name) and `views` (upserted by `id`, which becomes the
-        view's handle, with `labels` replacing the view's label set) — these are not available via the
-        `application/json` content type.
+        Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field.
+        The JSON example below applies only to the `application/json` content type. When an organization YAML
+        **file** is uploaded instead, its content must use `kind: Organization` with the nested shape
+        `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName` as `name`; all other fields
+        (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by
+        name) and `views` (upserted by `id`, which becomes the view's handle, with `labels` replacing the view's
+        label set) — these are not available via the `application/json` content type.
       content:
         application/json:
           schema:
@@ -2796,8 +2799,8 @@ components:
       required: true
       description: >-
         API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can
-        be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the
-        `{apiId}` path parameter.
+        be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP
+        server, depending on the path) is identified by the corresponding path parameter.
       content:
         application/json:
           schema:
@@ -3178,8 +3181,10 @@ components:
       required: true
       description: >-
         Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field.
-        When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description`
-        as the description, and always takes the handle from `metadata.name` (any `id` sent alongside YAML is ignored).
+        The JSON example below (`displayName`, `id`, `description`) applies only to the `application/json` content
+        type. When an application YAML **file** is uploaded instead, its content must use the nested shape
+        `metadata.name` (handle) and `spec.displayName` / `spec.description` — any top-level `id` inside that YAML
+        file is ignored.
       content:
         application/json:
           schema:
@@ -3396,7 +3401,7 @@ components:
           example:
             code: "400"
             message: Bad Request
-            description: apiId is required
+            description: Invalid request parameters
     SimpleNotFound:
       description: Resource not found.
       content:
@@ -3545,6 +3550,93 @@ components:
                 status: PUBLISHED
                 description: Weather forecast API.
                 type: REST
+                agentVisibility: VISIBLE
+                labels:
+                  - default
+                endPoints:
+                  sandboxURL: https://sandbox.example.com/weather
+                  productionURL: https://api.example.com/weather
+            pagination:
+              total: 1
+              limit: 20
+              offset: 0
+    McpServerCreateResponse:
+      description: Created MCP server metadata payload returned by the service. Always typed `MCP`.
+      headers:
+        Location:
+          description: URL of the created MCP server metadata resource.
+          schema:
+            type: string
+            format: uri
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiMetadataCreateResponse"
+          example:
+            id: weather-api-v1
+            refId: cp-api-12345
+            name: Weather API
+            apiTitle: Weather Forecast API
+            version: v1
+            status: PUBLISHED
+            description: Weather forecast API.
+            type: MCP
+            agentVisibility: VISIBLE
+            tags:
+              - weather
+            labels:
+              - default
+            endPoints:
+              productionURL: https://api.example.com/weather
+              sandboxURL: https://sandbox.example.com/weather
+            subscriptionPlans:
+              - id: Gold
+    McpServerResponse:
+      description: MCP server metadata DTO returned by the service. Always typed `MCP`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiMetadataResponse"
+          example:
+            id: weather-api-v1
+            refId: cp-api-12345
+            name: Weather API
+            apiTitle: Weather Forecast API
+            remotes: []
+            version: v1
+            status: PUBLISHED
+            description: Weather forecast API.
+            type: MCP
+            agentVisibility: VISIBLE
+            labels:
+              - default
+            endPoints:
+              sandboxURL: https://sandbox.example.com/weather
+              productionURL: https://api.example.com/weather
+            subscriptionPlans:
+              - id: Gold
+    McpServerListResponse:
+      description: List of MCP server metadata DTOs. Always typed `MCP`.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiMetadataResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
+          example:
+            list:
+              - id: weather-api-v1
+                refId: cp-api-12345
+                name: Weather API
+                version: v1
+                status: PUBLISHED
+                description: Weather forecast API.
+                type: MCP
                 agentVisibility: VISIBLE
                 labels:
                   - default

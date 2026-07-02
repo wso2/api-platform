@@ -153,7 +153,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description` as the description, and always takes the handle from `metadata.name` (any `id` sent alongside YAML is ignored).|
+|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. The JSON example below (`displayName`, `id`, `description`) applies only to the `application/json` content type. When an application YAML **file** is uploaded instead, its content must use the nested shape `metadata.name` (handle) and `spec.displayName` / `spec.description` — any top-level `id` inside that YAML file is ignored.|
 
 > Example responses
 
@@ -366,7 +366,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` as the application's display name, `spec.description` as the description, and always takes the handle from `metadata.name` (any `id` sent alongside YAML is ignored).|
+|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. The JSON example below (`displayName`, `id`, `description`) applies only to the `application/json` content type. When an application YAML **file** is uploaded instead, its content must use the nested shape `metadata.name` (handle) and `spec.displayName` / `spec.description` — any top-level `id` inside that YAML file is ignored.|
 |applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses

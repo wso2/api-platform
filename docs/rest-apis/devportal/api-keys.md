@@ -41,7 +41,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the `{apiId}` path parameter.|
+|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
@@ -64,7 +64,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -530,7 +530,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
