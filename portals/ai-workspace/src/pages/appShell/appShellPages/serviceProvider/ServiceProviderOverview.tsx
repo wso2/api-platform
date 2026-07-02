@@ -281,7 +281,7 @@ function ServiceProviderOverviewContent() {
     [gateways, selectedGatewayId]
   );
   const generatedInvokeUrl = useMemo(() => {
-    const vhost = selectedGateway?.vhost?.trim();
+    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
     if (!vhost) return '';
 
     const normalizedBase = /^https?:\/\//i.test(vhost)
@@ -294,7 +294,7 @@ function ServiceProviderOverviewContent() {
         : `/${context}`
       : '/';
     return `${normalizedBase}${normalizedContext}`;
-  }, [provider?.context, selectedGateway?.vhost]);
+  }, [provider?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
   const selectedProjectForProxy = useMemo(
     () =>
       projectsForCurrentOrganization.find(

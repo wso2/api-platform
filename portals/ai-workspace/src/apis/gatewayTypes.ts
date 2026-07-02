@@ -20,7 +20,9 @@ export interface Gateway {
   name: string;
   displayName: string;
   description?: string;
-  vhost: string;
+  endpoints?: string[];
+  /** @deprecated Use `endpoints` instead. Kept for gateways created before the `endpoints` field existed. */
+  vhost?: string;
   isCritical: boolean;
   functionalityType: string;
   isActive: boolean;

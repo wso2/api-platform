@@ -178,7 +178,7 @@ export default function ServiceProviderOverviewTab({
     [gateways, selectedGatewayId]
   );
   const generatedGatewayUrl = useMemo(() => {
-    const vhost = selectedGateway?.vhost?.trim();
+    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
     if (!vhost) return '';
 
     const normalizedBase = /^https?:\/\//i.test(vhost)
@@ -191,7 +191,7 @@ export default function ServiceProviderOverviewTab({
         : `/${context}`
       : '/';
     return `${normalizedBase}${normalizedContext}`;
-  }, [provider?.context, selectedGateway?.vhost]);
+  }, [provider?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
   const swaggerSpecWithGatewayServer = useMemo<OpenApiSpec>(() => {
     const baseSpec = filteredOpenApiSpec ?? parsedOpenApiSpec;
     if (!baseSpec) return {};
