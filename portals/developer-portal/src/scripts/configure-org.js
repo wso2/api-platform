@@ -247,40 +247,33 @@ async function addLabels(orgId, orgLabels) {
 
     if (removedLabels.length > 0) {
         const sanitizeDelete = removedLabels.map(label => sanitizeInput(label));
-        // Encode each name individually so spaces/reserved characters within a label
-        const labelName = sanitizeDelete.map(label => encodeURIComponent(label)).join(",");
-        const response = await fetch(devportalApi.root(`/labels?names=${labelName}`), {
-            method: "DELETE",
+        for (const label of sanitizeDelete) {
+            const response = await fetch(devportalApi.root(`/labels/${encodeURIComponent(label)}`), {
+                method: "DELETE",
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            if (!response.ok) {
+                showAlert(`Field validation failed`, `error`);
+                return;
+            }
+        }
+    }
+
+    for (const label of sanitizeAdd) {
+        const response = await fetch(devportalApi.root('/labels'), {
+            method: "POST",
             headers: {
                 'Content-Type': 'application/json',
-            }
+            },
+            body: JSON.stringify({ id: label, displayName: label }),
         });
-        if (response.ok) {
-           window.location.href = 'configure';
-         } else {
-             showAlert(`Field validation failed`, `error`);
-         } 
-
+        if (!response.ok) {
+            showAlert(`Field validation failed`, `error`);
+            return;
+        }
     }
-    const labels = []
-    sanitizeAdd.forEach(async label => {    
-        labels.push({
-            "id": label,
-            "displayName": label
-        });
-    });
- 
-    const response = await fetch(devportalApi.root('/labels'), {
-        method: "PUT",
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(labels),
-    });
-    if (response.ok) {
-       window.location.href = 'configure';
-     } else {
-         showAlert(`Field validation failed`, `error`);
-     }
+    window.location.href = 'configure';
 }
 
