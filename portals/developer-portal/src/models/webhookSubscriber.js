@@ -30,7 +30,11 @@ const WebhookSubscriber = sequelize.define('dp_webhook_subscriber', {
         type: DataTypes.STRING(40),
         allowNull: false
     },
-    name: {
+    handle: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },
@@ -91,9 +95,9 @@ const WebhookSubscriber = sequelize.define('dp_webhook_subscriber', {
     returning: true,
     indexes: [
         {
-            name: 'uq_webhook_subscriber_org_name',
+            name: 'uq_webhook_subscriber_org_handle',
             unique: true,
-            fields: ['org_uuid', 'name']
+            fields: ['org_uuid', 'handle']
         }
     ]
 });

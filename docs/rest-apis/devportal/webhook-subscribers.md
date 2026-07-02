@@ -25,7 +25,8 @@ Registers a webhook subscriber for the organization. Event deliveries (apikey.*,
 
 ```json
 {
-  "name": "Production Gateway",
+  "id": "production-gateway",
+  "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
@@ -57,9 +58,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "sub-uuid-12345",
+  "id": "production-gateway",
   "orgId": "org-12345",
-  "name": "Production Gateway",
+  "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
@@ -193,9 +194,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "id": "sub-uuid-12345",
+      "id": "production-gateway",
       "orgId": "org-12345",
-      "name": "Production Gateway",
+      "displayName": "Production Gateway",
       "targetUrl": "https://gateway.example.com/devportal-webhook",
       "enabled": true,
       "events": [
@@ -243,9 +244,9 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[WebhookSubscriberResponseSchema](schemas.md#schemawebhooksubscriberresponseschema)]|false|none|[Webhook subscriber configuration. The secret is never included.]|
-|»» id|string|false|none|Webhook subscriber UUID.|
+|»» id|string|false|none|The webhook subscriber's handle (unique per org). Not the internal database uuid.|
 |»» orgId|string|false|none|none|
-|»» name|string|false|none|none|
+|»» displayName|string|false|none|none|
 |»» targetUrl|string(uri)|false|none|none|
 |»» enabled|boolean|false|none|none|
 |»» events|[string]|false|none|none|
@@ -291,7 +292,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
+|subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -299,9 +300,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "sub-uuid-12345",
+  "id": "production-gateway",
   "orgId": "org-12345",
-  "name": "Production Gateway",
+  "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
@@ -371,7 +372,8 @@ Updates an existing webhook subscriber configuration. Only supplied fields are u
 
 ```json
 {
-  "name": "Production Gateway",
+  "id": "production-gateway",
+  "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
@@ -396,7 +398,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|false|Webhook subscriber update payload. All fields are optional; only supplied fields are updated.|
-|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
+|subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -404,9 +406,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "sub-uuid-12345",
+  "id": "production-gateway",
   "orgId": "org-12345",
-  "name": "Production Gateway",
+  "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
@@ -534,7 +536,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
+|subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -596,7 +598,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
+|subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 

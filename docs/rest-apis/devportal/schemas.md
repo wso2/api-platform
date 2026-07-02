@@ -1475,7 +1475,8 @@ Minimal developer-facing key manager view.
 
 ```json
 {
-  "name": "Production Gateway",
+  "id": "production-gateway",
+  "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
@@ -1493,7 +1494,8 @@ Minimal developer-facing key manager view.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|Unique name within the organization.|
+|id|string|true|none|Desired handle for the webhook subscriber (unique per org), stored as-is.|
+|displayName|string|false|none|Optional display name. Defaults to the handle when omitted.|
 |targetUrl|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
@@ -1510,9 +1512,9 @@ Minimal developer-facing key manager view.
 
 ```json
 {
-  "id": "sub-uuid-12345",
+  "id": "production-gateway",
   "orgId": "org-12345",
-  "name": "Production Gateway",
+  "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
@@ -1536,9 +1538,9 @@ Webhook subscriber configuration. The secret is never included.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|Webhook subscriber UUID.|
+|id|string|false|none|The webhook subscriber's handle (unique per org). Not the internal database uuid.|
 |orgId|string|false|none|none|
-|name|string|false|none|none|
+|displayName|string|false|none|none|
 |targetUrl|string(uri)|false|none|none|
 |enabled|boolean|false|none|none|
 |events|[string]|false|none|none|
