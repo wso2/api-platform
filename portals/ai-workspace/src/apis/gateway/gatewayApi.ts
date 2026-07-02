@@ -37,6 +37,34 @@ export * from './types';
 const GATEWAY_API_PATH = '/gateways';
 
 /**
+ * Converts a UI vhost value (which may lack a protocol, e.g. `localhost:8443`)
+ * into a full endpoint URL as expected by the Platform API `endpoints` array.
+ */
+function toEndpointUrl(vhost: string): string {
+  const trimmed = (vhost || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+/**
+ * Normalizes a gateway returned by the Platform API into the shape the UI
+ * expects. The API models the address as an `endpoints` array, while the UI
+ * works with a single `vhost` string, so derive `vhost` from the first
+ * endpoint.
+ */
+function normalizeGatewayResponse<T extends { endpoints?: string[]; vhost?: string }>(
+  gateway: T
+): T {
+  return {
+    ...gateway,
+    vhost: gateway.endpoints?.[0] ?? gateway.vhost ?? '',
+  };
+}
+
+/**
  * Helper to transform camelCase request to API format
  */
 function transformRequestToApiFormat(
@@ -44,7 +72,7 @@ function transformRequestToApiFormat(
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     displayName: request.displayName,
-    vhost: request.vhost,
+    endpoints: [toEndpointUrl(request.vhost)],
     functionalityType: request.functionalityType,
     description: request.description,
   };
@@ -78,7 +106,12 @@ export async function getGateways(
     PLATFORM_API_BASE_URL
   );
 
-  return { data };
+  return {
+    data: {
+      ...data,
+      list: (data.list || []).map(normalizeGatewayResponse),
+    },
+  };
 }
 
 // TODO: /gateways/{gatewayId}/configs does not exist in openapi.yaml — needs backend clarification
@@ -111,7 +144,7 @@ export async function getGatewayById(
     PLATFORM_API_BASE_URL
   );
 
-  return { data };
+  return { data: normalizeGatewayResponse(data) };
 }
 
 /**
@@ -129,7 +162,7 @@ export async function registerGateway(
     PLATFORM_API_BASE_URL
   );
 
-  return { data };
+  return { data: normalizeGatewayResponse(data) };
 }
 
 /**
@@ -148,7 +181,7 @@ export async function updateGateway(
     PLATFORM_API_BASE_URL
   );
 
-  return { data };
+  return { data: normalizeGatewayResponse(data) };
 }
 
 /**

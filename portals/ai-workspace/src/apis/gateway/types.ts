@@ -25,6 +25,9 @@ export interface Gateway {
   name: string;
   displayName: string;
   description?: string;
+  /** Network endpoints exposed by this gateway, as returned by the Platform API. */
+  endpoints?: string[];
+  /** UI-friendly single address, derived from the first endpoint. */
   vhost: string;
   isCritical: boolean;
   functionalityType: string;
