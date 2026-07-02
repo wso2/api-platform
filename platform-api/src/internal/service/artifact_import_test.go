@@ -99,8 +99,8 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	}
 
 	// Seed org, project, gateway.
-	if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
-		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+	if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'idp-ref', datetime('now'), datetime('now'))`,
 		importTestOrgID, "h-"+importTestOrgID, "Import Org", "default"); err != nil {
 		t.Fatalf("seed org: %v", err)
 	}

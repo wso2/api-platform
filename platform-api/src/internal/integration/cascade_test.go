@@ -49,8 +49,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		planLimit: id(),
 	}
 
-	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region) VALUES (?, ?, ?, ?)`,
-		g.org, "h-"+g.org[:8], "it org", "us")
+	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
+		g.org, "h-"+g.org[:8], "it org", "us", "idp-ref")
 	it.exec(t, `INSERT INTO projects (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		g.project, "proj", "proj", g.org)
 	it.exec(t, `INSERT INTO applications (uuid, handle, project_uuid, organization_uuid, display_name, type) VALUES (?, ?, ?, ?, ?, ?)`,

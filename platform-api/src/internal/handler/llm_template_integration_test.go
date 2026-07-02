@@ -66,8 +66,8 @@ func setupLLMTemplateEnv(t *testing.T) (http.Handler, *database.DB, func()) {
 	if _, err = db.Exec(string(schema)); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
-		VALUES ('` + tmplOrg + `', 'test-org', 'Test Org', 'default', datetime('now'), datetime('now'))`); err != nil {
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('` + tmplOrg + `', 'test-org', 'Test Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`); err != nil {
 		t.Fatalf("insert org: %v", err)
 	}
 

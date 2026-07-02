@@ -39,8 +39,8 @@ func TestCascade_DeleteWebSubAPIRemovesHmacSecrets(t *testing.T) {
 	projectUUID := id()
 	artifactUUID := id()
 
-	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region) VALUES (?, ?, ?, ?)`,
-		orgUUID, "wsc-"+orgUUID[:8], "cascade org", "us")
+	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
+		orgUUID, "wsc-"+orgUUID[:8], "cascade org", "us", "idp-ref")
 	it.exec(t, `INSERT INTO projects (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		projectUUID, "cascade-proj", "cascade-proj", orgUUID)
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,

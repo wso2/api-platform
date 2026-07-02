@@ -84,8 +84,8 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	const gatewayID = "gw-001"
 	const plainToken = "super-secret-token"
 
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
-		VALUES (?, 'gw-org', 'GW Org', 'default', datetime('now'), datetime('now'))`, orgID); err != nil {
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES (?, 'gw-org', 'GW Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`, orgID); err != nil {
 		t.Fatalf("insert organization: %v", err)
 	}
 

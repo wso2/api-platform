@@ -46,7 +46,9 @@ func TestLoadConfig_MissingSecretEncryptionKey_NonDemoMode_ReturnsError(t *testi
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
+	// Provide a JWT secret so LoadConfig passes JWT validation and reaches the
+	// encryption-key check this test is asserting on.
+	t.Setenv("AUTH_JWT_SECRET_KEY", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
 
 	_, err := LoadConfig("")
 	assert.Error(t, err, "LoadConfig must return an error when no encryption key is configured and DEMO_MODE is off")
@@ -88,6 +90,8 @@ func TestLoadConfig_ExplicitSecretEncryptionKey_UsedAsIs(t *testing.T) {
 	const stableKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", stableKey)
 	t.Setenv("APIP_DEMO_MODE", "false")
+	// Non-demo mode requires an explicit JWT secret; set one so LoadConfig succeeds.
+	t.Setenv("AUTH_JWT_SECRET_KEY", stableKey)
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
