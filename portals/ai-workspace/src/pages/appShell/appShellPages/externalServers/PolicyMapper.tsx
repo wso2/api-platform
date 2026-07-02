@@ -50,6 +50,10 @@ import { logger } from '../../../../utils/logger';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
+import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
 
 export type SelectedPolicy = {
   instanceId: string;
@@ -70,6 +74,7 @@ type Props = {
     targetInstanceId: string
   ) => void;
   validationResult?: EndpointValidationResponse | null;
+  readOnly?: boolean;
 };
 
 function DragHandle(): JSX.Element {
@@ -107,6 +112,7 @@ export default function PolicyMapper({
   onRemovePolicy,
   onReorderPolicies,
   validationResult,
+  readOnly = false,
 }: Props): JSX.Element {
   const intl = useIntl();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -150,6 +156,7 @@ export default function PolicyMapper({
   }, [isDrawerOpen]);
 
   const handleOpenDrawer = async () => {
+    if (readOnly) return;
     setEditingInstanceId(null);
     setIsDrawerOpen(true);
     setIsFetchingPolicies(true);
@@ -165,6 +172,7 @@ export default function PolicyMapper({
   };
 
   const handleEditPolicyItem = async (item: SelectedPolicy) => {
+    if (readOnly) return;
     setEditingInstanceId(item.instanceId);
     setIsDrawerOpen(true);
     setIsFetchingPolicies(true);
@@ -210,6 +218,7 @@ export default function PolicyMapper({
   };
 
   const handlePolicyClick = async (policy: PolicyHubPolicy) => {
+    if (readOnly) return;
     setSelectedDrawerPolicy(policy.name);
     setIsDetailView(true);
     setPolicyDefinition(null);
@@ -244,6 +253,7 @@ export default function PolicyMapper({
   };
 
   const handlePolicySubmit = async (params: ParameterValues) => {
+    if (readOnly) return;
     const policy = fetchedPolicies.find((p) => p.name === selectedDrawerPolicy);
     if (!policy) return;
 
@@ -271,6 +281,11 @@ export default function PolicyMapper({
   const hasPolicies = selectedPolicies.length > 0;
 
   const handleDrop = (targetInstanceId: string) => {
+    if (readOnly) {
+      setDraggedInstanceId(null);
+      setDragOverInstanceId(null);
+      return;
+    }
     if (!draggedInstanceId || draggedInstanceId === targetInstanceId) {
       setDraggedInstanceId(null);
       setDragOverInstanceId(null);
@@ -312,17 +327,25 @@ export default function PolicyMapper({
                 </Typography>
               </Box>
               {hasPolicies && (
-                <Button
-                  variant="contained"
-                  onClick={() => void handleOpenDrawer()}
-                  startIcon={<Plus size={18} />}
-                  sx={{ whiteSpace: 'nowrap', flexShrink: 0, mt: 2 }}
+                <DisabledActionTooltip
+                  disabled={readOnly}
+                  title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                 >
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.policyMapper.addPolicies"
-                    defaultMessage="Add Policies"
-                  />
-                </Button>
+                  <span>
+                    <Button
+                      variant="contained"
+                      onClick={() => void handleOpenDrawer()}
+                      startIcon={<Plus size={18} />}
+                      disabled={readOnly}
+                      sx={{ whiteSpace: 'nowrap', flexShrink: 0, mt: 2 }}
+                    >
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.externalServers.policyMapper.addPolicies"
+                        defaultMessage="Add Policies"
+                      />
+                    </Button>
+                  </span>
+                </DisabledActionTooltip>
               )}
             </Box>
 
@@ -351,16 +374,24 @@ export default function PolicyMapper({
                       defaultMessage="No policies added yet."
                     />
                   </Typography>
-                  <Button
-                    variant="contained"
-                    onClick={() => void handleOpenDrawer()}
-                    startIcon={<Plus size={18} />}
+                  <DisabledActionTooltip
+                    disabled={readOnly}
+                    title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                   >
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.externalServers.policyMapper.addPolicies"
-                      defaultMessage="Add Policies"
-                    />
-                  </Button>
+                    <span>
+                      <Button
+                        variant="contained"
+                        onClick={() => void handleOpenDrawer()}
+                        startIcon={<Plus size={18} />}
+                        disabled={readOnly}
+                      >
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.externalServers.policyMapper.addPolicies"
+                          defaultMessage="Add Policies"
+                        />
+                      </Button>
+                    </span>
+                  </DisabledActionTooltip>
                 </Stack>
               </Box>
             ) : (
@@ -371,19 +402,28 @@ export default function PolicyMapper({
                     draggedInstanceId !== item.instanceId;
 
                   return (
-                    <Box
+                    <DisabledActionTooltip
                       key={item.instanceId}
-                      draggable
-                      onDragStart={() => setDraggedInstanceId(item.instanceId)}
+                      disabled={readOnly}
+                      title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                    >
+                      <Box
+                      key={item.instanceId}
+                      draggable={!readOnly}
+                      onDragStart={() =>
+                        !readOnly && setDraggedInstanceId(item.instanceId)
+                      }
                       onDragEnd={() => {
                         setDraggedInstanceId(null);
                         setDragOverInstanceId(null);
                       }}
                       onDragOver={(event: React.DragEvent) => {
+                        if (readOnly) return;
                         event.preventDefault();
                         setDragOverInstanceId(item.instanceId);
                       }}
                       onDrop={(event: React.DragEvent) => {
+                        if (readOnly) return;
                         event.preventDefault();
                         handleDrop(item.instanceId);
                       }}
@@ -404,14 +444,16 @@ export default function PolicyMapper({
                         boxShadow: isDragOver
                           ? '0 0 0 3px rgba(29, 78, 216, 0.12)'
                           : '0 1px 3px rgba(0, 0, 0, 0.04)',
-                        cursor: 'pointer',
+                        cursor: readOnly ? 'default' : 'pointer',
                         opacity:
                           draggedInstanceId === item.instanceId ? 0.5 : 1,
                         transition: 'all 0.15s ease',
-                        '&:hover': {
-                          borderColor: '#D1D5DB',
-                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
-                        },
+                        '&:hover': readOnly
+                          ? undefined
+                          : {
+                              borderColor: '#D1D5DB',
+                              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                            },
                       }}
                     >
                       <DragHandle />
@@ -442,6 +484,7 @@ export default function PolicyMapper({
                           event.stopPropagation();
                           onRemovePolicy(item.instanceId);
                         }}
+                        disabled={readOnly}
                         sx={{
                           color: '#9CA3AF',
                           '&:hover': { color: '#EF4444' },
@@ -449,7 +492,8 @@ export default function PolicyMapper({
                       >
                         <X size={16} />
                       </IconButton>
-                    </Box>
+                      </Box>
+                    </DisabledActionTooltip>
                   );
                 })}
               </Stack>

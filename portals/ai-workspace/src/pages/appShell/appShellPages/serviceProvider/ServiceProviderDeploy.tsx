@@ -19,6 +19,7 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Grid,
@@ -123,6 +124,13 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
       </Grid>
 
       <Stack spacing={2} sx={{ mt: 2 }}>
+        {provider?.readOnly && (
+          <Alert severity="info">
+            This provider was created from a gateway. You can view its deployments,
+            but deploy, redeploy, restore and undeploy actions are managed by the
+            gateway and are unavailable in AI Workspace.
+          </Alert>
+        )}
         <GatewayDeployMainSection />
       </Stack>
     </PageContent>
@@ -131,6 +139,7 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
 
 function ServiceProviderDeployContent() {
   const { providerId } = useParams<{ providerId: string }>();
+  const { provider } = useLLMProvider();
 
   if (!providerId) {
     return (
@@ -147,7 +156,7 @@ function ServiceProviderDeployContent() {
 
   return (
     <AIEntityProvider type="llm-provider" id={providerId}>
-      <GatewayDeployProvider apiId={providerId}>
+      <GatewayDeployProvider apiId={providerId} readOnly={Boolean(provider?.readOnly)}>
         <ServiceProviderDeployLayout providerId={providerId} />
       </GatewayDeployProvider>
     </AIEntityProvider>

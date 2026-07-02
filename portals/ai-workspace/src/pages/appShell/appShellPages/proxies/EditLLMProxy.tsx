@@ -50,6 +50,7 @@ function EditLLMProxyForm() {
   const { currentOrganization, currentProject } = useAppShell();
   const { proxy, isLoading, error, updateProxy } = useProxy();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
 
   const isProjectLevel = Boolean(currentProject?.id);
   const proxiesPath = isProjectLevel
@@ -85,6 +86,9 @@ function EditLLMProxyForm() {
   };
 
   const handleSubmit = async () => {
+    // Allowed even for gateway-created proxies: name/version/context stay locked
+    // (part of the runtime artifact), so only the description can change, which the
+    // control plane accepts without altering the gateway runtime artifact.
     if (!proxyId) return;
 
     setIsSubmitting(true);
@@ -177,6 +181,13 @@ function EditLLMProxyForm() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyProxy ? (
+              <Alert severity="info">
+                This proxy was created from a gateway. The name, version and
+                context are part of the gateway runtime configuration and are
+                read-only here; only the description can be edited.
+              </Alert>
+            ) : null}
             {isContextOrVersionChanged && (
               <Alert severity="warning">
                 You have modified the context or version of this proxy. After
@@ -191,6 +202,7 @@ function EditLLMProxyForm() {
                   fullWidth
                   required
                   value={name}
+                  disabled={isReadOnlyProxy}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter proxy name"
                   error={name.length > MAX_NAME_LENGTH}
@@ -207,6 +219,7 @@ function EditLLMProxyForm() {
                 <TextField
                   fullWidth
                   value={version}
+                  disabled={isReadOnlyProxy}
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="e.g., 1.0"
                   error={version.length > MAX_VERSION_LENGTH}
@@ -242,6 +255,7 @@ function EditLLMProxyForm() {
               <TextField
                 fullWidth
                 value={context}
+                disabled={isReadOnlyProxy}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Enter context path"
                 error={context.length > MAX_CONTEXT_LENGTH}

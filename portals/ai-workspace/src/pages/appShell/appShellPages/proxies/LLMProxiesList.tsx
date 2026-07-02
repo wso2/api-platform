@@ -63,8 +63,6 @@ import { FormattedMessage } from 'react-intl';
 import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 
-const MAX_LLM_PROXIES_PER_ORG = 5;
-
 function getHttpStatusCode(error?: Error | null): number | null {
   if (!error) return null;
 
@@ -182,9 +180,7 @@ export default function LLMProxiesList() {
     );
   };
 
-  const isProxyQuotaReached =
-    (proxiesResponse.count ?? proxiesResponse.list.length) >=
-    MAX_LLM_PROXIES_PER_ORG;
+  const isProxyQuotaReached = false;
   const proxyQuotaTooltip =
     'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
   const createProxyButtonSx = {

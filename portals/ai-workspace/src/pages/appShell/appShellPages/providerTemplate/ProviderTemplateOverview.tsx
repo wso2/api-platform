@@ -75,6 +75,7 @@ import type {
   UpdateProviderTemplateRequest,
 } from '../../../../utils/types';
 import { downloadTemplateYaml } from '../../../../utils/providerTemplateManifest';
+import { GatewayArtifactReadOnlyBanner } from '../../../../utils/readOnlyArtifacts';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import TemplateTokenMapping from './TemplateTokenMapping';
 
@@ -530,6 +531,13 @@ export default function ProviderTemplateOverview() {
   const isReadOnly = isBuiltIn;
   const canEdit = !isReadOnly;
   const canDelete = !isReadOnly;
+  // Data-plane-originated (gateway-pushed) template: the gateway owns the runtime
+  // configuration, so the Connection (endpoint/auth) and Token Mapping (extraction +
+  // resource mappings) sections are read-only in the control plane. Name/description/
+  // OpenAPI/logo stay editable, so the Update button remains active — the locked
+  // sections simply can't contribute a change.
+  const isDpOrigin = Boolean(template.readOnly);
+  const isSectionReadOnly = isReadOnly || isDpOrigin;
   const isEnabled = template.enabled !== false;
 
   const handleToggleEnabled = async (next: boolean) => {
@@ -1016,9 +1024,12 @@ export default function ProviderTemplateOverview() {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
+              {isDpOrigin && !isReadOnly && (
+                <GatewayArtifactReadOnlyBanner message="Connection settings are managed by the gateway that created this template and are read-only here." />
+              )}
               <Box
                 sx={
-                  isReadOnly
+                  isSectionReadOnly
                     ? { pointerEvents: 'none', opacity: 0.7 }
                     : undefined
                 }
@@ -1096,9 +1107,12 @@ export default function ProviderTemplateOverview() {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={2}>
+              {isDpOrigin && !isReadOnly && (
+                <GatewayArtifactReadOnlyBanner message="Token mapping is managed by the gateway that created this template and is read-only here." />
+              )}
               <Box
                 sx={
-                  isReadOnly
+                  isSectionReadOnly
                     ? { pointerEvents: 'none', opacity: 0.7 }
                     : undefined
                 }
@@ -1112,7 +1126,7 @@ export default function ProviderTemplateOverview() {
                     setIsDirty(true);
                   }}
                   spec={parsedSpec}
-                  hidePerResource={isReadOnly}
+                  hidePerResource={isSectionReadOnly}
                 />
               </Box>
             </TabPanel>
