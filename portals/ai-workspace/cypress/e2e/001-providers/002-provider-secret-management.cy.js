@@ -55,7 +55,8 @@ describe('AI Workspace — LLM provider secret management', () => {
       })
       .then((response) => {
         expect(response.status).to.eq(200);
-        organizationId = response.body?.id ?? '';
+        const orgs = response.body?.list ?? [];
+        organizationId = orgs[0]?.id ?? '';
         expect(organizationId).to.not.equal('');
       });
   });

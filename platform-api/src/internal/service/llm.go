@@ -276,16 +276,6 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if existing.ManagedBy == "wso2" {
 		return nil, constants.ErrLLMProviderTemplateReadOnly
 	}
-	if err := ensureOriginMutable(existing.Origin); err != nil {
-		return nil, err
-	}
-
-	if req.Metadata == nil {
-		return nil, constants.ErrInvalidInput
-	}
-	if err := utils.ValidateURL(strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
-		return nil, constants.ErrInvalidInput
-	}
 
 	if req.Version != "" && req.Version != existing.Version {
 		return nil, fmt.Errorf("%w: template version cannot be changed via update; use the versions endpoint", constants.ErrInvalidInput)
