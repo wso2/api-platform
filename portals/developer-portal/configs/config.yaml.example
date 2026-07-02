@@ -147,6 +147,8 @@ authenticatedPages:
   - "**/myapis"
   - "**/myapis/**"
   - "**/myapis?**"
+  - "**/api-keys"
+  - "**/api-keys?**"
 
 authorizedPages:
   - "**/applications"
