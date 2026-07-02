@@ -1150,7 +1150,7 @@ function ServiceProviderOverviewContent() {
                                   variant="body2"
                                   color="primary.main"
                                 >
-                                  {model.name || model.id}
+                                  {model.displayName || model.id}
                                 </Typography>
                               </Box>
                             ))}

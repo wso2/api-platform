@@ -78,12 +78,12 @@ function buildModelProvidersFromTemplate(templateId?: string): ModelProvider[] {
   return [
     {
       id: normalizedTemplateId,
-      name:
+      displayName:
         TEMPLATE_PROVIDER_NAME_BY_ID[normalizedTemplateId] ??
         normalizedTemplateId,
       models: modelIds.map((modelId) => ({
         id: modelId,
-        name: modelId,
+        displayName: modelId,
       })),
     },
   ];
