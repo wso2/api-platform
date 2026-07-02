@@ -17,14 +17,14 @@ Get the AI Workspace running locally in under 5 minutes using Docker Compose.
 ### 1. Download AI Workspace
 
 ```bash
-curl -sLO https://github.com/wso2/api-platform/releases/download/ai-workspace/v0.1.0/wso2apip-ai-workspace-0.1.0.zip && \
-unzip wso2apip-ai-workspace-0.1.0.zip
+curl -sLO https://github.com/wso2/api-platform/releases/download/ai-workspace/v1.0.0-alpha/wso2apip-ai-workspace-1.0.0-alpha.zip && \
+unzip wso2apip-ai-workspace-1.0.0-alpha.zip
 ```
 
 ### 2. Start the stack
 
 ```bash
-cd wso2apip-ai-workspace-0.1.0
+cd wso2apip-ai-workspace-1.0.0-alpha
 docker compose up -d
 ```
 
