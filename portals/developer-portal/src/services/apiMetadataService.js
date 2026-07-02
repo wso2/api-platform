@@ -94,6 +94,14 @@ const createAPIMetadata = async (req, res) => {
             }
         }
 
+        if (req.__forceApiType) {
+            apiMetadata.type = req.__forceApiType;
+        } else if (apiMetadata.type === constants.API_TYPE.MCP) {
+            throw new Sequelize.ValidationError(
+                "MCP servers must be created via /devportal/v1/mcp-servers"
+            );
+        }
+
         // Validate input
         const hasGraphQLSchema = apiMetadata.type === constants.API_TYPE.GRAPHQL &&
             req.files?.schemaDefinition?.[0];
@@ -122,6 +130,7 @@ const createAPIMetadata = async (req, res) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, userId, t);
             const apiId = createdAPI.dataValues.uuid;
+            apiMetadata.handle = createdAPI.dataValues.handle;
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -220,7 +229,8 @@ const createAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.storeMany(artifactApiContent, apiId, userId, t);
             }
-            apiMetadata.id = apiId;
+            apiMetadata.id = apiMetadata.handle;
+            delete apiMetadata.handle;
         });
 
 
@@ -279,12 +289,26 @@ async function allowAPIStatusChange(apiStatus, orgId, apiId) {
     return true;
 }
 
+/**
+ * Resolves a handle to its uuid, scoped by whether the caller is operating on the
+ * `/apis` family (excludes MCP-typed records) or the `/mcp-servers` family (only
+ * MCP-typed records). `req.__forceApiType` is set by mcpServerService when it
+ * delegates into these shared handlers so they can be reused for both resource
+ * families without duplicating their logic.
+ */
+async function resolveScopedApiId(req, orgId, apiHandle) {
+    return req.__forceApiType === constants.API_TYPE.MCP
+        ? apiDao.getIdByType(orgId, apiHandle, constants.API_TYPE.MCP)
+        : apiDao.getIdExcludingType(orgId, apiHandle, constants.API_TYPE.MCP);
+}
+
 const getAPIMetadata = async (req, res) => {
 
     const orgId = req.orgId;
     const { apiId: apiHandle } = req.params;
     try {
-        const retrievedAPI = await getMetadataFromDBByHandle(orgId, apiHandle);
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
+        const retrievedAPI = apiId ? await getMetadataFromDB(orgId, apiId) : "";
         if (retrievedAPI !== "") {
             // Create response object
             res.status(200).send(retrievedAPI);
@@ -316,20 +340,6 @@ const getMetadataFromDB = async (orgId, apiId) => {
     });
 };
 
-const getMetadataFromDBByHandle = async (orgId, apiHandle) => {
-
-    return await sequelize.transaction({
-        timeout: 60000,
-    }, async (t) => {
-        const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, handle: apiHandle }, t);
-        if (retrievedAPI.length > 0) {
-            return new APIDTO(retrievedAPI[0]);
-        } else {
-            return "";
-        }
-    });
-};
-
 const getAllAPIMetadata = async (req, res) => {
     try {
         const orgId = req.orgId;
@@ -339,7 +349,8 @@ const getAllAPIMetadata = async (req, res) => {
         const tags = req.query.tags;
         const view = req.query.view;
         const retrievedAPIs = await getMetadataListFromDB(orgId, searchTerm, tags, apiName, apiVersion, view);
-        res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
+        const nonMcpAPIs = retrievedAPIs.filter((api) => api.type !== constants.API_TYPE.MCP);
+        res.status(200).json(util.toPaginatedList(nonMcpAPIs, req));
     } catch (error) {
         logger.error('API metadata list retrieval failed', {
             error: error.message,
@@ -392,7 +403,7 @@ const updateAPIMetadata = async (req, res) => {
     const apiArtifactFile = req.files?.artifact?.[0];
 
     try {
-        apiId = await apiDao.getId(orgId, apiHandle);
+        apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return res.status(404).send("API not found");
         }
@@ -632,7 +643,7 @@ const deleteAPIMetadata = async (req, res) => {
         timeout: 60000,
     }, async (t) => {
         try {
-            apiId = await apiDao.getId(orgId, apiHandle);
+            apiId = await resolveScopedApiId(req, orgId, apiHandle);
             if (!apiId) {
                 return res.status(404).send("API not found");
             }
@@ -671,7 +682,7 @@ const createAPITemplate = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { apiId: apiHandle } = req.params;
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return res.status(404).send("API not found");
         }
@@ -785,7 +796,7 @@ const createAPIContent = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { apiId: apiHandle } = req.params;
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return res.status(404).send("API not found");
         }
@@ -844,7 +855,7 @@ const updateAPITemplate = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { apiId: apiHandle } = req.params;
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return res.status(404).send("API not found");
         }
@@ -953,7 +964,7 @@ const updateAPIContent = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { apiId: apiHandle } = req.params;
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return res.status(404).send("API not found");
         }
@@ -1012,7 +1023,7 @@ const getAPIFile = async (req, res) => {
     let contentType = "";
     let apiId;
     try {
-        apiId = await apiDao.getId(orgId, apiHandle);
+        apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return res.status(404).send("API not found");
         }
@@ -1081,7 +1092,7 @@ const deleteAPIFile = async (req, res) => {
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
     try {
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return res.status(404).send("API not found");
         }

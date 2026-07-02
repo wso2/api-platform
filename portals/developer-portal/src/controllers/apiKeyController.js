@@ -37,12 +37,21 @@ function normalizeOptionalId(value) {
     return { ok: true, value: value.trim() };
 }
 
-async function resolveApiId(orgId, apiHandle) {
-    return apiDao.getId(orgId, apiHandle);
+/**
+ * Resolves a handle to its uuid, scoped by whether the caller is operating on the
+ * `/apis` family (excludes MCP-typed records) or the `/mcp-servers` family (only
+ * MCP-typed records). `req.__forceApiType` is set by mcpServerKeysHandler when it
+ * delegates into these shared handlers so they can be reused for both resource
+ * families without duplicating their logic.
+ */
+async function resolveApiId(orgId, apiHandle, req) {
+    return req?.__forceApiType === constants.API_TYPE.MCP
+        ? apiDao.getIdByType(orgId, apiHandle, constants.API_TYPE.MCP)
+        : apiDao.getIdExcludingType(orgId, apiHandle, constants.API_TYPE.MCP);
 }
 
-async function resolveApiIdOrRespond(orgId, apiHandle, res) {
-    const apiId = await resolveApiId(orgId, apiHandle);
+async function resolveApiIdOrRespond(orgId, apiHandle, res, req) {
+    const apiId = await resolveApiId(orgId, apiHandle, req);
     if (!apiId) {
         res.status(404).json({ code: '404', message: 'Not Found', description: 'API not found' });
         return null;
@@ -87,15 +96,15 @@ async function generateApiKey(req, res) {
     }
 
     try {
-        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res);
+        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        const appId = await resolveAppId(orgId, req.user.sub, appIdResult.value);
+        const appId = await resolveAppId(orgId, util.resolveActor(req), appIdResult.value);
         if (appIdResult.value && !appId) {
             return res.status(404).json({ code: '404', message: 'Not Found', description: 'Application not found' });
         }
         const result = await apiKeyService.generate({
             orgId, apiId, subscriptionId, appId, name, expiresAt,
-            actor: req.user.sub, userToken: req.user.accessToken,
+            actor: util.resolveActor(req), userToken: req.user?.accessToken,
         });
         logUserAction('API_KEY_GENERATED', req, { orgId, apiId: apiHandle, keyId: result.keyId });
         return res.status(201).json(result);
@@ -129,13 +138,13 @@ async function listApiKeys(req, res) {
     }
 
     try {
-        const apiId = await resolveApiId(orgId, apiHandle);
+        const apiId = await resolveApiId(orgId, apiHandle, req);
         if (!apiId) {
             return res.status(404).json({
                 status: 'error', code: '404', message: 'Not Found', errors: [{ field: 'apiId', message: 'API not found' }],
             });
         }
-        const appId = await resolveAppId(orgId, req.user.sub, appIdResult.value);
+        const appId = await resolveAppId(orgId, util.resolveActor(req), appIdResult.value);
         if (appIdResult.value && !appId) {
             return res.status(404).json({
                 status: 'error', code: '404', message: 'Not Found', errors: [{ field: 'appId', message: 'Application not found' }],
@@ -174,10 +183,10 @@ async function regenerateApiKey(req, res) {
     }
 
     try {
-        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res);
+        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
         const result = await apiKeyService.regenerate({
-            orgId, apiId, keyId: keyId.trim(), expiresAt, actor: req.user.sub, userToken: req.user.accessToken,
+            orgId, apiId, keyId: keyId.trim(), expiresAt, actor: util.resolveActor(req), userToken: req.user?.accessToken,
         });
         logUserAction('API_KEY_REGENERATED', req, { orgId, apiId: apiHandle, keyId });
         return res.status(200).json(result);
@@ -201,9 +210,9 @@ async function revokeApiKey(req, res) {
     }
 
     try {
-        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res);
+        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        await apiKeyService.revoke({ orgId, apiId, keyId: keyId.trim(), actor: req.user.sub, userToken: req.user.accessToken });
+        await apiKeyService.revoke({ orgId, apiId, keyId: keyId.trim(), actor: util.resolveActor(req), userToken: req.user?.accessToken });
         logUserAction('API_KEY_REVOKED', req, { orgId, apiId: apiHandle, keyId });
         return res.status(204).send();
     } catch (err) {
@@ -229,14 +238,14 @@ async function associateApiKeyApplication(req, res) {
     }
 
     try {
-        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res);
+        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        const appId = await resolveAppId(orgId, req.user.sub, appHandle.trim());
+        const appId = await resolveAppId(orgId, util.resolveActor(req), appHandle.trim());
         if (!appId) {
             return res.status(404).json({ code: '404', message: 'Not Found', description: 'Application not found' });
         }
         const result = await apiKeyService.associateApplication({
-            orgId, apiId, keyId: keyId.trim(), appId, actor: req.user.sub,
+            orgId, apiId, keyId: keyId.trim(), appId, actor: util.resolveActor(req),
         });
         logUserAction('API_KEY_APP_ASSOCIATED', req, { orgId, apiId: apiHandle, keyId, appId: appHandle });
         return res.status(200).json(result);
@@ -260,9 +269,9 @@ async function removeApiKeyApplication(req, res) {
     }
 
     try {
-        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res);
+        const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        await apiKeyService.removeApplicationAssociation({ orgId, apiId, keyId: keyId.trim(), actor: req.user.sub });
+        await apiKeyService.removeApplicationAssociation({ orgId, apiId, keyId: keyId.trim(), actor: util.resolveActor(req) });
         logUserAction('API_KEY_APP_DISASSOCIATED', req, { orgId, apiId: apiHandle, keyId });
         return res.status(204).send();
     } catch (err) {
@@ -280,7 +289,7 @@ async function listApplicationApiKeys(req, res) {
     const { applicationId: applicationHandle } = req.params;
 
     try {
-        const appRecord = await applicationDao.getId(orgId, req.user.sub, applicationHandle);
+        const appRecord = await applicationDao.getId(orgId, util.resolveActor(req), applicationHandle);
         if (!appRecord) {
             return res.status(404).json({ code: '404', message: 'Application not found' });
         }

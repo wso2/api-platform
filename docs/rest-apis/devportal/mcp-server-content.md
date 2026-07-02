@@ -1,16 +1,16 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-api-content">API Content</h1>
+<h1 id="wso2-api-developer-portal-core-devportal-routes-mcp-server-content">MCP Server Content</h1>
 
-## Upload API content
+## Upload MCP server content
 
-<a id="opIdcreateApiContent"></a>
+<a id="opIdcreateMcpServerContent"></a>
 
-`POST /devportal/v1/apis/{apiId}/assets`
+`POST /devportal/v1/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
+curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -19,14 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets 
 
 ```
 
-Uploads the static content package for an API.
-
-The `apiContent` ZIP must contain at least one of these root directories:
-- `web/` for API landing-page assets such as markdown, HTML, CSS, JavaScript, and images.
-- `docs/` for downloadable API documents.
-
-Use `docMetadata` to add external document links that are stored alongside uploaded documents.
-Use `imageMetadata` to map uploaded images to API image roles such as the API icon.
+Uploads the static content package for an MCP server. Mirrors `POST /devportal/v1/apis/{apiId}/assets`.
 
 > Payload
 
@@ -45,7 +38,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="upload-api-content-parameters">Parameters</h3>
+<h3 id="upload-mcp-server-content-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -53,7 +46,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
+|mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 #### Detailed descriptions
 
@@ -128,7 +121,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-<h3 id="upload-api-content-responses">Responses</h3>
+<h3 id="upload-mcp-server-content-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -137,7 +130,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="upload-api-content-responseschema">Response Schema</h3>
+<h3 id="upload-mcp-server-content-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -146,17 +139,17 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 |status|error|
 |status|error|
 
-## Replace API content
+## Replace MCP server content
 
-<a id="opIdreplaceApiContent"></a>
+<a id="opIdreplaceMcpServerContent"></a>
 
-`PUT /devportal/v1/apis/{apiId}/assets`
+`PUT /devportal/v1/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -165,11 +158,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
 
 ```
 
-Replaces or adds static content files for an existing API.
-
-The upload format is the same as `POST /devportal/v1/apis/{apiId}/assets`.
-Existing files with the same stored `type` and `fileName` are updated; new files are created.
-Image metadata is updated only when image metadata can be resolved from the upload or request body.
+Replaces or adds static content files for an existing MCP server. Mirrors `PUT /devportal/v1/apis/{apiId}/assets`.
 
 > Payload
 
@@ -188,7 +177,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="replace-api-content-parameters">Parameters</h3>
+<h3 id="replace-mcp-server-content-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -196,7 +185,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
+|mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 #### Detailed descriptions
 
@@ -271,7 +260,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-<h3 id="replace-api-content-responses">Responses</h3>
+<h3 id="replace-mcp-server-content-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -280,7 +269,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="replace-api-content-responseschema">Response Schema</h3>
+<h3 id="replace-mcp-server-content-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -289,28 +278,24 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 |status|error|
 |status|error|
 
-## Get an API content file
+## Get an MCP server content file
 
-<a id="opIdgetApiContentFile"></a>
+<a id="opIdgetMcpServerContentFile"></a>
 
-`GET /devportal/v1/apis/{apiId}/assets`
+`GET /devportal/v1/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single stored API content file.
-
-The `type` query parameter selects the stored content category and `fileName` selects the file
-within that category. Text files and external document links are returned as text. Image files are
-returned as binary content with a media type derived from the file extension.
+Retrieves a single stored MCP server content file. Mirrors `GET /devportal/v1/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -319,13 +304,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="get-an-api-content-file-parameters">Parameters</h3>
+<h3 id="get-an-mcp-server-content-file-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
-|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
+|mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
 
@@ -393,7 +378,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="get-an-api-content-file-responses">Responses</h3>
+<h3 id="get-an-mcp-server-content-file-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -402,7 +387,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="get-an-api-content-file-responseschema">Response Schema</h3>
+<h3 id="get-an-mcp-server-content-file-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -411,27 +396,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |status|error|
 |status|error|
 
-## Delete API content files
+## Delete MCP server content files
 
-<a id="opIddeleteApiContentFile"></a>
+<a id="opIddeleteMcpServerContentFile"></a>
 
-`DELETE /devportal/v1/apis/{apiId}/assets`
+`DELETE /devportal/v1/mcp-servers/{mcpServerId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets?type=document \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes stored API content.
-
-Send both `type` and `fileName` to delete one file. Send only `type` to delete all stored content
-files matching that content category for the API.
+Deletes stored MCP server content. Mirrors `DELETE /devportal/v1/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -440,13 +422,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="delete-api-content-files-parameters">Parameters</h3>
+<h3 id="delete-mcp-server-content-files-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|false|File name selector used to delete a single stored API content file.|
-|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
+|mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
 
@@ -498,16 +480,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="delete-api-content-files-responses">Responses</h3>
+<h3 id="delete-mcp-server-content-files-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|API content deleted successfully.|None|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|MCP server content deleted successfully.|None|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="delete-api-content-files-responseschema">Response Schema</h3>
+<h3 id="delete-mcp-server-content-files-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 

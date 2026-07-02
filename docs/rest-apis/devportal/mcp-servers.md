@@ -1,16 +1,16 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-apis">APIs</h1>
+<h1 id="wso2-api-developer-portal-core-devportal-routes-mcp-servers">MCP Servers</h1>
 
-## Create API metadata
+## Create MCP server metadata
 
-<a id="opIdcreateApiMetadata"></a>
+<a id="opIdcreateMcpServer"></a>
 
-`POST /devportal/v1/apis`
+`POST /devportal/v1/mcp-servers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis \
+curl -X POST https://devportal.api-platform.io/devportal/v1/mcp-servers \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -19,8 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. MCP servers must be created via `POST /devportal/v1/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
-`subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount` are ignored.
+Creates Developer Portal MCP server metadata. Mirrors `POST /devportal/v1/apis` — same artifact ZIP, YAML (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is always typed `MCP`, regardless of what `type` is supplied.
 
 > Payload
 
@@ -44,7 +43,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="create-api-metadata-parameters">Parameters</h3>
+<h3 id="create-mcp-server-metadata-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -150,7 +149,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="create-api-metadata-responses">Responses</h3>
+<h3 id="create-mcp-server-metadata-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -160,7 +159,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="create-api-metadata-responseschema">Response Schema</h3>
+<h3 id="create-mcp-server-metadata-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -175,24 +174,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |201|Location|string|uri|URL of the created API metadata resource.|
 
-## List API metadata
+## List MCP server metadata
 
-<a id="opIdgetAllApiMetadataForOrganization"></a>
+<a id="opIdgetAllMcpServersForOrganization"></a>
 
-`GET /devportal/v1/apis`
+`GET /devportal/v1/mcp-servers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis \
+curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists API metadata for an organization. The service supports exact filters by API name, version, and tags, free-text search with `query`, and view filtering. Unknown query parameters are rejected. MCP-typed records are never returned here — use `GET /devportal/v1/mcp-servers`.
+Lists MCP server metadata for an organization. Mirrors `GET /devportal/v1/apis` but only returns MCP-typed records.
 
 ### Authentication
 
@@ -201,7 +200,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="list-api-metadata-parameters">Parameters</h3>
+<h3 id="list-mcp-server-metadata-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -288,7 +287,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="list-api-metadata-responses">Responses</h3>
+<h3 id="list-mcp-server-metadata-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -296,7 +295,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="list-api-metadata-responseschema">Response Schema</h3>
+<h3 id="list-mcp-server-metadata-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -381,24 +380,24 @@ Status Code **200**
 |status|error|
 |status|error|
 
-## Get API metadata
+## Get MCP server metadata
 
-<a id="opIdgetApiMetadata"></a>
+<a id="opIdgetMcpServer"></a>
 
-`GET /devportal/v1/apis/{apiId}`
+`GET /devportal/v1/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
+curl -X GET https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single API metadata record by Developer Portal API ID.
+Retrieves a single MCP server metadata record by Developer Portal MCP server ID.
 
 ### Authentication
 
@@ -407,11 +406,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="get-api-metadata-parameters">Parameters</h3>
+<h3 id="get-mcp-server-metadata-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
+|mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
 
@@ -492,7 +491,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="get-api-metadata-responses">Responses</h3>
+<h3 id="get-mcp-server-metadata-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -501,7 +500,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="get-api-metadata-responseschema">Response Schema</h3>
+<h3 id="get-mcp-server-metadata-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -510,17 +509,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |status|error|
 |status|error|
 
-## Update API metadata
+## Update MCP server metadata
 
-<a id="opIdupdateApiMetadata"></a>
+<a id="opIdupdateMcpServer"></a>
 
-`PUT /devportal/v1/apis/{apiId}`
+`PUT /devportal/v1/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
+curl -X PUT https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -529,7 +528,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
 
 ```
 
-Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and `apiMetadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist.
+Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /devportal/v1/apis/{apiId}`.
 
 > Payload
 
@@ -553,7 +552,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="update-api-metadata-parameters">Parameters</h3>
+<h3 id="update-mcp-server-metadata-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -563,7 +562,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
 |» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the API's stored handle; when the API is created from a YAML artifact instead, the handle is always taken from `metadata.name`.|
-|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
+|mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
 
@@ -658,7 +657,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="update-api-metadata-responses">Responses</h3>
+<h3 id="update-mcp-server-metadata-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -668,7 +667,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="update-api-metadata-responseschema">Response Schema</h3>
+<h3 id="update-mcp-server-metadata-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -677,24 +676,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |status|error|
 |status|error|
 
-## Delete API metadata
+## Delete MCP server metadata
 
-<a id="opIddeleteApiMetadata"></a>
+<a id="opIddeleteMcpServer"></a>
 
-`DELETE /devportal/v1/apis/{apiId}`
+`DELETE /devportal/v1/mcp-servers/{mcpServerId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/apis/{apiId} \
+curl -X DELETE https://devportal.api-platform.io/devportal/v1/mcp-servers/{mcpServerId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes API metadata when the API has no active subscriptions.
+Deletes MCP server metadata when the MCP server has no active subscriptions.
 
 ### Authentication
 
@@ -703,11 +702,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="delete-api-metadata-parameters">Parameters</h3>
+<h3 id="delete-mcp-server-metadata-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
+|mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
 
@@ -779,7 +778,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="delete-api-metadata-responses">Responses</h3>
+<h3 id="delete-mcp-server-metadata-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -789,7 +788,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="delete-api-metadata-responseschema">Response Schema</h3>
+<h3 id="delete-mcp-server-metadata-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 

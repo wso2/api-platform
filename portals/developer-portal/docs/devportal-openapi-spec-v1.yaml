@@ -41,6 +41,9 @@ tags:
   - name: Organization Content
   - name: APIs
   - name: API Content
+  - name: MCP Servers
+  - name: MCP Server Content
+  - name: MCP Server Keys
   - name: Subscription Plans
   - name: Labels
   - name: Applications
@@ -254,8 +257,9 @@ paths:
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
         `status`, `agentVisibility`, `tags`, `labels`,
         `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
-        The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
-        GraphQL APIs when provided.
+        The service also stores labels, subscription plan mappings, image metadata, and schema definitions for
+        GraphQL APIs when provided. MCP servers must be created via `POST /devportal/v1/mcp-servers` instead — a
+        request whose resolved `type` is `MCP` is rejected with `400`.
 
         `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is
         a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only
@@ -285,7 +289,8 @@ paths:
       summary: List API metadata
       description: >-
         Lists API metadata for an organization. The service supports exact filters by API name, version, and tags,
-        free-text search with `query`, and view filtering. Unknown query parameters are rejected.
+        free-text search with `query`, and view filtering. Unknown query parameters are rejected. MCP-typed records
+        are never returned here — use `GET /devportal/v1/mcp-servers`.
       operationId: getAllApiMetadataForOrganization
       parameters:
         - $ref: "#/components/parameters/apiSearchQuery"
@@ -1242,6 +1247,417 @@ paths:
         - OAuth2Security:
             - dp:api_key_update
             - dp:api_key_manage
+  /devportal/v1/mcp-servers:
+    post:
+      tags:
+        - MCP Servers
+      summary: Create MCP server metadata
+      description: >-
+        Creates Developer Portal MCP server metadata. Mirrors `POST /devportal/v1/apis` — same artifact ZIP, YAML
+        (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is
+        always typed `MCP`, regardless of what `type` is supplied.
+      operationId: createMcpServer
+      requestBody:
+        $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/ApiMetadataCreateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_create
+            - dp:mcp_manage
+    get:
+      tags:
+        - MCP Servers
+      summary: List MCP server metadata
+      description: >-
+        Lists MCP server metadata for an organization. Mirrors `GET /devportal/v1/apis` but only returns MCP-typed
+        records.
+      operationId: getAllMcpServersForOrganization
+      parameters:
+        - $ref: "#/components/parameters/apiSearchQuery"
+        - $ref: "#/components/parameters/apiNameQuery"
+        - $ref: "#/components/parameters/apiVersionQuery"
+        - $ref: "#/components/parameters/apiTagsQuery"
+        - $ref: "#/components/parameters/apiViewQuery"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiMetadataListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_read
+            - dp:mcp_manage
+  /devportal/v1/mcp-servers/{mcpServerId}:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    get:
+      tags:
+        - MCP Servers
+      summary: Get MCP server metadata
+      description: Retrieves a single MCP server metadata record by Developer Portal MCP server ID.
+      operationId: getMcpServer
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiMetadataResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TextMessageResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_read
+            - dp:mcp_manage
+    put:
+      tags:
+        - MCP Servers
+      summary: Update MCP server metadata
+      description: >-
+        Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /devportal/v1/apis/{apiId}`.
+      operationId: updateMcpServer
+      requestBody:
+        $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiMetadataResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_update
+            - dp:mcp_manage
+    delete:
+      tags:
+        - MCP Servers
+      summary: Delete MCP server metadata
+      description: Deletes MCP server metadata when the MCP server has no active subscriptions.
+      operationId: deleteMcpServer
+      responses:
+        "200":
+          $ref: "#/components/responses/TextMessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_delete
+            - dp:mcp_manage
+  /devportal/v1/mcp-servers/{mcpServerId}/assets:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    post:
+      tags:
+        - MCP Server Content
+      summary: Upload MCP server content
+      description: >-
+        Uploads the static content package for an MCP server. Mirrors `POST /devportal/v1/apis/{apiId}/assets`.
+      operationId: createMcpServerContent
+      requestBody:
+        $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_content_create
+            - dp:mcp_content_manage
+    put:
+      tags:
+        - MCP Server Content
+      summary: Replace MCP server content
+      description: >-
+        Replaces or adds static content files for an existing MCP server. Mirrors `PUT /devportal/v1/apis/{apiId}/assets`.
+      operationId: replaceMcpServerContent
+      requestBody:
+        $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_content_update
+            - dp:mcp_content_manage
+    get:
+      tags:
+        - MCP Server Content
+      summary: Get an MCP server content file
+      description: Retrieves a single stored MCP server content file. Mirrors `GET /devportal/v1/apis/{apiId}/assets`.
+      operationId: getMcpServerContentFile
+      security:
+        - OAuth2Security:
+            - dp:mcp_content_read
+            - dp:mcp_content_manage
+      parameters:
+        - $ref: "#/components/parameters/apiContentTypeQuery"
+        - $ref: "#/components/parameters/apiContentFileNameQuery"
+      responses:
+        "200":
+          $ref: "#/components/responses/APIContentAssetResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TextMessageResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      tags:
+        - MCP Server Content
+      summary: Delete MCP server content files
+      description: >-
+        Deletes stored MCP server content. Mirrors `DELETE /devportal/v1/apis/{apiId}/assets`.
+      operationId: deleteMcpServerContentFile
+      parameters:
+        - $ref: "#/components/parameters/apiContentTypeQuery"
+        - $ref: "#/components/parameters/fileNameQuery"
+      responses:
+        "204":
+          description: MCP server content deleted successfully.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TextMessageResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_content_delete
+            - dp:mcp_content_manage
+  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/generate:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    post:
+      tags:
+        - MCP Server Keys
+      operationId: generateMcpServerApiKey
+      summary: Generate an MCP server API key
+      description: >-
+        Generates an API key for an MCP server. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/generate`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyBody"
+      responses:
+        "201":
+          description: Generated API key. The plaintext `key` is returned exactly once.
+          headers:
+            Location:
+              description: URL of the generated API key resource.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyResponse"
+        "400":
+          $ref: "#/components/responses/SimpleBadRequest"
+        "403":
+          $ref: "#/components/responses/SimpleForbidden"
+        "404":
+          $ref: "#/components/responses/SimpleNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_key_create
+            - dp:mcp_key_manage
+  /devportal/v1/mcp-servers/{mcpServerId}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    get:
+      tags:
+        - MCP Server Keys
+      operationId: listMcpServerApiKeys
+      summary: List MCP server API keys
+      description: Lists API keys for the given MCP server. Mirrors `GET /devportal/v1/apis/{apiId}/api-keys`.
+      parameters:
+        - $ref: "#/components/parameters/appIdQueryOptional"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiKeyListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_key_read
+            - dp:mcp_key_manage
+  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/regenerate:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    post:
+      tags:
+        - MCP Server Keys
+      operationId: regenerateMcpServerApiKey
+      summary: Regenerate an MCP server API key
+      description: >-
+        Regenerates the secret for an existing MCP server API key identified by `keyId` in the request body. Mirrors
+        `POST /devportal/v1/apis/{apiId}/api-keys/regenerate`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyRegenerateBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiKeyGenerateResponse"
+        "403":
+          $ref: "#/components/responses/SimpleForbidden"
+        "404":
+          $ref: "#/components/responses/SimpleNotFound"
+        "409":
+          description: The key has already been revoked and cannot be regenerated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleErrorResponse"
+              example:
+                code: "409"
+                message: Cannot regenerate a revoked key
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_key_update
+            - dp:mcp_key_manage
+  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/revoke:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    post:
+      tags:
+        - MCP Server Keys
+      operationId: revokeMcpServerApiKey
+      summary: Revoke an MCP server API key
+      description: >-
+        Revokes an existing MCP server API key identified by `keyId` in the request body. Mirrors
+        `POST /devportal/v1/apis/{apiId}/api-keys/revoke`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyRevokeBody"
+      responses:
+        "204":
+          description: API key revoked successfully.
+        "403":
+          $ref: "#/components/responses/SimpleForbidden"
+        "404":
+          $ref: "#/components/responses/SimpleNotFound"
+        "409":
+          description: The key has already been revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleErrorResponse"
+              example:
+                code: "409"
+                message: Key already revoked or not found
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_key_revoke
+            - dp:mcp_key_manage
+  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/associate:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    post:
+      tags:
+        - MCP Server Keys
+      operationId: associateMcpServerApiKeyApplication
+      summary: Associate an MCP server API key with an application
+      description: >-
+        Associates (or re-associates) an existing MCP server API key with an application, for analytics attribution
+        only. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/associate`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyAssociateBody"
+      responses:
+        "200":
+          description: Association updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyApplicationResponse"
+        "400":
+          $ref: "#/components/responses/SimpleBadRequest"
+        "403":
+          $ref: "#/components/responses/SimpleForbidden"
+        "404":
+          $ref: "#/components/responses/SimpleNotFound"
+        "409":
+          description: The key has already been revoked and cannot be associated with an application.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleErrorResponse"
+              example:
+                code: "409"
+                message: Cannot associate a revoked key
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_key_update
+            - dp:mcp_key_manage
+  /devportal/v1/mcp-servers/{mcpServerId}/api-keys/dissociate:
+    parameters:
+      - $ref: "#/components/parameters/mcpServerId"
+    post:
+      tags:
+        - MCP Server Keys
+      operationId: removeMcpServerApiKeyApplication
+      summary: Remove an MCP server API key's application association
+      description: >-
+        Removes the application association from an MCP server API key identified by `keyId` in the request body, if
+        any. Mirrors `POST /devportal/v1/apis/{apiId}/api-keys/dissociate`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyDissociateBody"
+      responses:
+        "204":
+          description: Association removed (or none existed).
+        "403":
+          $ref: "#/components/responses/SimpleForbidden"
+        "404":
+          $ref: "#/components/responses/SimpleNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:mcp_key_update
+            - dp:mcp_key_manage
   /devportal/v1/applications/{applicationId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
@@ -1928,6 +2344,21 @@ components:
             dp:api_content_update: Update API content.
             dp:api_content_delete: Delete API content.
             dp:api_content_manage: Manage API content.
+            dp:mcp_read: Read MCP server metadata.
+            dp:mcp_create: Create MCP server metadata.
+            dp:mcp_update: Update MCP server metadata.
+            dp:mcp_delete: Delete MCP server metadata.
+            dp:mcp_manage: Manage MCP server metadata.
+            dp:mcp_content_read: Read MCP server content.
+            dp:mcp_content_create: Create MCP server content.
+            dp:mcp_content_update: Update MCP server content.
+            dp:mcp_content_delete: Delete MCP server content.
+            dp:mcp_content_manage: Manage MCP server content.
+            dp:mcp_key_read: Read MCP server API keys.
+            dp:mcp_key_create: Generate MCP server API keys.
+            dp:mcp_key_update: Regenerate MCP server API keys.
+            dp:mcp_key_revoke: Revoke MCP server API keys.
+            dp:mcp_key_manage: Manage MCP server API keys.
             dp:sub_plan_read: Read subscription plans.
             dp:sub_plan_create: Create subscription plans.
             dp:sub_plan_update: Update subscription plans.
@@ -2010,7 +2441,15 @@ components:
       schema:
         type: string
         example: weather-api-v1
-      description: The API's handle (unique per org).
+      description: The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.
+    mcpServerId:
+      name: mcpServerId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: weather-mcp-v1
+      description: The MCP server's handle (unique per org).
     planId:
       name: planId
       in: path

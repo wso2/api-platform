@@ -46,6 +46,30 @@ Base URLs:
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
 
+### [MCP Servers](mcp-servers.md)
+
+- [Create MCP server metadata](mcp-servers.md#create-mcp-server-metadata)
+- [List MCP server metadata](mcp-servers.md#list-mcp-server-metadata)
+- [Get MCP server metadata](mcp-servers.md#get-mcp-server-metadata)
+- [Update MCP server metadata](mcp-servers.md#update-mcp-server-metadata)
+- [Delete MCP server metadata](mcp-servers.md#delete-mcp-server-metadata)
+
+### [MCP Server Content](mcp-server-content.md)
+
+- [Upload MCP server content](mcp-server-content.md#upload-mcp-server-content)
+- [Replace MCP server content](mcp-server-content.md#replace-mcp-server-content)
+- [Get an MCP server content file](mcp-server-content.md#get-an-mcp-server-content-file)
+- [Delete MCP server content files](mcp-server-content.md#delete-mcp-server-content-files)
+
+### [MCP Server Keys](mcp-server-keys.md)
+
+- [Generate an MCP server API key](mcp-server-keys.md#generate-an-mcp-server-api-key)
+- [List MCP server API keys](mcp-server-keys.md#list-mcp-server-api-keys)
+- [Regenerate an MCP server API key](mcp-server-keys.md#regenerate-an-mcp-server-api-key)
+- [Revoke an MCP server API key](mcp-server-keys.md#revoke-an-mcp-server-api-key)
+- [Associate an MCP server API key with an application](mcp-server-keys.md#associate-an-mcp-server-api-key-with-an-application)
+- [Remove an MCP server API key's application association](mcp-server-keys.md#remove-an-mcp-server-api-keys-application-association)
+
 ### [Subscription Plans](subscription-plans.md)
 
 - [List subscription plans](subscription-plans.md#list-subscription-plans)

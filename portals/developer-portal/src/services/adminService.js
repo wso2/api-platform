@@ -422,7 +422,8 @@ const applyTheme = async (req, res) => {
         });
         fs.rmSync(extractPath, { recursive: true, force: true });
         if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
-        res.status(200).json({ id: orgId, fileName: zipFile.originalname });
+        const organization = await orgDao.getByUuid(orgId);
+        res.status(200).json({ id: organization.handle, fileName: zipFile.originalname });
     } catch (error) {
         logger.error('Apply theme failed', { error: error.message, stack: error.stack, orgId, viewName });
         fs.rmSync(extractPath, { recursive: true, force: true });
