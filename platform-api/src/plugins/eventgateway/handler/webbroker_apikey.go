@@ -40,14 +40,16 @@ import (
 type WebBrokerAPIKeyHandler struct {
 	webbrokerAPIService *egservice.WebBrokerAPIService
 	apiKeyService       *service.APIKeyService
+	identity            *service.IdentityService
 	slogger             *slog.Logger
 }
 
 // NewWebBrokerAPIKeyHandler creates a new WebBrokerAPIKeyHandler instance
-func NewWebBrokerAPIKeyHandler(webbrokerAPIService *egservice.WebBrokerAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebBrokerAPIKeyHandler {
+func NewWebBrokerAPIKeyHandler(webbrokerAPIService *egservice.WebBrokerAPIService, apiKeyService *service.APIKeyService, identity *service.IdentityService, slogger *slog.Logger) *WebBrokerAPIKeyHandler {
 	return &WebBrokerAPIKeyHandler{
 		webbrokerAPIService: webbrokerAPIService,
 		apiKeyService:       apiKeyService,
+		identity:            identity,
 		slogger:             slogger,
 	}
 }
@@ -79,7 +81,10 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "create WebBroker API key")
+	if !ok {
+		return
+	}
 
 	var req api.CreateAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -152,7 +157,10 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "update WebBroker API key")
+	if !ok {
+		return
+	}
 
 	var req api.UpdateAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -216,7 +224,10 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	userId := r.Header.Get("x-user-id")
+	userId, ok := resolveActor(w, r, h.identity, h.slogger, "revoke WebBroker API key")
+	if !ok {
+		return
+	}
 
 	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {

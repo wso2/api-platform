@@ -39,6 +39,7 @@ type LLMHandler struct {
 	templateService *service.LLMProviderTemplateService
 	providerService *service.LLMProviderService
 	proxyService    *service.LLMProxyService
+	identity        *service.IdentityService
 	slogger         *slog.Logger
 }
 
@@ -46,9 +47,10 @@ func NewLLMHandler(
 	templateService *service.LLMProviderTemplateService,
 	providerService *service.LLMProviderService,
 	proxyService *service.LLMProxyService,
+	identity *service.IdentityService,
 	slogger *slog.Logger,
 ) *LLMHandler {
-	return &LLMHandler{templateService: templateService, providerService: providerService, proxyService: proxyService, slogger: slogger}
+	return &LLMHandler{templateService: templateService, providerService: providerService, proxyService: proxyService, identity: identity, slogger: slogger}
 }
 
 func (h *LLMHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -111,11 +113,14 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
-
 	var req api.LLMProviderTemplate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		return
+	}
+
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM provider template")
+	if !ok {
 		return
 	}
 
@@ -153,7 +158,10 @@ func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *ht
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "copy LLM provider template version")
+	if !ok {
+		return
+	}
 
 	fromTemplateID := strings.TrimSpace(r.URL.Query().Get("fromTemplateId"))
 	toTemplateID := strings.TrimSpace(r.URL.Query().Get("toTemplateId"))
@@ -365,7 +373,10 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	updatedBy, _ := middleware.GetUserIDFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update LLM provider template")
+	if !ok {
+		return
+	}
 	resp, err := h.templateService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -443,7 +454,10 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM provider")
+	if !ok {
+		return
+	}
 
 	created, err := h.providerService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -550,7 +564,10 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedBy, _ := middleware.GetUserIDFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update LLM provider")
+	if !ok {
+		return
+	}
 	resp, err := h.providerService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -588,7 +605,10 @@ func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("llmProviderId")
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
+	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM provider")
+	if !ok {
+		return
+	}
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -628,7 +648,10 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
 		return
 	}
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM proxy")
+	if !ok {
+		return
+	}
 
 	created, err := h.proxyService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -792,7 +815,10 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedBy, _ := middleware.GetUserIDFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update LLM proxy")
+	if !ok {
+		return
+	}
 	resp, err := h.proxyService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -827,7 +853,10 @@ func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("llmProxyId")
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
+	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM proxy")
+	if !ok {
+		return
+	}
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
 		if respondArtifactGuardError(w, err) {

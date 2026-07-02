@@ -322,7 +322,7 @@ func TestListMappedAPIKeys_ReturnsUnifiedMappingsWithMetadata(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 20, 0)
 	if err != nil {
@@ -370,7 +370,7 @@ func TestListMappedAPIKeys_AppliesPagination(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 1, 1)
 	if err != nil {
@@ -409,7 +409,7 @@ func TestListMappedAPIKeys_LimitOneReturnsFirstPage(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 1, 0)
 	if err != nil {
@@ -454,7 +454,7 @@ func TestListMappedAPIKeysForAssociation_FiltersToAssociation(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	resp, err := svc.ListMappedAPIKeysForAssociation("my-app", "provider-1", "org-1", 20, 0)
 	if err != nil {
@@ -490,7 +490,7 @@ func TestListMappedAPIKeysForAssociation_ErrorsWhenAssociationMissing(t *testing
 		mappedAssociations: []*model.ApplicationAssociationTarget{},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	_, err := svc.ListMappedAPIKeysForAssociation("my-app", "provider-1", "org-1", 20, 0)
 	if !errors.Is(err, constants.ErrArtifactNotFound) {
@@ -520,6 +520,7 @@ func TestGetApplicationsByOrganization_AppliesPagination(t *testing.T) {
 		appRepo:     appRepo,
 		projectRepo: projectRepo,
 		orgRepo:     orgRepo,
+		identity:    newTestIdentityService(),
 	}
 
 	resp, err := svc.GetApplicationsByOrganization(orgID, projectID, 1, 1)
@@ -559,7 +560,7 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
 		KeyId: "key-1",
@@ -587,7 +588,7 @@ func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	err := svc.RemoveMappedAPIKey("my-app", "key-1", "orders-api", "org-1", "different-user")
 	if err != nil {
@@ -615,7 +616,7 @@ func TestAddMappedAPIKeys_ResolvesByAssociatedEntityID(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
 		KeyId: "shared-key",
@@ -647,7 +648,7 @@ func TestAddMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) 
 		artifactErr: errors.New("artifact lookup failed"),
 	}
 
-	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}, identity: newTestIdentityService()}
 
 	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
 		KeyId: "key-1",
@@ -685,7 +686,7 @@ func TestAddApplicationAssociations_AssociatesProviderAndProxy(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	_, err := svc.AddApplicationAssociations("my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{
 		{Id: "provider-1", Kind: constants.LLMProvider},
@@ -719,7 +720,7 @@ func TestAddApplicationAssociations_RejectsCrossProjectProxy(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	_, err := svc.AddApplicationAssociations("my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{{
 		Id:   "proxy-1",
@@ -741,7 +742,7 @@ func TestListApplicationAssociations_AppliesPagination(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	resp, err := svc.ListApplicationAssociations("my-app", "org-1", 1, 0)
 	if err != nil {
@@ -771,7 +772,7 @@ func TestRemoveApplicationAssociation_RemovesByResolvedTarget(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	err := svc.RemoveApplicationAssociation("my-app", "proxy-1", "org-1")
 	if err != nil {
@@ -800,7 +801,7 @@ func TestRemoveMappedAPIKey_DoesNotFailWhenBroadcastResolutionFails(t *testing.T
 		artifactErr: errors.New("artifact lookup failed"),
 	}
 
-	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}, identity: newTestIdentityService()}
 
 	err := svc.RemoveMappedAPIKey("my-app", "key-1", "orders-api", "org-1", "creator-user")
 	if err != nil {
@@ -919,6 +920,7 @@ func TestCreateApplication_AllowsMissingProjectID(t *testing.T) {
 		projectRepo: projectRepo,
 		orgRepo:     orgRepo,
 		auditRepo:   &noopAuditRepo{},
+		identity:    newTestIdentityService(),
 	}
 
 	// project_uuid is optional: creating without a project id succeeds and persists a project-less
@@ -1002,7 +1004,7 @@ func TestUpdateApplication_RejectsHandleChange(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "uuid-1", Handle: "my-app", Name: "My App", ProjectUUID: "proj-1"},
 	}
-	svc := &ApplicationService{appRepo: appRepo}
+	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	resp, err := svc.UpdateApplication("my-app", &api.Application{
 		Id: "renamed-app",
@@ -1028,6 +1030,7 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 		appRepo:     appRepo,
 		projectRepo: projectRepo,
 		orgRepo:     orgRepo,
+		identity:    newTestIdentityService(),
 	}
 
 	_, err := svc.CreateApplication(&api.CreateApplicationRequest{

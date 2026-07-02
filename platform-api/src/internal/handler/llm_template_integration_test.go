@@ -84,8 +84,9 @@ func setupLLMTemplateEnv(t *testing.T) (http.Handler, *database.DB, func()) {
 		t.Fatalf("seed built-ins: %v", err)
 	}
 
-	svc := service.NewLLMProviderTemplateService(repo, noopAudit{})
-	h := NewLLMHandler(svc, nil, nil, slog.Default())
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewLLMProviderTemplateService(repo, noopAudit{}, identityService)
+	h := NewLLMHandler(svc, nil, nil, identityService, slog.Default())
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 

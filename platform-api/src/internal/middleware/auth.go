@@ -444,6 +444,35 @@ func GetUserIDFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyUserID)
 }
 
+// GetSubClaimFromRequest extracts the token's OIDC "sub" (subject) claim from
+// the request context. This is the raw IdP subject identifier — distinct from
+// GetUserIDFromRequest, which returns the configured-claim/user_id/sub
+// precedence value used historically for audit columns. Prefer this for keying
+// the internal-UUID mapping (see service.IdentityService).
+func GetSubClaimFromRequest(r *http.Request) (string, bool) {
+	claims, ok := GetClaimsFromRequest(r)
+	if !ok || claims == nil || claims.Subject == "" {
+		return "", false
+	}
+	return claims.Subject, true
+}
+
+// GetActorIdentityFromRequest resolves the raw identity-provider identifier for
+// the actor behind r, preferring the token's "sub" claim and falling back to
+// GetUserIDFromRequest (configured-claim/user_id/sub) when sub is unavailable
+// (e.g. non-OIDC IdPs, or test/internal callers that only set the legacy
+// context key). ok is false only when neither source has a value — callers
+// that must reject unauthenticated requests should treat that as 401.
+// This mirrors the precedence used by service.IdentityService.InternalUserID;
+// use it at call sites that need the raw id before mapping (e.g. to
+// distinguish "claim missing" from "mapping failed").
+func GetActorIdentityFromRequest(r *http.Request) (string, bool) {
+	if sub, ok := GetSubClaimFromRequest(r); ok {
+		return sub, true
+	}
+	return GetUserIDFromRequest(r)
+}
+
 // GetUsernameFromRequest extracts the username from the request context.
 func GetUsernameFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyUsername)

@@ -29,6 +29,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	egservice "platform-api/src/plugins/eventgateway/service"
 
@@ -38,13 +39,15 @@ import (
 // WebBrokerAPIDeploymentHandler handles deployment routes for WebBroker APIs
 type WebBrokerAPIDeploymentHandler struct {
 	webbrokerAPIDeploymentService *egservice.WebBrokerAPIDeploymentService
+	identity                      *service.IdentityService
 	slogger                       *slog.Logger
 }
 
 // NewWebBrokerAPIDeploymentHandler creates a new WebBrokerAPIDeploymentHandler
-func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *egservice.WebBrokerAPIDeploymentService, slogger *slog.Logger) *WebBrokerAPIDeploymentHandler {
+func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *egservice.WebBrokerAPIDeploymentService, identity *service.IdentityService, slogger *slog.Logger) *WebBrokerAPIDeploymentHandler {
 	return &WebBrokerAPIDeploymentHandler{
 		webbrokerAPIDeploymentService: webbrokerAPIDeploymentService,
+		identity:                      identity,
 		slogger:                       slogger,
 	}
 }
@@ -92,7 +95,10 @@ func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(w http.ResponseWriter
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "deploy WebBroker API")
+	if !ok {
+		return
+	}
 	deployment, err := h.webbrokerAPIDeploymentService.DeployWebBrokerAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {

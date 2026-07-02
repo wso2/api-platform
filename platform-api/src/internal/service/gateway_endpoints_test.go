@@ -43,6 +43,7 @@ func TestRegisterGatewayEndpoints(t *testing.T) {
 			gatewayRepo: repo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID}},
 			auditRepo:   &noopAuditRepo{},
+			identity:    newTestIdentityService(),
 		}
 		return svc, repo
 	}
@@ -178,6 +179,7 @@ func TestUpdateGatewayEndpoints(t *testing.T) {
 			gatewayRepo: repo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
 			auditRepo:   &noopAuditRepo{},
+			identity:    newTestIdentityService(),
 		}
 		return svc, repo
 	}

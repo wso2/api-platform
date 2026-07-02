@@ -34,12 +34,14 @@ import (
 
 type APIHandler struct {
 	apiService *service.APIService
+	identity   *service.IdentityService
 	slogger    *slog.Logger
 }
 
-func NewAPIHandler(apiService *service.APIService, slogger *slog.Logger) *APIHandler {
+func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, slogger *slog.Logger) *APIHandler {
 	return &APIHandler{
 		apiService: apiService,
+		identity:   identity,
 		slogger:    slogger,
 	}
 }
@@ -87,7 +89,10 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create API")
+	if !ok {
+		return
+	}
 	apiResponse, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
@@ -271,7 +276,10 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedBy, _ := middleware.GetUserIDFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update API")
+	if !ok {
+		return
+	}
 	apiResponse, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId, updatedBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -336,7 +344,10 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
+	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete API")
+	if !ok {
+		return
+	}
 	err := h.apiService.DeleteAPIByHandle(apiId, orgId, deletedBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {

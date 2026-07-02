@@ -30,6 +30,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	egservice "platform-api/src/plugins/eventgateway/service"
 
@@ -39,13 +40,15 @@ import (
 // WebSubAPIHandler handles CRUD and auxiliary routes for WebSub APIs
 type WebSubAPIHandler struct {
 	websubAPIService *egservice.WebSubAPIService
+	identity         *service.IdentityService
 	slogger          *slog.Logger
 }
 
 // NewWebSubAPIHandler creates a new WebSubAPIHandler instance
-func NewWebSubAPIHandler(websubAPIService *egservice.WebSubAPIService, slogger *slog.Logger) *WebSubAPIHandler {
+func NewWebSubAPIHandler(websubAPIService *egservice.WebSubAPIService, identity *service.IdentityService, slogger *slog.Logger) *WebSubAPIHandler {
 	return &WebSubAPIHandler{
 		websubAPIService: websubAPIService,
+		identity:         identity,
 		slogger:          slogger,
 	}
 }
@@ -74,7 +77,10 @@ func (h *WebSubAPIHandler) CreateWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create WebSub API")
+	if !ok {
+		return
+	}
 
 	resp, err := h.websubAPIService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -155,7 +161,10 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	updatedBy, _ := middleware.GetUserIDFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update WebSub API")
+	if !ok {
+		return
+	}
 	resp, err := h.websubAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -174,7 +183,10 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 	}
 
 	id := r.PathValue("webSubApiId")
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
+	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete WebSub API")
+	if !ok {
+		return
+	}
 
 	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)

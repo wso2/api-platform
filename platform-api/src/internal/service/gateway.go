@@ -78,6 +78,7 @@ type GatewayService struct {
 	enableVersionVerification           bool
 	enableFunctionalityTypeVerification bool
 	auditRepo                           repository.AuditRepository
+	identity                            *IdentityService
 }
 
 // NewGatewayService creates a new gateway service
@@ -85,7 +86,7 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 	apiRepo repository.APIRepository, customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, slogger *slog.Logger,
 	enableVersionVerification bool, enableFunctionalityTypeVerification bool,
-	auditRepo repository.AuditRepository) *GatewayService {
+	auditRepo repository.AuditRepository, identity *IdentityService) *GatewayService {
 	return &GatewayService{
 		gatewayRepo:                         gatewayRepo,
 		orgRepo:                             orgRepo,
@@ -96,6 +97,7 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 		enableVersionVerification:           enableVersionVerification,
 		enableFunctionalityTypeVerification: enableFunctionalityTypeVerification,
 		auditRepo:                           auditRepo,
+		identity:                            identity,
 	}
 }
 
@@ -611,7 +613,7 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 	}
 
 	// 7. Return GatewayResponse
-	return s.gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway)
 }
 
 // ListGateways retrieves all gateways with constitution-compliant envelope structure
@@ -633,7 +635,13 @@ func (s *GatewayService) ListGateways(orgID *string) (*api.GatewayListResponse, 
 	// Convert to API types
 	responses := make([]api.GatewayResponse, 0, len(gateways))
 	for _, gw := range gateways {
-		if resp := s.gatewayModelToAPI(gw); resp != nil {
+		resp, err := s.gatewayModelToAPI(gw)
+		if err != nil {
+			return nil, err
+		}
+		if resp != nil {
+			// updatedBy is detail-only; omit it from list responses.
+			resp.UpdatedBy = nil
 			responses = append(responses, *resp)
 		}
 	}
@@ -661,7 +669,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 		return nil, errors.New("gateway not found")
 	}
 
-	return s.gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway)
 }
 
 // UpdateGateway updates gateway details
@@ -700,7 +708,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 		_ = s.auditRepo.Record("UPDATE", gateway.ID, "gateway", orgId, updatedBy)
 	}
 
-	return s.gatewayModelToAPI(gateway), nil
+	return s.gatewayModelToAPI(gateway)
 }
 
 // DeleteGateway deletes a gateway and all associated tokens (CASCADE)
@@ -1020,9 +1028,9 @@ func hashToken(plainToken string) string {
 // Mapping functions
 
 // gatewayModelToAPI converts a Gateway model to GatewayResponse API type
-func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
+func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.GatewayResponse, error) {
 	if gateway == nil {
-		return nil
+		return nil, nil
 	}
 
 	orgHandle := ""
@@ -1031,7 +1039,7 @@ func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) *api.GatewayR
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
-	return &api.GatewayResponse{
+	resp := &api.GatewayResponse{
 		Id:                &gateway.Handle,
 		OrganizationId:    &orgHandle,
 		DisplayName:       gateway.Name,
@@ -1042,9 +1050,18 @@ func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) *api.GatewayR
 		FunctionalityType: &functionalityType,
 		Version:           &gateway.Version,
 		IsActive:          &gateway.IsActive,
+		CreatedBy:         utils.StringPtrIfNotEmpty(gateway.CreatedBy),
+		UpdatedBy:         utils.StringPtrIfNotEmpty(gateway.UpdatedBy),
 		CreatedAt:         &gateway.CreatedAt,
 		UpdatedAt:         &gateway.UpdatedAt,
 	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // gatewayStatusModelToAPI converts a Gateway model to GatewayStatusResponse API type

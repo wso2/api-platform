@@ -690,3 +690,23 @@ CREATE INDEX idx_asr_org_handle ON dbo.artifact_secret_refs(organization_uuid, s
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_asr_org_gateway' AND object_id = OBJECT_ID(N'dbo.artifact_secret_refs'))
 CREATE INDEX idx_asr_org_gateway ON dbo.artifact_secret_refs(organization_uuid, gateway_id);
+
+-- Maps our internal user UUID to the IdP actor identity. Audit columns store the
+-- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
+IF OBJECT_ID(N'dbo.user_idp_references', N'U') IS NULL
+CREATE TABLE dbo.user_idp_references (
+    uuid       VARCHAR(40)  PRIMARY KEY,
+    idp_id     VARCHAR(255) NOT NULL UNIQUE,
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
+);
+
+-- User-to-organization membership, populated on org onboarding.
+IF OBJECT_ID(N'dbo.user_organization_mappings', N'U') IS NULL
+CREATE TABLE dbo.user_organization_mappings (
+    user_uuid  VARCHAR(40)  NOT NULL,
+    org_uuid   VARCHAR(40)  NOT NULL,
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (user_uuid, org_uuid),
+    FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
+);

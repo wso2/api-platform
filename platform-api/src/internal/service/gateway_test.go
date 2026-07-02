@@ -24,7 +24,7 @@ import (
 
 // TestValidateGatewayInput tests input validation logic
 func TestValidateGatewayInput(t *testing.T) {
-	service := &GatewayService{}
+	service := &GatewayService{identity: newTestIdentityService()}
 
 	tests := []struct {
 		name              string

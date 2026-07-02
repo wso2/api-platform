@@ -84,7 +84,7 @@ type WebBrokerAPI struct {
 	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy Username of the creator
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
@@ -120,6 +120,9 @@ type WebBrokerAPI struct {
 	Transport *[]WebBrokerAPITransport `json:"transport,omitempty" yaml:"transport,omitempty"`
 	UpdatedAt *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /webbroker-apis/{id}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
 	// Version Semantic version of the WebBroker API
 	Version string `json:"version" yaml:"version"`
 }
@@ -140,6 +143,9 @@ type WebBrokerAPITransport string
 type WebBrokerAPIListItem struct {
 	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable name for the WebBroker API
 	DisplayName     string                               `json:"displayName" yaml:"displayName"`
@@ -215,7 +221,7 @@ type WebSubAPI struct {
 	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// CreatedBy Username of the creator
+	// CreatedBy User identifier of the user who created this resource
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
@@ -243,7 +249,10 @@ type WebSubAPI struct {
 	// Transport Supported transport protocols
 	Transport *[]WebSubAPITransport `json:"transport,omitempty" yaml:"transport,omitempty"`
 	UpdatedAt *time.Time            `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream  Upstream              `json:"upstream" yaml:"upstream"`
+
+	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /websub-apis/{id}), omitted from list responses.
+	UpdatedBy *string  `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+	Upstream  Upstream `json:"upstream" yaml:"upstream"`
 
 	// Version Semantic version of the WebSub API
 	Version string `json:"version" yaml:"version"`
@@ -269,6 +278,9 @@ type WebSubAPIHmacSecretCreationResponse struct {
 // WebSubAPIHmacSecretInfo defines model for WebSubAPIHmacSecretInfo.
 type WebSubAPIHmacSecretInfo struct {
 	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable name for the HMAC secret
 	DisplayName string `json:"displayName" yaml:"displayName"`
@@ -310,6 +322,9 @@ type WebSubAPIHmacSecretRequest struct {
 type WebSubAPIListItem struct {
 	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable name for the WebSub API
 	DisplayName     string                            `json:"displayName" yaml:"displayName"`

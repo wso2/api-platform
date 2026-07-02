@@ -59,6 +59,8 @@ type SubscriptionPlan struct {
 	ExpiryTime         *time.Time             `json:"expiryTime,omitempty" db:"expiry_time"`
 	OrganizationUUID   string                 `json:"organizationId" db:"organization_uuid"`
 	Status             SubscriptionPlanStatus `json:"status" db:"status"`
+	CreatedBy          string                 `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy          string                 `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt          time.Time              `json:"createdAt" db:"created_at"`
 	UpdatedAt          time.Time              `json:"updatedAt" db:"updated_at"`
 }

@@ -36,13 +36,15 @@ import (
 // LLMProviderAPIKeyHandler handles API key operations for LLM providers
 type LLMProviderAPIKeyHandler struct {
 	apiKeyService *service.LLMProviderAPIKeyService
+	identity      *service.IdentityService
 	slogger       *slog.Logger
 }
 
 // NewLLMProviderAPIKeyHandler creates a new LLM provider API key handler
-func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService, slogger *slog.Logger) *LLMProviderAPIKeyHandler {
+func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService, identity *service.IdentityService, slogger *slog.Logger) *LLMProviderAPIKeyHandler {
 	return &LLMProviderAPIKeyHandler{
 		apiKeyService: apiKeyService,
+		identity:      identity,
 		slogger:       slogger,
 	}
 }
@@ -63,7 +65,10 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	callerUserID := r.Header.Get("x-user-id")
+	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "list LLM provider API keys")
+	if !ok {
+		return
+	}
 
 	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID)
 	if err != nil {
@@ -104,7 +109,10 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	callerUserID := r.Header.Get("x-user-id")
+	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM provider API key")
+	if !ok {
+		return
+	}
 
 	err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName)
 	if err != nil {
@@ -165,7 +173,10 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	userID := r.Header.Get("x-user-id")
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM provider API key")
+	if !ok {
+		return
+	}
 
 	response, err := h.apiKeyService.CreateLLMProviderAPIKey(r.Context(), providerID, orgID, userID, &req)
 	if err != nil {

@@ -47,6 +47,7 @@ type APIService struct {
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
+	identity             *IdentityService
 }
 
 // NewAPIService creates a new API service
@@ -56,7 +57,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, apiUtil *utils.APIUtil,
-	slogger *slog.Logger, auditRepo repository.AuditRepository) *APIService {
+	slogger *slog.Logger, auditRepo repository.AuditRepository, identity *IdentityService) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
@@ -69,7 +70,20 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 		apiUtil:              apiUtil,
 		slogger:              slogger,
 		auditRepo:            auditRepo,
+		identity:             identity,
 	}
+}
+
+// resolveRESTAPIIdentity replaces resp's createdBy/updatedBy UUIDs with the
+// raw external identity (or constants.DeletedUser), in place.
+func (s *APIService) resolveRESTAPIIdentity(resp *api.RESTAPI) error {
+	if resp == nil {
+		return nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return err
+	}
+	return s.identity.ResolveIdentityField(&resp.UpdatedBy)
 }
 
 // CreateAPI creates a new API with validation and business logic
@@ -103,10 +117,8 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		}
 	}
 
-	// Set default values if not provided
-	if req.CreatedBy == nil || *req.CreatedBy == "" {
-		req.CreatedBy = &createdBy
-	}
+	// createdBy is always inferred from the authenticated actor, never from the request body.
+	req.CreatedBy = &createdBy
 	if req.Kind == nil || *req.Kind == "" {
 		kind := constants.RestApi
 		req.Kind = &kind
@@ -145,7 +157,8 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 }
 
 // modelToRESTAPI converts an internal API model to the API representation,
-// resolving the project's handle for the response's projectId field.
+// resolving the project's handle for the response's projectId field and the
+// createdBy/updatedBy UUIDs to their raw external identity.
 func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
 	if apiModel == nil {
 		return nil, nil
@@ -158,7 +171,14 @@ func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
 	if project != nil {
 		projectHandle = project.Handle
 	}
-	return s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
+	resp, err := s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.resolveRESTAPIIdentity(resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // GetAPIByUUID retrieves an API by its ID
@@ -249,6 +269,8 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string)
 			return nil, err
 		}
 		if apiResponse != nil {
+			// updatedBy is detail-only; omit it from list responses.
+			apiResponse.UpdatedBy = nil
 			apis = append(apis, *apiResponse)
 		}
 	}
@@ -652,9 +674,7 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTA
 	if req.Description != nil {
 		existingAPI.Description = req.Description
 	}
-	if req.CreatedBy != nil {
-		existingAPI.CreatedBy = req.CreatedBy
-	}
+	// createdBy is immutable: intentionally not copied from req, even if the client sends one.
 	if req.LifeCycleStatus != nil {
 		existingAPI.LifeCycleStatus = req.LifeCycleStatus
 	}

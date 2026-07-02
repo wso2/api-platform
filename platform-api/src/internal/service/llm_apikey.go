@@ -37,6 +37,7 @@ type LLMProviderAPIKeyService struct {
 	gatewayRepo          repository.GatewayRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
+	identity             *IdentityService
 	slogger              *slog.Logger
 }
 
@@ -46,6 +47,7 @@ func NewLLMProviderAPIKeyService(
 	gatewayRepo repository.GatewayRepository,
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
+	identity *IdentityService,
 	slogger *slog.Logger,
 ) *LLMProviderAPIKeyService {
 	return &LLMProviderAPIKeyService{
@@ -53,6 +55,7 @@ func NewLLMProviderAPIKeyService(
 		gatewayRepo:          gatewayRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
+		identity:             identity,
 		slogger:              slogger,
 	}
 }
@@ -83,13 +86,17 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		if k.CreatedBy != userID {
 			continue
 		}
+		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
+		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
+			return nil, err
+		}
 		item := api.APIKeyItem{
 			Id:             &k.Name,
 			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
-			CreatedBy:      k.CreatedBy,
+			CreatedBy:      createdBy,
 			UpdatedAt:      k.UpdatedAt,
 			ExpiresAt:      k.ExpiresAt,
 			Issuer:         k.Issuer,

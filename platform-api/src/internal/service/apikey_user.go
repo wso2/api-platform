@@ -24,21 +24,25 @@ import (
 
 	"platform-api/src/api"
 	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 )
 
 // APIKeyUserService handles listing API keys across artifact types for a given user.
 type APIKeyUserService struct {
 	apiKeyRepo repository.APIKeyRepository
+	identity   *IdentityService
 	slogger    *slog.Logger
 }
 
 // NewAPIKeyUserService creates a new APIKeyUserService instance.
 func NewAPIKeyUserService(
 	apiKeyRepo repository.APIKeyRepository,
+	identity *IdentityService,
 	slogger *slog.Logger,
 ) *APIKeyUserService {
 	return &APIKeyUserService{
 		apiKeyRepo: apiKeyRepo,
+		identity:   identity,
 		slogger:    slogger,
 	}
 }
@@ -58,13 +62,17 @@ func (s *APIKeyUserService) ListAPIKeysByUser(
 
 	items := make([]api.UserAPIKeyItem, 0, len(keys))
 	for _, k := range keys {
+		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
+		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
+			return nil, err
+		}
 		item := api.UserAPIKeyItem{
 			Id:             &k.Name,
 			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.UserAPIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
-			CreatedBy:      k.CreatedBy,
+			CreatedBy:      createdBy,
 			UpdatedAt:      k.UpdatedAt,
 			ExpiresAt:      k.ExpiresAt,
 			Issuer:         k.Issuer,

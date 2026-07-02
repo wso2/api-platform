@@ -33,12 +33,14 @@ import (
 
 type ProjectHandler struct {
 	projectService *service.ProjectService
+	identity       *service.IdentityService
 	slogger        *slog.Logger
 }
 
-func NewProjectHandler(projectService *service.ProjectService, slogger *slog.Logger) *ProjectHandler {
+func NewProjectHandler(projectService *service.ProjectService, identity *service.IdentityService, slogger *slog.Logger) *ProjectHandler {
 	return &ProjectHandler{
 		projectService: projectService,
+		identity:       identity,
 		slogger:        slogger,
 	}
 }
@@ -64,7 +66,10 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actor, _ := middleware.GetUserIDFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "create project")
+	if !ok {
+		return
+	}
 	project, err := h.projectService.CreateProject(&req, organizationID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectExists) {
@@ -179,7 +184,10 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actor, _ := middleware.GetUserIDFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "update project")
+	if !ok {
+		return
+	}
 	project, err := h.projectService.UpdateProject(projectId, &req, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
@@ -222,7 +230,10 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actor, _ := middleware.GetUserIDFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "delete project")
+	if !ok {
+		return
+	}
 	err := h.projectService.DeleteProject(projectId, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {

@@ -143,6 +143,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		logger,
 		deps.AuditRepo,
 		cfg,
+		deps.IdentityService,
 	)
 
 	websubDeploymentSvc := egservice.NewWebSubAPIDeploymentService(
@@ -166,6 +167,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		logger,
 		deps.AuditRepo,
 		cfg,
+		deps.IdentityService,
 	)
 
 	webbrokerDeploymentSvc := egservice.NewWebBrokerAPIDeploymentService(
@@ -196,13 +198,13 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 	p.hmacSecretSvc = hmacSecretSvc
 
 	// Handlers.
-	p.websubAPIHandler = eghandler.NewWebSubAPIHandler(websubAPISvc, logger)
-	p.websubAPIDeploymentHandler = eghandler.NewWebSubAPIDeploymentHandler(websubDeploymentSvc, logger)
-	p.websubAPIHmacSecretHandler = eghandler.NewWebSubAPIHmacSecretHandler(hmacSecretSvc, logger)
-	p.websubAPIKeyHandler = eghandler.NewWebSubAPIKeyHandler(websubAPISvc, deps.APIKeyService, logger)
-	p.webbrokerAPIHandler = eghandler.NewWebBrokerAPIHandler(webbrokerAPISvc, logger)
-	p.webbrokerDeploymentHandler = eghandler.NewWebBrokerAPIDeploymentHandler(webbrokerDeploymentSvc, logger)
-	p.webbrokerAPIKeyHandler = eghandler.NewWebBrokerAPIKeyHandler(webbrokerAPISvc, deps.APIKeyService, logger)
+	p.websubAPIHandler = eghandler.NewWebSubAPIHandler(websubAPISvc, deps.IdentityService, logger)
+	p.websubAPIDeploymentHandler = eghandler.NewWebSubAPIDeploymentHandler(websubDeploymentSvc, deps.IdentityService, logger)
+	p.websubAPIHmacSecretHandler = eghandler.NewWebSubAPIHmacSecretHandler(hmacSecretSvc, deps.IdentityService, logger)
+	p.websubAPIKeyHandler = eghandler.NewWebSubAPIKeyHandler(websubAPISvc, deps.APIKeyService, deps.IdentityService, logger)
+	p.webbrokerAPIHandler = eghandler.NewWebBrokerAPIHandler(webbrokerAPISvc, deps.IdentityService, logger)
+	p.webbrokerDeploymentHandler = eghandler.NewWebBrokerAPIDeploymentHandler(webbrokerDeploymentSvc, deps.IdentityService, logger)
+	p.webbrokerAPIKeyHandler = eghandler.NewWebBrokerAPIKeyHandler(webbrokerAPISvc, deps.APIKeyService, deps.IdentityService, logger)
 
 	return nil
 }

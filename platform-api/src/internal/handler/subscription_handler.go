@@ -39,17 +39,19 @@ import (
 type SubscriptionHandler struct {
 	subscriptionService     *service.SubscriptionService
 	subscriptionPlanService *service.SubscriptionPlanService
+	identity                *service.IdentityService
 	slogger                 *slog.Logger
 }
 
 // NewSubscriptionHandler creates a new subscription handler
-func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, subscriptionPlanService *service.SubscriptionPlanService, slogger *slog.Logger) *SubscriptionHandler {
+func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, subscriptionPlanService *service.SubscriptionPlanService, identity *service.IdentityService, slogger *slog.Logger) *SubscriptionHandler {
 	if slogger == nil {
 		slogger = slog.Default()
 	}
 	return &SubscriptionHandler{
 		subscriptionService:     subscriptionService,
 		subscriptionPlanService: subscriptionPlanService,
+		identity:                identity,
 		slogger:                 slogger,
 	}
 }
@@ -101,7 +103,11 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
 		return
 	}
-	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "create subscription")
+	if !ok {
+		return
+	}
+	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
@@ -115,7 +121,13 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusCreated, h.toSubscriptionResponse(sub, orgId))
+	resp, err := h.toSubscriptionResponse(sub, orgId)
+	if err != nil {
+		h.slogger.Error("Failed to resolve subscription identity", "apiId", req.APIID, "organizationId", orgId, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // ListSubscriptions handles GET /api/v0.9/subscriptions
@@ -215,9 +227,20 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
 		return
 	}
+	// Bulk-resolve createdBy UUIDs to their raw identity to avoid N+1 lookups.
+	createdByUUIDs := make([]string, 0, len(list))
+	for _, sub := range list {
+		createdByUUIDs = append(createdByUUIDs, sub.CreatedBy)
+	}
+	createdByMap, err := h.identity.SubsForUUIDs(createdByUUIDs)
+	if err != nil {
+		h.slogger.Error("Failed to resolve subscription creator identities", "organizationId", orgId, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		return
+	}
 	items := make([]map[string]any, 0, len(list))
 	for _, sub := range list {
-		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap))
+		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap, createdByMap))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"subscriptions": items,
@@ -253,7 +276,13 @@ func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Req
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, h.toSubscriptionResponse(sub, orgId))
+	resp, err := h.toSubscriptionResponse(sub, orgId)
+	if err != nil {
+		h.slogger.Error("Failed to resolve subscription identity", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // UpdateSubscription handles PUT /api/v0.9/subscriptions/:subscriptionId
@@ -288,7 +317,11 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, status)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "update subscription")
+	if !ok {
+		return
+	}
+	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, status, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
@@ -302,7 +335,13 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, h.toSubscriptionResponse(sub, orgId))
+	resp, err := h.toSubscriptionResponse(sub, orgId)
+	if err != nil {
+		h.slogger.Error("Failed to resolve subscription identity", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // DeleteSubscription handles DELETE /api/v0.9/subscriptions/:subscriptionId
@@ -322,7 +361,11 @@ func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId, subscriberID)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "delete subscription")
+	if !ok {
+		return
+	}
+	err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId, subscriberID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
@@ -356,11 +399,19 @@ func (h *SubscriptionHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscriptions/{subscriptionId}", h.DeleteSubscription)
 }
 
-func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) map[string]any {
+func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) (map[string]any, error) {
 	// apiId in response should be the handle (e.g. "samp1"), not the internal UUID
 	apiIdForResponse, kind := h.subscriptionService.ResolveArtifactHandleAndKind(sub.ArtifactUUID, orgId)
 	if apiIdForResponse == "" {
 		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
+	}
+	createdBy, err := h.identity.SubForUUID(sub.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
+	updatedBy, err := h.identity.SubForUUID(sub.UpdatedBy)
+	if err != nil {
+		return nil, err
 	}
 	resp := map[string]any{
 		"id":             sub.UUID,
@@ -368,6 +419,8 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),
+		"createdBy":      createdBy,
+		"updatedBy":      updatedBy,
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,
 	}
@@ -390,12 +443,12 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	if sub.SubscriptionToken != "" {
 		resp["subscriptionToken"] = sub.SubscriptionToken
 	}
-	return resp
+	return resp, nil
 }
 
 // toSubscriptionResponseWithMaps builds a subscription response using pre-fetched lookup maps.
 // Used by ListSubscriptions to avoid N+1 queries.
-func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, artifactMetaMap map[string]*model.APIMetadata, planNameMap map[string]string) map[string]any {
+func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, artifactMetaMap map[string]*model.APIMetadata, planNameMap map[string]string, createdByMap map[string]string) map[string]any {
 	apiIdForResponse := sub.ArtifactUUID // fallback to UUID
 	var kind string
 	if meta := artifactMetaMap[sub.ArtifactUUID]; meta != nil {
@@ -404,12 +457,17 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 		}
 		kind = meta.Kind
 	}
+	createdBy := createdByMap[sub.CreatedBy]
+	if createdBy == "" {
+		createdBy = constants.DeletedUser
+	}
 	resp := map[string]any{
 		"id":             sub.UUID,
 		"apiId":          apiIdForResponse,
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),
+		"createdBy":      createdBy,
 		"createdAt":      sub.CreatedAt,
 		"updatedAt":      sub.UpdatedAt,
 	}

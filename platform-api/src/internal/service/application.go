@@ -39,6 +39,7 @@ type ApplicationService struct {
 	apiRepo              repository.APIRepository
 	gatewayEventsService *GatewayEventsService
 	auditRepo            repository.AuditRepository
+	identity             *IdentityService
 	slogger              *slog.Logger
 }
 
@@ -73,6 +74,7 @@ func NewApplicationService(
 	apiRepo repository.APIRepository,
 	gatewayEventsService *GatewayEventsService,
 	auditRepo repository.AuditRepository,
+	identity *IdentityService,
 	slogger *slog.Logger,
 ) *ApplicationService {
 	return &ApplicationService{
@@ -82,6 +84,7 @@ func NewApplicationService(
 		apiRepo:              apiRepo,
 		gatewayEventsService: gatewayEventsService,
 		auditRepo:            auditRepo,
+		identity:             identity,
 		slogger:              slogger,
 	}
 }
@@ -145,10 +148,8 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		}
 	}
 
+	// createdBy is always inferred from the authenticated actor, never from the request body.
 	actor := strings.TrimSpace(createdBy)
-	if actor == "" {
-		actor = strings.TrimSpace(valueOrEmptyApplication(req.CreatedBy))
-	}
 	app := &model.Application{
 		UUID:             uuid.New().String(),
 		Handle:           handle,
@@ -249,6 +250,8 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 			return nil, err
 		}
 		if mapped != nil {
+			// updatedBy is detail-only; omit it from list responses.
+			mapped.UpdatedBy = nil
 			response.List = append(response.List, *mapped)
 		}
 	}
@@ -826,7 +829,7 @@ func (s *ApplicationService) buildMappedAPIKeyListForAssociationPaginated(applic
 		}
 	}
 
-	return s.buildMappedAPIKeyResponse(filteredKeys, limit, offset), nil
+	return s.buildMappedAPIKeyResponse(filteredKeys, limit, offset)
 }
 
 func (s *ApplicationService) buildApplicationAssociationListPaginated(applicationUUID string, limit, offset int) (*ApplicationAssociationListResponse, error) {
@@ -880,10 +883,10 @@ func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID stri
 		return nil, err
 	}
 
-	return s.buildMappedAPIKeyResponse(keys, limit, offset), nil
+	return s.buildMappedAPIKeyResponse(keys, limit, offset)
 }
 
-func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.ApplicationAPIKey, limit, offset int) *api.MappedAPIKeyListResponse {
+func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.ApplicationAPIKey, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
 
 	if offset < 0 {
 		offset = 0
@@ -916,10 +919,14 @@ func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.Application
 	}
 
 	for _, key := range pagedKeys {
-		response.List = append(response.List, s.modelToMappedAPIKeyResponse(key))
+		item, err := s.modelToMappedAPIKeyResponse(key)
+		if err != nil {
+			return nil, err
+		}
+		response.List = append(response.List, item)
 	}
 
-	return response
+	return response, nil
 }
 
 func (s *ApplicationService) modelToApplicationResponse(app *model.Application) (*api.Application, error) {
@@ -940,24 +947,32 @@ func (s *ApplicationService) modelToApplicationResponse(app *model.Application) 
 		projectHandle = project.Handle
 	}
 
-	return &api.Application{
+	resp := &api.Application{
 		Id:          app.Handle,
 		DisplayName: app.Name,
 		ProjectId:   projectHandle,
 		Type:        api.ApplicationType(app.Type),
 		Description: utils.StringPtrIfNotEmpty(app.Description),
 		CreatedBy:   utils.StringPtrIfNotEmpty(app.CreatedBy),
+		UpdatedBy:   utils.StringPtrIfNotEmpty(app.UpdatedBy),
 		CreatedAt:   utils.TimePtrIfNotZero(app.CreatedAt),
 		UpdatedAt:   utils.TimePtrIfNotZero(app.UpdatedAt),
-	}, nil
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
-func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationAPIKey) api.MappedAPIKey {
+func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationAPIKey) (api.MappedAPIKey, error) {
 	if key == nil {
-		return api.MappedAPIKey{}
+		return api.MappedAPIKey{}, nil
 	}
 
-	return api.MappedAPIKey{
+	resp := api.MappedAPIKey{
 		KeyId: key.Name,
 		AssociatedEntity: api.AssociatedEntity{
 			Id:   key.ArtifactHandle,
@@ -969,6 +984,10 @@ func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationA
 		UpdatedAt: utils.TimePtrIfNotZero(key.UpdatedAt),
 		ExpiresAt: key.ExpiresAt,
 	}
+	if err := s.identity.ResolveIdentityField(&resp.UserId); err != nil {
+		return api.MappedAPIKey{}, err
+	}
+	return resp, nil
 }
 
 func (s *ApplicationService) modelToApplicationAssociation(association *model.ApplicationAssociationTarget) ApplicationAssociation {

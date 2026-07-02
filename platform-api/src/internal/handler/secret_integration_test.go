@@ -83,8 +83,9 @@ func setupSecretTestEnv(t *testing.T) (http.Handler, func()) {
 	}
 
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
-	h := NewSecretHandler(svc, slog.Default())
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
+	h := NewSecretHandler(svc, identityService, slog.Default())
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -370,10 +371,11 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
 
 	mux := http.NewServeMux()
-	NewSecretHandler(svc, slog.Default()).RegisterRoutes(mux)
+	NewSecretHandler(svc, identityService, slog.Default()).RegisterRoutes(mux)
 	r := middleware.NewTestContextMiddleware(mux)
 
 	// Create then soft-delete (deprecate) the secret.
@@ -477,8 +479,9 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
-	h := NewSecretHandler(svc, slog.Default())
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
+	h := NewSecretHandler(svc, identityService, slog.Default())
 
 	mux2 := http.NewServeMux()
 	h.RegisterRoutes(mux2)
@@ -655,10 +658,11 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
 
 	mux3 := http.NewServeMux()
-	NewSecretHandler(svc, slog.Default()).RegisterRoutes(mux3)
+	NewSecretHandler(svc, identityService, slog.Default()).RegisterRoutes(mux3)
 	r := middleware.NewTestContextMiddleware(mux3)
 
 	// (a) Create and DELETE → 204
@@ -736,7 +740,7 @@ func TestSecretService_Decrypt_DeprecatedSecretReturnsError(t *testing.T) {
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	// Create and then soft-delete a secret
 	_, err = svc.Create("org-dep-it", "alice", &dto.CreateSecretRequest{
@@ -779,7 +783,7 @@ func TestSecretRepo_CiphertextStoredNotPlaintext(t *testing.T) {
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	_, err = svc.Create("org-ct-001", "alice", &dto.CreateSecretRequest{Handle: "ct-key", Value: "sk-abc123"})
 	if err != nil {
@@ -818,7 +822,7 @@ func TestSecretRepo_ProviderIsInBuilt(t *testing.T) {
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	_, err = svc.Create("org-prov-001", "alice", &dto.CreateSecretRequest{Handle: "prov-key", Value: "somevalue"})
 	if err != nil {
@@ -854,7 +858,7 @@ func TestSecretService_DecryptReturnsOriginalPlaintext(t *testing.T) {
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	_, err = svc.Create("org-dec-001", "alice", &dto.CreateSecretRequest{Handle: "dec-key", Value: "sk-original"})
 	if err != nil {
@@ -890,7 +894,7 @@ func TestSecretService_ValidateSecretRefs_DeprecatedHandleRejected(t *testing.T)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	// Create then deprecate the secret
 	_, err = svc.Create("org-val-it", "alice", &dto.CreateSecretRequest{
