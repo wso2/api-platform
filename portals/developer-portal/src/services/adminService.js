@@ -18,6 +18,7 @@
 /* eslint-disable no-undef */
 const { CustomError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
@@ -218,7 +219,8 @@ const getAllOrganizations = async () => {
     const organizations = await orgDao.list();
     const orgList = [];
     if (organizations.length > 0) {
-        for (const organization of organizations) {
+        const auditList = await userIdpReferenceDao.buildListAuditFields(organizations.map(o => o.dataValues));
+        organizations.forEach((organization, i) => {
             orgList.push({
                 name: organization.dataValues.name,
                 id: organization.dataValues.handle,
@@ -227,9 +229,10 @@ const getAllOrganizations = async () => {
                 businessOwnerEmail: organization.dataValues.business_owner_email,
                 idpRefId: organization.idp_ref_id,
                 cpRefId: organization.cp_ref_id,
-                configuration: organization.dataValues.configuration
+                configuration: organization.dataValues.configuration,
+                ...auditList[i],
             });
-        }
+        });
     }
     return orgList;
 }

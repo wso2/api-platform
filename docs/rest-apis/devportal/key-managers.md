@@ -64,7 +64,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -190,7 +194,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "name": "Asgardeo",
       "type": "ASGARDEO",
       "enabled": true,
-      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
+      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+      "createdBy": "alice@example.com",
+      "updatedBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
     }
   ],
   "pagination": {
@@ -237,6 +245,10 @@ Status Code **200**
 |»»» type|string|false|none|none|
 |»»» enabled|boolean|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
+|»»» createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»»» updatedBy|string|false|none|Identity of the user who last updated this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»»» createdAt|string(date-time)|false|none|none|
+|»»» updatedAt|string(date-time)|false|none|none|
 
 *or*
 
@@ -313,7 +325,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -410,7 +426,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 

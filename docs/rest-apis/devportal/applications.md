@@ -92,6 +92,10 @@ Status Code **200**
 |»»» asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
 |»»» kmId|string|false|none|UUID of the key manager this client ID is linked to.|
 |»»» type|string|false|none|Key type for this mapping.|
+|»» createdBy|string|false|none|Identity of the user who created this application, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»» updatedBy|string|false|none|Identity of the user who last updated this application, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»» createdAt|string(date-time)|false|none|none|
+|»» updatedAt|string(date-time)|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

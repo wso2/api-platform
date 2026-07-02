@@ -19,6 +19,7 @@ const yaml = require('js-yaml');
 const { Sequelize } = require('sequelize');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
@@ -189,7 +190,8 @@ const getKeyManagers = async (req, res) => {
         const orgId = req.orgId;
         const isAdmin = req.user?.isAdmin;
         const records = isAdmin ? await kmDao.list(orgId) : await kmDao.listEnabled(orgId);
-        const dtos = records.map(r => (isAdmin ? new KeyManagerDTO(r) : new KeyManagerPublicDTO(r)));
+        const auditList = isAdmin ? await userIdpReferenceDao.buildListAuditFields(records) : [];
+        const dtos = records.map((r, i) => (isAdmin ? new KeyManagerDTO(r, auditList[i]) : new KeyManagerPublicDTO(r)));
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
@@ -201,7 +203,8 @@ const getKeyManager = async (req, res) => {
     try {
         const { kmId } = req.params;
         const record = await kmDao.get(kmId);
-        const dto = new KeyManagerDTO(record);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        const dto = new KeyManagerDTO(record, audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

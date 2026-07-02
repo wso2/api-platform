@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplateFromAPI } = require('../utils/util');
+const { renderTemplateFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -113,7 +113,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         }
 
         try {
-            const apps = await applicationDao.list(orgId, req.user.sub);
+            const apps = await applicationDao.list(orgId, resolveActor(req));
             applications = (apps || []).map((a) => ({ appId: a.uuid, displayName: a.display_name }));
         } catch (dbError) {
             logger.warn('Failed to load applications for API key association', {

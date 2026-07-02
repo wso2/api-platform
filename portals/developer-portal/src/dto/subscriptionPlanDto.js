@@ -17,7 +17,7 @@
  * under the License.
  */
 class SubscriptionPlan {
-    constructor(subscriptionPlan) {
+    constructor(subscriptionPlan, audit) {
         this.id = subscriptionPlan.handle;
         this.name = subscriptionPlan.name;
         this.description = subscriptionPlan.description;
@@ -29,6 +29,9 @@ class SubscriptionPlan {
             timeAmount: l.time_amount,
             limitCount: Number.isSafeInteger(Number(l.limit_count)) ? Number(l.limit_count) : String(l.limit_count),
         }));
+        if (audit) {
+            Object.assign(this, audit);
+        }
     }
 }
 

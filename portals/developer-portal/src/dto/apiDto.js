@@ -19,7 +19,7 @@
 const constants = require('../utils/constants');
 
 class APIDTO {
-    constructor(api) {
+    constructor(api, audit) {
         this.id = api.handle;
         this.refId = api.ref_id;
         this.dataSource = api.DATA_SOURCE;
@@ -30,6 +30,9 @@ class APIDTO {
             this.subscriptionPlans = api.dp_subscription_plans.map(plan => new APISubscriptionPlan(plan));
         }
 
+        if (audit) {
+            Object.assign(this, audit);
+        }
     }
 
     setResponseData(data) {

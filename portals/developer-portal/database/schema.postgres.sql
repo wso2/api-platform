@@ -5,6 +5,8 @@
 
 DROP TABLE IF EXISTS "dp_webhook_subscribers" CASCADE;
 DROP TABLE IF EXISTS "dp_view_label_mappings" CASCADE;
+DROP TABLE IF EXISTS "dp_user_organization_mappings" CASCADE;
+DROP TABLE IF EXISTS "dp_user_idp_references" CASCADE;
 DROP TABLE IF EXISTS "sessions" CASCADE;
 DROP TABLE IF EXISTS "dp_event_deliveries" CASCADE;
 DROP TABLE IF EXISTS "dp_events" CASCADE;
@@ -161,6 +163,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_event_delivery_event_subscriber" ON "dp_ev
 CREATE TABLE IF NOT EXISTS "sessions" ("sid" VARCHAR(255) , "sess" JSON NOT NULL, "expire" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("sid"));
 
 CREATE INDEX IF NOT EXISTS "idx_session_expire" ON "sessions" ("expire");
+
+-- dp_user_idp_references
+CREATE TABLE IF NOT EXISTS "dp_user_idp_references" ("uuid" VARCHAR(40) , "idp_id" VARCHAR(255) NOT NULL UNIQUE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+
+
+-- dp_user_organization_mappings
+CREATE TABLE IF NOT EXISTS "dp_user_organization_mappings" ("user_uuid" VARCHAR(40) NOT NULL  REFERENCES "dp_user_idp_references" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "org_uuid" VARCHAR(40) NOT NULL  REFERENCES "dp_organizations" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, PRIMARY KEY ("user_uuid","org_uuid"));
+
 
 -- dp_view_label_mappings
 CREATE TABLE IF NOT EXISTS "dp_view_label_mappings" ("uuid" VARCHAR(40) , "view_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_views" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "label_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_labels" ("uuid") ON DELETE CASCADE ON UPDATE CASCADE, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));

@@ -21,13 +21,16 @@
  * Never exposes admin credentials in API responses.
  */
 class KeyManagerDTO {
-    constructor(km) {
+    constructor(km, audit) {
         this.id = km.uuid;
         this.orgId = km.org_uuid;
         this.name = km.name;
         this.type = km.type;
         this.enabled = !!km.enabled;
         this.tokenEndpoint = km.token_endpoint;
+        if (audit) {
+            Object.assign(this, audit);
+        }
     }
 }
 

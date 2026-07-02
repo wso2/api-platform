@@ -1,6 +1,5 @@
-
 /*
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -16,24 +15,20 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const UserOrganizationMapping = require('../models/userOrganizationMapping');
+const { findOrCreateSafe } = require('./findOrCreateHelper');
 
-class ViewDTO {
-    constructor(view, audit) {
-        this.id = view.handle;
-        this.name = view.name;
-        this.labels = view.dp_labels.map(label => label.dataValues.name);
-        if (audit) {
-            Object.assign(this, audit);
-        }
-    }
+/**
+ * Record that this user has been seen in this org. No-op if already recorded.
+ */
+const ensureMapping = async (userUuid, orgUuid) => {
+    await findOrCreateSafe(
+        UserOrganizationMapping,
+        { user_uuid: userUuid, org_uuid: orgUuid },
+        { user_uuid: userUuid, org_uuid: orgUuid },
+    );
+};
 
-    setResponseData(data) {
-        this.data = data;
-    }
-
-    getResponseData() {
-        return this.data;
-    }
-}
-
-module.exports = ViewDTO;
+module.exports = {
+    ensureMapping,
+};

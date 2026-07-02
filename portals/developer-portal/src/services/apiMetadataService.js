@@ -38,6 +38,7 @@ const ViewDTO = require("../dto/viewsDto");
 const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
 const subscriptionPlanDTO = require("../dto/subscriptionPlanDto");
+const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
 const { CustomError } = require("../utils/errors/customErrors");
 const LabelDTO = require("../dto/labelDto");
 
@@ -333,7 +334,8 @@ const getMetadataFromDB = async (orgId, apiId) => {
     }, async (t) => {
         const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, uuid: apiId }, t);
         if (retrievedAPI.length > 0) {
-            return new APIDTO(retrievedAPI[0]);
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(retrievedAPI[0]);
+            return new APIDTO(retrievedAPI[0], audit);
         } else {
             return "";
         }
@@ -383,7 +385,11 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
             retrievedAPIs = await apiDao.list(orgId, viewName, t);
         }
         // Create response object
-        const apiCreationResponse = retrievedAPIs ? retrievedAPIs.map((api) => new APIDTO(api)) : [];
+        let apiCreationResponse = [];
+        if (retrievedAPIs) {
+            const auditList = await userIdpReferenceDao.buildListAuditFields(retrievedAPIs);
+            apiCreationResponse = retrievedAPIs.map((api, i) => new APIDTO(api, auditList[i]));
+        }
         return apiCreationResponse;
     });
 };
@@ -1372,7 +1378,8 @@ const getSubscriptionPlan = async (req, res) => {
     try {
         const subscriptionPlanResponse = await subscriptionPlanDao.getByName(orgId, planId);
         if (subscriptionPlanResponse) {
-            res.status(200).send(new subscriptionPlanDTO(subscriptionPlanResponse));
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
+            res.status(200).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
         } else {
             throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
@@ -1402,7 +1409,8 @@ const listSubscriptionPlans = async (req, res) => {
         } else {
             plans = await subscriptionPlanDao.list(orgId);
         }
-        res.status(200).json(util.toPaginatedList(plans.map((plan) => new subscriptionPlanDTO(plan)), req));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(plans);
+        res.status(200).json(util.toPaginatedList(plans.map((plan, i) => new subscriptionPlanDTO(plan, auditList[i])), req));
     } catch (error) {
         logger.error('subscription plan list failed', {
             error: error.message,
@@ -1606,7 +1614,8 @@ const getViewInfo = async (orgId, name) => {
 
     const view = await viewDao.get(orgId, name);
     if (view.dataValues) {
-        return new ViewDTO(view.dataValues);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(view.dataValues);
+        return new ViewDTO(view.dataValues, audit);
     } else {
         return null;
     }
@@ -1632,7 +1641,8 @@ const getViewsFromDB = async (orgId) => {
 
     const views = await viewDao.list(orgId);
     if (views.length > 0) {
-        return views.map((view) => new ViewDTO(view));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(views);
+        return views.map((view, i) => new ViewDTO(view, auditList[i]));
     } else {
         return [];
     }

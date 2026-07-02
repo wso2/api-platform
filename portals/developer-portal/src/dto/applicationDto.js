@@ -17,12 +17,15 @@
  * under the License.
  */
 class ApplicationDTO {
-    constructor(app) {
+    constructor(app, audit) {
         this.id = app.handle;
         this.displayName = app.display_name;
         this.description = app.description;
         if (app.dp_app_key_mappings) {
             this.appKeyMappings = app.dp_app_key_mappings.map(map => new AppMappingDTO(map));
+        }
+        if (audit) {
+            Object.assign(this, audit);
         }
     }
 

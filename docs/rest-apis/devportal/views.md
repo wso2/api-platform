@@ -173,7 +173,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "labels": [
         "partner",
         "public"
-      ]
+      ],
+      "createdBy": "alice@example.com",
+      "updatedBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
     }
   ],
   "pagination": {
@@ -218,6 +222,10 @@ Status Code **200**
 |»» id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
 |»» name|string|true|none|none|
 |»» labels|[string]|true|none|none|
+|»» createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»» updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»» createdAt|string(date-time)|false|none|none|
+|»» updatedAt|string(date-time)|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

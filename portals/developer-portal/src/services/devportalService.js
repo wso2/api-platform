@@ -18,6 +18,7 @@
 /* eslint-disable no-undef */
 const adminService = require('../services/adminService');
 const orgDao = require('../dao/organizationDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -34,6 +35,7 @@ const getOrganization = async (req, res) => {
 
 const getOrganizationDetails = async (orgId) => {
     const organization = await orgDao.get(orgId);
+    const audit = await userIdpReferenceDao.buildSingleAuditFields(organization);
     return {
         id: organization.handle,
         name: organization.name,
@@ -43,6 +45,7 @@ const getOrganizationDetails = async (orgId) => {
         idpRefId: organization.idp_ref_id,
         cpRefId: organization.cp_ref_id,
         configuration: organization.configuration,
+        ...audit,
     };
 }
 

@@ -24,9 +24,12 @@
  *
  * `authResolver` runs once per /devportal request and resolves credentials in the
  * order: local session → bearer → api-key → mTLS. It populates `req.auth` with
- * `{ mode, scopes, preauthorized, userId }` but does NOT enforce scopes — that is
- * the job of `OAuth2Security`, which the validator invokes with the operation-declared
- * scope list.
+ * `{ mode, scopes, preauthorized, userId, rawSub }` but does NOT enforce scopes —
+ * that is the job of `OAuth2Security`, which the validator invokes with the
+ * operation-declared scope list. `userId` is the durable user_idp_references uuid
+ * (what flows into created_by/updated_by); `rawSub` is the original, unresolved
+ * IDP `sub` claim, kept around for telemetry/analytics that need the real identity
+ * rather than the internal bookkeeping uuid.
  *
  */
 
@@ -39,6 +42,77 @@ const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
+const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
+
+// In-process cache so an already-known (sub, org) pair doesn't re-hit the DB on
+// every request from the same session — resolveUserUuid runs on every
+// authenticated request, including plain GETs. Bounded and TTL'd: entries expire
+// after USER_UUID_CACHE_TTL_MS, and the cache is cleared outright once it grows
+// past USER_UUID_CACHE_MAX_ENTRIES rather than tracking per-entry recency.
+const USER_UUID_CACHE_TTL_MS = 5 * 60 * 1000;
+const USER_UUID_CACHE_MAX_ENTRIES = 5000;
+const userUuidCache = new Map(); // sub -> { uuid, expiresAt }
+const orgMappingCache = new Map(); // `${userUuid}:${orgId}` -> expiresAt
+
+function getCached(cache, key) {
+    const entry = cache.get(key);
+    if (entry === undefined) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+        cache.delete(key);
+        return undefined;
+    }
+    return entry;
+}
+
+function setCached(cache, key, entry, maxEntries) {
+    if (cache.size >= maxEntries) cache.clear();
+    cache.set(key, { ...entry, expiresAt: Date.now() + USER_UUID_CACHE_TTL_MS });
+}
+
+/**
+ * Resolves the durable user_idp_references uuid for this sub claim, and
+ * records that the user has been seen in the current org (if known). This
+ * uuid — not the raw sub — is what flows into created_by/updated_by columns.
+ *
+ * Identity bookkeeping (this function) is not security-critical, so a failure
+ * here degrades gracefully — logged and swallowed — rather than failing
+ * authentication for an otherwise valid token/session. A resource write made
+ * with the resulting undefined userId will fail at that write with a clear
+ * validation error instead of taking down login.
+ */
+async function resolveUserUuid(req, sub) {
+    if (!sub) return undefined;
+
+    let userUuid = getCached(userUuidCache, sub)?.uuid;
+    if (userUuid === undefined) {
+        try {
+            userUuid = await userIdpReferenceDao.resolveUuid(sub);
+        } catch (err) {
+            logger.error('Failed to resolve user identity reference; continuing without one', {
+                error: err.message, operation: 'resolveUserUuid',
+            });
+            return undefined;
+        }
+        setCached(userUuidCache, sub, { uuid: userUuid }, USER_UUID_CACHE_MAX_ENTRIES);
+    }
+
+    if (req.orgId) {
+        const mappingKey = `${userUuid}:${req.orgId}`;
+        if (!getCached(orgMappingCache, mappingKey)) {
+            try {
+                await userOrganizationMappingDao.ensureMapping(userUuid, req.orgId);
+                setCached(orgMappingCache, mappingKey, {}, USER_UUID_CACHE_MAX_ENTRIES);
+            } catch (err) {
+                logger.error('Failed to record user-organization mapping; continuing', {
+                    error: err.message, operation: 'resolveUserUuid',
+                });
+            }
+        }
+    }
+
+    return userUuid;
+}
 
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
@@ -155,11 +229,13 @@ async function authResolver(req, res, next) {
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
             const orgErr = await resolveOrgFromClaim(req, orgHandle);
             if (orgErr) return next(orgErr);
+            const userUuid = await resolveUserUuid(req, req.user[constants.USER_ID]);
             req.auth = {
                 mode: 'platform-jwt',
                 preauthorized: false,
                 scopes: claims?.scopes ?? [],
-                userId: req.user[constants.USER_ID],
+                userId: userUuid,
+                rawSub: req.user[constants.USER_ID],
             };
             return next();
         }
@@ -180,12 +256,15 @@ async function authResolver(req, res, next) {
                 const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
                 if (orgErr) return next(orgErr);
             }
-            req[constants.USER_ID] = req.user[constants.USER_ID];
+            const rawSub = req.user[constants.USER_ID];
+            const userUuid = await resolveUserUuid(req, rawSub);
+            req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',
                 preauthorized: true,
                 scopes: String(req.user.grantedScopes || '').split(' ').filter(Boolean),
-                userId: req.user[constants.USER_ID],
+                userId: userUuid,
+                rawSub,
             };
             return next();
         }
@@ -213,11 +292,14 @@ async function authResolver(req, res, next) {
                 const orgErr = await resolveOrgFromClaim(req, tokenOrgClaim);
                 if (orgErr) return next(orgErr);
             }
-            req[constants.USER_ID] = decoded[constants.USER_ID];
+            const rawSub = decoded[constants.USER_ID];
+            const userUuid = await resolveUserUuid(req, rawSub);
+            req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',
                 scopes: String(scopes || '').split(' ').filter(Boolean),
-                userId: decoded[constants.USER_ID],
+                userId: userUuid,
+                rawSub,
             };
             return next();
         }
@@ -316,4 +398,5 @@ module.exports = {
     authResolver,
     OAuth2Security,
     apiKeyAuth,
+    resolveUserUuid,
 };

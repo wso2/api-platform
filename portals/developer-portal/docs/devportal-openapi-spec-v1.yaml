@@ -4241,6 +4241,26 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/SubscriptionPlanResponse"
+            createdBy:
+              type: string
+              description: >-
+                Identity of the user who created this API, or `deleted_user` if that user's IDP reference no longer
+                exists. Present on single-resource GET responses and list items.
+              example: alice@example.com
+            updatedBy:
+              type: string
+              description: >-
+                Identity of the user who last updated this API, or `deleted_user` if that user's IDP reference no
+                longer exists. Present on single-resource GET responses only, omitted on list items.
+              example: alice@example.com
+            createdAt:
+              type: string
+              format: date-time
+              example: "2026-05-07T08:30:00Z"
+            updatedAt:
+              type: string
+              format: date-time
+              example: "2026-05-07T08:30:00Z"
           additionalProperties: true
     ApiInfoResponse:
       type: object
@@ -4355,6 +4375,24 @@ components:
           description: Platform API subscription plan UUID associated with this plan.
         orgId:
           type: string
+        createdBy:
+          type: string
+          description: >-
+            Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP
+            reference no longer exists. Present on single-resource GET responses and list items.
+          example: alice@example.com
+        updatedBy:
+          type: string
+          description: >-
+            Identity of the user who last updated this subscription plan, or `deleted_user` if that user's IDP
+            reference no longer exists. Present on single-resource GET responses only, omitted on list items.
+          example: alice@example.com
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
       additionalProperties: false
     LabelResponse:
       type: object
@@ -4386,6 +4424,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ApplicationKeyMappingSummary"
+        createdBy:
+          type: string
+          description: >-
+            Identity of the user who created this application, or `deleted_user` if that user's IDP reference no
+            longer exists. Present on single-resource GET responses and list items.
+          example: alice@example.com
+        updatedBy:
+          type: string
+          description: >-
+            Identity of the user who last updated this application, or `deleted_user` if that user's IDP reference
+            no longer exists. Present on single-resource GET responses only, omitted on list items.
+          example: alice@example.com
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-05-07T08:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-05-07T08:30:00Z"
       additionalProperties: false
     ApplicationKeyMappingSummary:
       type: object
@@ -4428,6 +4486,24 @@ components:
           example:
             - partner
             - public
+        createdBy:
+          type: string
+          description: >-
+            Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer
+            exists. Present on single-resource GET responses and list items.
+          example: alice@example.com
+        updatedBy:
+          type: string
+          description: >-
+            Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no
+            longer exists. Present on single-resource GET responses only, omitted on list items.
+          example: alice@example.com
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
       additionalProperties: false
     OrganizationCreateRequest:
       type: object
@@ -4651,9 +4727,20 @@ components:
           example: ACTIVE
         createdBy:
           type: string
-          description: Identity (sub claim) of the user who created the subscription.
+          description: >-
+            Identity of the user who created the subscription, or `deleted_user` if that user's IDP reference no
+            longer exists. Present on single-resource GET responses and list items.
+          example: alice@example.com
+        updatedBy:
+          type: string
+          description: >-
+            Identity of the user who last updated the subscription, or `deleted_user` if that user's IDP reference
+            no longer exists. Present on single-resource GET responses only, omitted on list items.
           example: alice@example.com
         createdAt:
+          type: string
+          format: date-time
+        updatedAt:
           type: string
           format: date-time
       additionalProperties: false
@@ -4859,6 +4946,24 @@ components:
           type: string
           format: uri
           example: https://api.asgardeo.io/t/myorg/oauth2/token
+        createdBy:
+          type: string
+          description: >-
+            Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no
+            longer exists. Present on single-resource GET responses and list items.
+          example: alice@example.com
+        updatedBy:
+          type: string
+          description: >-
+            Identity of the user who last updated this key manager, or `deleted_user` if that user's IDP reference
+            no longer exists. Present on single-resource GET responses only, omitted on list items.
+          example: alice@example.com
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
       additionalProperties: false
     KeyManagerPublicResponseSchema:
       type: object
@@ -4965,6 +5070,24 @@ components:
           type: boolean
           description: Whether a public key is configured for envelope-encrypting secret event payloads.
           example: false
+        createdBy:
+          type: string
+          description: >-
+            Identity of the user who created this webhook subscriber, or `deleted_user` if that user's IDP
+            reference no longer exists. Present on single-resource GET responses and list items.
+          example: alice@example.com
+        updatedBy:
+          type: string
+          description: >-
+            Identity of the user who last updated this webhook subscriber, or `deleted_user` if that user's IDP
+            reference no longer exists. Present on single-resource GET responses only, omitted on list items.
+          example: alice@example.com
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     WebhookSubscriberDeliverySummary:
       type: object
       description: A single delivery attempt made to a webhook subscriber.

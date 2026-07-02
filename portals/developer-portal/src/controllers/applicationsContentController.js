@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
+const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -204,7 +204,7 @@ const loadApplications = async (req, res, next) => {
     try {
         const orgName = req.params.orgName;
         const orgId = await orgIDValue(orgName);
-        const applications = await appDao.list(orgId, req.user.sub)
+        const applications = await appDao.list(orgId, resolveActor(req))
         const metaData = applications.map(application => new ApplicationDTO(application));
         let profile = null;
         if (req.user) {

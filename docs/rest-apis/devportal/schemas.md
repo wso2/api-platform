@@ -386,7 +386,11 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
       "description": "string",
       "requestCount": "string",
       "refId": "string",
-      "orgId": "string"
+      "orgId": "string",
+      "createdBy": "alice@example.com",
+      "updatedBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
     }
   ]
 }
@@ -468,9 +472,17 @@ and
       "description": "string",
       "requestCount": "string",
       "refId": "string",
-      "orgId": "string"
+      "orgId": "string",
+      "createdBy": "alice@example.com",
+      "updatedBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
     }
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 
 ```
@@ -494,6 +506,10 @@ and
 |» planId|string|false|none|none|
 |» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
 |» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
+|» createdBy|string|false|none|Identity of the user who created this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|» updatedBy|string|false|none|Identity of the user who last updated this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|» createdAt|string(date-time)|false|none|none|
+|» updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_ApiInfoResponse">ApiInfoResponse</h2>
 
@@ -661,7 +677,11 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
   "description": "string",
   "requestCount": "string",
   "refId": "string",
-  "orgId": "string"
+  "orgId": "string",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -676,6 +696,10 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
 |orgId|string|false|none|none|
+|createdBy|string|false|none|Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_LabelResponse">LabelResponse</h2>
 
@@ -719,7 +743,11 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
       "kmId": "km-uuid-12345",
       "type": "PRODUCTION"
     }
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 
 ```
@@ -732,6 +760,10 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |displayName|string|false|none|none|
 |description|string|false|none|none|
 |appKeyMappings|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
+|createdBy|string|false|none|Identity of the user who created this application, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this application, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_ApplicationKeyMappingSummary">ApplicationKeyMappingSummary</h2>
 
@@ -780,7 +812,11 @@ OAuth client ID mapping entry attached to an application.
   "labels": [
     "partner",
     "public"
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -792,6 +828,10 @@ OAuth client ID mapping entry attached to an application.
 |id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
 |name|string|true|none|none|
 |labels|[string]|true|none|none|
+|createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_OrganizationCreateRequest">OrganizationCreateRequest</h2>
 
@@ -1083,7 +1123,9 @@ xor
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
-  "createdAt": "2019-08-24T14:15:22Z"
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -1099,8 +1141,10 @@ Subscription payload.
 |subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |subscriptionPlanName|string|false|none|none|
 |status|string|false|none|none|
-|createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
+|createdBy|string|false|none|Identity of the user who created the subscription, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated the subscription, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 #### Enumerated Values
 
@@ -1342,7 +1386,11 @@ Partial update payload for a key manager. All fields are optional; only supplied
   "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -1359,6 +1407,10 @@ Key manager configuration.
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
+|createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 #### Enumerated Values
 
@@ -1461,7 +1513,11 @@ Minimal developer-facing key manager view.
   ],
   "timeoutMs": 5000,
   "hasSecret": true,
-  "hasPublicKey": false
+  "hasPublicKey": false,
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -1481,6 +1537,10 @@ Webhook subscriber configuration. The secret is never included.
 |timeoutMs|integer|false|none|none|
 |hasSecret|boolean|false|none|Whether a secret is configured for HMAC-signing outgoing payloads.|
 |hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
+|createdBy|string|false|none|Identity of the user who created this webhook subscriber, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this webhook subscriber, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_WebhookSubscriberDeliverySummary">WebhookSubscriberDeliverySummary</h2>
 
