@@ -53,7 +53,7 @@
                                     <div class="mb-3 w-100">
                                         <div class="d-flex flex-column align-items-center gap-2" style="margin: 0 auto;">
                                             <span class="text-muted d-block mt-3 mb-0" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom:0 !important; min-height: 18px;">Rate Limit</span>
-                                            <span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{requestCount}}<small class="text-muted d-inline" style="font-size: 11px;">&nbsp;req/min</small></span>
+                                            {{#if limits.length}}{{#each limits}}<span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}</span><small class="text-muted d-inline" style="font-size: 11px;">&nbsp;{{limitTypeLabel limitType}}{{#if timeUnit}} / {{#unless (eq timeAmount 1)}}{{timeAmount}} {{/unless}}{{timeUnitLabel timeUnit}}{{/if}}</small>{{#unless @last}}<br>{{/unless}}{{/each}}{{else if requestCount}}<span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{requestCount}}<small class="text-muted d-inline" style="font-size: 11px;">&nbsp;req/min</small></span>{{else}}<span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">—</span>{{/if}}
                                         </div>
                                     </div>
                                     <button id="subscribe-btn-{{id}}" type="button"
@@ -61,7 +61,7 @@
                                         data-org-id="{{@root.orgId}}"
                                         data-api-id="{{../id}}"
                                         data-plan-id="{{id}}"
-                                        data-plan-name="{{handle}}"
+                                        data-plan-name="{{id}}"
                                         data-display-name="{{name}}"
                                         {{#unless @root.isReadOnlyMode}}onclick="handlePlanSubscription(this)"{{/unless}}
                                         {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>

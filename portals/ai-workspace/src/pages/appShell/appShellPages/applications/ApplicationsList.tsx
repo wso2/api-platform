@@ -133,8 +133,8 @@ export default function ApplicationsList() {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return genAIApplications;
 
-    return genAIApplications.filter((app) =>
-      [app.name, app.description]
+    return applications.filter((app) =>
+      [app.displayName, app.description]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -236,7 +236,7 @@ export default function ApplicationsList() {
                 ) : (
                   projectsForCurrentOrganization.map((project) => (
                     <MenuItem key={project.id} value={project.id}>
-                      {project.name}
+                      {project.displayName}
                     </MenuItem>
                   ))
                 )}
@@ -517,12 +517,12 @@ export default function ApplicationsList() {
                                 color: 'primary.contrastText',
                               }}
                             >
-                              {getInitials(app.name)}
+                              {getInitials(app.displayName)}
                             </Avatar>
 
                             <Box sx={{ flex: 1, minWidth: 0 }}>
                               <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                                {app.name}
+                                {app.displayName}
                               </Typography>
 
                               <Typography
@@ -564,7 +564,7 @@ export default function ApplicationsList() {
                               event.stopPropagation();
                               setDeleteTarget(app);
                             }}
-                            aria-label={`Delete ${app.name}`}
+                            aria-label={`Delete ${app.displayName}`}
                           >
                             <Trash2 size={16} />
                           </IconButton>
@@ -601,7 +601,7 @@ export default function ApplicationsList() {
         <DialogTitle>Delete application</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete {deleteTarget?.name}?
+            Are you sure you want to delete {deleteTarget?.displayName}?
           </DialogContentText>
         </DialogContent>
         <DialogActions>

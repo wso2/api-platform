@@ -72,6 +72,9 @@ import ExternalServersValidationDetails from './ExternalServersValidationDetails
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
+import {
+  GatewayArtifactReadOnlyBanner,
+} from '../../../../utils/readOnlyArtifacts';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -196,6 +199,7 @@ export default function ExternalServersOverview(): JSX.Element {
   const [selectedPolicies, setSelectedPolicies] = useState<SelectedPolicy[]>(
     []
   );
+  const isReadOnlyServer = Boolean(server?.readOnly);
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
@@ -224,7 +228,6 @@ export default function ExternalServersOverview(): JSX.Element {
         setIsLoading(true);
         const response = await mcpProxiesApis.getMCPServer(
           serverId,
-          organizationId,
           apimBaseUrl
         );
         if (!cancelled) {
@@ -264,7 +267,6 @@ export default function ExternalServersOverview(): JSX.Element {
         const deploymentPromises = availableGateways.map((gateway) =>
           getMCPServerDeployments(
             serverId,
-            organizationId,
             apimBaseUrl,
             gateway.id
           ).catch((error) => {
@@ -431,11 +433,12 @@ export default function ExternalServersOverview(): JSX.Element {
   }, [selectedPolicies, initialPolicies]);
 
   const handleCancelChanges = () => {
+    if (isReadOnlyServer) return;
     updateSelectedPolicies(initialPolicies);
   };
 
   const handleSaveChanges = async () => {
-    if (!server || !organizationId) return;
+    if (!server || !organizationId || isReadOnlyServer) return;
     const orderedPolicies = selectedPoliciesRef.current;
 
     // Convert selectedPolicies -> flat policy payload (preserve current UI order)
@@ -458,7 +461,6 @@ export default function ExternalServersOverview(): JSX.Element {
       const updated = await mcpProxiesApis.updateMCPServer(
         server.id,
         { ...updatePayload, policies: policiesPayload },
-        organizationId,
         apimBaseUrl
       );
       setServer(updated);
@@ -489,6 +491,7 @@ export default function ExternalServersOverview(): JSX.Element {
   };
 
   const handleAddPolicy = (policy: Omit<SelectedPolicy, 'instanceId'>) => {
+    if (isReadOnlyServer) return;
     const nextItem: SelectedPolicy = {
       instanceId: `${policy.policyId}-${Date.now()}`,
       ...policy,
@@ -498,6 +501,7 @@ export default function ExternalServersOverview(): JSX.Element {
   };
 
   const handleUpdatePolicy = (instanceId: string, params: ParameterValues) => {
+    if (isReadOnlyServer) return;
     updateSelectedPolicies((prev) =>
       prev.map((policy) =>
         policy.instanceId === instanceId ? { ...policy, params } : policy
@@ -506,6 +510,7 @@ export default function ExternalServersOverview(): JSX.Element {
   };
 
   const handleRemovePolicy = (instanceId: string) => {
+    if (isReadOnlyServer) return;
     updateSelectedPolicies((prev) =>
       prev.filter((policy) => policy.instanceId !== instanceId)
     );
@@ -515,6 +520,7 @@ export default function ExternalServersOverview(): JSX.Element {
     draggedInstanceId: string,
     targetInstanceId: string
   ) => {
+    if (isReadOnlyServer) return;
     updateSelectedPolicies((prev) => {
       const draggedIndex = prev.findIndex(
         (policy) => policy.instanceId === draggedInstanceId
@@ -539,7 +545,7 @@ export default function ExternalServersOverview(): JSX.Element {
     return {
       endpointUrl: server.upstream?.main?.url ?? '',
       serverInfo: {
-        name: server.name ?? '',
+        name: server.displayName ?? '',
         version: server.version ?? '',
       },
       tools: (server.capabilities.tools ??
@@ -609,7 +615,7 @@ export default function ExternalServersOverview(): JSX.Element {
       </Button>
 
       <ExternalServerStepBanner
-        serverName={server?.name}
+        serverName={server?.displayName}
         hasPolicies={(server?.policies?.length ?? 0) > 0}
         hasDeployments={deployedGateways.length > 0}
         onStepClick={handleStepBannerClick}
@@ -639,7 +645,7 @@ export default function ExternalServersOverview(): JSX.Element {
                   color: 'primary.contrastText',
                 }}
               >
-                {getInitials(server.name)}
+                {getInitials(server.displayName)}
               </Avatar>
               <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                 <Stack
@@ -648,15 +654,22 @@ export default function ExternalServersOverview(): JSX.Element {
                   alignItems="center"
                   flexWrap="wrap"
                 >
-                  <Typography variant="h3">{server.name}</Typography>
+                  <Typography variant="h3">{server.displayName}</Typography>
                   <Chip
                     label={server.version}
                     size="small"
                     variant="outlined"
                     color="primary"
                   />
+                  {/* Edit page (name/version/context/description). Enabled even for
+                      gateway-created MCP proxies — the page keeps the runtime fields
+                      read-only and allows only the description. */}
                   <Tooltip title="Edit MCP Proxy">
-                    <IconButton component={RouterLink} to="edit" size="small">
+                    <IconButton
+                      component={RouterLink}
+                      to="edit"
+                      size="small"
+                    >
                       <Edit size={16} />
                     </IconButton>
                   </Tooltip>
@@ -695,16 +708,26 @@ export default function ExternalServersOverview(): JSX.Element {
               spacing={1}
               sx={{ alignSelf: 'flex-start', ml: 'auto', gap: 1 }}
             >
+              {/* For gateway-created (read-only) proxies the deployments remain viewable
+                  (deploy/redeploy/restore/undeploy are disabled on the page itself), so
+                  the button navigates but is relabelled "View Deployments". */}
               <Button
                 variant="contained"
                 component={RouterLink}
                 to="deploy"
-                onClick={handleBlockedNavigation}
+                onClick={isReadOnlyServer ? undefined : handleBlockedNavigation}
               >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.deployToGateway"
-                  defaultMessage="Deploy to Gateway"
-                />
+                {isReadOnlyServer ? (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.viewDeployments"
+                    defaultMessage="View Deployments"
+                  />
+                ) : (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.deployToGateway"
+                    defaultMessage="Deploy to Gateway"
+                  />
+                )}
               </Button>
             </Stack>
           </Box>
@@ -833,6 +856,9 @@ export default function ExternalServersOverview(): JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
+              {isReadOnlyServer && (
+                <GatewayArtifactReadOnlyBanner message="Policies are managed by the gateway that created this MCP proxy and are read-only here." />
+              )}
               <PolicyMapper
                 selectedPolicies={selectedPolicies}
                 onAddPolicy={handleAddPolicy}
@@ -840,6 +866,7 @@ export default function ExternalServersOverview(): JSX.Element {
                 onRemovePolicy={handleRemovePolicy}
                 onReorderPolicies={handleReorderPolicies}
                 validationResult={validationResult}
+                readOnly={isReadOnlyServer}
               />
             </TabPanel>
           </Box>
@@ -871,14 +898,18 @@ export default function ExternalServersOverview(): JSX.Element {
               <Button
                 variant="outlined"
                 color="secondary"
-                disabled={!hasUnsavedChanges || isSavingChanges}
+                disabled={
+                  isReadOnlyServer || !hasUnsavedChanges || isSavingChanges
+                }
                 onClick={handleCancelChanges}
               >
                 Cancel
               </Button>
               <Button
                 variant="contained"
-                disabled={!hasUnsavedChanges || isSavingChanges}
+                disabled={
+                  isReadOnlyServer || !hasUnsavedChanges || isSavingChanges
+                }
                 onClick={() => void handleSaveChanges()}
               >
                 {isSavingChanges ? 'Saving...' : 'Save'}

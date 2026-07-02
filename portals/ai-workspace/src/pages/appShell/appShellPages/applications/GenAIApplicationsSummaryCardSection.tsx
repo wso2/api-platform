@@ -260,11 +260,11 @@ export default function GenAIApplicationsSummaryCardSection({
                       color: 'primary.contrastText',
                     }}
                   >
-                    {getInitials(application.name || 'NA')}
+                    {getInitials(application.displayName || 'NA')}
                   </Avatar>
                   <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
                     <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
-                      {truncateWords(application.name || 'No Name', 12)}
+                      {truncateWords(application.displayName || 'No Name', 12)}
                     </Typography>
                     <Typography
                       variant="body2"

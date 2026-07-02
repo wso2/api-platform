@@ -86,7 +86,7 @@ function ProjectListViewInner() {
     if (!query) return projectsForCurrentOrganization;
 
     return projectsForCurrentOrganization.filter((project) => {
-      const haystack = [project.name, project.description, project.handler]
+      const haystack = [project.displayName, project.description, project.id]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -358,7 +358,7 @@ function ProjectListViewInner() {
                             variant="h5" sx={{ fontWeight: 600 }}
                             noWrap
                           >
-                            {project.name}
+                            {project.displayName}
                           </Typography>
                           <Typography
                             variant="body2"
@@ -383,7 +383,7 @@ function ProjectListViewInner() {
                           <Clock size={16} />
                           <Typography variant="body2" color="text.secondary">
                             {formatRelativeTime(
-                              project.updatedAt || project.createdDate
+                              project.updatedAt || project.createdAt
                             )}
                           </Typography>
                         </Stack>
@@ -512,7 +512,7 @@ function ProjectListViewInner() {
         <DialogContent>
           <Typography>
             Are you sure you want to delete{' '}
-            <strong>{deleteTarget?.name ?? 'this project'}</strong>? This action
+            <strong>{deleteTarget?.displayName ?? 'this project'}</strong>? This action
             cannot be undone.
           </Typography>
         </DialogContent>

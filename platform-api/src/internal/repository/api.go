@@ -283,39 +283,6 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	return apis, rows.Err()
 }
 
-// GetDeployedAPIsByGatewayUUID retrieves all APIs deployed to a specific gateway
-func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
-	query := `
-		SELECT a.uuid, a.display_name, a.description, a.version, a.created_by,
-		       a.project_uuid, a.organization_uuid, a.origin, a.created_at, a.updated_at
-		FROM rest_apis a
-		INNER JOIN deployment_status ad ON a.uuid = ad.artifact_uuid AND ad.organization_uuid = a.organization_uuid
-		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ? AND ad.status = ?
-		ORDER BY a.created_at DESC
-	`
-
-	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID, string(model.DeploymentStatusDeployed))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var apis []*model.API
-	for rows.Next() {
-		api := &model.API{Kind: constants.RestApi}
-		var createdBy sql.NullString
-		if err := rows.Scan(&api.ID, &api.Name, &api.Description,
-			&api.Version, &createdBy, &api.ProjectID, &api.OrganizationID, &api.Origin,
-			&api.CreatedAt, &api.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan API row: %w", err)
-		}
-		api.CreatedBy = createdBy.String
-		apis = append(apis, api)
-	}
-
-	return apis, rows.Err()
-}
-
 // GetAPIsByGatewayUUID retrieves all APIs associated with a specific gateway
 func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `
@@ -572,7 +539,6 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			g.handle,
 			g.description,
 			g.properties,
-			g.vhost,
 			g.is_critical,
 			g.gateway_functionality_type as functionality_type,
 			g.is_active,
@@ -582,12 +548,14 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			aa.updated_at as association_updated_at,
 			CASE WHEN ad.deployment_uuid IS NOT NULL THEN 1 ELSE 0 END as is_deployed,
 			ad.deployment_uuid,
-			ad.updated_at as deployed_at
+			ad.updated_at as deployed_at,
+			ge.url
 		FROM gateways g
 		INNER JOIN artifact_gateway_mappings aa ON g.uuid = aa.gateway_uuid
 		LEFT JOIN deployment_status ad ON g.uuid = ad.gateway_uuid AND ad.artifact_uuid = ? AND ad.status = ?
+		LEFT JOIN gateway_endpoints ge ON g.uuid = ge.gateway_uuid
 		WHERE aa.artifact_uuid = ? AND g.organization_uuid = ?
-		ORDER BY aa.created_at DESC
+		ORDER BY aa.created_at DESC, ge.id ASC
 	`
 
 	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, string(model.DeploymentStatusDeployed), apiUUID, orgUUID)
@@ -597,50 +565,73 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 	defer rows.Close()
 
 	var gateways []*model.APIGatewayWithDetails
+	byID := make(map[string]*model.APIGatewayWithDetails)
 	for rows.Next() {
-		gateway := &model.APIGatewayWithDetails{}
 		var propertiesBytes []byte
 		var isCritical, isActive int
 		var deployedAt sql.NullTime
-		var deploymentId sql.NullString
+		var deploymentId, endpointURL sql.NullString
+		var id, organizationID, name, handle, description, functionalityType string
+		var createdAt, updatedAt, associatedAt, associationUpdatedAt time.Time
+		var isDeployed bool
 
 		err := rows.Scan(
-			&gateway.ID,
-			&gateway.OrganizationID,
-			&gateway.Name,
-			&gateway.Handle,
-			&gateway.Description,
+			&id,
+			&organizationID,
+			&name,
+			&handle,
+			&description,
 			&propertiesBytes,
-			&gateway.Vhost,
 			&isCritical,
-			&gateway.FunctionalityType,
+			&functionalityType,
 			&isActive,
-			&gateway.CreatedAt,
-			&gateway.UpdatedAt,
-			&gateway.AssociatedAt,
-			&gateway.AssociationUpdatedAt,
-			&gateway.IsDeployed,
+			&createdAt,
+			&updatedAt,
+			&associatedAt,
+			&associationUpdatedAt,
+			&isDeployed,
 			&deploymentId,
 			&deployedAt,
+			&endpointURL,
 		)
 		if err != nil {
 			return nil, err
 		}
-		gateway.IsCritical = isCritical != 0
-		gateway.IsActive = isActive != 0
 
-		if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
-			if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal gateway properties: %w", err)
+		gateway, ok := byID[id]
+		if !ok {
+			gateway = &model.APIGatewayWithDetails{
+				ID:                   id,
+				OrganizationID:       organizationID,
+				Name:                 name,
+				Handle:               handle,
+				Description:          description,
+				IsCritical:           isCritical != 0,
+				FunctionalityType:    functionalityType,
+				IsActive:             isActive != 0,
+				CreatedAt:            createdAt,
+				UpdatedAt:            updatedAt,
+				AssociatedAt:         associatedAt,
+				AssociationUpdatedAt: associationUpdatedAt,
+				IsDeployed:           isDeployed,
 			}
+			if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
+				if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal gateway properties: %w", err)
+				}
+			}
+			if deploymentId.Valid {
+				gateway.DeploymentID = &deploymentId.String
+			}
+			if deployedAt.Valid {
+				gateway.DeployedAt = &deployedAt.Time
+			}
+			byID[id] = gateway
+			gateways = append(gateways, gateway)
 		}
-		if deploymentId.Valid {
-			gateway.DeploymentID = &deploymentId.String
+		if endpointURL.Valid {
+			gateway.Endpoints = append(gateway.Endpoints, endpointURL.String)
 		}
-		if deployedAt.Valid {
-			gateway.DeployedAt = &deployedAt.Time
-		}
-		gateways = append(gateways, gateway)
 	}
 
 	return gateways, rows.Err()

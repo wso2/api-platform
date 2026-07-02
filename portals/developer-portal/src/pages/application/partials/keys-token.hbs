@@ -48,7 +48,7 @@
                                         class="common-btn-primary btn-sm me-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                         id="regenerateButton_{{../name}}_{{keyType}}"
                                         style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-{{keyType}}', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{@root.applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', '{{keyType}}')">
+                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-{{keyType}}', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{@root.applicationMetadata.displayName}}', '{{json @root.subscriptionScopes}}', '{{keyType}}')">
                                         <span class="button-normal-state">
                                             <i class="bi bi-arrow-clockwise"></i> Regenerate
                                         </span>

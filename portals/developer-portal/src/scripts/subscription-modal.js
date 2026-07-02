@@ -198,8 +198,8 @@ async function prepareSubscriptionModal(modalId) {
                     <div class="card dev-card subscription-card">
                         <div class="card-body align-items-center text-center p-0">
                             <span class="subscription-plans-card-title">${escapeHtml(plan.name || plan.subscriptionPlanName || '')}</span>
-                            <h1 class="subscription-plans-request-count">${escapeHtml(String(plan.requestCount || plan.rate || ''))}</h1>
-                            <p class="subscription-plans-card-subtitle pt-0">requests per minute</p>
+                            <h1 class="subscription-plans-request-count">${escapeHtml(formatPlanLimitSummary(plan))}</h1>
+                            <p class="subscription-plans-card-subtitle pt-0">${escapeHtml(formatPlanLimitSubtitle(plan))}</p>
                         </div>
                         <div class="position-relative">
                             <div class="message-overlay hidden"><div class="message-content"><i class="bi message-icon"></i><p class="message-text"></p></div><button type="button" class="close-message" aria-label="Close">&times;</button></div>
@@ -213,7 +213,7 @@ async function prepareSubscriptionModal(modalId) {
                 btn.dataset.orgId = orgId;
                 btn.dataset.apiId = apiId;
                 btn.dataset.planId = plan.id || '';
-                btn.dataset.planName = plan.handle || plan.subscriptionPlanName || '';
+                btn.dataset.planName = plan.id || plan.subscriptionPlanName || '';
                 btn.dataset.displayName = plan.name || plan.subscriptionPlanName || '';
                 if (window.isReadOnly) {
                     btn.disabled = true;
@@ -251,4 +251,25 @@ async function prepareSubscriptionModal(modalId) {
 
 function escapeHtml(unsafe) {
     return String(unsafe).replace(/[&<>"'`]/g, function (m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;","`":"&#96;"})[m]; });
+}
+
+var LIMIT_TYPE_LABELS = { REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens' };
+var TIME_UNIT_LABELS  = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
+
+function formatPlanLimitSummary(plan) {
+    var limits = plan.limits;
+    if (!limits || limits.length === 0) return 'Unlimited';
+    var first = limits[0];
+    return first.limitCount === -1 ? '∞' : String(first.limitCount);
+}
+
+function formatPlanLimitSubtitle(plan) {
+    var limits = plan.limits;
+    if (!limits || limits.length === 0) return '';
+    var first = limits[0];
+    var typeLabel = LIMIT_TYPE_LABELS[first.limitType] || (first.limitType || '').toLowerCase().replace(/_/g, ' ');
+    if (!first.timeUnit) return typeLabel;
+    var unitLabel = TIME_UNIT_LABELS[first.timeUnit] || (first.timeUnit || '').toLowerCase();
+    var amount = first.timeAmount && first.timeAmount !== 1 ? first.timeAmount + ' ' : '';
+    return typeLabel + ' / ' + amount + unitLabel;
 }

@@ -42,7 +42,7 @@ export default function GatewayDeploymentSelector({
   open,
   onClose,
 }: GatewayDeploymentSelectorProps) {
-  const { deployments, redeployDeployment, isDeployingToGateway } =
+  const { deployments, redeployDeployment, isDeployingToGateway, readOnly } =
     useGatewayDeploy();
 
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<
@@ -271,7 +271,7 @@ export default function GatewayDeploymentSelector({
             variant="contained"
             color="primary"
             onClick={handleRestore}
-            disabled={!canRestore}
+            disabled={readOnly || !canRestore}
             startIcon={
               isRestoring ? (
                 <CircularProgress size={16} color="inherit" />

@@ -4,13 +4,13 @@
 
 <a id="opIdlistApplications"></a>
 
-`GET /devportal/v1/applications`
+`GET /api/v0.9/applications`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/applications \
+curl -X GET https://devportal.api-platform.io/api/v0.9/applications \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -41,8 +41,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "id": "app-12345",
-      "name": "Weather App",
+      "id": "my-weather-app",
+      "displayName": "Weather App",
       "description": "Application used to call Weather APIs.",
       "appKeyMappings": [
         {
@@ -85,8 +85,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ApplicationResponse](schemas.md#schemaapplicationresponse)]|false|none|none|
-|»» id|string|false|none|none|
-|»» name|string|false|none|none|
+|»» id|string|false|none|The application's handle (unique per org). Not the internal database uuid.|
+|»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
 |»» appKeyMappings|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 |»»» asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
@@ -108,13 +108,13 @@ Status Code **200**
 
 <a id="opIdsaveApplication"></a>
 
-`POST /devportal/v1/applications`
+`POST /api/v0.9/applications`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/applications \
+curl -X POST https://devportal.api-platform.io/api/v0.9/applications \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -129,14 +129,18 @@ Creates a Developer Portal application in the specified organization. The reques
 
 ```json
 {
-  "name": "Weather App",
+  "displayName": "Weather App",
+  "id": "my-weather-app",
   "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
-name: Weather App
-description: Application used to call Weather APIs.
+metadata:
+  name: my-weather-app
+spec:
+  displayName: Weather App
+  description: Application used to call Weather APIs.
 
 ```
 
@@ -151,7 +155,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` or `metadata.name` as the application name and `spec.description` as the description.|
+|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. The JSON example below (`displayName`, `id`, `description`) applies only to the `application/json` content type. When an application YAML **file** is uploaded instead, its content must use the nested shape `metadata.name` (handle) and `spec.displayName` / `spec.description` — any top-level `id` inside that YAML file is ignored.|
 
 > Example responses
 
@@ -159,8 +163,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "app-12345",
-  "name": "Weather App",
+  "id": "my-weather-app",
+  "displayName": "Weather App",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": []
 }
@@ -246,13 +250,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetApplication"></a>
 
-`GET /devportal/v1/applications/{applicationId}`
+`GET /api/v0.9/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -272,7 +276,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 
@@ -280,8 +284,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "app-12345",
-  "name": "Weather App",
+  "id": "my-weather-app",
+  "displayName": "Weather App",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": []
 }
@@ -319,13 +323,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateApplication"></a>
 
-`PUT /devportal/v1/applications/{applicationId}`
+`PUT /api/v0.9/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -334,20 +338,24 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/applications/{applica
 
 ```
 
-Updates an application owned by the authenticated user in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated` webhook event is published, plus one `apikey.application_updated` event per API key currently associated with the application.
+Updates an application owned by the authenticated user in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated` webhook event is published.
 
 > Payload
 
 ```json
 {
-  "name": "Weather App",
+  "displayName": "Weather App",
+  "id": "my-weather-app",
   "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
-name: Weather App
-description: Application used to call Weather APIs.
+metadata:
+  name: my-weather-app
+spec:
+  displayName: Weather App
+  description: Application used to call Weather APIs.
 
 ```
 
@@ -362,8 +370,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. When YAML is used, the service reads `spec.displayName` or `metadata.name` as the application name and `spec.description` as the description.|
-|applicationId|path|string|true|none|
+|body|body|[ApplicationRequest](schemas.md#schemaapplicationrequest)|true|Application payload. Send JSON, multipart form fields, or an application YAML file in the `application` field. The JSON example below (`displayName`, `id`, `description`) applies only to the `application/json` content type. When an application YAML **file** is uploaded instead, its content must use the nested shape `metadata.name` (handle) and `spec.displayName` / `spec.description` — any top-level `id` inside that YAML file is ignored.|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 
@@ -371,8 +379,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "app-12345",
-  "name": "Weather App",
+  "id": "my-weather-app",
+  "displayName": "Weather App",
   "description": "Application used to call Weather APIs.",
   "appKeyMappings": []
 }
@@ -463,13 +471,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApplication"></a>
 
-`DELETE /devportal/v1/applications/{applicationId}`
+`DELETE /api/v0.9/applications/{applicationId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/applications/{applicationId} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/applications/{applicationId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'
@@ -489,7 +497,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 

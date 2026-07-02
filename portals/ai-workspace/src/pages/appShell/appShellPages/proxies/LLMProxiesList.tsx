@@ -63,8 +63,6 @@ import { FormattedMessage } from 'react-intl';
 import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 
-const MAX_LLM_PROXIES_PER_ORG = 5;
-
 function getHttpStatusCode(error?: Error | null): number | null {
   if (!error) return null;
 
@@ -134,7 +132,7 @@ export default function LLMProxiesList() {
     const providerId = getProviderId(providerRef);
     if (!providerId) return '—';
     const found = providersResponse.list.find((p) => p.id === providerId);
-    return found?.name ?? providerId;
+    return found?.displayName ?? providerId;
   };
 
   const truncateProxyDescription = (
@@ -155,7 +153,7 @@ export default function LLMProxiesList() {
 
     return proxies.filter((proxy) => {
       const haystack = [
-        proxy.name,
+        proxy.displayName,
         proxy.description,
         proxy.context,
         getProviderId(proxy.provider),
@@ -182,9 +180,7 @@ export default function LLMProxiesList() {
     );
   };
 
-  const isProxyQuotaReached =
-    (proxiesResponse.count ?? proxiesResponse.list.length) >=
-    MAX_LLM_PROXIES_PER_ORG;
+  const isProxyQuotaReached = false;
   const proxyQuotaTooltip =
     'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
   const createProxyButtonSx = {
@@ -299,7 +295,7 @@ export default function LLMProxiesList() {
                       ) : (
                         projectsForCurrentOrganization.map((project) => (
                           <MenuItem key={project.id} value={project.id}>
-                            {project.name}
+                            {project.displayName}
                           </MenuItem>
                         ))
                       )}
@@ -465,7 +461,7 @@ export default function LLMProxiesList() {
                                     fontSize: 16,
                                   }}
                                 >
-                                  {(proxy.name || '—')
+                                  {(proxy.displayName || '—')
                                     .trim()
                                     .slice(0, 2)
                                     .toUpperCase()}
@@ -475,7 +471,7 @@ export default function LLMProxiesList() {
                                     variant="h6"
                                     sx={{ fontWeight: 600 }}
                                   >
-                                    {truncateProviderDisplayName(proxy.name)}
+                                    {truncateProviderDisplayName(proxy.displayName)}
                                   </Typography>
                                 </Box>
                               </Box>
@@ -498,10 +494,10 @@ export default function LLMProxiesList() {
                                   event.stopPropagation();
                                   setDeleteTarget({
                                     id: proxy.id,
-                                    name: proxy.name,
+                                    name: proxy.displayName,
                                   });
                                 }}
-                                aria-label={`Delete ${proxy.name}`}
+                                aria-label={`Delete ${proxy.displayName}`}
                               >
                                 <Trash2 size={16} />
                               </IconButton>

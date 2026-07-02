@@ -103,7 +103,7 @@ export default function ProviderTemplateSelector({
 
   const familyMap = new Map<string, (typeof enabledTemplates)[0]>();
   for (const t of enabledTemplates) {
-    const key = t.name.toLowerCase();
+    const key = t.displayName.toLowerCase();
     const existing = familyMap.get(key);
     if (!existing || t.isLatest) familyMap.set(key, t);
   }
@@ -160,8 +160,8 @@ export default function ProviderTemplateSelector({
                 familyHandle(templateId)
               );
               const isSelected = !isComingSoon && selectedTemplateId === template.id;
-              const logo = getLogoForTemplate(template.name);
-              const shortName = getShortNameForTemplate(template.name);
+              const logo = getLogoForTemplate(template.displayName);
+              const shortName = getShortNameForTemplate(template.displayName);
               return (
                 <Form.CardButton
                   key={template.id}
@@ -209,7 +209,7 @@ export default function ProviderTemplateSelector({
                       <Box
                         component="img"
                         src={logo}
-                        alt={`${template.name} logo`}
+                        alt={`${template.displayName} logo`}
                         sx={{
                           width: '90%',
                           height: '90%',
@@ -227,9 +227,9 @@ export default function ProviderTemplateSelector({
                     <Typography
                       variant="subtitle2"
                       noWrap
-                      title={template.name}
+                      title={template.displayName}
                     >
-                      {truncateProviderDisplayName(template.name)}
+                      {truncateProviderDisplayName(template.displayName)}
                     </Typography>
                   </Box>
                   {/* Version chip only on the selected card, in the right corner. */}

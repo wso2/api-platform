@@ -144,7 +144,6 @@
     { name: 'Catalog API',            meta: 'REST · v1.0'   },
     { name: 'Swagger Petstore',       meta: 'REST · v1.0.7' },
     { name: 'Countries GraphQL API',  meta: 'GraphQL · v1.0'},
-    { name: 'Leisure Activities API', meta: 'SOAP · v1.0'   },
     { name: 'Navigation API',         meta: 'WS · v1.0'     },
     { name: 'TravelAssistantMCP',     meta: 'MCP · v1.0.0'  },
   ];
@@ -256,7 +255,9 @@
     .finally(function () { fetchDone = true; tryFinish(); });
   }
 
-  // TODO: re-enable before release
+  // Server already decides whether to render this overlay at all (demo mode + not yet
+  // seeded — see showOnboarding in orgContentController.js). This session-scoped check
+  // just avoids re-showing it after a "skip" click within the same browser session.
   try {
     if (sessionStorage.getItem(STORAGE_KEY)) {
       overlay.style.display = 'none';

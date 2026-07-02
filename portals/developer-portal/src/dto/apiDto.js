@@ -20,9 +20,8 @@ const constants = require('../utils/constants');
 
 class APIDTO {
     constructor(api) {
-        this.id = api.uuid;
+        this.id = api.handle;
         this.refId = api.ref_id;
-        this.handle = api.handle;
         this.dataSource = api.DATA_SOURCE;
         Object.assign(this, new APIInfo(api));
         this.endPoints = new Endpoints(api);
@@ -76,11 +75,15 @@ class APIInfo {
 
 class APISubscriptionPlan {
     constructor(apiSubscriptionPlan) {
-        this.handle = apiSubscriptionPlan.handle;
         this.name = apiSubscriptionPlan.name;
-        this.requestCount = apiSubscriptionPlan.request_count;
-        this.id = apiSubscriptionPlan.uuid;
+        this.id = apiSubscriptionPlan.handle;
         this.description = apiSubscriptionPlan.description;
+        this.limits = (apiSubscriptionPlan.limits || []).map(l => ({
+            limitType:  l.limit_type,
+            timeUnit:   l.time_unit ?? null,
+            timeAmount: l.time_amount,
+            limitCount: Number(l.limit_count),
+        }));
     }
 }
 

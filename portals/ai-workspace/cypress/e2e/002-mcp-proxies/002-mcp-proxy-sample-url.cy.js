@@ -22,8 +22,39 @@ describe('AI Workspace - MCP proxy sample URL lifecycle', () => {
   const proxyName = `E2E MCP Proxy ${suffix}`;
   const proxyId = toSlug(proxyName);
 
+  let authToken = '';
+
   beforeEach(() => {
     cy.login();
+    // Also authenticate via the API so afterEach can clean up deterministically,
+    // even when the UI flow fails before its inline cleanup runs.
+    cy.request({
+      method: 'POST',
+      url: '/api/proxy/api/portal/v0.9/auth/login',
+      form: true,
+      body: {
+        username: Cypress.env('ADMIN_USER'),
+        password: Cypress.env('ADMIN_PASSWORD'),
+      },
+      failOnStatusCode: false,
+    }).then((response) => {
+      authToken = response.status === 200 ? response.body?.token ?? '' : '';
+    });
+    // Clear leaked "E2E " proxies up front so a polluted org (already at the
+    // MCP proxy limit from earlier failed runs) does not fail this run's create.
+    cy.then(() => {
+      if (authToken) sweepE2EMCPProxies(authToken);
+    });
+  });
+
+  afterEach(() => {
+    if (!authToken) return;
+    // The org caps MCP proxies (MaxMCPProxiesPerOrganization). If a run fails
+    // before its inline UI cleanup, the proxy leaks and eventually the create
+    // call starts returning 409 (limit reached). Sweep every leaked "E2E "
+    // proxy so repeated local runs stay green, then drop the test project.
+    sweepE2EMCPProxies(authToken);
+    deleteProjectByName(authToken, projectName);
   });
 
   it('creates and deletes an MCP proxy from the sample URL flow using only the UI', () => {
@@ -79,9 +110,21 @@ describe('AI Workspace - MCP proxy sample URL lifecycle', () => {
       'not.have.value',
       ''
     );
+
+    // Intercept the create call so a backend rejection surfaces as a clear
+    // status/message instead of an opaque "still on /mcp-proxy/new" timeout.
+    cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('createProxy');
+
     cy.contains('button', 'Create')
       .should('not.be.disabled')
       .click();
+
+    cy.wait('@createProxy').then((interception) => {
+      expect(
+        interception.response.statusCode,
+        `POST /mcp-proxies failed: ${JSON.stringify(interception.response.body)}`
+      ).to.be.oneOf([200, 201]);
+    });
 
     cy.location('pathname', { timeout: 30000 }).should(
       'include',
@@ -139,4 +182,65 @@ function toSlug(value) {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+// Delete every MCP proxy whose displayName starts with "E2E " so leaked proxies
+// from earlier failed runs do not push the org over its MCP proxy limit. The
+// list endpoint is project-scoped, and the limit is per-organization, so we
+// enumerate all projects and sweep each one's proxies.
+function sweepE2EMCPProxies(authToken) {
+  const headers = { Authorization: `Bearer ${authToken}` };
+  cy.request({
+    url: '/api/proxy/api/v0.9/projects',
+    headers,
+    failOnStatusCode: false,
+  }).then((response) => {
+    if (response.status !== 200) return;
+    const projects = response.body?.list ?? [];
+    projects.forEach((project) => {
+      if (!project.id) return;
+      cy.request({
+        url: `/api/proxy/api/v0.9/mcp-proxies?projectId=${encodeURIComponent(project.id)}&limit=100&offset=0`,
+        headers,
+        failOnStatusCode: false,
+      }).then((listResponse) => {
+        if (listResponse.status !== 200) return;
+        const proxies = (listResponse.body?.list ?? []).filter(
+          (p) =>
+            typeof p.displayName === 'string' &&
+            p.displayName.startsWith('E2E ')
+        );
+        proxies.forEach((proxy) => {
+          if (!proxy.id) return;
+          cy.request({
+            method: 'DELETE',
+            url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(proxy.id)}`,
+            headers,
+            failOnStatusCode: false,
+          });
+        });
+      });
+    });
+  });
+}
+
+// Look up a project by its human-readable displayName and delete it by handle.
+function deleteProjectByName(authToken, targetName) {
+  cy.request({
+    url: '/api/proxy/api/v0.9/projects',
+    headers: { Authorization: `Bearer ${authToken}` },
+    failOnStatusCode: false,
+  }).then((response) => {
+    if (response.status !== 200) return;
+    const target = (response.body?.list ?? []).find(
+      (p) => p.displayName === targetName
+    );
+    if (!target?.id) return;
+    cy.request({
+      method: 'DELETE',
+      url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
+      headers: { Authorization: `Bearer ${authToken}` },
+      failOnStatusCode: false,
+    });
+  });
 }

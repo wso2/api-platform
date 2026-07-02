@@ -24,6 +24,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -32,7 +33,6 @@ import (
 	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // WebBrokerAPIDeploymentHandler handles deployment routes for WebBroker APIs
@@ -51,12 +51,12 @@ func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *egservice.W
 
 // RegisterRoutes registers WebBroker API deployment routes
 func (h *WebBrokerAPIDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments", h.DeployWebBrokerAPI)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}/restore", h.RestoreDeployment)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments", h.GetDeployments)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}", h.GetDeployment)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}", h.DeleteDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/deployments", h.DeployWebBrokerAPI)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/deployments/{deploymentId}/restore", h.RestoreDeployment)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/deployments", h.GetDeployments)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/deployments/{deploymentId}", h.GetDeployment)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{webBrokerApiId}/deployments/{deploymentId}", h.DeleteDeployment)
 }
 
 // DeployWebBrokerAPI handles POST /api/v0.9/webbroker-apis/:apiId/deployments
@@ -67,7 +67,7 @@ func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(w http.ResponseWriter
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webBrokerApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
@@ -87,7 +87,7 @@ func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(w http.ResponseWriter
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "base is required"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.GatewayId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
@@ -113,7 +113,7 @@ func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webBrokerApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -145,7 +145,7 @@ func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter,
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webBrokerApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -177,7 +177,7 @@ func (h *WebBrokerAPIDeploymentHandler) GetDeployments(w http.ResponseWriter, r 
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webBrokerApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
@@ -218,7 +218,7 @@ func (h *WebBrokerAPIDeploymentHandler) GetDeployment(w http.ResponseWriter, r *
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webBrokerApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	deployment, err := h.webbrokerAPIDeploymentService.GetWebBrokerAPIDeploymentByHandle(apiId, deploymentId, orgId)
@@ -238,7 +238,7 @@ func (h *WebBrokerAPIDeploymentHandler) DeleteDeployment(w http.ResponseWriter, 
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webBrokerApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if err := h.webbrokerAPIDeploymentService.DeleteWebBrokerAPIDeploymentByHandle(apiId, deploymentId, orgId); err != nil {

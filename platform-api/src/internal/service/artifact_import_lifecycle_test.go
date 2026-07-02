@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -813,19 +814,21 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 		nil, // gatewayEventsService unused on create/get/list
 		newTestLogger(),
 		&noopAuditRepo{},
+		&config.Server{},
 	)
 
 	// DP-origin MCP proxy via the gateway import flow.
 	mustImport(t, d, dpMCPReq("dp-mcp-ro", "dp-mcp", "DP MCP"))
 
-	// CP-origin MCP proxy via the service.
-	proj := importTestProjectID
+	// CP-origin MCP proxy via the service. ProjectId is the project handle
+	// ("default" for the seeded project), resolved to the UUID on create.
+	proj := "default"
 	if _, err := svc.Create(importTestOrgID, "tester", &api.MCPProxy{
-		Id:        "cp-mcp",
-		Name:      "CP MCP",
-		Version:   "v1.0",
-		ProjectId: &proj,
-		Upstream:  api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
+		Id:          strPointer("cp-mcp"),
+		DisplayName: "CP MCP",
+		Version:     "v1.0",
+		ProjectId:   &proj,
+		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
 	}); err != nil {
 		t.Fatalf("create CP MCP proxy: %v", err)
 	}
@@ -874,98 +877,112 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 	}
 }
 
-// TestCPSideGuard_UpdateBlockedForDPOrigin verifies that the control-plane CRUD services
-// reject updates to DP-originated (gateway-pushed) artifacts with ErrArtifactReadOnly,
-// for every kind. The DP artifacts are seeded through the import flow. (REST is covered by
-// TestArtifactImport_Enforcement_ReadOnlyAndDeletion; deploy/undeploy/restore guards are
-// covered by the deployment-guard tests.)
-func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
+// TestCPSideGuard_DPOriginUpdate verifies control-plane updates to DP-originated
+// (gateway-pushed) artifacts protect the gateway-owned runtime configuration while still
+// allowing control-plane metadata edits. Templates reject a runtime (token-extraction)
+// change outright (ErrArtifactRuntimeImmutable) but allow metadata; providers/proxies/MCP
+// proxies preserve their runtime config verbatim (a runtime edit in the payload is silently
+// ignored) and apply only metadata (description/models/OpenAPI). DP artifacts are seeded
+// through the import flow. (deploy/undeploy/restore guards are covered by the
+// deployment-guard tests.)
+func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 	logger := newTestLogger()
 
 	t.Run("LLMProviderTemplate", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{})
 		mustImport(t, d, dpTemplateReq("dp-t", "blk-tmpl", "T"))
-		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
-			t.Errorf("Template Update(DP) = %v, want ErrArtifactReadOnly", err)
+
+		// Changing a gateway-consumed field (a token-extraction identifier) is rejected.
+		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
+			DisplayName:  "T",
+			PromptTokens: &api.ExtractionIdentifier{Location: api.ExtractionIdentifierLocation("payload"), Identifier: "$.usage.prompt_tokens"},
+		}); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+			t.Errorf("Template Update(DP, extraction change) = %v, want ErrArtifactRuntimeImmutable", err)
+		}
+
+		// Editing the OpenAPI spec URL / display name (neither read by the gateway at request
+		// time) leaves the runtime artifact untouched and is allowed.
+		specURL := "https://example.com/openapi.yaml"
+		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
+			DisplayName: "Renamed",
+			Metadata:    &api.LLMProviderTemplateMetadata{OpenapiSpecUrl: &specURL},
+		}); err != nil {
+			t.Errorf("Template Update(DP, openapi/metadata edit) = %v, want success", err)
 		}
 	})
 
 	t.Run("LLMProvider", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProviderService(repository.NewLLMProviderRepo(d.db), d.templateRepo,
-			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
+			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{})
 		mustImport(t, d, dpTemplateReq("dp-t", "p-tmpl", "T"))
-		mustImport(t, d, dpProviderReq("dp-p", "blk-prov", "P", "p-tmpl"))
-		if _, err := svc.Update(importTestOrgID, "blk-prov", "tester", &api.LLMProvider{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
-			t.Errorf("Provider Update(DP) = %v, want ErrArtifactReadOnly", err)
+		provReq := dpProviderReq("dp-p", "blk-prov", "P", "p-tmpl")
+		provReq.Configuration.Spec["upstream"] = map[string]interface{}{"url": "https://api.example.com"}
+		mustImport(t, d, provReq)
+
+		// A runtime edit (name + upstream) is silently preserved and metadata (description)
+		// is applied: the update must succeed, and the gateway-owned name/upstream must stay
+		// unchanged. (The request still carries a valid upstream so field validation passes.)
+		updated, err := svc.Update(importTestOrgID, "blk-prov", "tester", &api.LLMProvider{
+			DisplayName: "Hacked", Version: "v1.0", Template: "p-tmpl",
+			Description: strPointer("a new description"),
+			Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://changed.example.com")}},
+		})
+		if err != nil {
+			t.Fatalf("Provider Update(DP) = %v, want success", err)
+		}
+		if updated.DisplayName != "P" {
+			t.Errorf("provider name (runtime) must be preserved, got %q", updated.DisplayName)
+		}
+		if updated.Description == nil || *updated.Description != "a new description" {
+			t.Errorf("provider description should be applied, got %v", updated.Description)
 		}
 	})
 
 	t.Run("LLMProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProxyService(repository.NewLLMProxyRepo(d.db), repository.NewLLMProviderRepo(d.db),
-			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
+			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{})
 		mustImport(t, d, dpTemplateReq("dp-t", "px-tmpl", "T"))
 		mustImport(t, d, dpProviderReq("dp-p", "px-prov", "P", "px-tmpl"))
 		mustImport(t, d, dpProxyReq("dp-x", "blk-proxy", "X", "px-prov"))
-		if _, err := svc.Update(importTestOrgID, "blk-proxy", "tester", &api.LLMProxy{
-			Name: "Hacked", Version: "v2", Provider: api.LLMProxyProvider{Id: "px-prov"},
-		}); !errors.Is(err, constants.ErrArtifactReadOnly) {
-			t.Errorf("Proxy Update(DP) = %v, want ErrArtifactReadOnly", err)
+
+		updated, err := svc.Update(importTestOrgID, "blk-proxy", "tester", &api.LLMProxy{
+			DisplayName: "Hacked", Version: "v2", Provider: api.LLMProxyProvider{Id: "px-prov"},
+			Description: strPointer("a new description"),
+		})
+		if err != nil {
+			t.Fatalf("Proxy Update(DP) = %v, want success", err)
+		}
+		if updated.DisplayName != "X" {
+			t.Errorf("proxy name (runtime) must be preserved, got %q", updated.DisplayName)
+		}
+		if updated.Description == nil || *updated.Description != "a new description" {
+			t.Errorf("proxy description should be applied, got %v", updated.Description)
 		}
 	})
 
 	t.Run("MCPProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewMCPProxyService(repository.NewMCPProxyRepo(d.db), repository.NewProjectRepo(d.db),
-			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
+			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{})
 		mustImport(t, d, dpMCPReq("dp-m", "blk-mcp", "M"))
-		if _, err := svc.Update(importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{
-			Id: "blk-mcp", Name: "Hacked", Version: "v2",
-			Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
-		}); !errors.Is(err, constants.ErrArtifactReadOnly) {
-			t.Errorf("MCP Update(DP) = %v, want ErrArtifactReadOnly", err)
+
+		updated, err := svc.Update(importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{
+			Id: strPointer("blk-mcp"), DisplayName: "Hacked", Version: "v2",
+			Description: strPointer("a new description"),
+			Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
+		})
+		if err != nil {
+			t.Fatalf("MCP Update(DP) = %v, want success", err)
+		}
+		if updated.DisplayName != "M" {
+			t.Errorf("MCP name (runtime) must be preserved, got %q", updated.DisplayName)
+		}
+		if updated.Description == nil || *updated.Description != "a new description" {
+			t.Errorf("MCP description should be applied, got %v", updated.Description)
 		}
 	})
 }
 
-// TestLLMProviderTemplate_DeleteOriginGuard verifies that the control plane refuses to
-// delete a DP-originated (gateway-pushed) template (it is read-only), while a CP-created
-// template can be deleted. Templates have no per-gateway deployment, so the read-only
-// guard applies directly.
-func TestLLMProviderTemplate_DeleteOriginGuard(t *testing.T) {
-	d := setupImportTest(t)
-	svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{})
-
-	// DP-origin template (imported from a gateway) cannot be deleted from the CP.
-	mustImport(t, d, dpTemplateReq("dp-t", "dp-tmpl", "DP Template"))
-	if err := svc.Delete(importTestOrgID, "dp-tmpl", "tester"); !errors.Is(err, constants.ErrArtifactReadOnly) {
-		t.Errorf("Delete(DP template) = %v, want ErrArtifactReadOnly", err)
-	}
-	// It must still exist after the rejected delete.
-	if tmpl, _ := d.templateRepo.GetByID("dp-tmpl", importTestOrgID); tmpl == nil {
-		t.Error("DP template was deleted despite being read-only")
-	}
-
-	// CP-origin template can be deleted.
-	if err := d.templateRepo.Create(&model.LLMProviderTemplate{
-		OrganizationUUID: importTestOrgID,
-		ID:               "cp-tmpl",
-		Name:             "CP Template",
-		Origin:           constants.OriginCP,
-	}); err != nil {
-		t.Fatalf("seed CP template: %v", err)
-	}
-	if err := svc.Delete(importTestOrgID, "cp-tmpl", "tester"); err != nil {
-		t.Errorf("Delete(CP template) = %v, want nil", err)
-	}
-	if tmpl, _ := d.templateRepo.GetByID("cp-tmpl", importTestOrgID); tmpl != nil {
-		t.Error("CP template was not deleted")
-	}
-
-	// Deleting a non-existent template returns not-found (guard does not mask it).
-	if err := svc.Delete(importTestOrgID, "no-such-tmpl", "tester"); !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
-		t.Errorf("Delete(missing) = %v, want ErrLLMProviderTemplateNotFound", err)
-	}
-}

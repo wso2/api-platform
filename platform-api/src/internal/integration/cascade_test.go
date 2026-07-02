@@ -71,8 +71,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.sub, g.apiArtifact, "subscriber", "tok-"+g.sub[:8], "hash-"+g.sub[:8], g.plan, g.org)
 
 	// Gateway + a deployment + its current status.
-	it.exec(t, `INSERT INTO gateways (uuid, organization_uuid, handle, display_name, vhost, properties) VALUES (?, ?, ?, ?, ?, ?)`,
-		g.gateway, g.org, "gw-"+g.gateway[:8], "gw", "localhost", []byte("{}"))
+	it.exec(t, `INSERT INTO gateways (uuid, organization_uuid, handle, display_name, properties) VALUES (?, ?, ?, ?, ?)`,
+		g.gateway, g.org, "gw-"+g.gateway[:8], "gw", []byte("{}"))
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		g.depArtifact, "rest_api", g.org)
 	it.exec(t, `INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -81,8 +81,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.depArtifact, g.org, g.gateway, g.deploy)
 
 	// An API key on the deployment artifact + its application mapping.
-	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, display_name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?)`,
-		g.apiKey, g.depArtifact, "key", "ab12", []byte("{}"))
+	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?, ?)`,
+		g.apiKey, g.depArtifact, "key", "key", "ab12", []byte("{}"))
 	it.exec(t, `INSERT INTO application_api_key_mappings (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
 	it.exec(t, `INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
 	return g

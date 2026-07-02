@@ -81,7 +81,7 @@ type ApplicationsContextValue = {
   removeApplicationAPIKey: (
     appId: string,
     mappedKeyId: string,
-    options?: RemoveApplicationAPIKeyOptions
+    options: RemoveApplicationAPIKeyOptions
   ) => Promise<void>;
 };
 
@@ -132,7 +132,7 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
 
   // Fetch all applications
   const fetchApplications = useCallback(async () => {
-    if (!organizationId) {
+    if (!organizationId || !projectId) {
       setApplicationsResponse(EMPTY_APPLICATIONS_RESPONSE);
       setIsLoading(false);
       return;
@@ -142,11 +142,8 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
       setIsLoading(true);
       setError(null);
       const response = await applicationApis.getApplications(
-        organizationId,
-        apimBaseUrl,
-        {
-          projectId: projectId || undefined,
-        }
+        projectId,
+        apimBaseUrl
       );
       setApplicationsResponse(response as ApplicationListResponse);
     } catch (err) {
@@ -180,7 +177,6 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
       try {
         const newApplication = await applicationApis.createApplication(
           application,
-          organizationId,
           apimBaseUrl
         );
         setApplicationsResponse((prev) => ({
@@ -210,7 +206,6 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
         const updatedApplication = await applicationApis.updateApplication(
           appId,
           updates,
-          organizationId,
           apimBaseUrl
         );
         setApplicationsResponse((prev) => ({
@@ -236,7 +231,6 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
       try {
         await applicationApis.deleteApplication(
           appId,
-          organizationId,
           apimBaseUrl
         );
         setApplicationsResponse((prev) => ({
@@ -279,7 +273,6 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
       try {
         return await applicationApis.getApplicationAPIKeys(
           appId,
-          organizationId,
           apimBaseUrl,
           options
         );
@@ -303,7 +296,6 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
         return await applicationApis.addApplicationAPIKeys(
           appId,
           request,
-          organizationId,
           apimBaseUrl
         );
       } catch (err) {
@@ -318,7 +310,7 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
     async (
       appId: string,
       mappedKeyId: string,
-      options?: RemoveApplicationAPIKeyOptions
+      options: RemoveApplicationAPIKeyOptions
     ): Promise<void> => {
       if (!organizationId) {
         throw new Error('Organization ID is missing');
@@ -327,7 +319,6 @@ export function ApplicationsProvider({ children }: ApplicationsProviderProps) {
         await applicationApis.removeApplicationAPIKey(
           appId,
           mappedKeyId,
-          organizationId,
           apimBaseUrl,
           options
         );

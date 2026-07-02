@@ -35,7 +35,7 @@ const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
-const { seedSampleAPIs, seedSampleMCPs } = require('../services/sampleSeederService');
+const { seedSampleAPIs, seedSampleMCPs, markSamplesSeeded } = require('../services/sampleSeederService');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
@@ -129,6 +129,7 @@ const loadAPIs = async (req, res, next) => {
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 isReadOnlyMode: config.readOnlyMode,
+                demoEnabled: config.demo?.enabled === true,
                 applications: []
             };
 
@@ -271,7 +272,7 @@ const loadAPIContent = async (req, res, next) => {
                         apiDetails["serverDetails"] = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
                             ? metaData.endPoints : "";
                     }
-                    if (metaData.type === "WS" || metaData.type === "WEBSUB") {
+                    if (metaData.type === constants.API_TYPE.WS || metaData.type === constants.API_TYPE.WEBSUB) {
                         apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
                         apiDetails = await parseAsyncAPI(parseApiDefinitionContent(apiDefinition))
                         if (metaData.endPoints.productionURL === "" && metaData.endPoints.sandboxURL === "") {
@@ -407,7 +408,7 @@ const loadAPIContent = async (req, res, next) => {
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
-            if (metaData.type == "MCP") {
+            if (metaData.type == constants.API_TYPE.MCP) {
                 html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/mcp-landing", viewName);
             } else {
                 html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/api-landing", viewName);
@@ -1466,8 +1467,11 @@ const loadDocumentMd = async (req, res) => {
 
 const seedSamples = async (req, res) => {
     const { orgName } = req.params;
-    if (!req.user?.isAdmin) {
-        return res.status(403).json({ error: 'Access denied' });
+    // Demo mode is the gate, deliberately in place of an admin check — it's meant to let
+    // anyone (including anonymous visitors) populate a public demo instance with samples.
+    // Outside demo mode this is unreachable regardless of login/role.
+    if (!config.demo?.enabled) {
+        return res.status(403).json({ error: 'Demo mode disabled' });
     }
     try {
         const orgDetails = await orgDao.get(orgName);
@@ -1477,6 +1481,7 @@ const seedSamples = async (req, res) => {
         const deployed = results.filter(r => r.status === 'ok').length;
         const skipped  = results.filter(r => r.status === 'exists').length;
         const failed   = results.filter(r => r.status === 'failed').length;
+        markSamplesSeeded();
         logger.info('Sample seed complete', { orgName, deployed, skipped, failed });
         res.json({ results, deployed, skipped, failed });
     } catch (err) {

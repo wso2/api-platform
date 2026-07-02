@@ -1,35 +1,35 @@
 <form id="editView">
     <div class="row g-3 align-items-end mb-4">
         <div class="col-md-4">
-            <label for="viewDisplayName{{handle}}" class="form-label">View name</label>
+            <label for="viewDisplayName{{id}}" class="form-label">View name</label>
         </div>
         <div class="col-md-4">
-            <input type="text" class="form-control" id="viewDisplayName{{handle}}" name="viewDisplayName" required
+            <input type="text" class="form-control" id="viewDisplayName{{id}}" name="viewDisplayName" required
                 value="{{name}}">
         </div>
     </div>
     <div class="row g-3 align-items-end mb-4">
         <div class="col-md-4">
-            <label for="viewHandle{{handle}}" class="form-label">View Handle</label>
+            <label for="viewHandle{{id}}" class="form-label">View Handle</label>
         </div>
         <div class="col-md-4">
-            <input type="text" class="form-control" id="viewHandle{{handle}}" name="viewHandle" required value="{{handle}}">
+            <input type="text" class="form-control" id="viewHandle{{id}}" name="viewHandle" required value="{{id}}">
         </div>
     </div>
     <div class="row g-3 align-items-end mb-4">
         <div class="col-md-4">
-            <label for="labelSelect{{handle}}" class="form-label">Add label</label>
+            <label for="labelSelect{{id}}" class="form-label">Add label</label>
         </div>
         <div class="col-md-4">
-            <select id="labelSelect{{handle}}" class="form-select"
-                onchange="addViewLabel('labelSelect{{handle}}', 'labelsContainer{{handle}}')">
+            <select id="labelSelect{{id}}" class="form-select"
+                onchange="addViewLabel('labelSelect{{id}}', 'labelsContainer{{id}}')">
                 {{#each @root.orgLabels as |orgLabelGroup|}}
                 <option>{{orgLabelGroup.name}}</option>
                 {{/each}}
             </select>
         </div>
         <div class="col-md-4">
-            <div id="labelsContainer{{handle}}" class="d-flex flex-wrap gap-2 mb-3">
+            <div id="labelsContainer{{id}}" class="d-flex flex-wrap gap-2 mb-3">
                 {{#each labels}}
                 <span class="badge bg-primary">
                     {{this}}
@@ -43,7 +43,7 @@
         <div class="col-md-4">
             <button type="button" class="btn btn-secondary" id="cancelViewBtn">Cancel</button>
             <button type="button" class="common-btn-outlined"
-                onclick="editView('{{json labels}}', 'labelsContainer{{handle}}', 'viewDisplayName{{handle}}', 'viewHandle{{handle}}', '{{@root.orgId}}')">
+                onclick="editView('{{json labels}}', 'labelsContainer{{id}}', 'viewDisplayName{{id}}', 'viewHandle{{id}}', '{{@root.orgId}}')">
                 +View
             </button>
         </div>

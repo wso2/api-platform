@@ -30,4 +30,6 @@ module.exports = {
     getSubscription: subscriptionService.getSubscription,
     updateSubscription: compose(requireCsrfForMutatingApi, subscriptionService.updateSubscription),
     deleteSubscription: compose(requireCsrfForMutatingApi, subscriptionService.deleteSubscription),
+    changePlan: compose(requireCsrfForMutatingApi, subscriptionService.changePlan),
+    regenerateSubscriptionToken: compose(requireCsrfForMutatingApi, subscriptionService.regenerateSubscriptionToken),
 };

@@ -25,7 +25,7 @@ import (
 type API struct {
 	ID              string           `json:"id" db:"uuid"`
 	Handle          string           `json:"handle" db:"handle"`
-	Name            string           `json:"name" db:"name"`
+	Name            string           `json:"displayName" db:"display_name"`
 	Kind            string           `json:"kind" db:"kind"`
 	Description     string           `json:"description,omitempty" db:"description"`
 	Version         string           `json:"version" db:"version"`
@@ -61,7 +61,7 @@ func (API) TableName() string {
 type APIMetadata struct {
 	ID             string `json:"id" db:"uuid"`
 	Handle         string `json:"handle" db:"handle"`
-	Name           string `json:"name" db:"name"`
+	Name           string `json:"displayName" db:"display_name"`
 	Version        string `json:"version" db:"version"`
 	Kind           string `json:"kind" db:"kind"`
 	OrganizationID string `json:"organizationId" db:"organization_uuid"`

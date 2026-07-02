@@ -84,7 +84,8 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 			continue
 		}
 		item := api.APIKeyItem{
-			Name:           k.Name,
+			Id:             &k.Name,
+			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
@@ -191,18 +192,19 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	}
 
 	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
 	} else {
-		displayName := ""
-		if req.DisplayName != nil {
-			displayName = *req.DisplayName
-		}
-		name, err = utils.GenerateHandle(displayName, nil)
+		name, err = utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {
 			s.slogger.Error("Failed to generate API key name", "proxyId", proxyID, "error", err)
 			return nil, fmt.Errorf("failed to generate API key name: %w", err)
 		}
+	}
+
+	displayName := req.DisplayName
+	if displayName == "" {
+		displayName = name
 	}
 
 	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
@@ -245,6 +247,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		UUID:           apiKeyUUID,
 		ArtifactUUID:   proxy.UUID,
 		Name:           name,
+		DisplayName:    displayName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",
@@ -306,7 +309,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	return &api.CreateLLMProxyAPIKeyResponse{
 		Status:  "success",
 		Message: "API key created successfully",
-		KeyId:   name,
+		Id:      name,
 		ApiKey:  apiKey,
 	}, nil
 }

@@ -25,7 +25,6 @@ import React, {
   useCallback,
 } from 'react';
 import type {
-  APIKeyRevokeRequest,
   UserAPIKey,
   UserAPIKeyListResponse,
 } from '../utils/types';
@@ -52,11 +51,8 @@ type KeyManagementContextValue = {
   error: Error | null;
   /** List user API keys, optionally filtered by artifact type */
   refreshUserAPIKeys: (type?: string) => Promise<void>;
-  /** Revoke an API test token */
-  revokeAPIKey: (
-    apiId: string,
-    request: APIKeyRevokeRequest
-  ) => Promise<void>;
+  /** Revoke an API key for a REST API */
+  revokeAPIKey: (restApiId: string, apiKeyId: string) => Promise<void>;
 };
 
 const KeyManagementContext = createContext<KeyManagementContextValue>({
@@ -125,21 +121,20 @@ export function KeyManagementProvider({
   }, [fetchUserAPIKeys]);
 
   const revokeAPIKey = useCallback(
-    async (apiId: string, request: APIKeyRevokeRequest): Promise<void> => {
+    async (restApiId: string, apiKeyId: string): Promise<void> => {
       if (!organizationId) {
         throw new Error('Organization ID is missing');
       }
       try {
         await keyManagementApis.revokeAPIKey(
-          apiId,
-          request,
-          organizationId,
+          restApiId,
+          apiKeyId,
           apimBaseUrl
         );
         // Refresh the list after revoking
         await fetchUserAPIKeys();
       } catch (err) {
-        logger.error(`Failed to revoke API key for API ${apiId}:`, err);
+        logger.error(`Failed to revoke API key ${apiKeyId} for API ${restApiId}:`, err);
         throw err;
       }
     },

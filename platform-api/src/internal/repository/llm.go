@@ -121,6 +121,8 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	return err
 }
 
+const maxCreateNewVersionRetries = 3
+
 func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate) error {
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
 		ManagedBy:        t.ManagedBy,
@@ -136,21 +138,31 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	if err != nil {
 		return err
 	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxCreateNewVersionRetries; attempt++ {
+		lastErr = r.createNewVersionOnce(t, configJSON)
+		if lastErr == nil {
+			return nil
+		}
+		if !r.db.IsDuplicateKeyError(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func (r *LLMProviderTemplateRepo) createNewVersionOnce(t *model.LLMProviderTemplate, configJSON []byte) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockSQL := `SELECT uuid FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
-	switch r.db.Driver() {
-	case database.DriverPostgres, database.DriverPostgreSQL, database.DriverPGX:
-		lockSQL += " FOR UPDATE"
-	case database.DriverSQLServer, database.DriverMSSQL:
-		lockSQL = `SELECT uuid FROM llm_provider_templates WITH (UPDLOCK, HOLDLOCK) WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
-	}
-	var lockedUUID string
-	err = tx.QueryRow(r.db.Rebind(lockSQL), t.GroupID, t.OrganizationUUID, 1).Scan(&lockedUUID)
+	var latestUUID string
+	err = tx.QueryRow(r.db.Rebind(`
+		SELECT uuid FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?
+	`), t.GroupID, t.OrganizationUUID, 1).Scan(&latestUUID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sql.ErrNoRows
 	}
@@ -264,31 +276,17 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 	return scanTemplateRow(row)
 }
 
-func (r *LLMProviderTemplateRepo) GetByVersion(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if base == "" {
-		return nil, nil
-	}
+func (r *LLMProviderTemplateRepo) GetByVersion(groupID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
 		SELECT uuid, organization_uuid, handle, group_id, display_name, managed_by, description, created_by, updated_by,
 		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE group_id = ? AND organization_uuid = ? AND version = ?
-	`), base, orgUUID, version)
+	`), groupID, orgUUID, version)
 	return scanTemplateRow(row)
 }
 
-func (r *LLMProviderTemplateRepo) ListVersions(templateID, orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if base == "" {
-		return nil, nil
-	}
+func (r *LLMProviderTemplateRepo) ListVersions(groupID, orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT uuid, organization_uuid, handle, group_id, display_name, managed_by, description, created_by, updated_by,
@@ -297,7 +295,7 @@ func (r *LLMProviderTemplateRepo) ListVersions(templateID, orgUUID string, limit
 		WHERE group_id = ? AND organization_uuid = ?
 		ORDER BY created_at DESC
 		` + pageClause
-	rows, err := r.db.Query(r.db.Rebind(query), append([]any{base, orgUUID}, pageArgs...)...)
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{groupID, orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -314,16 +312,9 @@ func (r *LLMProviderTemplateRepo) ListVersions(templateID, orgUUID string, limit
 	return res, rows.Err()
 }
 
-func (r *LLMProviderTemplateRepo) CountVersions(templateID, orgUUID string) (int, error) {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return 0, err
-	}
-	if base == "" {
-		return 0, nil
-	}
+func (r *LLMProviderTemplateRepo) CountVersions(groupID, orgUUID string) (int, error) {
 	var count int
-	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ?`), base, orgUUID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ?`), groupID, orgUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -331,10 +322,6 @@ func (r *LLMProviderTemplateRepo) CountVersions(templateID, orgUUID string) (int
 
 func scanTemplate(s rowScanner) (*model.LLMProviderTemplate, error) {
 	var t model.LLMProviderTemplate
-	// configuration and openapi_spec are binary columns (BLOB/BYTEA/VARBINARY);
-	// is_latest and enabled are integer columns. Scanning an integer column
-	// straight into a Go bool fails on Postgres/SQL Server, so scan into int
-	// and convert.
 	var configJSON []byte
 	var openapiSpec []byte
 	var isLatest, enabled int
@@ -381,12 +368,18 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 	query := `
 		SELECT uuid, organization_uuid, handle, group_id, display_name, managed_by, description, created_by, updated_by,
 		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
-		FROM llm_provider_templates
+		FROM llm_provider_templates t
 		WHERE organization_uuid = ?
-		  AND is_latest = ?
+		  AND NOT EXISTS (
+		    SELECT 1 FROM llm_provider_templates t2
+		    WHERE t2.organization_uuid = t.organization_uuid
+		      AND t2.group_id = t.group_id
+		      AND (CASE WHEN t2.managed_by = 'wso2' THEN 1 ELSE 0 END) = (CASE WHEN t.managed_by = 'wso2' THEN 1 ELSE 0 END)
+		      AND (t2.created_at > t.created_at OR (t2.created_at = t.created_at AND t2.uuid > t.uuid))
+		  )
 		ORDER BY created_at DESC
 		` + pageClause
-	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID, 1}, pageArgs...)...)
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -490,70 +483,11 @@ func (r *LLMProviderTemplateRepo) RenameFamily(baseHandle, orgUUID, name string)
 	return err
 }
 
-func (r *LLMProviderTemplateRepo) Delete(templateID, orgUUID string) error {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return err
-	}
-	if base == "" {
-		return sql.ErrNoRows
-	}
-
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	result, err := tx.Exec(r.db.Rebind(`
-		DELETE FROM llm_provider_templates
-		WHERE group_id = ? AND organization_uuid = ? AND managed_by != ?
-	`), base, orgUUID, "wso2")
-	if err != nil {
-		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return sql.ErrNoRows
-	}
-
-	var remaining, latestCount int
-	if err := tx.QueryRow(r.db.Rebind(`
-		SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_latest = 1 THEN 1 ELSE 0 END), 0)
-		FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ?
-	`), base, orgUUID).Scan(&remaining, &latestCount); err != nil {
-		return err
-	}
-	if remaining > 0 && latestCount == 0 {
-		if _, err := tx.Exec(r.db.Rebind(`
-			UPDATE llm_provider_templates SET is_latest = ?
-			WHERE uuid = (
-				SELECT uuid FROM llm_provider_templates
-				WHERE group_id = ? AND organization_uuid = ?
-				ORDER BY created_at DESC `+r.db.FetchFirstClause(1)+`
-			)
-		`), 1, base, orgUUID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-func (r *LLMProviderTemplateRepo) SetEnabled(templateID, orgUUID, version string, enabled bool) error {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return err
-	}
-	if base == "" {
-		return sql.ErrNoRows
-	}
+func (r *LLMProviderTemplateRepo) SetEnabled(groupID, orgUUID, version string, enabled bool) error {
 	result, err := r.db.Exec(r.db.Rebind(`
 		UPDATE llm_provider_templates SET enabled = ?, updated_at = ?
 		WHERE group_id = ? AND organization_uuid = ? AND version = ?
-	`), boolToInt(enabled), time.Now(), base, orgUUID, version)
+	`), boolToInt(enabled), time.Now(), groupID, orgUUID, version)
 	if err != nil {
 		return err
 	}
@@ -567,15 +501,7 @@ func (r *LLMProviderTemplateRepo) SetEnabled(templateID, orgUUID, version string
 	return nil
 }
 
-func (r *LLMProviderTemplateRepo) DeleteVersion(templateID, orgUUID, version string) error {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return err
-	}
-	if base == "" {
-		return sql.ErrNoRows
-	}
-
+func (r *LLMProviderTemplateRepo) DeleteVersion(groupID, orgUUID, version string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -585,7 +511,7 @@ func (r *LLMProviderTemplateRepo) DeleteVersion(templateID, orgUUID, version str
 	result, err := tx.Exec(r.db.Rebind(`
 		DELETE FROM llm_provider_templates
 		WHERE group_id = ? AND organization_uuid = ? AND version = ?
-	`), base, orgUUID, version)
+	`), groupID, orgUUID, version)
 	if err != nil {
 		return err
 	}
@@ -601,7 +527,7 @@ func (r *LLMProviderTemplateRepo) DeleteVersion(templateID, orgUUID, version str
 	if err := tx.QueryRow(r.db.Rebind(`
 		SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_latest = 1 THEN 1 ELSE 0 END), 0)
 		FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ?
-	`), base, orgUUID).Scan(&remaining, &latestCount); err != nil {
+	`), groupID, orgUUID).Scan(&remaining, &latestCount); err != nil {
 		return err
 	}
 	if remaining > 0 && latestCount == 0 {
@@ -612,7 +538,7 @@ func (r *LLMProviderTemplateRepo) DeleteVersion(templateID, orgUUID, version str
 				WHERE group_id = ? AND organization_uuid = ?
 				ORDER BY created_at DESC `+r.db.FetchFirstClause(1)+`
 			)
-		`), 1, base, orgUUID); err != nil {
+		`), 1, groupID, orgUUID); err != nil {
 			return err
 		}
 	}
@@ -631,20 +557,19 @@ func (r *LLMProviderTemplateRepo) Exists(templateID, orgUUID string) (bool, erro
 func (r *LLMProviderTemplateRepo) Count(orgUUID string) (int, error) {
 	var count int
 	if err := r.db.QueryRow(r.db.Rebind(`
-		SELECT COUNT(*) FROM llm_provider_templates
-		WHERE organization_uuid = ?
-		  AND is_latest = ?
-	`), orgUUID, 1).Scan(&count); err != nil {
+		SELECT COUNT(*) FROM (
+		    SELECT group_id
+		    FROM llm_provider_templates
+		    WHERE organization_uuid = ?
+		    GROUP BY group_id, CASE WHEN managed_by = 'wso2' THEN 1 ELSE 0 END
+		) AS sub
+	`), orgUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
 }
-func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error) {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return 0, err
-	}
-	if base == "" {
+func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(groupID, orgUUID, version string) (int, error) {
+	if groupID == "" {
 		return 0, nil
 	}
 	query := `
@@ -652,7 +577,7 @@ func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUI
 		FROM llm_providers p
 		JOIN llm_provider_templates t ON p.template_uuid = t.uuid
 		WHERE t.group_id = ? AND t.organization_uuid = ?`
-	args := []interface{}{base, orgUUID}
+	args := []interface{}{groupID, orgUUID}
 	if strings.TrimSpace(version) != "" {
 		query += ` AND t.version = ?`
 		args = append(args, version)
@@ -662,6 +587,144 @@ func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUI
 		return 0, err
 	}
 	return count, nil
+}
+
+// insertArtifactGatewayAssociations writes the given gateway associations for an artifact
+// within the supplied transaction. metadata is a BYTEA column; a nil slice is stored as NULL.
+func insertArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
+	if len(assocs) == 0 {
+		return nil
+	}
+	query := `
+		INSERT INTO artifact_gateway_mappings (
+			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?)`
+	for _, assoc := range assocs {
+		var metadata []byte
+		if assoc.Metadata != "" {
+			metadata = []byte(assoc.Metadata)
+		}
+		if _, err := tx.Exec(db.Rebind(query), artifactUUID, orgUUID, assoc.GatewayUUID, metadata, now, now); err != nil {
+			return fmt.Errorf("failed to create gateway association: %w", err)
+		}
+	}
+	return nil
+}
+
+// replaceArtifactGatewayAssociations replaces the full set of gateway associations for an
+// artifact within the supplied transaction (delete-all then insert). Deployments are not touched.
+func replaceArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
+	if _, err := tx.Exec(db.Rebind(
+		`DELETE FROM artifact_gateway_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`),
+		artifactUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to clear gateway associations: %w", err)
+	}
+	return insertArtifactGatewayAssociations(tx, db, artifactUUID, orgUUID, assocs, now)
+}
+
+// loadArtifactGatewayAssociations returns the gateway associations for an artifact, joining
+// the gateways table to resolve each gateway handle.
+func loadArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID string) ([]model.AssociatedGatewayMapping, error) {
+	query := `
+		SELECT m.gateway_uuid, g.handle, m.metadata
+		FROM artifact_gateway_mappings m
+		JOIN gateways g ON g.uuid = m.gateway_uuid
+		WHERE m.artifact_uuid = ? AND m.organization_uuid = ?
+		ORDER BY m.created_at, m.gateway_uuid`
+	rows, err := db.Query(db.Rebind(query), artifactUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var associations []model.AssociatedGatewayMapping
+	for rows.Next() {
+		var assoc model.AssociatedGatewayMapping
+		var metadata []byte
+		if err := rows.Scan(&assoc.GatewayUUID, &assoc.GatewayHandle, &metadata); err != nil {
+			return nil, err
+		}
+		if len(metadata) > 0 {
+			assoc.Metadata = string(metadata)
+		}
+		associations = append(associations, assoc)
+	}
+	return associations, rows.Err()
+}
+
+// ensureArtifactGatewayAssociation creates a gateway association for an artifact if one does
+// not already exist and resolves the metadata to use for the deployment.
+//
+// metadataProvided distinguishes an omitted deploy metadata field from one explicitly set to
+// empty, so a caller can deploy with empty metadata even when the association already carries
+// a value. An association that already exists is never modified at deploy time:
+//   - No association yet → create it, seeding its metadata from deployMetadata.
+//   - Association exists, metadataProvided → use deployMetadata for the deployment (including
+//     an explicit empty value); the association is left untouched.
+//   - Association exists, metadata omitted → fall back to the association's stored metadata.
+//
+// It returns the metadata to persist on the deployment record. An empty string means "no metadata".
+func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	effectiveMetadata := func(existing []byte) string {
+		if metadataProvided {
+			return deployMetadata
+		}
+		if len(existing) > 0 {
+			return string(existing)
+		}
+		return ""
+	}
+
+	existing, found, err := readArtifactGatewayAssociation(db, artifactUUID, gatewayUUID, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		// Existing association is never modified at deploy time.
+		return effectiveMetadata(existing), nil
+	}
+
+	// No association yet → insert one, seeding its metadata from the deploy request.
+	now := time.Now()
+	var metaArg []byte
+	if strings.TrimSpace(deployMetadata) != "" {
+		metaArg = []byte(deployMetadata)
+	}
+	insertQuery := `
+		INSERT INTO artifact_gateway_mappings (
+			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?)`
+	if _, err := db.Exec(db.Rebind(insertQuery), artifactUUID, orgUUID, gatewayUUID, metaArg, now, now); err != nil {
+		// A concurrent deploy for the same artifact/gateway may have inserted the row
+		// between our read and this insert, tripping the primary key. Re-read: if the row
+		// now exists the ensure has effectively succeeded (idempotent); otherwise the
+		// failure is genuine and we surface the original error.
+		existing, found, rereadErr := readArtifactGatewayAssociation(db, artifactUUID, gatewayUUID, orgUUID)
+		if rereadErr == nil && found {
+			return effectiveMetadata(existing), nil
+		}
+		return "", fmt.Errorf("failed to create gateway association: %w", err)
+	}
+	return deployMetadata, nil
+}
+
+// readArtifactGatewayAssociation returns the stored metadata for an artifact/gateway
+// association and whether the association exists.
+func readArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID string) (metadata []byte, found bool, err error) {
+	query := `
+		SELECT metadata
+		FROM artifact_gateway_mappings
+		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?`
+	err = db.QueryRow(db.Rebind(query), artifactUUID, gatewayUUID, orgUUID).Scan(&metadata)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to check gateway association: %w", err)
+	}
+	return metadata, true, nil
 }
 
 // ---- LLM Providers ----
@@ -735,6 +798,11 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Persist gateway associations (if any) within the same transaction.
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -782,7 +850,20 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 		}
 	}
 
+	associations, err := loadArtifactGatewayAssociations(r.db, p.UUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load gateway associations for provider %s: %w", p.ID, err)
+	}
+	p.AssociatedGateways = associations
+
 	return &p, nil
+}
+
+// EnsureGatewayAssociation creates a gateway association for the provider if one does not
+// already exist and resolves the metadata to use for the deployment. See
+// ensureArtifactGatewayAssociation for the full semantics.
+func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, providerUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
@@ -894,6 +975,14 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 
 	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, providerUUID, []byte(configurationJSON)); err != nil {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
+	// Replace the full set of gateway associations within the same transaction when the
+	// caller manages associations. Deployments are intentionally left untouched.
+	if p.ReplaceAssociatedGateways {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, providerUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+			return err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1008,6 +1097,11 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Persist gateway associations (if any) within the same transaction.
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -1048,6 +1142,12 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 			p.Configuration = *config
 		}
 	}
+
+	associations, err := loadArtifactGatewayAssociations(r.db, p.UUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load gateway associations for proxy %s: %w", p.ID, err)
+	}
+	p.AssociatedGateways = associations
 
 	return &p, nil
 }
@@ -1274,10 +1374,25 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Replace the full set of gateway associations within the same transaction when the
+	// caller manages associations. Deployments are intentionally left untouched.
+	if p.ReplaceAssociatedGateways {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+			return err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
+}
+
+// EnsureGatewayAssociation creates a gateway association for the proxy if one does not
+// already exist and resolves the metadata to use for the deployment. See
+// ensureArtifactGatewayAssociation for the full semantics.
+func (r *LLMProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
 }
 
 func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {

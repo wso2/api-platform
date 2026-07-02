@@ -37,6 +37,7 @@ import { logger } from '../../../../utils/logger';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { LLMProvider, ProxyApiKeySecurity } from '../../../../utils/types';
 import { FormattedMessage } from 'react-intl';
+import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 
 /**
  * Provider tab – lets the user select / change the LLM Service Provider
@@ -54,6 +55,7 @@ export default function LLMProxyProviderTab() {
     null
   );
   const [apiKey, setApiKey] = useState('');
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
 
   const providerOptions = providersResponse.list;
   const selectedProxyProviderId =
@@ -107,6 +109,7 @@ export default function LLMProxyProviderTab() {
   };
 
   const handleSaveApiKey = () => {
+    if (isReadOnlyProxy) return;
     if (!proxy || !apiKey.trim() || !providerDetail) {
       showSnackbar('Please enter an API key.', 'error');
       return;
@@ -137,6 +140,7 @@ export default function LLMProxyProviderTab() {
   };
 
   const handleProviderChange = async (event: { target: { value: string } }) => {
+    if (isReadOnlyProxy) return;
     const newProviderId = event.target.value;
     if (!proxy || newProviderId === selectedProxyProviderId) return;
 
@@ -199,7 +203,7 @@ export default function LLMProxyProviderTab() {
               value={selectedProxyProviderId}
               onChange={handleProviderChange}
               displayEmpty
-              disabled={isProvidersLoading}
+              disabled={isProvidersLoading || isReadOnlyProxy}
             >
               {isProvidersLoading ? (
                 <MenuItem value="" disabled>
@@ -212,7 +216,7 @@ export default function LLMProxyProviderTab() {
               ) : (
                 providerOptions.map((p) => (
                   <MenuItem key={p.id} value={p.id}>
-                    {p.name}
+                    {p.displayName}
                   </MenuItem>
                 ))
               )}
@@ -267,6 +271,7 @@ export default function LLMProxyProviderTab() {
                         type="password"
                         placeholder="Enter API key"
                         value={apiKey}
+                        disabled={isReadOnlyProxy}
                         onChange={(e) => setApiKey(e.target.value)}
                         fullWidth
                       />
@@ -274,17 +279,21 @@ export default function LLMProxyProviderTab() {
                   </Grid>
                 </Grid>
 
-                <Button
-                  variant="contained"
-                  onClick={handleSaveApiKey}
-                  disabled={!apiKey.trim()}
-                  sx={{ alignSelf: 'flex-start' }}
-                >
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.save.api.key"
-                    defaultMessage={'Save API Key'}
-                  />
-                </Button>
+                <DisabledActionTooltip disabled={isReadOnlyProxy}>
+                  <span>
+                    <Button
+                      variant="contained"
+                      onClick={handleSaveApiKey}
+                      disabled={isReadOnlyProxy || !apiKey.trim()}
+                      sx={{ alignSelf: 'flex-start' }}
+                    >
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.save.api.key"
+                        defaultMessage={'Save API Key'}
+                      />
+                    </Button>
+                  </span>
+                </DisabledActionTooltip>
               </Stack>
             </Stack>
           )}

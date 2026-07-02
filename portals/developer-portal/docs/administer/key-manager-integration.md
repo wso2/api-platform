@@ -18,7 +18,7 @@ Use the `KeyManager` manifest format:
 
 ```yaml
 # keymanager.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: KeyManager
 
 metadata:
@@ -31,7 +31,7 @@ spec:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/devportal/v1/key-managers \
+curl -X POST http://localhost:3000/api/v0.9/key-managers \
   -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager.yaml"
 ```
@@ -46,13 +46,13 @@ curl -X POST http://localhost:3000/devportal/v1/key-managers \
 ## List Key Managers
 
 ```bash
-curl http://localhost:3000/devportal/v1/key-managers -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v0.9/key-managers -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Key Manager
 
 ```bash
-curl http://localhost:3000/devportal/v1/key-managers/{kmId} -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v0.9/key-managers/{kmId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Discover Available Key Managers
@@ -60,7 +60,7 @@ curl http://localhost:3000/devportal/v1/key-managers/{kmId} -H "Authorization: B
 Developers can use this endpoint to see which key managers are available for their organization:
 
 ```bash
-curl http://localhost:3000/devportal/v1/key-managers/discover \
+curl http://localhost:3000/api/v0.9/key-managers/discover \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -68,7 +68,7 @@ curl http://localhost:3000/devportal/v1/key-managers/discover \
 
 ```yaml
 # keymanager-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: KeyManager
 
 metadata:
@@ -79,7 +79,7 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/devportal/v1/key-managers/{kmId} \
+curl -X PUT http://localhost:3000/api/v0.9/key-managers/{kmId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager-update.yaml"
 ```
@@ -87,7 +87,7 @@ curl -X PUT http://localhost:3000/devportal/v1/key-managers/{kmId} \
 ## Delete a Key Manager
 
 ```bash
-curl -X DELETE http://localhost:3000/devportal/v1/key-managers/{kmId} \
+curl -X DELETE http://localhost:3000/api/v0.9/key-managers/{kmId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 

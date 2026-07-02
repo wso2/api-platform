@@ -50,12 +50,13 @@ function decryptSubRecord(sub) {
 const INCLUDE_API_AND_PLAN = [
     {
         model: APIMetadata,
-        attributes: ['uuid', 'name', 'version', 'handle', 'ref_id'],
+        as: 'dp_api_metadata',
+        attributes: ['uuid', 'name', 'version', 'handle', 'ref_id', 'type'],
         required: false,
     },
     {
         model: SubscriptionPlan,
-        attributes: ['uuid', 'name', 'ref_id'],
+        attributes: ['uuid', 'name', 'handle', 'ref_id'],
         required: false,
     },
 ];
@@ -144,6 +145,38 @@ async function updateStatus(orgId, subId, status, createdBy, transaction) {
     return count > 0;
 }
 
+async function updatePlan(orgId, subId, planId, updatedBy, transaction) {
+    const where = { uuid: subId, org_uuid: orgId, created_by: updatedBy };
+    const [count] = await SubscriptionMapping.update(
+        { plan_uuid: planId, updated_by: updatedBy, updated_at: new Date() },
+        { where, transaction }
+    );
+    return count > 0;
+}
+
+async function regenerateToken(orgId, subId, updatedBy, transaction) {
+    const where = { uuid: subId, org_uuid: orgId, created_by: updatedBy };
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const newToken = generateSubToken();
+        try {
+            const [count] = await SubscriptionMapping.update(
+                { token: encryptToken(newToken), updated_by: updatedBy, updated_at: new Date() },
+                { where, transaction }
+            );
+            if (count === 0) return null;
+            return newToken;
+        } catch (err) {
+            const isTokenCollision =
+                err.name === 'SequelizeUniqueConstraintError' &&
+                err.fields && Object.keys(err.fields).some(
+                    f => f.includes('token')
+                );
+            if (isTokenCollision && attempt < 2) continue;
+            throw err;
+        }
+    }
+}
+
 async function deleteSubscription(orgId, subId, createdBy, transaction) {
     const where = { uuid: subId, org_uuid: orgId };
     if (createdBy) where.created_by = createdBy;
@@ -214,6 +247,8 @@ module.exports = {
     get,
     getById,
     updateStatus,
+    updatePlan,
+    regenerateToken,
     delete: deleteSubscription,
     listByApi,
     listByOrg,

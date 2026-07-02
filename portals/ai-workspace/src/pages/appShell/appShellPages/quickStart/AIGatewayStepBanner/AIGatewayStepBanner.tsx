@@ -42,7 +42,6 @@ export type AIGatewayStepBannerProps = {
 };
 
 const TOTAL_STEPS = 2;
-const MAX_LLM_PROVIDERS_PER_ORG = 5;
 
 export default function AIGatewayStepBanner({
   gatewayDisplayName,
@@ -60,7 +59,7 @@ export default function AIGatewayStepBanner({
   const resolvedDisplayName = gatewayDisplayName?.trim() || 'AI Gateway';
   const completedSteps = isActive ? 2 : 1;
   const progressValue = (completedSteps / TOTAL_STEPS) * 100;
-  const isProviderQuotaReached = providerCount >= MAX_LLM_PROVIDERS_PER_ORG;
+  const isProviderQuotaReached = false;
   const newProviderPath = buildOrgPath(currentOrganization, '/service-provider/new');
 
   useEffect(() => {
@@ -213,9 +212,7 @@ export default function AIGatewayStepBanner({
         {isActive && (
           <Tooltip
             title={
-              isProviderQuotaReached
-                ? `You cannot continue because your organization already has ${MAX_LLM_PROVIDERS_PER_ORG} LLM providers. The maximum limit is ${MAX_LLM_PROVIDERS_PER_ORG}.`
-                : ''
+              ''
             }
             disableHoverListener={!isProviderQuotaReached}
           >

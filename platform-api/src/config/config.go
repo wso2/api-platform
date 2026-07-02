@@ -49,17 +49,19 @@ type FileBasedUsers []FileBasedUser
 
 // FileBasedOrg holds the single organization used in file-based auth mode.
 type FileBasedOrg struct {
-	// ID is the org UUID. Auto-generated at startup if empty.
+	// ID is the organization handle (URL-safe slug), e.g. "default".
 	ID string `koanf:"id"`
 
-	// Name is the display name of the organization.
-	Name string `koanf:"name"`
-
-	// Handle is the URL-safe slug for the organization.
-	Handle string `koanf:"handle"`
+	// DisplayName is the human-readable name of the organization.
+	DisplayName string `koanf:"display_name"`
 
 	// Region is the deployment region for the organization.
 	Region string `koanf:"region"`
+
+	// UUID is the platform-generated organization UUID. It is resolved at
+	// startup (see seedFileBasedOrg) rather than read from config, and is used
+	// as the `organization` claim in issued tokens.
+	UUID string `koanf:"-"`
 }
 
 // FileBased holds configuration for local username/password authentication.
@@ -84,6 +86,7 @@ type Server struct {
 	WebSocket        WebSocket        `koanf:"websocket"`
 	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
 	Deployments      Deployments      `koanf:"deployments"`
+	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
 	TLS              TLS              `koanf:"tls"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
@@ -178,7 +181,7 @@ type Database struct {
 
 	EncryptionKey                  string `koanf:"encryption_key"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
-	SecretEncryptionKey string `koanf:"secret_encryption_key"`
+	SecretEncryptionKey            string `koanf:"secret_encryption_key"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.
@@ -207,6 +210,24 @@ type Deployments struct {
 	TimeoutEnabled            bool `koanf:"timeout_enabled"`
 	TimeoutInterval           int  `koanf:"timeout_interval"`
 	TimeoutDuration           int  `koanf:"timeout_duration"`
+}
+
+// ArtifactLimits holds the maximum number of each artifact kind an organization
+// may create. Each limit is optional: a value <= 0 (the default) means unlimited,
+// so organizations may create as many artifacts of that kind as they want.
+type ArtifactLimits struct {
+	MaxLLMProvidersPerOrg  int `koanf:"max_llm_providers_per_org"`
+	MaxLLMProxiesPerOrg    int `koanf:"max_llm_proxies_per_org"`
+	MaxMCPProxiesPerOrg    int `koanf:"max_mcp_proxies_per_org"`
+	MaxWebSubAPIsPerOrg    int `koanf:"max_websub_apis_per_org"`
+	MaxWebBrokerAPIsPerOrg int `koanf:"max_webbroker_apis_per_org"`
+}
+
+// LimitReached reports whether an organization currently holding currentCount
+// artifacts of some kind has reached its configured limit. A limit <= 0 means
+// unlimited, in which case this always returns false.
+func LimitReached(currentCount, limit int) bool {
+	return limit > 0 && currentCount >= limit
 }
 
 // APIKey holds API key-specific configuration.
@@ -299,12 +320,19 @@ func LoadConfig(configPath string) (*Server, error) {
 	}
 
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
+		if !demoMode() {
+			return nil, fmt.Errorf(
+				"AUTH_JWT_SECRET_KEY must be configured when APIP_DEMO_MODE=false and JWT authentication is enabled; " +
+					"generate a secret with: openssl rand -hex 32",
+			)
+		}
 		key, err := generateRandomSecret()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
 		}
 		cfg.Auth.JWT.SecretKey = key
-		slog.Warn("auth.jwt.secret_key is not set — generated an ephemeral random key; all sessions will be invalidated on restart")
+		slog.Warn("AUTH_JWT_SECRET_KEY not set — generated an ephemeral demo key (restart will invalidate all sessions)",
+			slog.String("AUTH_JWT_SECRET_KEY", key))
 	}
 
 	// SecretEncryptionKey is optional when the shared DATABASE_ENCRYPTION_KEY is configured;
@@ -340,6 +368,17 @@ func generateRandomSecret() (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// demoMode reports whether APIP_DEMO_MODE is enabled.
+// Defaults to true when the variable is unset.
+func demoMode() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+	if v == "" {
+		return true
+	}
+	return v == "true" || v == "1"
+}
+
 
 // envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
 // Returns "" for unknown variables, which causes koanf to skip them.
@@ -444,10 +483,8 @@ func envToKoanfKey(s string) string {
 		return "auth.file_based.enabled"
 	case "auth_file_based_organization_id":
 		return "auth.file_based.organization.id"
-	case "auth_file_based_organization_name":
-		return "auth.file_based.organization.name"
-	case "auth_file_based_organization_handle":
-		return "auth.file_based.organization.handle"
+	case "auth_file_based_organization_display_name":
+		return "auth.file_based.organization.display_name"
 	case "auth_file_based_organization_region":
 		return "auth.file_based.organization.region"
 	case "auth_file_based_users":
@@ -508,6 +545,18 @@ func envToKoanfKey(s string) string {
 		return "deployments.timeout_interval"
 	case "deployments_timeout_duration":
 		return "deployments.timeout_duration"
+
+	// Artifact limits (per organization; <= 0 means unlimited)
+	case "artifact_limits_max_llm_providers_per_org":
+		return "artifact_limits.max_llm_providers_per_org"
+	case "artifact_limits_max_llm_proxies_per_org":
+		return "artifact_limits.max_llm_proxies_per_org"
+	case "artifact_limits_max_mcp_proxies_per_org":
+		return "artifact_limits.max_mcp_proxies_per_org"
+	case "artifact_limits_max_websub_apis_per_org":
+		return "artifact_limits.max_websub_apis_per_org"
+	case "artifact_limits_max_webbroker_apis_per_org":
+		return "artifact_limits.max_webbroker_apis_per_org"
 
 	// TLS
 	case "tls_cert_dir":
@@ -632,11 +681,8 @@ func validateFileBasedConfig(cfg *FileBased) error {
 	if cfg.Organization.ID == "" {
 		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.id to be configured")
 	}
-	if cfg.Organization.Name == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.name to be configured")
-	}
-	if cfg.Organization.Handle == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.handle to be configured")
+	if cfg.Organization.DisplayName == "" {
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.display_name to be configured")
 	}
 	if len(cfg.Users) == 0 {
 		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")

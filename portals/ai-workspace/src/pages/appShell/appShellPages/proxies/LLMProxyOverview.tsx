@@ -69,6 +69,9 @@ import type {
   Proxy as LLMProxy,
   UpdateProxyRequest,
 } from '../../../../utils/types';
+import {
+  GatewayArtifactReadOnlyBanner,
+} from '../../../../utils/readOnlyArtifacts';
 
 type TabPanelProps = {
   value: number;
@@ -151,6 +154,7 @@ function ProxyOverviewContent() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
 
   const getProviderId = (providerValue?: LLMProxy['provider']): string => {
     if (!providerValue) return '';
@@ -165,7 +169,7 @@ function ProxyOverviewContent() {
     const providerId = getProviderId(providerValue);
     if (!providerId) return '\u2014';
     const found = providersResponse.list.find((p) => p.id === providerId);
-    return found?.name ?? providerId;
+    return found?.displayName ?? providerId;
   };
 
   useEffect(() => {
@@ -208,7 +212,12 @@ function ProxyOverviewContent() {
   };
 
   const handleSaveChanges = async () => {
-    if (!proxy || !hasUnsavedChanges || isSavingChanges) return;
+    // Runtime tabs (provider/security/guardrails & policies) are locked, so a save
+    // from a gateway-created proxy only carries non-runtime edits (definition), which
+    // the control plane accepts without altering the gateway runtime artifact.
+    if (!proxy || !hasUnsavedChanges || isSavingChanges) {
+      return;
+    }
     try {
       setIsSavingChanges(true);
       setUpdateError(null);
@@ -330,7 +339,7 @@ function ProxyOverviewContent() {
                     fontSize: 32,
                   }}
                 >
-                  {(proxy.name || '\u2014').trim().slice(0, 2).toUpperCase()}
+                  {(proxy.displayName || '\u2014').trim().slice(0, 2).toUpperCase()}
                 </Avatar>
 
                 <Box sx={{ minWidth: 0 }}>
@@ -341,7 +350,7 @@ function ProxyOverviewContent() {
                     flexWrap="wrap"
                   >
                     <Typography variant="h3">
-                      {truncateProviderDisplayName(proxy.name || '\u2014')}
+                      {truncateProviderDisplayName(proxy.displayName || '\u2014')}
                     </Typography>
                     <Chip
                       label={`${proxy.version || '1.0'}`}
@@ -349,6 +358,9 @@ function ProxyOverviewContent() {
                       variant="outlined"
                       color="primary"
                     />
+                    {/* Edit page (name/version/context/description). Enabled even
+                        for gateway-created proxies — the page keeps the runtime
+                        fields read-only and allows only the description. */}
                     <Tooltip title="Edit Proxy">
                       <IconButton
                         component={RouterLink}
@@ -403,12 +415,15 @@ function ProxyOverviewContent() {
                 alignItems="flex-end"
                 sx={{ alignSelf: 'stretch' }}
               >
+                {/* Deployments remain viewable for gateway-created proxies (deploy/
+                    redeploy/restore/undeploy are disabled on the page itself), so the
+                    button navigates but is relabelled "View Deployments". */}
                 <Button
                   variant="contained"
                   component={RouterLink}
                   to={`${proxiesPath}/${proxy.id}/deploy`}
                 >
-                  Deploy to Gateway
+                  {isReadOnlyProxy ? 'View Deployments' : 'Deploy to Gateway'}
                 </Button>
                 <IconButton
                   color="error"
@@ -445,6 +460,9 @@ function ProxyOverviewContent() {
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={1}>
+                  {isReadOnlyProxy && (
+                    <GatewayArtifactReadOnlyBanner message="The provider connection is managed by the gateway that created this proxy and is read-only here." />
+                  )}
                   <LLMProxyProviderTab />
                 </TabPanel>
 
@@ -453,10 +471,16 @@ function ProxyOverviewContent() {
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={3}>
+                  {isReadOnlyProxy && (
+                    <GatewayArtifactReadOnlyBanner message="Security settings are managed by the gateway that created this proxy and are read-only here." />
+                  )}
                   <LLMProxySecurityTab />
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={4}>
+                  {isReadOnlyProxy && (
+                    <GatewayArtifactReadOnlyBanner message="Guardrails & policies are managed by the gateway that created this proxy and are read-only here." />
+                  )}
                   <LLMProxyGuardrailsTab />
                 </TabPanel>
               </Box>
@@ -515,7 +539,7 @@ function ProxyOverviewContent() {
         <DialogTitle>Delete App LLM Proxy</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete <strong>{proxy.name}</strong>? This
+            Are you sure you want to delete <strong>{proxy.displayName}</strong>? This
             action cannot be undone.
           </DialogContentText>
         </DialogContent>

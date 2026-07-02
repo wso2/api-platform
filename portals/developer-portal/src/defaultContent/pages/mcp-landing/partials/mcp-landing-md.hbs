@@ -12,9 +12,9 @@
 {{#if subscriptionPlans.length}}
 ## Subscription Plans
 
-| Plan | Request Quota | Description |
+| Plan | Limits | Description |
 |------|--------------|-------------|
-{{#each subscriptionPlans}}| {{name}} | {{requestCount}} | {{description}} |
+{{#each subscriptionPlans}}| {{name}} | {{#if limits.length}}{{#each limits}}{{#if (eq limitCount -1)}}Unlimited{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{timeAmount}} {{timeUnit}}{{/if}}{{#unless @last}}, {{/unless}}{{/each}}{{else if requestCount}}{{requestCount}}{{else}}—{{/if}} | {{description}} |
 {{/each}}
 {{/if}}
 {{#unless isMCPFromRegistry}}

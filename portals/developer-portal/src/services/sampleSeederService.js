@@ -27,6 +27,7 @@ const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
+const { config } = require('../config/configLoader');
 const { parseApiMetadataFromYamlFile, prepareApiDefinitionForStorage } = require('./apiMetadataService');
 
 const DEFINITION_CANDIDATES = ['definition.yaml', 'definition.yml', 'definition.json', 'definition.graphql', 'definition.wsdl'];
@@ -129,7 +130,7 @@ async function seedSampleAPIs(orgId) {
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.id);
                         if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
@@ -214,7 +215,7 @@ async function seedSampleMCPs(orgId) {
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.id);
                         if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
@@ -257,4 +258,40 @@ async function seedSampleMCPs(orgId) {
     return results;
 }
 
-module.exports = { seedSampleAPIs, seedSampleMCPs };
+/**
+ * Path to the "samples seeded" marker file. Lives alongside the SQLite DB file in the
+ * persisted data volume — deliberately not a DB row, so it survives even if the DB is
+ * swapped out, and not localStorage/sessionStorage, so it's shared across browsers/admins.
+ */
+function markerPath() {
+    const dbStorage = config.db?.storage || './devportal.db';
+    return path.join(path.dirname(dbStorage), '.samples-seeded');
+}
+
+/**
+ * Whether sample APIs/MCPs have already been seeded at least once for this instance.
+ * Best-effort: any filesystem error is treated as "not seeded" rather than throwing.
+ */
+function areSamplesSeeded() {
+    try {
+        return fs.existsSync(markerPath());
+    } catch (err) {
+        logger.warn('Failed to check samples-seeded marker', { error: err.message });
+        return false;
+    }
+}
+
+/**
+ * Record that samples have been seeded. Best-effort — a failure to write the marker must
+ * not fail the seed operation itself (the seed already succeeded by this point).
+ */
+function markSamplesSeeded() {
+    try {
+        fs.mkdirSync(path.dirname(markerPath()), { recursive: true });
+        fs.writeFileSync(markerPath(), new Date().toISOString());
+    } catch (err) {
+        logger.warn('Failed to write samples-seeded marker', { error: err.message });
+    }
+}
+
+module.exports = { seedSampleAPIs, seedSampleMCPs, areSamplesSeeded, markSamplesSeeded };

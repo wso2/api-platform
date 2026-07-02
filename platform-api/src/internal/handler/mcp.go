@@ -50,9 +50,9 @@ func (h *MCPProxyHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies", h.CreateMCPProxy)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies", h.ListMCPProxies)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/fetch-server-info", h.FetchMCPProxyServerInfo)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{id}", h.GetMCPProxy)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/mcp-proxies/{id}", h.UpdateMCPProxy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{id}", h.DeleteMCPProxy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}", h.GetMCPProxy)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}", h.UpdateMCPProxy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}", h.DeleteMCPProxy)
 }
 
 // CreateMCPProxy handles POST /api/v0.9/mcp-proxies
@@ -142,7 +142,7 @@ func (h *MCPProxyHandler) GetMCPProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("mcpProxyId")
 
 	resp, err := h.service.Get(orgID, id)
 	if err != nil {
@@ -161,7 +161,7 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("mcpProxyId")
 
 	var req api.MCPProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -188,7 +188,7 @@ func (h *MCPProxyHandler) DeleteMCPProxy(w http.ResponseWriter, r *http.Request)
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("mcpProxyId")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.service.Delete(orgID, id, deletedBy); err != nil {
@@ -245,6 +245,9 @@ func (h *MCPProxyHandler) handleServiceError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, constants.ErrHandleImmutable):
+		h.slogger.Error("MCP handle immutability violation", "reason", err.Error())
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrInvalidInput):
 		h.slogger.Error("MCP request validation failed", "reason", err.Error())
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))

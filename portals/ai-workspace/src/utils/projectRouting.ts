@@ -17,8 +17,8 @@
  */
 
 type ProjectLike = {
-  handler?: string;
-  name?: string;
+  id?: string;
+  displayName?: string;
 };
 type OrgLike = {
   handle?: string;
@@ -36,7 +36,9 @@ export function slugifyProjectName(name?: string): string {
 
 export function getProjectSlug(project?: ProjectLike | null): string {
   if (!project) return '';
-  return project.handler || slugifyProjectName(project.name);
+  // ProjectBase no longer carries a dedicated `handler` slug field, so use
+  // the project's `id` (its handle) as the routing slug.
+  return project.id || slugifyProjectName(project.displayName);
 }
 
 export function slugifyOrgName(name?: string): string {

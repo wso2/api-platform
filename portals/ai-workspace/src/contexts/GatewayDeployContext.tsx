@@ -142,6 +142,13 @@ interface GatewayDeployContextValue {
   deployingGatewayId: string | null;
   isDeployingToGateway: boolean;
   isPollingGateway: (gatewayId: string) => boolean;
+
+  /**
+   * When true, the artifact is read-only (e.g. gateway-originated): its deployment
+   * lifecycle is owned by the gateway. The deployments remain viewable, but deploy/
+   * redeploy/restore/undeploy actions are disabled.
+   */
+  readOnly: boolean;
 }
 
 const GatewayDeployContext = createContext<GatewayDeployContextValue | null>(
@@ -151,12 +158,15 @@ const GatewayDeployContext = createContext<GatewayDeployContextValue | null>(
 interface GatewayDeployProviderProps {
   apiId: string;
   resourceType?: GatewayDeployResourceType;
+  /** Disable deploy/redeploy/restore/undeploy actions while keeping deployments visible. */
+  readOnly?: boolean;
   children: ReactNode;
 }
 
 export function GatewayDeployProvider({
   apiId,
   resourceType = 'provider',
+  readOnly = false,
   children,
 }: GatewayDeployProviderProps) {
   const { currentOrganization } = useAppShell();
@@ -189,7 +199,7 @@ export function GatewayDeployProvider({
       if (resourceType === 'proxy') {
         return getLLMProxyDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
       } else if (resourceType === 'mcp-server') {
-        return getMCPServerDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
+        return getMCPServerDeployment(apiId, deploymentId, PLATFORM_API_BASE_URL);
       }
       return getLLMProviderDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
     },
@@ -272,7 +282,6 @@ export function GatewayDeployProvider({
               )
             : getMCPServerDeployments(
                 apiId,
-                organizationId,
                 PLATFORM_API_BASE_URL,
                 gateway.id
               )
@@ -401,7 +410,6 @@ export function GatewayDeployProvider({
             : resourceType === 'mcp-server'
               ? await deployMCPServer(
                   apiId,
-                  organizationId,
                   {
                     name: deploymentName,
                     base: 'current',
@@ -485,7 +493,6 @@ export function GatewayDeployProvider({
           await undeployMCPServerDeployment(
             apiId,
             deploymentId,
-            organizationId,
             PLATFORM_API_BASE_URL,
             gatewayId
           );
@@ -550,7 +557,6 @@ export function GatewayDeployProvider({
               ? await restoreMCPServerDeployment(
                   apiId,
                   deploymentId,
-                  organizationId,
                   PLATFORM_API_BASE_URL,
                   gatewayId
                 )
@@ -618,7 +624,6 @@ export function GatewayDeployProvider({
           await deleteMCPServerDeployment(
             apiId,
             deploymentId,
-            organizationId,
             PLATFORM_API_BASE_URL
           );
         } else {
@@ -666,6 +671,7 @@ export function GatewayDeployProvider({
       deployingGatewayId,
       isDeployingToGateway,
       isPollingGateway,
+      readOnly,
     }),
     [
       gateways,
@@ -683,6 +689,7 @@ export function GatewayDeployProvider({
       deployingGatewayId,
       isDeployingToGateway,
       isPollingGateway,
+      readOnly,
     ]
   );
 

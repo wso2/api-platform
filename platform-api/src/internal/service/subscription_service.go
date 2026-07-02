@@ -32,6 +32,8 @@ type SubscriptionService struct {
 	apiRepo          repository.APIRepository
 	artifactRepo     repository.ArtifactRepository
 	subscriptionRepo repository.SubscriptionRepository
+	planRepo         repository.SubscriptionPlanRepository
+	orgRepo          repository.OrganizationRepository
 	gatewayEvents    *GatewayEventsService
 	auditRepo        repository.AuditRepository
 	slogger          *slog.Logger
@@ -42,6 +44,8 @@ func NewSubscriptionService(
 	apiRepo repository.APIRepository,
 	artifactRepo repository.ArtifactRepository,
 	subscriptionRepo repository.SubscriptionRepository,
+	planRepo repository.SubscriptionPlanRepository,
+	orgRepo repository.OrganizationRepository,
 	gatewayEvents *GatewayEventsService,
 	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
@@ -53,10 +57,42 @@ func NewSubscriptionService(
 		apiRepo:          apiRepo,
 		artifactRepo:     artifactRepo,
 		subscriptionRepo: subscriptionRepo,
+		planRepo:         planRepo,
+		orgRepo:          orgRepo,
 		gatewayEvents:    gatewayEvents,
 		auditRepo:        auditRepo,
 		slogger:          slogger,
 	}
+}
+
+// ResolveOrgHandle returns the organization handle for display (organizationId in
+// responses should be the handle, not the internal UUID).
+func (s *SubscriptionService) ResolveOrgHandle(orgUUID string) string {
+	if orgUUID == "" {
+		return ""
+	}
+	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
+	if err != nil || org == nil {
+		return orgUUID // fallback to UUID if lookup fails
+	}
+	return org.Handle
+}
+
+// resolveArtifactUUIDByKind resolves an artifact handle to its UUID within the table
+// backing the given kind (e.g. RestApi, LlmProvider). Used when creating a subscription,
+// where the caller specifies the kind so the handle is resolved against exactly one table.
+func (s *SubscriptionService) resolveArtifactUUIDByKind(apiId, kind, orgUUID string) (string, error) {
+	if apiId == "" || kind == "" {
+		return "", constants.ErrAPINotFound
+	}
+	metadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiId, kind, orgUUID)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve artifact by handle and kind: %w", err)
+	}
+	if metadata == nil {
+		return "", constants.ErrAPINotFound
+	}
+	return metadata.ID, nil
 }
 
 // resolveAPIUUID resolves apiId (handle or UUID) to rest_apis.uuid for the organization
@@ -93,26 +129,30 @@ func derefString(s *string) string {
 	return *s
 }
 
-// ResolveAPIHandle returns the API handle for display (apiId in responses should be the handle, not UUID).
-func (s *SubscriptionService) ResolveAPIHandle(apiUUID, orgUUID string) string {
-	if apiUUID == "" {
-		return ""
+// ResolveArtifactHandleAndKind returns the artifact handle and kind for display. apiId in
+// responses should be the handle (not the internal UUID); kind identifies the artifact type.
+// Resolves across all artifact kinds, so it works for REST APIs, LLM providers/proxies, etc.
+func (s *SubscriptionService) ResolveArtifactHandleAndKind(artifactUUID, orgUUID string) (handle, kind string) {
+	if artifactUUID == "" {
+		return "", ""
 	}
-	api, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil || api == nil {
-		return apiUUID // fallback to UUID if lookup fails
+	art, err := s.artifactRepo.GetByUUID(artifactUUID, orgUUID)
+	if err != nil || art == nil {
+		return artifactUUID, "" // fallback to UUID if lookup fails
 	}
-	return api.Handle
+	return art.Handle, art.Type
 }
 
-// GetAPIHandleMap returns a map of API UUID to handle for bulk lookup (avoids N+1 queries).
-func (s *SubscriptionService) GetAPIHandleMap(uuids []string, orgUUID string) (map[string]string, error) {
-	return s.apiRepo.GetAPIsByUUIDs(uuids, orgUUID)
+// GetArtifactMetadataMap returns a map of artifact UUID to metadata (handle, kind) for bulk
+// lookup across all artifact kinds (avoids N+1 queries).
+func (s *SubscriptionService) GetArtifactMetadataMap(uuids []string, orgUUID string) (map[string]*model.APIMetadata, error) {
+	return s.artifactRepo.GetMetadataByUUIDs(uuids, orgUUID)
 }
 
-// CreateSubscription creates a new subscription for an API
-func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, status string) (*model.Subscription, error) {
-	apiUUID, err := s.resolveAPIUUID(apiId, orgUUID)
+// CreateSubscription creates a new subscription for an artifact of the given kind.
+// apiId is the artifact handle; kind selects the artifact table it is resolved against.
+func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, status string) (*model.Subscription, error) {
+	apiUUID, err := s.resolveArtifactUUIDByKind(apiId, kind, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +175,16 @@ func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, subscrib
 	}
 	if exists {
 		return nil, constants.ErrSubscriptionAlreadyExists
+	}
+
+	if subscriptionPlanId != nil && *subscriptionPlanId != "" {
+		plan, err := s.planRepo.GetByHandleAndOrg(*subscriptionPlanId, orgUUID)
+		if err != nil {
+			return nil, err
+		}
+		if plan == nil {
+			return nil, constants.ErrSubscriptionPlanNotFound
+		}
 	}
 
 	sub := &model.Subscription{

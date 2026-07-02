@@ -112,7 +112,7 @@ export default function GatewaysList() {
         gateway.name,
         gateway.displayName,
         gateway.description,
-        gateway.vhost,
+        gateway.endpoints?.[0] || gateway.vhost,
       ]
         .filter(Boolean)
         .join(' ')
@@ -508,7 +508,7 @@ export default function GatewaysList() {
                                     navigate(
                                       buildOrgPath(
                                         currentOrganization,
-                                        `/gateways/view/${gateway.name}`
+                                        `/gateways/view/${gateway.id}`
                                       )
                                     )
                                 : undefined
@@ -596,7 +596,7 @@ export default function GatewaysList() {
                                     maxWidth: 280,
                                   }}
                                 >
-                                  {gateway.vhost || '—'}
+                                  {gateway.endpoints?.[0] || gateway.vhost || '—'}
                                 </Typography>
                               )}
                             </TableCell>
@@ -609,7 +609,7 @@ export default function GatewaysList() {
                                     navigate(
                                       buildOrgPath(
                                         currentOrganization,
-                                        `/gateways/edit/${gateway.name}`
+                                        `/gateways/edit/${gateway.id}`
                                       )
                                     );
                                   }}

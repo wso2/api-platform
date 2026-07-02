@@ -20,6 +20,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -53,33 +54,55 @@ func NewLLMHandler(
 func (h *LLMHandler) RegisterRoutes(mux *http.ServeMux) {
 	// LLM Provider Templates
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates", h.CreateLLMProviderTemplate)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates/copy", h.CopyLLMProviderTemplateVersion)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates", h.ListLLMProviderTemplates)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{id}", h.GetLLMProviderTemplate)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{id}/versions", h.ListLLMProviderTemplateVersions)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{id}/versions/{version}", h.GetLLMProviderTemplateVersion)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates/{id}/versions", h.CreateLLMProviderTemplateVersion)
-	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{id}/versions/{version}", h.SetLLMProviderTemplateVersionEnabled)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{id}/versions/{version}", h.DeleteLLMProviderTemplateVersion)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{id}", h.UpdateLLMProviderTemplate)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{id}", h.DeleteLLMProviderTemplate)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.GetLLMProviderTemplate)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.UpdateLLMProviderTemplate)
+	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.SetLLMProviderTemplateVersionEnabled)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.DeleteLLMProviderTemplateVersion)
 
 	// LLM Providers
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers", h.CreateLLMProvider)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers", h.ListLLMProviders)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{id}", h.GetLLMProvider)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{id}/llm-proxies", h.ListLLMProxiesByProvider)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-providers/{id}", h.UpdateLLMProvider)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{id}", h.DeleteLLMProvider)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.GetLLMProvider)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}/llm-proxies", h.ListLLMProxiesByProvider)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.UpdateLLMProvider)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.DeleteLLMProvider)
 
 	// LLM Proxies
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies", h.CreateLLMProxy)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies", h.ListLLMProxies)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{id}", h.GetLLMProxy)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-proxies/{id}", h.UpdateLLMProxy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{id}", h.DeleteLLMProxy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.GetLLMProxy)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.UpdateLLMProxy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.DeleteLLMProxy)
 }
 
-// ---- Templates ----
+// templateQuery holds the fields parsed from the ?query= search DSL used by the
+// LLM provider template endpoints.
+type templateQuery struct {
+	GroupID string
+	Version string
+	Latest  bool
+}
+
+func parseTemplateQuery(raw string) (q templateQuery, found bool) {
+	for _, part := range strings.Split(raw, "&") {
+		key, value, ok := strings.Cut(part, ":")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "groupId":
+			q.GroupID = strings.TrimSpace(value)
+			found = true
+		case "version":
+			q.Version = strings.TrimSpace(value)
+		case "latest":
+			q.Latest = strings.EqualFold(strings.TrimSpace(value), "true")
+		}
+	}
+	return q, found
+}
 
 func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
@@ -88,12 +111,13 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
+
 	var req api.LLMProviderTemplate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	created, err := h.templateService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -110,6 +134,64 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		default:
 			h.slogger.Error("Failed to create LLM provider template", "organizationId", orgID, "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create LLM provider template"))
+			return
+		}
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, created)
+}
+
+// CopyLLMProviderTemplateVersion creates a new version within a family by
+// cloning an existing version. The source version, the derived destination
+// handle and the new version are given as query params
+// (fromTemplateId, toTemplateId, toVersion); an optional body overrides fields
+// on top of the copied config.
+func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
+
+	fromTemplateID := strings.TrimSpace(r.URL.Query().Get("fromTemplateId"))
+	toTemplateID := strings.TrimSpace(r.URL.Query().Get("toTemplateId"))
+	toVersion := strings.TrimSpace(r.URL.Query().Get("toVersion"))
+	if fromTemplateID == "" || toVersion == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "fromTemplateId and toVersion are required"))
+		return
+	}
+
+	// The body is optional; only decode overrides when one is present.
+	var overrides *api.CreateLLMProviderTemplateVersionRequest
+	if r.Body != nil && r.ContentLength != 0 {
+		var vreq api.CreateLLMProviderTemplateVersionRequest
+		if err := json.NewDecoder(r.Body).Decode(&vreq); err != nil && !errors.Is(err, io.EOF) {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+			return
+		}
+		overrides = &vreq
+	}
+
+	created, err := h.templateService.CopyVersion(orgID, fromTemplateID, toTemplateID, toVersion, createdBy, overrides)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Source LLM provider template version not found"))
+			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "The version already exists"))
+			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))
+			return
+		case errors.Is(err, constants.ErrInvalidInput):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input. toVersion must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0), and toTemplateId must match the family"))
+			return
+		default:
+			h.slogger.Error("Failed to copy LLM provider template version", "organizationId", orgID, "fromTemplateId", fromTemplateID, "toVersion", toVersion, "error", err)
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to copy LLM provider template version"))
 			return
 		}
 	}
@@ -146,9 +228,55 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 		offset = 0
 	}
 
-	allVersions := strings.EqualFold(r.URL.Query().Get("versions"), "all")
+	q, familyScoped := parseTemplateQuery(r.URL.Query().Get("query"))
+	if familyScoped {
+		groupID := q.GroupID
+		if groupID == "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid groupId"))
+			return
+		}
+		version := q.Version
+		if version != "" {
+			resp, err := h.templateService.GetVersion(orgID, groupID, version)
+			if err != nil {
+				switch {
+				case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+					httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
+					return
+				case errors.Is(err, constants.ErrInvalidInput):
+					httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid version. Version must match the v<major>.<minor> pattern (e.g. v1.0)"))
+					return
+				default:
+					h.slogger.Error("Failed to get LLM provider template version", "organizationId", orgID, "groupId", groupID, "version", version, "error", err)
+					httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get LLM provider template version"))
+					return
+				}
+			}
+			httputil.WriteJSON(w, http.StatusOK, resp)
+			return
+		}
+		resp, err := h.templateService.ListVersions(orgID, groupID, limit, offset)
+		if err != nil {
+			switch {
+			case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+				httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
+				return
+			case errors.Is(err, constants.ErrInvalidInput):
+				httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid groupId"))
+				return
+			default:
+				h.slogger.Error("Failed to list LLM provider template versions", "organizationId", orgID, "groupId", groupID, "error", err)
+				httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list LLM provider template versions"))
+				return
+			}
+		}
+		httputil.WriteJSON(w, http.StatusOK, resp)
+		return
+	}
 
-	resp, err := h.templateService.List(orgID, limit, offset, allVersions)
+	latestOnly := q.Latest
+
+	resp, err := h.templateService.List(orgID, limit, offset, latestOnly)
 	if err != nil {
 		h.slogger.Error("Failed to list LLM provider templates", "organizationId", orgID, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list LLM provider templates"))
@@ -163,7 +291,7 @@ func (h *LLMHandler) GetLLMProviderTemplate(w http.ResponseWriter, r *http.Reque
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 
 	resp, err := h.templateService.Get(orgID, id)
 	if err != nil {
@@ -183,118 +311,13 @@ func (h *LLMHandler) GetLLMProviderTemplate(w http.ResponseWriter, r *http.Reque
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
-func (h *LLMHandler) ListLLMProviderTemplateVersions(w http.ResponseWriter, r *http.Request) {
-	orgID, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-	id := r.PathValue("id")
-
-	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
-	if err != nil || offset < 0 {
-		offset = 0
-	}
-
-	resp, err := h.templateService.ListVersions(orgID, id, limit, offset)
-	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
-			return
-		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id"))
-			return
-		default:
-			h.slogger.Error("Failed to list LLM provider template versions", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list LLM provider template versions"))
-			return
-		}
-	}
-	httputil.WriteJSON(w, http.StatusOK, resp)
-}
-
-func (h *LLMHandler) CreateLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) {
-	orgID, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-	id := r.PathValue("id")
-	createdBy, _ := middleware.GetUserIDFromRequest(r)
-
-	var req api.CreateLLMProviderTemplateVersionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	created, err := h.templateService.CreateVersion(orgID, id, createdBy, &req)
-	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
-			return
-		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "The version already exists"))
-			return
-		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))
-			return
-		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input. Version must match the v<major>.<minor> pattern (e.g. v1.0)"))
-			return
-		default:
-			h.slogger.Error("Failed to create LLM provider template version", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create LLM provider template version"))
-			return
-		}
-	}
-	httputil.WriteJSON(w, http.StatusCreated, created)
-}
-
-func (h *LLMHandler) GetLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) {
-	orgID, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-	id := r.PathValue("id")
-	version := r.PathValue("version")
-
-	resp, err := h.templateService.GetVersion(orgID, id, version)
-	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
-			return
-		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))
-			return
-		default:
-			h.slogger.Error("Failed to get LLM provider template version", "organizationId", orgID, "templateId", id, "version", version, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get LLM provider template version"))
-			return
-		}
-	}
-	httputil.WriteJSON(w, http.StatusOK, resp)
-}
-
 func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
-	version := r.PathValue("version")
+	id := r.PathValue("llmProviderTemplateId")
 
 	var body struct {
 		Enabled *bool `json:"enabled"`
@@ -304,20 +327,23 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter,
 		return
 	}
 
-	resp, err := h.templateService.SetVersionEnabled(orgID, id, version, *body.Enabled)
+	resp, err := h.templateService.SetEnabledByHandle(orgID, id, *body.Enabled)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id"))
 			return
 		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
 			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot disable template version while providers are using it"))
 			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotToggleable):
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only built-in templates can be enabled or disabled"))
+			return
 		default:
-			h.slogger.Error("Failed to set LLM provider template version enabled", "organizationId", orgID, "templateId", id, "version", version, "error", err)
+			h.slogger.Error("Failed to set LLM provider template version enabled", "organizationId", orgID, "templateId", id, "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update template version"))
 			return
 		}
@@ -331,7 +357,7 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderTemplateId")
 
 	var req api.LLMProviderTemplate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -355,6 +381,9 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))
 			return
+		case errors.Is(err, constants.ErrHandleImmutable):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -367,42 +396,6 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
-func (h *LLMHandler) DeleteLLMProviderTemplate(w http.ResponseWriter, r *http.Request) {
-	orgID, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-	id := r.PathValue("id")
-	deletedBy, _ := middleware.GetUserIDFromRequest(r)
-
-	if err := h.templateService.Delete(orgID, id, deletedBy); err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
-		}
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
-			return
-		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Template cannot be deleted while providers are using it"))
-			return
-		case errors.Is(err, constants.ErrLLMProviderTemplateReadOnly):
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Built-in templates are read-only and cannot be deleted"))
-			return
-		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id"))
-			return
-		default:
-			h.slogger.Error("Failed to delete LLM provider template", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete LLM provider template"))
-			return
-		}
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // DeleteLLMProviderTemplateVersion removes a single version of a template.
 func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
@@ -410,10 +403,9 @@ func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
-	version := r.PathValue("version")
+	id := r.PathValue("llmProviderTemplateId")
 
-	if err := h.templateService.DeleteVersion(orgID, id, version); err != nil {
+	if err := h.templateService.DeleteByHandle(orgID, id); err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
@@ -425,10 +417,10 @@ func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *
 			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Built-in template versions are read-only and cannot be deleted"))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id"))
 			return
 		default:
-			h.slogger.Error("Failed to delete LLM provider template version", "organizationId", orgID, "templateId", id, "version", version, "error", err)
+			h.slogger.Error("Failed to delete LLM provider template version", "organizationId", orgID, "templateId", id, "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete template version"))
 			return
 		}
@@ -524,7 +516,7 @@ func (h *LLMHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderId")
 
 	resp, err := h.providerService.Get(orgID, id)
 	if err != nil {
@@ -550,7 +542,7 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderId")
 
 	var req api.LLMProvider
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -574,6 +566,9 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, constants.ErrSecretRefMissing):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
+		case errors.Is(err, constants.ErrHandleImmutable):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -592,7 +587,7 @@ func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProviderId")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
@@ -715,7 +710,7 @@ func (h *LLMHandler) ListLLMProxiesByProvider(w http.ResponseWriter, r *http.Req
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	providerID := r.PathValue("id")
+	providerID := r.PathValue("llmProviderId")
 
 	limitStr := r.URL.Query().Get("limit")
 	if limitStr == "" {
@@ -763,7 +758,7 @@ func (h *LLMHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProxyId")
 
 	resp, err := h.proxyService.Get(orgID, id)
 	if err != nil {
@@ -789,7 +784,7 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProxyId")
 
 	var req api.LLMProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -810,6 +805,9 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Referenced provider not found"))
 			return
+		case errors.Is(err, constants.ErrHandleImmutable):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -828,7 +826,7 @@ func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("llmProxyId")
 	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {

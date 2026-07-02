@@ -37,7 +37,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Building2, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Building2, CheckCircle2 } from 'lucide-react';
 import Logo from '../../Components/Logo';
 import UserMenu from '../../Components/UserMenu';
 import { useAppAuth } from '../../contexts/AppAuthContext';
@@ -57,14 +57,13 @@ const REGIONS = [
   { value: 'ap-southeast-1', label: 'AP Southeast 1 (ap-southeast-1)' },
 ] as const;
 
-const HANDLE_PATTERN = /^[a-z0-9-]+$/;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Lowercase alphanumerics and single hyphens as separators — no leading or
+// trailing hyphen, matching the handle input constraint and what is sent as id.
+const HANDLE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** ms to show the success banner before navigating to the workspace */
 const REDIRECT_DELAY_MS = 1500;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const generateUUID = (): string => crypto.randomUUID();
 
 const toHandle = (name: string): string =>
   name.toLowerCase().trim()
@@ -74,7 +73,6 @@ const toHandle = (name: string): string =>
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface FormState {
-  id: string;
   name: string;
   handle: string;
   region: string;
@@ -84,7 +82,6 @@ interface FormErrors {
   name?: string;
   handle?: string;
   region?: string;
-  id?: string;
 }
 
 // ─── Redirecting banner ───────────────────────────────────────────────────────
@@ -138,7 +135,6 @@ export default function OrgRegisterPage() {
   };
 
   const [form, setForm] = useState<FormState>({
-    id: generateUUID(),
     name: '',
     handle: '',
     region: 'us',
@@ -178,11 +174,6 @@ export default function OrgRegisterPage() {
     if (!f.region) {
       e.region = 'Please select a region.';
     }
-    if (!f.id.trim()) {
-      e.id = 'Organization ID is required.';
-    } else if (!UUID_PATTERN.test(f.id.trim())) {
-      e.id = 'Must be a valid UUID (e.g. 550e8400-e29b-41d4-a716-446655440000).';
-    }
     return e;
   };
 
@@ -211,17 +202,6 @@ export default function OrgRegisterPage() {
     setApiError(null);
   }, []);
 
-  const handleIdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm((prev) => ({ ...prev, id: e.target.value }));
-    setErrors((prev) => ({ ...prev, id: undefined }));
-    setApiError(null);
-  }, []);
-
-  const regenerateId = useCallback(() => {
-    setForm((prev) => ({ ...prev, id: generateUUID() }));
-    setErrors((prev) => ({ ...prev, id: undefined }));
-  }, []);
-
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setApiError(null);
@@ -235,16 +215,15 @@ export default function OrgRegisterPage() {
     setIsSubmitting(true);
     try {
       const payload: RegisterOrganizationRequest = {
-        id: form.id,
-        name: form.name.trim(),
-        handle: form.handle.trim(),
+        id: form.handle.trim(),
+        displayName: form.name.trim(),
         region: form.region,
       };
 
       const org = await registerOrganization(payload);
 
-      setRegisteredOrgName(org.name);
-      setRegisteredOrgHandle(org.handle);
+      setRegisteredOrgName(org.displayName);
+      setRegisteredOrgHandle(org.id);
     } catch (err: any) {
       setApiError(err?.message ?? 'An unexpected error occurred.');
     } finally {
@@ -444,25 +423,6 @@ export default function OrgRegisterPage() {
                           {errors.region && (
                             <FormHelperText error>{errors.region}</FormHelperText>
                           )}
-                        </FormControl>
-
-                        {/* UUID */}
-                        <FormControl fullWidth required disabled={isSubmitting}>
-                          <FormLabel sx={{ mb: 0.5, fontWeight: 500 }}>
-                            Organization ID (UUID)
-                          </FormLabel>
-                          <TextField
-                            placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                            value={form.id}
-                            onChange={handleIdChange}
-                            error={!!errors.id}
-                            fullWidth
-                            disabled={isSubmitting}
-                            inputProps={{ style: { fontFamily: 'monospace', fontSize: '0.85rem' } }}
-                          />
-                          <FormHelperText error={!!errors.id}>
-                            {errors.id ?? 'Auto-generated — edit or click ↻ to regenerate'}
-                          </FormHelperText>
                         </FormControl>
 
                         {/* Submit */}

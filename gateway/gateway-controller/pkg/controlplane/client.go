@@ -1398,6 +1398,10 @@ func (c *Client) fetchAndDeployAPI(apiID, deploymentID string, deployedAt *time.
 		)
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, correlationID)
+
 	// Create API configuration from YAML using the deployment service
 	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deploymentID, deployedAt, correlationID, c.deploymentService)
 	if err != nil {
@@ -1959,6 +1963,10 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
 	// Create LLM proxy configuration from YAML using the deployment service
 	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProxyPerformedAt.IsZero() {
@@ -2062,6 +2070,11 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering. Secrets created after the last startup/reconnect
+	// sync are not yet cached, so we fetch them on demand here.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
 	// Create LLM provider configuration from YAML using the deployment service
 	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
@@ -2649,6 +2662,10 @@ func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
 	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
 		performedAt = time.Now().Truncate(time.Millisecond)
@@ -2900,6 +2917,10 @@ func (c *Client) handleWebBrokerAPIDeployedEvent(event map[string]any) {
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
 	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
@@ -3158,6 +3179,10 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
 	// Create MCP proxy configuration from YAML using the deployment service
 	mcpPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)

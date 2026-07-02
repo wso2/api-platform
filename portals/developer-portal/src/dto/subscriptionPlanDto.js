@@ -18,13 +18,17 @@
  */
 class SubscriptionPlan {
     constructor(subscriptionPlan) {
-        this.id = subscriptionPlan.uuid;
-        this.handle = subscriptionPlan.handle;
+        this.id = subscriptionPlan.handle;
         this.name = subscriptionPlan.name;
         this.description = subscriptionPlan.description;
-        this.requestCount = subscriptionPlan.request_count;
         this.refId = subscriptionPlan.ref_id;
         this.orgId = subscriptionPlan.org_uuid;
+        this.limits = (subscriptionPlan.limits || []).map(l => ({
+            limitType:  l.limit_type,
+            timeUnit:   l.time_unit ?? null,
+            timeAmount: l.time_amount,
+            limitCount: Number.isSafeInteger(Number(l.limit_count)) ? Number(l.limit_count) : String(l.limit_count),
+        }));
     }
 }
 

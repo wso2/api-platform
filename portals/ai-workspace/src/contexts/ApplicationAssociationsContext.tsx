@@ -62,7 +62,7 @@ type ApplicationAssociationsContextValue = {
   ) => Promise<MappedAPIKeyListResponse>;
   removeAPIKey: (
     mappedKeyId: string,
-    options?: RemoveApplicationAPIKeyOptions
+    options: RemoveApplicationAPIKeyOptions
   ) => Promise<void>;
 };
 
@@ -120,7 +120,6 @@ export function ApplicationAssociationsProvider({
       setError(null);
       const response = await applicationApis.listApplicationAssociations(
         applicationId,
-        organizationId,
         apimBaseUrl
       );
       const seen = new Set<string>();
@@ -158,7 +157,6 @@ export function ApplicationAssociationsProvider({
         const response = await applicationApis.addApplicationAssociations(
           applicationId,
           request,
-          organizationId,
           apimBaseUrl
         );
         await fetchAssociations();
@@ -181,7 +179,6 @@ export function ApplicationAssociationsProvider({
         await applicationApis.removeApplicationAssociation(
           applicationId,
           associationId,
-          organizationId,
           apimBaseUrl
         );
         await fetchAssociations();
@@ -206,7 +203,6 @@ export function ApplicationAssociationsProvider({
         return await applicationApis.listApplicationAssociationAPIKeys(
           applicationId,
           associationId,
-          organizationId,
           apimBaseUrl,
           options
         );
@@ -228,7 +224,6 @@ export function ApplicationAssociationsProvider({
         return await applicationApis.addApplicationAPIKeys(
           applicationId,
           request,
-          organizationId,
           apimBaseUrl
         );
       } catch (err) {
@@ -242,14 +237,13 @@ export function ApplicationAssociationsProvider({
   const removeAPIKey = useCallback(
     async (
       mappedKeyId: string,
-      options?: RemoveApplicationAPIKeyOptions
+      options: RemoveApplicationAPIKeyOptions
     ): Promise<void> => {
       if (!organizationId) throw new Error('Organization ID is missing');
       try {
         await applicationApis.removeApplicationAPIKey(
           applicationId,
           mappedKeyId,
-          organizationId,
           apimBaseUrl,
           options
         );

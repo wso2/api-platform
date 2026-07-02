@@ -344,7 +344,7 @@ ENVFILE`;
       try {
         const response = await getGateways(currentOrganization.uuid);
         const foundGateway = response.data?.list?.find(
-          (gw) => gw.name === gatewayName,
+          (gw) => gw.id === gatewayName,
         );
 
         if (foundGateway) {
@@ -768,7 +768,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
               <FormControl fullWidth>
                 <FormLabel>URL</FormLabel>
                 <TextField
-                  value={getDisplayUrl(gateway.vhost || "")}
+                  value={getDisplayUrl(gateway.endpoints?.[0] || gateway.vhost || "")}
                   fullWidth
                   slotProps={{ input: { readOnly: true } }}
                 />

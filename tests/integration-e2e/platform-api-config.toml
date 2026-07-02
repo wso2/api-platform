@@ -11,9 +11,9 @@ secret_key = "e2e-integration-secret-key-0123456789"
 enabled = true
 
 [auth.file_based.organization]
-id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
-name   = "AP Organization"
-handle = "ap-org"
+id           = "default"            # organization handle (URL-safe slug)
+display_name = "Default"
+region       = "us"
 
 # Default login: admin / admin (bcrypt hash of "admin", reused from the shipped sample config).
 [[auth.file_based.users]]

@@ -126,9 +126,9 @@ async function fetchEntityData(
     case 'llm-proxy':
       return proxyApis.getProxy(id, organizationId, publisherBaseUrl);
     case 'mcp-server':
-      return mcpProxiesApis.getMCPServer(id, organizationId, publisherBaseUrl);
+      return mcpProxiesApis.getMCPServer(id, publisherBaseUrl);
     case 'application':
-      return applicationApis.getApplication(id, organizationId, publisherBaseUrl);
+      return applicationApis.getApplication(id, publisherBaseUrl);
     default: {
       const _exhaustive: never = type;
       throw new Error(`Unknown entity type: ${_exhaustive}`);

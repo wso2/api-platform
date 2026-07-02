@@ -32,8 +32,6 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
-
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // APIService handles business logic for API operations
@@ -81,16 +79,13 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		return nil, err
 	}
 
-	projectID := utils.OpenAPIUUIDToString(req.ProjectId)
+	projectHandle := strings.TrimSpace(req.ProjectId)
 	// Check if project exists
-	project, err := s.projectRepo.GetProjectByUUID(projectID)
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if project == nil {
-		return nil, constants.ErrProjectNotFound
-	}
-	if project.OrganizationID != orgUUID {
 		return nil, constants.ErrProjectNotFound
 	}
 
@@ -101,9 +96,9 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	} else {
 		// Generate handle from API name with collision detection
 		var err error
-		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgUUID))
+		handle, err = utils.GenerateHandle(req.DisplayName, s.HandleExistsCheck(orgUUID))
 		if err != nil {
-			s.slogger.Error("Failed to generate API handle", "apiName", req.Name, "error", err)
+			s.slogger.Error("Failed to generate API handle", "apiName", req.DisplayName, "error", err)
 			return nil, err
 		}
 	}
@@ -132,9 +127,10 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 
 	apiREST := s.createRequestToRESTAPI(req, handle)
 	apiModel := s.apiUtil.RESTAPIToModel(apiREST, orgUUID)
+	apiModel.ProjectID = project.ID
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
-		s.slogger.Error("Failed to create API in repository", "apiName", req.Name, "error", err)
+		s.slogger.Error("Failed to create API in repository", "apiName", req.DisplayName, "error", err)
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
 
@@ -145,7 +141,24 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 
 	_ = s.auditRepo.Record("CREATE", apiUUID, "rest_api", orgUUID, createdBy)
 
-	return s.apiUtil.ModelToRESTAPI(apiModel)
+	return s.modelToRESTAPI(apiModel)
+}
+
+// modelToRESTAPI converts an internal API model to the API representation,
+// resolving the project's handle for the response's projectId field.
+func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
+	if apiModel == nil {
+		return nil, nil
+	}
+	project, err := s.projectRepo.GetProjectByUUID(apiModel.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	projectHandle := apiModel.ProjectID
+	if project != nil {
+		projectHandle = project.Handle
+	}
+	return s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
 }
 
 // GetAPIByUUID retrieves an API by its ID
@@ -165,7 +178,7 @@ func (s *APIService) GetAPIByUUID(apiUUID, orgUUID string) (*api.RESTAPI, error)
 		return nil, constants.ErrAPINotFound
 	}
 
-	return s.apiUtil.ModelToRESTAPI(apiModel)
+	return s.modelToRESTAPI(apiModel)
 }
 
 // GetAPIByHandle retrieves an API by its handle
@@ -208,20 +221,20 @@ func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) 
 	return metadata.ID, nil
 }
 
-// GetAPIsByOrganization retrieves all APIs for an organization with optional project filter
-func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID string) ([]api.RESTAPI, error) {
-	// If project ID is provided, validate that it belongs to the organization
-	if projectUUID != "" {
-		project, err := s.projectRepo.GetProjectByUUID(projectUUID)
+// GetAPIsByOrganization retrieves all APIs for an organization with optional project filter.
+// projectHandle, when provided, is the project's handle (not UUID).
+func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string) ([]api.RESTAPI, error) {
+	projectUUID := ""
+	// If project handle is provided, resolve it and validate that it belongs to the organization
+	if projectHandle != "" {
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
 		if err != nil {
 			return nil, err
 		}
 		if project == nil {
 			return nil, constants.ErrProjectNotFound
 		}
-		if project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
-		}
+		projectUUID = project.ID
 	}
 
 	apiModels, err := s.apiRepo.GetAPIsByOrganizationUUID(orgUUID, projectUUID)
@@ -231,7 +244,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID string) (
 
 	apis := make([]api.RESTAPI, 0)
 	for _, apiModel := range apiModels {
-		apiResponse, err := s.apiUtil.ModelToRESTAPI(apiModel)
+		apiResponse, err := s.modelToRESTAPI(apiModel)
 		if err != nil {
 			return nil, err
 		}
@@ -243,7 +256,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID string) (
 }
 
 // UpdateAPI updates an existing API
-func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, orgUUID, updatedBy string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, updatedBy string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
 		return nil, errors.New("API id is required")
 	}
@@ -260,11 +273,6 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 		return nil, constants.ErrAPINotFound
 	}
 
-	// DP-originated artifacts are read-only in the control plane.
-	if err := ensureOriginMutable(existingAPIModel.Origin); err != nil {
-		return nil, err
-	}
-
 	// Apply updates using shared helper
 	updatedAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgUUID)
 	if err != nil {
@@ -275,6 +283,22 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 	updatedAPIModel := s.apiUtil.RESTAPIToModel(updatedAPI, orgUUID)
 	updatedAPIModel.ID = apiUUID // Ensure UUID remains unchanged
 	updatedAPIModel.UpdatedBy = updatedBy
+	// Carry over identity fields that are not user-editable so the runtime-artifact
+	// diff below compares like-for-like (RESTAPIToModel derives these from the request
+	// and defaults the origin to control_plane).
+	updatedAPIModel.Handle = existingAPIModel.Handle
+	updatedAPIModel.ProjectID = existingAPIModel.ProjectID
+	updatedAPIModel.Kind = existingAPIModel.Kind
+	updatedAPIModel.Origin = existingAPIModel.Origin
+
+	// A DP-originated (gateway_api) artifact is read-only in the control plane only for
+	// changes that alter the gateway runtime artifact. Allow edits that leave the
+	// deployment YAML unchanged (e.g. description, lifecycle status) by diffing the
+	// artifact the stored vs updated model produces.
+	if err := s.ensureRESTRuntimeArtifactUnchanged(existingAPIModel, updatedAPIModel); err != nil {
+		return nil, err
+	}
+
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
 	}
@@ -283,7 +307,29 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 
 	_ = s.auditRepo.Record("UPDATE", apiUUID, "rest_api", orgUUID, updatedBy)
 
-	return s.apiUtil.ModelToRESTAPI(updatedAPIModel)
+	return s.modelToRESTAPI(updatedAPIModel)
+}
+
+// ensureRESTRuntimeArtifactUnchanged rejects an edit to a DP-originated REST API when it
+// would change the gateway runtime artifact. It builds the deployment YAML both the
+// stored and updated models produce (via BuildAPIDeploymentYAML, the same builder used
+// at deploy time) and compares them. It is a no-op for control-plane artifacts. When the
+// stored artifact cannot be rebuilt the edit cannot be proven harmless, so it is kept
+// read-only; a build failure on the proposed model is a genuine validation error and is
+// surfaced as-is.
+func (s *APIService) ensureRESTRuntimeArtifactUnchanged(existing, updated *model.API) error {
+	if existing.Origin != constants.OriginDP {
+		return nil
+	}
+	existingArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(existing)
+	if err != nil {
+		return constants.ErrArtifactRuntimeImmutable
+	}
+	updatedArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(updated)
+	if err != nil {
+		return err
+	}
+	return compareRuntimeArtifacts(existing.Origin, existingArtifact, updatedArtifact)
 }
 
 // DeleteAPI deletes an API
@@ -349,7 +395,11 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 }
 
 // UpdateAPIByHandle updates an existing API identified by handle
-func (s *APIService) UpdateAPIByHandle(handle string, req *api.UpdateRESTAPIRequest, orgId, updatedBy string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPIByHandle(handle string, req *api.RESTAPI, orgId, updatedBy string) (*api.RESTAPI, error) {
+	// The id (handle) is immutable: a body id must match the API being updated.
+	if req != nil && req.Id != nil && *req.Id != "" && *req.Id != handle {
+		return nil, constants.ErrHandleImmutable
+	}
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
@@ -401,14 +451,11 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 	}
 	var validGateways []*model.Gateway
 	for _, gatewayId := range gatewayIds {
-		gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+		gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgUUID)
 		if err != nil {
 			return nil, err
 		}
 		if gateway == nil {
-			return nil, constants.ErrGatewayNotFound
-		}
-		if gateway.OrganizationID != orgUUID {
 			return nil, constants.ErrGatewayNotFound
 		}
 		validGateways = append(validGateways, gateway)
@@ -459,7 +506,15 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewa
 	if err != nil {
 		return nil, err
 	}
-	response, err := apiGatewayDetailsToAPIList(gatewayDetails)
+	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
+	response, err := apiGatewayDetailsToAPIList(gatewayDetails, orgHandle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert API gateway details: %w", err)
 	}
@@ -484,7 +539,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 			return constants.ErrHandleExists
 		}
 	}
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		return constants.ErrInvalidAPIName
 	}
 	if !s.isValidContext(req.Context) {
@@ -493,11 +548,11 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	if !s.isValidVersion(req.Version) {
 		return constants.ErrInvalidAPIVersion
 	}
-	if req.ProjectId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.ProjectId) == "" {
 		return errors.New("project id is required")
 	}
 
-	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID, "")
+	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName, req.Version, orgUUID, "")
 	if err != nil {
 		return err
 	}
@@ -579,20 +634,20 @@ func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID st
 }
 
 // applyAPIUpdates applies update request fields to an existing API model and handles backend services
-func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.UpdateRESTAPIRequest, orgId string) (*api.RESTAPI, error) {
+func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTAPI, orgId string) (*api.RESTAPI, error) {
 	// Validate update request
 	if err := s.validateUpdateAPIRequest(existingAPIModel, req, orgId); err != nil {
 		return nil, err
 	}
 
-	existingAPI, err := s.apiUtil.ModelToRESTAPI(existingAPIModel)
+	existingAPI, err := s.modelToRESTAPI(existingAPIModel)
 	if err != nil {
 		return nil, err
 	}
 
 	// Update fields (only allow certain fields to be updated)
-	if req.Name != "" {
-		existingAPI.Name = req.Name
+	if req.DisplayName != "" {
+		existingAPI.DisplayName = req.DisplayName
 	}
 	if req.Description != nil {
 		existingAPI.Description = req.Description
@@ -612,12 +667,8 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 	if req.Channels != nil {
 		existingAPI.Channels = req.Channels
 	}
-	if req.Policies != nil {
-		existingAPI.Policies = req.Policies
-	}
-	if req.SubscriptionPlans != nil {
-		existingAPI.SubscriptionPlans = req.SubscriptionPlans
-	}
+	existingAPI.Policies = req.Policies
+	existingAPI.SubscriptionPlans = req.SubscriptionPlans
 	if !s.isEmptyUpstream(req.Upstream) {
 		existingAPI.Upstream = req.Upstream
 	}
@@ -626,9 +677,9 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 }
 
 // validateUpdateAPIRequest checks the validity of the update API request
-func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *api.UpdateRESTAPIRequest, orgUUID string) error {
-	if req.Name != "" {
-		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name,
+func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *api.RESTAPI, orgUUID string) error {
+	if req.DisplayName != "" {
+		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName,
 			existingAPIModel.Version, orgUUID, existingAPIModel.Handle)
 		if err != nil {
 			return err
@@ -803,7 +854,7 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 		Id:                utils.StringPtrIfNotEmpty(handle),
 		Kind:              req.Kind,
 		LifeCycleStatus:   lifecycle,
-		Name:              req.Name,
+		DisplayName:       req.DisplayName,
 		Operations:        req.Operations,
 		Policies:          req.Policies,
 		ProjectId:         req.ProjectId,
@@ -815,7 +866,7 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 }
 
 // apiGatewayDetailsToAPIList converts APIGatewayWithDetails models to RESTAPIGatewayListResponse
-func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails) (*api.RESTAPIGatewayListResponse, error) {
+func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails, orgHandle string) (*api.RESTAPIGatewayListResponse, error) {
 	if gatewayDetails == nil {
 		return &api.RESTAPIGatewayListResponse{
 			Count: 0,
@@ -830,7 +881,7 @@ func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails) (
 
 	responses := make([]api.RESTAPIGatewayResponse, 0, len(gatewayDetails))
 	for _, gwd := range gatewayDetails {
-		response, err := apiGatewayDetailsToAPI(gwd)
+		response, err := apiGatewayDetailsToAPI(gwd, orgHandle)
 		if err != nil {
 			return nil, err
 		}
@@ -851,40 +902,30 @@ func apiGatewayDetailsToAPIList(gatewayDetails []*model.APIGatewayWithDetails) (
 }
 
 // apiGatewayDetailsToAPI converts a single APIGatewayWithDetails model to RESTAPIGatewayResponse
-func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatewayResponse, error) {
+func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails, orgHandle string) (*api.RESTAPIGatewayResponse, error) {
 	if gwd == nil {
 		return nil, nil
-	}
-
-	gatewayID, err := utils.ParseOpenAPIUUID(gwd.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gateway ID as UUID: %w", err)
-	}
-	orgID, err := utils.ParseOpenAPIUUID(gwd.OrganizationID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gateway OrganizationID as UUID: %w", err)
 	}
 
 	response := api.RESTAPIGatewayResponse{
 		AssociatedAt:      gwd.AssociatedAt,
 		CreatedAt:         utils.TimePtrIfNotZero(gwd.CreatedAt),
 		Description:       utils.StringPtrIfNotEmpty(gwd.Description),
-		DisplayName:       utils.StringPtrIfNotEmpty(gwd.Handle),
+		DisplayName:       gwd.Name,
+		Endpoints:         &gwd.Endpoints,
 		FunctionalityType: restAPIGatewayFunctionalityTypePtr(gwd.FunctionalityType),
-		Id:                gatewayID,
+		Id:                utils.StringPtrIfNotEmpty(gwd.Handle),
 		IsActive:          utils.BoolPtr(gwd.IsActive),
 		IsCritical:        utils.BoolPtr(gwd.IsCritical),
 		IsDeployed:        gwd.IsDeployed,
-		Name:              utils.StringPtrIfNotEmpty(gwd.Name),
-		OrganizationId:    orgID,
+		OrganizationId:    utils.StringPtrIfNotEmpty(orgHandle),
 		Properties:        utils.MapPtrIfNotEmpty(gwd.Properties),
 		UpdatedAt:         utils.TimePtrIfNotZero(gwd.UpdatedAt),
-		Vhost:             utils.StringPtrIfNotEmpty(gwd.Vhost),
 	}
 
 	// Add deployment details if deployed
 	if gwd.IsDeployed && gwd.DeploymentID != nil && gwd.DeployedAt != nil {
-		status := api.RESTAPIDeploymentDetailsStatusAPPROVED
+		status := api.APPROVED
 		response.Deployment = &api.RESTAPIDeploymentDetails{
 			DeployedAt: *gwd.DeployedAt,
 			Status:     status,

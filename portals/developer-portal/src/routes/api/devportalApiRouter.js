@@ -50,8 +50,8 @@ const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'devportal-open
 const HANDLERS_DIR = path.join(__dirname, 'handlers');
 
 // Top-level path segments that belong to the devportal API surface, derived
-// from the spec (e.g. 'o', 'applications', 'organizations', 'login', 'apis',
-// 'temp-arazzo-file'). The router is mounted at '/', so it sees every request;
+// from the spec (e.g. 'o', 'applications', 'organizations', 'apis',
+// 'devportal'). The router is mounted at '/', so it sees every request;
 // this lets us pass rendered page routes (/:orgName/views/...) straight through
 // with next('router') so neither authResolver nor the validator touch them.
 let API_FIRST_SEGMENTS;

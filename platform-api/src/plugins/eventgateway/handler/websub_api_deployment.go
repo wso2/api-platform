@@ -24,6 +24,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -32,7 +33,6 @@ import (
 	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // WebSubAPIDeploymentHandler handles deployment routes for WebSub APIs
@@ -51,12 +51,12 @@ func NewWebSubAPIDeploymentHandler(websubAPIDeploymentService *egservice.WebSubA
 
 // RegisterRoutes registers WebSub API deployment routes
 func (h *WebSubAPIDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{apiId}/deployments", h.DeployWebSubAPI)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{apiId}/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{apiId}/deployments/{deploymentId}/restore", h.RestoreDeployment)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{apiId}/deployments", h.GetDeployments)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{apiId}/deployments/{deploymentId}", h.GetDeployment)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{apiId}/deployments/{deploymentId}", h.DeleteDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{webSubApiId}/deployments", h.DeployWebSubAPI)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{webSubApiId}/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{webSubApiId}/deployments/{deploymentId}/restore", h.RestoreDeployment)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{webSubApiId}/deployments", h.GetDeployments)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{webSubApiId}/deployments/{deploymentId}", h.GetDeployment)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{webSubApiId}/deployments/{deploymentId}", h.DeleteDeployment)
 }
 
 // DeployWebSubAPI handles POST /api/v0.9/websub-apis/:apiId/deployments
@@ -67,7 +67,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webSubApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
@@ -87,7 +87,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "base is required"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.GatewayId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
@@ -113,7 +113,7 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter, r
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webSubApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -145,7 +145,7 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r 
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webSubApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -177,7 +177,7 @@ func (h *WebSubAPIDeploymentHandler) GetDeployments(w http.ResponseWriter, r *ht
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webSubApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
@@ -218,7 +218,7 @@ func (h *WebSubAPIDeploymentHandler) GetDeployment(w http.ResponseWriter, r *htt
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webSubApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	deployment, err := h.websubAPIDeploymentService.GetWebSubAPIDeploymentByHandle(apiId, deploymentId, orgId)
@@ -238,7 +238,7 @@ func (h *WebSubAPIDeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("webSubApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if err := h.websubAPIDeploymentService.DeleteWebSubAPIDeploymentByHandle(apiId, deploymentId, orgId); err != nil {

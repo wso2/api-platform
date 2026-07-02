@@ -36,6 +36,7 @@ export default function GatewayDeployCardActions({
     deployingGatewayId,
     isDeployingToGateway,
     isLoadingDeployments,
+    readOnly,
   } = useGatewayDeploy();
 
   const [deployMenuAnchor, setDeployMenuAnchor] = useState<null | HTMLElement>(null);
@@ -53,7 +54,8 @@ export default function GatewayDeployCardActions({
     }
   };
 
-  const isButtonDisabled = disabled || isDeployingToGateway || isLoadingDeployments;
+  const isButtonDisabled =
+    disabled || readOnly || isDeployingToGateway || isLoadingDeployments;
 
   // If no onConfigureAndDeploy callback, show simple button
   if (!onConfigureAndDeploy) {

@@ -15,7 +15,7 @@ All mutating requests (`POST`) require:
 - `Content-Type: application/json`
 - `X-CSRF-Token: {csrf}`
 
-Base path: `/o/{orgId}/devportal/v1`
+Base path: `/o/{orgId}/api/v0.9`
 
 ---
 
@@ -23,7 +23,7 @@ Base path: `/o/{orgId}/devportal/v1`
 
 ```bash
 curl -X POST \
-  "https://{host}/o/{orgId}/devportal/v1/apis/{apiId}/api-keys/generate" \
+  "https://{host}/o/{orgId}/api/v0.9/apis/{apiId}/api-keys/generate" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: {csrf}" \
@@ -58,7 +58,7 @@ curl -X POST \
 
 ```bash
 curl -X GET \
-  "https://{host}/o/{orgId}/devportal/v1/apis/{apiId}/api-keys" \
+  "https://{host}/o/{orgId}/api/v0.9/apis/{apiId}/api-keys" \
   -H "Authorization: Bearer {token}"
 ```
 
@@ -81,7 +81,7 @@ Optional query parameters:
       "status": "active",
       "apiId": "{apiId}",
       "appId": "{appId}",
-      "appName": "My App",
+      "appDisplayName": "My App",
       "expiresAt": "2027-01-01T00:00:00Z",
       "createdAt": "2026-06-30T10:00:00Z"
     }
@@ -97,7 +97,7 @@ Issues a new key value for an existing key. The old value is immediately invalid
 
 ```bash
 curl -X POST \
-  "https://{host}/o/{orgId}/devportal/v1/apis/{apiId}/api-keys/regenerate" \
+  "https://{host}/o/{orgId}/api/v0.9/apis/{apiId}/api-keys/regenerate" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: {csrf}" \
@@ -114,7 +114,7 @@ Permanently revokes a key. This cannot be undone.
 
 ```bash
 curl -X POST \
-  "https://{host}/o/{orgId}/devportal/v1/apis/{apiId}/api-keys/revoke" \
+  "https://{host}/o/{orgId}/api/v0.9/apis/{apiId}/api-keys/revoke" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: {csrf}" \
@@ -131,7 +131,7 @@ Links a key to a Developer Portal application for usage analytics. Association d
 
 ```bash
 curl -X POST \
-  "https://{host}/o/{orgId}/devportal/v1/apis/{apiId}/api-keys/associate" \
+  "https://{host}/o/{orgId}/api/v0.9/apis/{apiId}/api-keys/associate" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: {csrf}" \
@@ -148,7 +148,7 @@ Removes the link between a key and its associated application.
 
 ```bash
 curl -X POST \
-  "https://{host}/o/{orgId}/devportal/v1/apis/{apiId}/api-keys/dissociate" \
+  "https://{host}/o/{orgId}/api/v0.9/apis/{apiId}/api-keys/dissociate" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: {csrf}" \
@@ -165,7 +165,7 @@ Returns all keys (across all APIs) currently associated with a specific applicat
 
 ```bash
 curl -X GET \
-  "https://{host}/o/{orgId}/devportal/v1/applications/{applicationId}/api-keys" \
+  "https://{host}/o/{orgId}/api/v0.9/applications/{applicationId}/api-keys" \
   -H "Authorization: Bearer {token}"
 ```
 

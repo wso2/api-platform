@@ -18,6 +18,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,7 +35,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -126,23 +126,21 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
-		return nil, constants.ErrDeploymentGatewayIDRequired
-	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := strings.TrimSpace(req.GatewayId)
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
+	gatewayID := gateway.ID
 
 	// Get LLM provider
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
@@ -162,6 +160,29 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	// Validate deployment name is provided
 	if req.Name == "" {
 		return nil, constants.ErrDeploymentNameRequired
+	}
+
+	// Ensure a gateway association exists for the target gateway before deploying, and
+	// resolve the deployment metadata. The first deployment to a gateway creates the
+	// association and seeds its metadata from this deployment. For an existing
+	// association the deploy request value overrides for this deployment; when the
+	// metadata field is omitted, the association's stored metadata is used. An existing
+	// association's metadata is never modified at deploy time.
+	//
+	// metadataProvided distinguishes an omitted metadata field from one explicitly set
+	// (even to empty), so a deploy can request empty metadata while the association
+	// keeps its creation-time value.
+	metadataProvided := req.Metadata != nil
+	deployMetaJSON, err := marshalDeploymentMetadata(metadata)
+	if err != nil {
+		return nil, err
+	}
+	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(provider.UUID, gatewayID, orgUUID, deployMetaJSON, metadataProvided)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+	}
+	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
+		return nil, err
 	}
 
 	var baseDeploymentID *string
@@ -258,6 +279,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -340,6 +362,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
@@ -419,6 +442,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -483,10 +507,21 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 		}
 	}
 
+	// The gatewayId filter is a gateway handle (matching deploy/undeploy); resolve it
+	// to the internal gateway UUID stored in deployments.gateway_uuid before filtering.
+	gatewayUUID, found, err := resolveGatewayFilter(s.gatewayRepo, gatewayID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// The filter names a gateway that does not exist in this org: no deployment matches.
+		return &api.DeploymentListResponse{Count: 0, List: []api.DeploymentResponse{}}, nil
+	}
+
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
 		return nil, fmt.Errorf("MaxPerAPIGateway config value must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
-	deployments, err := s.deploymentRepo.GetDeploymentsWithState(provider.UUID, orgUUID, gatewayID, status, s.cfg.Deployments.MaxPerAPIGateway)
+	deployments, err := s.deploymentRepo.GetDeploymentsWithState(provider.UUID, orgUUID, gatewayUUID, status, s.cfg.Deployments.MaxPerAPIGateway)
 	if err != nil {
 		return nil, err
 	}
@@ -494,6 +529,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		mapped, err := toAPIDeploymentResponse(
+			s.gatewayRepo,
 			d.DeploymentID,
 			d.Name,
 			d.GatewayID,
@@ -535,6 +571,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -1207,6 +1244,33 @@ func isBoolTrue(v *bool) bool {
 	return v != nil && *v
 }
 
+// marshalDeploymentMetadata serializes the deployment metadata map to the JSON form
+// stored in the metadata column shared with artifact_gateway_mappings. An empty or
+// nil map yields an empty string ("no metadata").
+func marshalDeploymentMetadata(m map[string]any) (string, error) {
+	if len(m) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal deployment metadata: %w", err)
+	}
+	return string(b), nil
+}
+
+// unmarshalDeploymentMetadata parses the JSON metadata form back into a map for the
+// deployment record. An empty string yields an empty (non-nil) map.
+func unmarshalDeploymentMetadata(s string) (map[string]any, error) {
+	if strings.TrimSpace(s) == "" {
+		return map[string]any{}, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
+	}
+	return m, nil
+}
+
 // DeployLLMProxy creates a new immutable deployment artifact and deploys it to a gateway
 func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
 	// Validate request
@@ -1216,23 +1280,21 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
-		return nil, constants.ErrDeploymentGatewayIDRequired
-	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := strings.TrimSpace(req.GatewayId)
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
+	gatewayID := gateway.ID
 
 	// Get LLM proxy
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
@@ -1252,6 +1314,25 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	// Validate deployment name is provided
 	if req.Name == "" {
 		return nil, constants.ErrDeploymentNameRequired
+	}
+
+	// Ensure a gateway association exists for the target gateway before deploying, and
+	// resolve the deployment metadata. The first deployment to a gateway creates the
+	// association and seeds its metadata from this deployment. For an existing
+	// association the deploy request value overrides for this deployment; when the
+	// metadata field is omitted, the association's stored metadata is used. An existing
+	// association's metadata is never modified at deploy time.
+	metadataProvided := req.Metadata != nil
+	deployMetaJSON, err := marshalDeploymentMetadata(metadata)
+	if err != nil {
+		return nil, err
+	}
+	effectiveMetaJSON, err := s.proxyRepo.EnsureGatewayAssociation(proxy.UUID, gatewayID, orgUUID, deployMetaJSON, metadataProvided)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+	}
+	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
+		return nil, err
 	}
 
 	var baseDeploymentID *string
@@ -1344,6 +1425,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -1426,6 +1508,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
@@ -1505,6 +1588,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
@@ -1569,10 +1653,21 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 		}
 	}
 
+	// The gatewayId filter is a gateway handle (matching deploy/undeploy); resolve it
+	// to the internal gateway UUID stored in deployments.gateway_uuid before filtering.
+	gatewayUUID, found, err := resolveGatewayFilter(s.gatewayRepo, gatewayID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// The filter names a gateway that does not exist in this org: no deployment matches.
+		return &api.DeploymentListResponse{Count: 0, List: []api.DeploymentResponse{}}, nil
+	}
+
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
 		return nil, fmt.Errorf("MaxPerAPIGateway config value must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
-	deployments, err := s.deploymentRepo.GetDeploymentsWithState(proxy.UUID, orgUUID, gatewayID, status, s.cfg.Deployments.MaxPerAPIGateway)
+	deployments, err := s.deploymentRepo.GetDeploymentsWithState(proxy.UUID, orgUUID, gatewayUUID, status, s.cfg.Deployments.MaxPerAPIGateway)
 	if err != nil {
 		return nil, err
 	}
@@ -1580,6 +1675,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		mapped, err := toAPIDeploymentResponse(
+			s.gatewayRepo,
 			d.DeploymentID,
 			d.Name,
 			d.GatewayID,
@@ -1621,6 +1717,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 	}
 
 	return toAPIDeploymentResponse(
+		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,

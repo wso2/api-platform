@@ -48,7 +48,7 @@ export async function deployLLMProxy(
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments`,
       request,
       baseUrl
     );
@@ -76,9 +76,7 @@ export async function getLLMProxyDeployments(
   status?: string
 ): Promise<DeploymentListResponse> {
   try {
-    const params = new URLSearchParams({
-      organizationId: organizationId,
-    });
+    const params = new URLSearchParams();
 
     if (gatewayId) {
       params.append('gatewayId', gatewayId);
@@ -88,8 +86,9 @@ export async function getLLMProxyDeployments(
       params.append('status', status);
     }
 
+    const queryString = params.toString();
     const response = await get<DeploymentListResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments?${params.toString()}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments${queryString ? `?${queryString}` : ''}`,
       undefined,
       baseUrl
     );
@@ -116,7 +115,7 @@ export async function getLLMProxyDeployment(
 ): Promise<DeploymentResponse> {
   try {
     const response = await get<DeploymentResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}`,
       undefined,
       baseUrl
     );
@@ -143,7 +142,7 @@ export async function deleteLLMProxyDeployment(
 ): Promise<void> {
   try {
     await del(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}`,
       undefined,
       baseUrl
     );
@@ -170,20 +169,11 @@ export async function undeployLLMProxyDeployment(
   deploymentId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string
+  gatewayId: string
 ): Promise<DeploymentResponse> {
   try {
-    const params = new URLSearchParams({
-      organizationId: organizationId,
-      deploymentId: deploymentId,
-    });
-
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
-    }
-
     const response = await post<DeploymentResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/undeploy?${params.toString()}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?gatewayId=${encodeURIComponent(gatewayId)}`,
       {},
       baseUrl
     );
@@ -211,20 +201,11 @@ export async function restoreLLMProxyDeployment(
   deploymentId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string
+  gatewayId: string
 ): Promise<DeploymentResponse> {
   try {
-    const params = new URLSearchParams({
-      organizationId: organizationId,
-      deploymentId: deploymentId,
-    });
-
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
-    }
-
     const response = await post<DeploymentResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/restore?${params.toString()}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}/restore?gatewayId=${encodeURIComponent(gatewayId)}`,
       {},
       baseUrl
     );
@@ -256,7 +237,7 @@ export async function createLLMProxyAPIKey(
 ): Promise<CreateLLMProxyAPIKeyResponse> {
   try {
     const response = await post<CreateLLMProxyAPIKeyResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys`,
       request,
       PLATFORM_API_BASE_URL
     );
@@ -279,7 +260,7 @@ export async function getLLMProxyAPIKeys(
 ): Promise<APIKeyListResponse> {
   try {
     const response = await get<APIKeyListResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys`,
       undefined,
       PLATFORM_API_BASE_URL
     );
@@ -304,7 +285,7 @@ export async function deleteLLMProxyAPIKey(
 ): Promise<void> {
   try {
     await del<void>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys/${encodeURIComponent(keyName)}?organizationId=${encodeURIComponent(organizationId)}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys/${encodeURIComponent(keyName)}`,
       undefined,
       PLATFORM_API_BASE_URL
     );

@@ -104,10 +104,9 @@ enabled  = false
 enabled = true
 
 [auth.file_based.organization]
-id     = ""             # Required: stable UUID for this org — generate with: uuidgen
-name   = "My Organization"
-handle = "my-org"       # URL-safe slug
-region = "us"
+id           = "default"          # Required: organization handle (URL-safe slug)
+display_name = "Default"
+region       = "us"
 
 # Add one [[auth.file_based.users]] block per user.
 # Generate a bcrypt hash with: htpasswd -bnBC 12 "" <password> | tr -d ':\n'

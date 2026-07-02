@@ -64,7 +64,6 @@ type GatewaySubscriptionPlanInfo struct {
 	ID                 string     `json:"id"`
 	Handle             string     `json:"handle"`
 	PlanName           string     `json:"planName"`
-	BillingPlan        string     `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`

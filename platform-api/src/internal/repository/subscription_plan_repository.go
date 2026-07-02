@@ -40,7 +40,7 @@ import (
 // LEFT JOIN below is constrained to REQUEST_COUNT for that reason. This must be
 // improved to surface all limit rows.
 const planSelectColumns = `
-		p.uuid, p.handle, p.display_name, p.billing_plan, p.expiry_time,
+		p.uuid, p.handle, p.display_name, p.expiry_time,
 		p.organization_uuid, p.status, p.created_at, p.updated_at,
 		spl.limit_count, spl.time_unit, spl.stop_on_quota_reach
 	FROM subscription_plans p
@@ -76,11 +76,11 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(r.db.Rebind(`
-		INSERT INTO subscription_plans (uuid, handle, display_name, billing_plan, expiry_time,
+		INSERT INTO subscription_plans (uuid, handle, display_name, expiry_time,
 			organization_uuid, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`),
-		plan.UUID, plan.Handle, plan.Name, plan.BillingPlan, plan.ExpiryTime,
+		plan.UUID, plan.Handle, plan.Name, plan.ExpiryTime,
 		plan.OrganizationUUID, string(plan.Status), plan.CreatedAt, plan.UpdatedAt,
 	); err != nil {
 		return fmt.Errorf("failed to insert subscription plan: %w", err)
@@ -143,7 +143,7 @@ func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 		stopOnQuota sql.NullInt64
 	)
 	if err := scanner.Scan(
-		&plan.UUID, &plan.Handle, &plan.Name, &plan.BillingPlan, &plan.ExpiryTime,
+		&plan.UUID, &plan.Handle, &plan.Name, &plan.ExpiryTime,
 		&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
 		&limitCount, &timeUnit, &stopOnQuota,
 	); err != nil {
@@ -250,10 +250,10 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 
 	result, err := tx.Exec(r.db.Rebind(`
 		UPDATE subscription_plans
-		SET handle = ?, display_name = ?, billing_plan = ?, expiry_time = ?, status = ?, updated_at = ?
+		SET handle = ?, display_name = ?, expiry_time = ?, status = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`),
-		plan.Handle, plan.Name, plan.BillingPlan, plan.ExpiryTime,
+		plan.Handle, plan.Name, plan.ExpiryTime,
 		string(plan.Status), plan.UpdatedAt,
 		plan.UUID, plan.OrganizationUUID,
 	)

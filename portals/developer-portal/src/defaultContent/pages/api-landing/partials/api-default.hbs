@@ -24,7 +24,7 @@
     </div>
   </div>
   {{/unless}}
-  {{#unless (eq apiMetadata.type "MCP")}}
+  {{#unless (eq apiMetadata.type "Mcp")}}
   {{#unless (eq resources.serverDetails.sandboxURL "")}}
   <div class="aov-endpoint-card">
     <div class="aov-endpoint-label-row">
@@ -47,9 +47,9 @@
 
 {{!-- Resources (REST / MCP) --}}
 {{#unless (eq apiMetadata.type "WS")}}
-{{#unless (eq apiMetadata.type "WEBSUB")}}
+{{#unless (eq apiMetadata.type "WebSubApi")}}
 {{#unless (eq apiMetadata.type "GRAPHQL")}}
-{{#unless (eq apiMetadata.type "MCP")}}
+{{#unless (eq apiMetadata.type "Mcp")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Resources</h2>
@@ -86,7 +86,7 @@
 {{/if}}
 
 {{!-- Channels (WEBSUB) --}}
-{{#if (eq apiMetadata.type "WEBSUB")}}
+{{#if (eq apiMetadata.type "WebSubApi")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Channels</h2>
@@ -102,7 +102,7 @@
 
 {{!-- Scopes --}}
 {{#unless (eq apiMetadata.type "WS")}}
-{{#unless (eq apiMetadata.type "WEBSUB")}}
+{{#unless (eq apiMetadata.type "WebSubApi")}}
 {{#unless (eq apiMetadata.type "GRAPHQL")}}
 <div class="aov-section">
   <div class="aov-section-header">

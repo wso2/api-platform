@@ -1460,10 +1460,6 @@ components:
           type: string
           description: Human-readable name of the plan
           example: "Gold Plan"
-        billingPlan:
-          type: string
-          description: Billing plan type
-          example: "MONTHLY"
         stopOnQuotaReach:
           type: boolean
           description: Whether to stop serving requests when quota is reached

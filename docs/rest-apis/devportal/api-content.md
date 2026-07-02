@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiContent"></a>
 
-`POST /devportal/v1/apis/{apiId}/assets`
+`POST /api/v0.9/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -53,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
@@ -150,13 +150,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdreplaceApiContent"></a>
 
-`PUT /devportal/v1/apis/{apiId}/assets`
+`PUT /api/v0.9/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -167,7 +167,7 @@ curl -X PUT https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets \
 
 Replaces or adds static content files for an existing API.
 
-The upload format is the same as `POST /devportal/v1/apis/{apiId}/assets`.
+The upload format is the same as `POST /api/v0.9/apis/{apiId}/assets`.
 Existing files with the same stored `type` and `fileName` are updated; new files are created.
 Image metadata is updated only when image metadata can be resolved from the upload or request body.
 
@@ -196,7 +196,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
@@ -293,13 +293,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdgetApiContentFile"></a>
 
-`GET /devportal/v1/apis/{apiId}/assets`
+`GET /api/v0.9/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
@@ -325,7 +325,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -415,13 +415,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiContentFile"></a>
 
-`DELETE /devportal/v1/apis/{apiId}/assets`
+`DELETE /api/v0.9/apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/apis/{apiId}/assets?type=document \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/apis/{apiId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -445,8 +445,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
-|fileName|query|string|false|File name selector used by file retrieval and organization content deletion.|
-|apiId|path|string|true|none|
+|fileName|query|string|false|File name selector used to delete a single stored API content file.|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -515,72 +515,3 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|
 |status|error|
 |status|error|
-
-## List API document file names
-
-<a id="opIdlistApiDocs"></a>
-
-`GET /devportal/v1/apis/{apiId}/docs`
-
-> Code samples
-
-```shell
-
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/docs \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
-
-```
-
-Returns the file names of all documents uploaded for an API via the wizard.
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="list-api-document-file-names-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|apiId|path|string|true|none|
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "fileName": "string"
-  }
-]
-```
-
-> 500 Response
-
-```json
-{
-  "status": "error",
-  "code": "INTERNAL_SERVER_ERROR",
-  "message": "An unexpected error occurred."
-}
-```
-
-<h3 id="list-api-document-file-names-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of document file names|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="list-api-document-file-names-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» fileName|string|false|none|none|

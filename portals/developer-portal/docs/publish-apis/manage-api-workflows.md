@@ -71,7 +71,7 @@ API workflow requests are JSON. The `apiWorkflowDefinition` field contains the A
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows" \
+  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow.json
@@ -91,14 +91,14 @@ curl -X POST \
 ## List Workflows
 
 ```bash
-curl http://localhost:3000/devportal/v1/views/{viewName}/api-workflows \
+curl http://localhost:3000/api/v0.9/views/{viewName}/api-workflows \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Workflow
 
 ```bash
-curl http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId} \
+curl http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/{apiWorkflowId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -115,7 +115,7 @@ curl http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/{apiWorkf
 
 ```bash
 curl -X PUT \
-  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}" \
+  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/{apiWorkflowId}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow-update.json
@@ -125,7 +125,7 @@ curl -X PUT \
 
 ```bash
 curl -X DELETE \
-  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/{apiWorkflowId}" \
+  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/{apiWorkflowId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -149,7 +149,7 @@ The portal can generate a suggested agent prompt for a workflow using AI:
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/devportal/v1/views/{viewName}/api-workflows/generate-prompt" \
+  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/generate-prompt" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @generate-prompt.json

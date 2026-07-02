@@ -179,7 +179,7 @@ func TestLifecycle_GatewayCreateListAndTokenGenerate(t *testing.T) {
 			Name:              fmt.Sprintf("gateway %d", i),
 			Handle:            fmt.Sprintf("gw-%d-%s", i, id()[:6]),
 			Description:       "created by integration test",
-			Vhost:             "localhost",
+			Endpoints:         []string{"https://localhost:8443", "wss://localhost:8444"},
 			FunctionalityType: "REGULAR",
 			Version:           "1.0.0",
 			Properties:        map[string]interface{}{"region": "us"},
@@ -205,6 +205,9 @@ func TestLifecycle_GatewayCreateListAndTokenGenerate(t *testing.T) {
 	}
 	if got.Properties["region"] != "us" {
 		t.Fatalf("[%s] gateway properties did not round-trip: %+v", it.driver, got.Properties)
+	}
+	if len(got.Endpoints) != 2 || got.Endpoints[0] != "https://localhost:8443" || got.Endpoints[1] != "wss://localhost:8444" {
+		t.Fatalf("[%s] gateway endpoints did not round-trip: %+v", it.driver, got.Endpoints)
 	}
 	byHandle, err := gwRepo.GetByHandleAndOrgID(got.Handle, orgID)
 	if err != nil || byHandle == nil || byHandle.ID != first {
@@ -302,6 +305,7 @@ func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
 			UUID:           id(),
 			ArtifactUUID:   artifactUUID,
 			Name:           fmt.Sprintf("key-%d", i),
+			DisplayName:    fmt.Sprintf("Key %d", i),
 			MaskedAPIKey:   "ab12",
 			APIKeyHashes:   `{"sha256":"` + id() + `"}`,
 			Status:         "active",

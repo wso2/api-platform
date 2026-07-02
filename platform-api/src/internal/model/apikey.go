@@ -23,7 +23,8 @@ import "time"
 type APIKey struct {
 	UUID           string
 	ArtifactUUID   string
-	Name           string
+	Name           string // URL-safe handle (identifier) of the API key; maps to the "handle" column
+	DisplayName    string // Human-readable display name; maps to the "display_name" column
 	MaskedAPIKey   string
 	APIKeyHashes   string // JSON string mapping algorithm to hash e.g. {"sha256": "<hashed_api_key>"}
 	Status         string

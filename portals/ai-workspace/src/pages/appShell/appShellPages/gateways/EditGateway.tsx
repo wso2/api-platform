@@ -71,6 +71,7 @@ export default function EditGateway() {
   const [description, setDescription] = useState('');
   const [functionalityType, setFunctionalityType] = useState('regular');
   const [vhost, setVhost] = useState('');
+  const [otherEndpoints, setOtherEndpoints] = useState<string[]>([]);
 
   // Load gateway data
   useEffect(() => {
@@ -80,7 +81,7 @@ export default function EditGateway() {
       try {
         const response = await getGateways(currentOrganization.uuid);
         const foundGateway = response.data?.list?.find(
-          (gw) => gw.name === gatewayName
+          (gw) => gw.id === gatewayName
         );
 
         if (foundGateway) {
@@ -88,7 +89,8 @@ export default function EditGateway() {
           setDisplayName(foundGateway.displayName || foundGateway.name);
           setDescription(foundGateway.description || '');
           setFunctionalityType(foundGateway.functionalityType || 'regular');
-          setVhost(foundGateway.vhost || '');
+          setVhost(foundGateway.endpoints?.[0] || foundGateway.vhost || '');
+          setOtherEndpoints(foundGateway.endpoints?.slice(1) || []);
         } else {
           setError('Gateway not found');
         }
@@ -117,10 +119,12 @@ export default function EditGateway() {
     if (!gatewayId) return;
 
     try {
+      const normalizedVhost = normalizeVhost(vhost);
       await updateGatewayById(gatewayId, {
-        name: gatewayName!,
         displayName,
-        vhost: normalizeVhost(vhost),
+        endpoints: normalizedVhost
+          ? [normalizedVhost, ...otherEndpoints]
+          : undefined,
         functionalityType,
         description: description || undefined,
       });

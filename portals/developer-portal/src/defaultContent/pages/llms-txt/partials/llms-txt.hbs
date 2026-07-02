@@ -9,7 +9,7 @@
 These pre-defined workflows orchestrate multiple APIs to implement common use cases. Each workflow provides what it accomplishes and access to detailed workflow and API specifications. To execute or implement a workflow, follow the steps in the workflow definition at the provided URL. For each step, reference the linked API documentation to understand the exact operation, required credentials, and request/response formats.
 
 {{#workflows}}
-- [{{name}}]({{../baseUrl}}/api-workflows/{{handle}}.md) - {{description}}
+- [{{name}}]({{../baseUrl}}/api-workflows/{{apiWorkflowId}}.md) - {{description}}
 
 {{/workflows}}
 {{/if}}
@@ -18,7 +18,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## APIs
 
 {{#restAPIs}}
-- [{{name}} {{version}}]({{../baseUrl}}/api/{{handle}}.md){{#if description}} — {{description}}{{/if}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} — {{description}}{{/if}}
 {{/restAPIs}}
 {{/if}}
 {{#if mcpAPIs}}
@@ -26,7 +26,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## MCPs
 
 {{#mcpAPIs}}
-- [{{name}} {{version}}]({{../baseUrl}}/mcp/{{handle}}.md){{#if description}} — {{description}}{{/if}}
+- [{{name}} {{version}}]({{../baseUrl}}/mcp/{{id}}.md){{#if description}} — {{description}}{{/if}}
 {{/mcpAPIs}}
 {{/if}}
 {{#if graphqlAPIs}}
@@ -34,7 +34,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## GraphQL APIs
 
 {{#graphqlAPIs}}
-- [{{name}} {{version}}]({{../baseUrl}}/api/{{handle}}.md){{#if description}} — {{description}}{{/if}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} — {{description}}{{/if}}
 {{/graphqlAPIs}}
 {{/if}}
 {{#if wsAPIs}}
@@ -42,7 +42,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## Async / WebSocket APIs
 
 {{#wsAPIs}}
-- [{{name}} {{version}}]({{../baseUrl}}/api/{{handle}}.md){{#if description}} — {{description}}{{/if}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} — {{description}}{{/if}}
 {{/wsAPIs}}
 {{/if}}
 {{#if websubAPIs}}
@@ -50,6 +50,6 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## WebSub APIs
 
 {{#websubAPIs}}
-- [{{name}} {{version}}]({{../baseUrl}}/api/{{handle}}.md){{#if description}} — {{description}}{{/if}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} — {{description}}{{/if}}
 {{/websubAPIs}}
 {{/if}}

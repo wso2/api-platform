@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS organizations (
     handle VARCHAR(40) UNIQUE NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
+    idp_organization_ref_uuid VARCHAR(40) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -104,7 +105,6 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
-    billing_plan VARCHAR(255),
     expiry_time TIMESTAMPTZ,
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -185,7 +185,6 @@ CREATE TABLE IF NOT EXISTS gateways (
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
-    vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties BYTEA NOT NULL,
     manifest BYTEA,
@@ -199,6 +198,15 @@ CREATE TABLE IF NOT EXISTS gateways (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
+
+-- Gateway Endpoints table (links network endpoints to gateways)
+CREATE TABLE IF NOT EXISTS gateway_endpoints (
+    id SERIAL PRIMARY KEY,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    url VARCHAR(255) NOT NULL,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gateway_endpoints_gateway_uuid ON gateway_endpoints(gateway_uuid);
 
 -- Artifact Gateway Mapping table (links artifacts to gateways)
 CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (
@@ -396,7 +404,8 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    display_name VARCHAR(63) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes BYTEA NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -409,7 +418,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, display_name)
+    UNIQUE(artifact_uuid, handle)
 );
 
 -- Application API Key mappings table

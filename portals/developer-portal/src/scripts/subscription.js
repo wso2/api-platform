@@ -163,18 +163,23 @@ async function runPendingPlanSwitch(orgId, apiId, planName, displayName, subscri
     }
 
     try {
-        const deleteResponse = await fetch(devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
-        });
+        const response = await fetch(
+            devportalApi.org(`/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan`),
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+                body: JSON.stringify({ apiId, planId }),
+            }
+        );
 
-        if (!deleteResponse.ok) {
-            const errorData = await deleteResponse.json().catch(() => ({}));
-            await showAlert(`Failed to remove existing subscription: ${errorData.description || 'Unknown error'}`, 'error');
-            return;
+        if (response.ok) {
+            window.__subscriptionChanged = true;
+            await showAlert(`Switched to "${displayName}" successfully!`, 'success');
+            refreshModalOrReload(orgId);
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            await showAlert(`Failed to switch plan: ${errorData.description || 'Unknown error'}`, 'error');
         }
-
-        await subscribe(orgId, apiId, planName, planId);
     } catch (error) {
         await showAlert(`Error during plan change: ${error.message}`, 'error');
     }

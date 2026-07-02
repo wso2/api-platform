@@ -5,7 +5,7 @@
 <nav class="dp-breadcrumb">
   <a class="dp-breadcrumb-item" href="{{baseUrl}}/applications">Applications</a>
   <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
-  <span class="dp-breadcrumb-current">{{applicationMetadata.name}}</span>
+  <span class="dp-breadcrumb-current">{{applicationMetadata.displayName}}</span>
 </nav>
 
 <section class="section mt-0 mb-6">
@@ -13,7 +13,7 @@
     <div class="me-5 w-75">
       {{#applicationMetadata}}
       <div class="d-flex align-items-center edit-container mb-2">
-        <h3 class="app-overview-title" id="applicationName" data-original="{{name}}">{{name}}</h3>
+        <h3 class="app-overview-title" id="applicationName" data-original="{{displayName}}">{{displayName}}</h3>
         <button class="btn btn-sm edit-inline-btn {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
           id="editNameBtn" title="Edit name">
           <i class="bi bi-pencil"></i>

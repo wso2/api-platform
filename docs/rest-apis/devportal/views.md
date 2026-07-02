@@ -4,13 +4,13 @@
 
 <a id="opIdaddView"></a>
 
-`POST /devportal/v1/views`
+`POST /api/v0.9/views`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/views \
+curl -X POST https://devportal.api-platform.io/api/v0.9/views \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -25,7 +25,7 @@ Creates a Developer Portal view for an organization and associates it with the s
 
 ```json
 {
-  "handle": "partner-apis",
+  "id": "partner-apis",
   "name": "Partner APIs",
   "labels": [
     "partner",
@@ -131,13 +131,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetAllViews"></a>
 
-`GET /devportal/v1/views`
+`GET /api/v0.9/views`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views \
+curl -X GET https://devportal.api-platform.io/api/v0.9/views \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -168,7 +168,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "handle": "partner-apis",
+      "id": "partner-apis",
       "name": "Partner APIs",
       "labels": [
         "partner",
@@ -215,7 +215,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ViewResponse](schemas.md#schemaviewresponse)]|false|none|none|
-|»» handle|string|true|none|none|
+|»» id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
 |»» name|string|true|none|none|
 |»» labels|[string]|true|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
@@ -227,13 +227,13 @@ Status Code **200**
 
 <a id="opIdupdateView"></a>
 
-`PUT /devportal/v1/views/{viewName}`
+`PUT /api/v0.9/views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/devportal/v1/views/{viewName} \
+curl -X PUT https://devportal.api-platform.io/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -270,7 +270,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the name or label changes that should be applied.|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -373,20 +373,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetView"></a>
 
-`GET /devportal/v1/views/{viewName}`
+`GET /api/v0.9/views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/views/{viewName} \
+curl -X GET https://devportal.api-platform.io/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves one view by name, including the label names attached to that view.
+Retrieves one view by its `viewId` handle, including the label names attached to that view.
 
 ### Authentication
 
@@ -399,7 +399,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -407,7 +407,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "handle": "partner-apis",
+  "id": "partner-apis",
   "name": "Partner APIs",
   "labels": [
     "partner",
@@ -486,20 +486,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteView"></a>
 
-`DELETE /devportal/v1/views/{viewName}`
+`DELETE /api/v0.9/views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/devportal/v1/views/{viewName} \
+curl -X DELETE https://devportal.api-platform.io/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes a view by name. A missing view is returned as a not-found error.
+Deletes a view by its `viewId` handle. A missing view is returned as a not-found error.
 
 ### Authentication
 
@@ -512,7 +512,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 

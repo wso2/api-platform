@@ -41,16 +41,16 @@ import type { ProviderTemplate } from '../../../../../utils/types';
 
 interface TemplateVersionDialogProps {
   open: boolean;
-  templateId: string;
-  templateName: string;
+  groupId: string;
+  displayName: string;
   onClose: () => void;
   onConfirm: (versionTemplate: ProviderTemplate) => void;
 }
 
 export default function TemplateVersionDialog({
   open,
-  templateId,
-  templateName,
+  groupId,
+  displayName,
   onClose,
   onConfirm,
 }: TemplateVersionDialogProps) {
@@ -62,7 +62,7 @@ export default function TemplateVersionDialog({
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
-    if (!open || !templateId || !organizationId) return;
+    if (!open || !groupId || !organizationId) return;
 
     let isMounted = true;
     setIsLoading(true);
@@ -70,7 +70,7 @@ export default function TemplateVersionDialog({
     setVersions([]);
     setSelected('');
     providerTemplateApis
-      .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplateVersions(groupId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (!isMounted) return;
         const parseVerNum = (s: string) => {
@@ -98,7 +98,7 @@ export default function TemplateVersionDialog({
     return () => {
       isMounted = false;
     };
-  }, [open, templateId, currentOrganization?.uuid]);
+  }, [open, groupId, currentOrganization?.uuid]);
 
   return (
     <Dialog
@@ -108,7 +108,7 @@ export default function TemplateVersionDialog({
       fullWidth
       data-cyid="template-version-dialog"
     >
-      <DialogTitle>Select a version of {templateName}</DialogTitle>
+      <DialogTitle>Select a version of {displayName}</DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           The provider will be based on the version you choose.

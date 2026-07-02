@@ -52,13 +52,12 @@ type AddApplicationAssociationsRequest struct {
 }
 
 type ApplicationAssociation struct {
-	Id        string     `json:"id"`
-	Uuid      string     `json:"uuid"`
-	Name      string     `json:"name"`
-	Version   string     `json:"version"`
-	Kind      string     `json:"kind"`
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	Id          string     `json:"id"`
+	DisplayName string     `json:"displayName"`
+	Version     string     `json:"version"`
+	Kind        string     `json:"kind"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
 }
 
 type ApplicationAssociationListResponse struct {
@@ -88,7 +87,7 @@ func NewApplicationService(
 }
 
 func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID, createdBy string) (*api.Application, error) {
-	if strings.TrimSpace(req.Name) == "" {
+	if strings.TrimSpace(req.DisplayName) == "" {
 		return nil, constants.ErrInvalidApplicationName
 	}
 	appType, err := normalizeApplicationType(string(req.Type))
@@ -104,20 +103,21 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	projectID := strings.TrimSpace(utils.OpenAPIUUIDToString(req.ProjectId))
-	if projectID == "" {
+	projectHandle := strings.TrimSpace(req.ProjectId)
+	if projectHandle == "" {
 		return nil, constants.ErrProjectNotFound
 	}
 
-	project, err := s.projectRepo.GetProjectByUUID(projectID)
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)
 	if err != nil {
 		return nil, err
 	}
-	if project == nil || project.OrganizationID != orgID {
+	if project == nil {
 		return nil, constants.ErrProjectNotFound
 	}
+	projectID := project.ID
 
-	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.Name), projectID, orgID)
+	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.DisplayName), projectID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 
 	handle := strings.TrimSpace(valueOrEmptyApplication(req.Id))
 	if handle == "" {
-		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgID))
+		handle, err = utils.GenerateHandle(req.DisplayName, s.HandleExistsCheck(orgID))
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +155,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		OrganizationUUID: orgID,
 		CreatedBy:        actor,
 		UpdatedBy:        actor,
-		Name:             strings.TrimSpace(req.Name),
+		Name:             strings.TrimSpace(req.DisplayName),
 		Description:      strings.TrimSpace(valueOrEmptyApplication(req.Description)),
 		Type:             appType,
 	}
@@ -165,7 +165,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 	}
 	_ = s.auditRepo.Record("CREATE", app.UUID, "application", orgID, actor)
 
-	return s.modelToApplicationResponse(app), nil
+	return s.modelToApplicationResponse(app)
 }
 
 func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*api.Application, error) {
@@ -177,10 +177,10 @@ func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*a
 		return nil, constants.ErrApplicationNotFound
 	}
 
-	return s.modelToApplicationResponse(app), nil
+	return s.modelToApplicationResponse(app)
 }
 
-func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID string, limit, offset int) (*api.ApplicationListResponse, error) {
+func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle string, limit, offset int) (*api.ApplicationListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
 		return nil, err
@@ -198,19 +198,19 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	if offset < 0 {
 		offset = 0
 	}
-	if strings.TrimSpace(projectID) == "" {
+	if strings.TrimSpace(projectHandle) == "" {
 		return nil, constants.ErrProjectNotFound
 	}
 
-	project, err := s.projectRepo.GetProjectByUUID(projectID)
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)
 	if err != nil {
 		return nil, err
 	}
-	if project == nil || project.OrganizationID != orgID {
+	if project == nil {
 		return nil, constants.ErrProjectNotFound
 	}
 
-	apps, err := s.appRepo.GetApplicationsByProjectID(projectID, orgID)
+	apps, err := s.appRepo.GetApplicationsByProjectID(project.ID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +243,10 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	}
 
 	for _, app := range pagedApps {
-		mapped := s.modelToApplicationResponse(app)
+		mapped, err := s.modelToApplicationResponse(app)
+		if err != nil {
+			return nil, err
+		}
 		if mapped != nil {
 			response.List = append(response.List, *mapped)
 		}
@@ -252,7 +255,7 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	return response, nil
 }
 
-func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.UpdateApplicationRequest, orgID, userID string) (*api.Application, error) {
+func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Application, orgID, userID string) (*api.Application, error) {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -261,29 +264,32 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		return nil, constants.ErrApplicationNotFound
 	}
 
-	if req.Name != nil {
-		name := strings.TrimSpace(*req.Name)
-		if name == "" {
-			return nil, constants.ErrInvalidApplicationName
+	// The id (handle) is immutable: body id must be present and match the application being updated.
+	if req.Id == "" || req.Id != app.Handle {
+		return nil, constants.ErrHandleImmutable
+	}
+
+	name := strings.TrimSpace(req.DisplayName)
+	if name == "" {
+		return nil, constants.ErrInvalidApplicationName
+	}
+	if name != app.Name {
+		existing, err := s.appRepo.GetApplicationByNameInProject(name, app.ProjectUUID, orgID)
+		if err != nil {
+			return nil, err
 		}
-		if name != app.Name {
-			existing, err := s.appRepo.GetApplicationByNameInProject(name, app.ProjectUUID, orgID)
-			if err != nil {
-				return nil, err
-			}
-			if existing != nil && existing.UUID != app.UUID {
-				return nil, constants.ErrApplicationExists
-			}
-			app.Name = name
+		if existing != nil && existing.UUID != app.UUID {
+			return nil, constants.ErrApplicationExists
 		}
+		app.Name = name
 	}
 
 	if req.Description != nil {
 		app.Description = strings.TrimSpace(*req.Description)
 	}
 
-	if req.Type != nil {
-		appType, err := normalizeApplicationType(string(*req.Type))
+	if req.Type != "" {
+		appType, err := normalizeApplicationType(string(req.Type))
 		if err != nil {
 			return nil, err
 		}
@@ -306,7 +312,7 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		s.slogger.Warn("Application update succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
-	return s.modelToApplicationResponse(app), nil
+	return s.modelToApplicationResponse(app)
 }
 
 func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor string) error {
@@ -789,22 +795,28 @@ func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.Application
 	return response
 }
 
-func (s *ApplicationService) modelToApplicationResponse(app *model.Application) *api.Application {
+func (s *ApplicationService) modelToApplicationResponse(app *model.Application) (*api.Application, error) {
 	if app == nil {
-		return nil
+		return nil, nil
 	}
-	projectID := utils.ParseOpenAPIUUIDOrZero(app.ProjectUUID)
+	project, err := s.projectRepo.GetProjectByUUID(app.ProjectUUID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, constants.ErrProjectNotFound
+	}
 
 	return &api.Application{
 		Id:          app.Handle,
-		Name:        app.Name,
-		ProjectId:   projectID,
+		DisplayName: app.Name,
+		ProjectId:   project.Handle,
 		Type:        api.ApplicationType(app.Type),
 		Description: utils.StringPtrIfNotEmpty(app.Description),
 		CreatedBy:   utils.StringPtrIfNotEmpty(app.CreatedBy),
 		CreatedAt:   utils.TimePtrIfNotZero(app.CreatedAt),
 		UpdatedAt:   utils.TimePtrIfNotZero(app.UpdatedAt),
-	}
+	}, nil
 }
 
 func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationAPIKey) api.MappedAPIKey {
@@ -832,12 +844,11 @@ func (s *ApplicationService) modelToApplicationAssociation(association *model.Ap
 	}
 
 	return ApplicationAssociation{
-		Id:        association.TargetHandle,
-		Uuid:      association.TargetUUID,
-		Name:      association.TargetName,
-		Version:   association.TargetVersion,
-		Kind:      association.Type,
-		CreatedAt: utils.TimePtrIfNotZero(association.CreatedAt),
+		Id:          association.TargetHandle,
+		DisplayName: association.TargetName,
+		Version:     association.TargetVersion,
+		Kind:        association.Type,
+		CreatedAt:   utils.TimePtrIfNotZero(association.CreatedAt),
 	}
 }
 

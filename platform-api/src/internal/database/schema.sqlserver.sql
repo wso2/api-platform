@@ -22,6 +22,7 @@ CREATE TABLE dbo.organizations (
     handle VARCHAR(40) UNIQUE NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
+    idp_organization_ref_uuid VARCHAR(40) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -115,7 +116,6 @@ CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
-    billing_plan VARCHAR(255),
     expiry_time DATETIME2(7),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -209,7 +209,6 @@ CREATE TABLE dbo.gateways (
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
-    vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties VARBINARY(MAX) NOT NULL,
     manifest VARBINARY(MAX),
@@ -223,6 +222,17 @@ CREATE TABLE dbo.gateways (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
+
+-- Gateway Endpoints table (links network endpoints to gateways)
+IF OBJECT_ID(N'dbo.gateway_endpoints', N'U') IS NULL
+CREATE TABLE dbo.gateway_endpoints (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    url VARCHAR(255) NOT NULL,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_endpoints_gateway_uuid' AND object_id = OBJECT_ID(N'dbo.gateway_endpoints'))
+CREATE INDEX idx_gateway_endpoints_gateway_uuid ON dbo.gateway_endpoints(gateway_uuid);
 
 -- Artifact Gateway Mapping table (links artifacts to gateways)
 IF OBJECT_ID(N'dbo.artifact_gateway_mappings', N'U') IS NULL
@@ -449,7 +459,8 @@ IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    display_name VARCHAR(63) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes VARBINARY(MAX) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -462,7 +473,7 @@ CREATE TABLE dbo.api_keys (
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, display_name)
+    UNIQUE(artifact_uuid, handle)
 );
 
 -- Application API Key mappings table

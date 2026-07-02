@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApiKey"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/generate`
+`POST /api/v0.9/apis/{apiId}/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/generate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -41,8 +41,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The API is identified by the `{apiId}` path parameter.|
-|apiId|path|string|true|none|
+|body|body|[ApiKeyRequest](schemas.md#schemaapikeyrequest)|true|API key payload. `name` must be lowercase and may contain numbers, underscores, and hyphens. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -64,7 +64,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -117,13 +117,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApiKeys"></a>
 
-`GET /devportal/v1/apis/{apiId}/api-keys`
+`GET /api/v0.9/apis/{apiId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys \
+curl -X GET https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -146,7 +146,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |appId|query|string|false|Optional application ID used to filter API keys associated with that application.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -158,9 +158,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
     {
       "keyId": "key-12345",
       "name": "weather_prod_key",
-      "apiId": "api-7f4c2a6b",
-      "appId": "app-12345",
-      "appName": "My Mobile App",
+      "apiId": "weather-api-v1",
+      "appId": "my-weather-app",
+      "appDisplayName": "My Mobile App",
       "status": "ACTIVE",
       "expiresAt": "2026-12-31T23:59:59Z",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -236,7 +236,7 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
-|»» appName|string¦null|false|none|Name of the associated application, if any.|
+|»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|
 |»» expiresAt|string(date-time)¦null|false|none|none|
 |»» createdAt|string(date-time)|false|none|none|
@@ -264,13 +264,13 @@ Status Code **200**
 
 <a id="opIdregenerateApiKey"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/regenerate`
+`POST /api/v0.9/apis/{apiId}/api-keys/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/regenerate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -285,7 +285,8 @@ Regenerates the secret for an existing API key identified by `keyId` in the requ
 
 ```json
 {
-  "keyId": "key-12345"
+  "keyId": "key-12345",
+  "expiresAt": "2027-01-01T00:00:00Z"
 }
 ```
 
@@ -300,9 +301,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|Identifies the API key to regenerate by its `keyId`.|
+|body|body|object|true|Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided, updates the key's expiry; the key's `name` cannot be changed by this operation.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
-|apiId|path|string|true|none|
+|» expiresAt|body|any|false|New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. Omit to leave the current expiry unchanged.|
+|»» *anonymous*|body|string(date-time)|false|none|
+|»» *anonymous*|body|number|false|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -370,13 +374,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeApiKey"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/revoke`
+`POST /api/v0.9/apis/{apiId}/api-keys/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/revoke \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/revoke \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -408,7 +412,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to revoke by its `keyId`.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -464,13 +468,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdassociateApiKeyApplication"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/associate`
+`POST /api/v0.9/apis/{apiId}/api-keys/associate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/associate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/associate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -486,7 +490,7 @@ Associates (or re-associates) an existing API key with an application, for analy
 ```json
 {
   "keyId": "key-12345",
-  "appId": "app-12345"
+  "appId": "my-weather-app"
 }
 ```
 
@@ -504,7 +508,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|object|true|Identifies the API key and the application to associate it with.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
 |» appId|body|string|true|Developer Portal application ID to associate the key with.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -514,8 +518,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "keyId": "key-12345",
   "application": {
-    "id": "app-12345",
-    "name": "My Mobile App"
+    "id": "my-weather-app",
+    "displayName": "My Mobile App"
   }
 }
 ```
@@ -526,7 +530,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "code": "400",
   "message": "Bad Request",
-  "description": "apiId is required"
+  "description": "Invalid request parameters"
 }
 ```
 
@@ -583,13 +587,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdremoveApiKeyApplication"></a>
 
-`POST /devportal/v1/apis/{apiId}/api-keys/dissociate`
+`POST /api/v0.9/apis/{apiId}/api-keys/dissociate`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/devportal/v1/apis/{apiId}/api-keys/dissociate \
+curl -X POST https://devportal.api-platform.io/api/v0.9/apis/{apiId}/api-keys/dissociate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -621,7 +625,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key to remove the application association from.|
 |» keyId|body|string|true|Developer Portal key ID returned by generate or list.|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -667,13 +671,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApplicationApiKeys"></a>
 
-`GET /devportal/v1/applications/{applicationId}/api-keys`
+`GET /api/v0.9/applications/{applicationId}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/devportal/v1/applications/{applicationId}/api-keys \
+curl -X GET https://devportal.api-platform.io/api/v0.9/applications/{applicationId}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -695,7 +699,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
-|applicationId|path|string|true|none|
+|applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
 
@@ -707,9 +711,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
     {
       "keyId": "key-12345",
       "name": "weather_prod_key",
-      "apiId": "api-7f4c2a6b",
-      "appId": "app-12345",
-      "appName": "My Mobile App",
+      "apiId": "weather-api-v1",
+      "appId": "my-weather-app",
+      "appDisplayName": "My Mobile App",
       "status": "ACTIVE",
       "expiresAt": "2026-12-31T23:59:59Z",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -763,7 +767,7 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
-|»» appName|string¦null|false|none|Name of the associated application, if any.|
+|»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|
 |»» expiresAt|string(date-time)¦null|false|none|none|
 |»» createdAt|string(date-time)|false|none|none|

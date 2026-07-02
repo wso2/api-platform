@@ -59,7 +59,6 @@ type SelectableProject = {
   id: string;
   name: string;
   description?: string;
-  handler?: string;
 };
 
 export default function AppLayout(): JSX.Element {
@@ -106,12 +105,16 @@ export default function AppLayout(): JSX.Element {
     return Array.isArray(projectsForCurrentOrganization)
       ? projectsForCurrentOrganization.map((project) => ({
           id: project.id,
-          name: project.name,
+          name: project.displayName,
           description: project.description,
-          handler: project.handler,
         }))
       : [];
   }, [projectsForCurrentOrganization]);
+
+  const currentProjectOption: SelectableProject | null = useMemo(
+    () => projectOptions.find((project) => project.id === currentProject?.id) ?? null,
+    [projectOptions, currentProject?.id]
+  );
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
     currentProject?.id ?? ''
@@ -367,7 +370,7 @@ export default function AppLayout(): JSX.Element {
               : null
           }
           projectOptions={projectOptions}
-          currentProject={currentProject}
+          currentProject={currentProjectOption}
           setCurrentProject={(p) => {
             if (!p) {
               setCurrentProject(null);

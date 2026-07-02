@@ -27,7 +27,7 @@ type Application struct {
 	OrganizationUUID string    `json:"organizationId" db:"organization_uuid"`
 	CreatedBy        string    `json:"createdBy,omitempty" db:"created_by"`
 	UpdatedBy        string    `json:"updatedBy,omitempty" db:"updated_by"`
-	Name             string    `json:"name" db:"name"`
+	Name             string    `json:"displayName" db:"display_name"`
 	Description      string    `json:"description,omitempty" db:"description"`
 	Type             string    `json:"type" db:"type"`
 	CreatedAt        time.Time `json:"createdAt" db:"created_at"`

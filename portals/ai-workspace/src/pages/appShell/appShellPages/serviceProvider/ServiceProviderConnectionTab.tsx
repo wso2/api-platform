@@ -53,6 +53,8 @@ export default function ServiceProviderConnectionTab() {
   const [providerTemplate, setProviderTemplate] =
     useState<ProviderTemplate | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  const isFormDisabled = isLoading || Boolean(error) || isReadOnlyProvider;
 
   const valuePrefix = useMemo(() => {
     return providerTemplate?.metadata?.auth?.valuePrefix || '';
@@ -72,7 +74,6 @@ export default function ServiceProviderConnectionTab() {
       try {
         const template = await providerTemplateApis.getProviderTemplate(
           templateId,
-          organizationId,
           PLATFORM_API_BASE_URL
         );
         if (!isMounted) return;
@@ -109,7 +110,7 @@ export default function ServiceProviderConnectionTab() {
   }, [provider]);
 
   const handleUpdateProviderEndpoint = async (value = providerEndpoint) => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isReadOnlyProvider) return;
     const nextUrl = value.trim();
     if (!nextUrl || nextUrl === (provider.upstream?.main?.url || '')) return;
     try {
@@ -145,7 +146,7 @@ export default function ServiceProviderConnectionTab() {
   };
 
   const handleUpdateAuthentication = async (value = authenticationType) => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isReadOnlyProvider) return;
     const nextType = value.trim();
     if (!nextType || nextType === (provider.upstream?.main?.auth?.type || ''))
       return;
@@ -184,7 +185,7 @@ export default function ServiceProviderConnectionTab() {
   const handleUpdateAuthenticationHeader = async (
     value = authenticationHeader
   ) => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isReadOnlyProvider) return;
     const nextHeader = value.trim();
     if (nextHeader === (provider.upstream?.main?.auth?.header || '')) return;
 
@@ -221,7 +222,7 @@ export default function ServiceProviderConnectionTab() {
   };
 
   const handleUpdateCredential = async (value = credentialValue) => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isReadOnlyProvider) return;
     if (isCredentialMasked) return;
     const nextValue = value.trim();
     if (nextValue === MASKED_CREDENTIAL_VALUE) return;
@@ -276,6 +277,7 @@ export default function ServiceProviderConnectionTab() {
           <TextField
             size="small"
             value={providerEndpoint}
+            disabled={isFormDisabled}
             onChange={(e) => {
               const nextValue = e.target.value;
               setProviderEndpoint(nextValue);
@@ -296,6 +298,7 @@ export default function ServiceProviderConnectionTab() {
           <Select
             size="small"
             value={authenticationType || 'api-key'}
+            disabled={isFormDisabled}
             onChange={(e) => {
               const nextValue = String(e.target.value);
               setAuthenticationType(nextValue);
@@ -318,6 +321,7 @@ export default function ServiceProviderConnectionTab() {
           <TextField
             size="small"
             value={authenticationHeader}
+            disabled={isFormDisabled}
             onChange={(e) => {
               const nextValue = e.target.value;
               setAuthenticationHeader(nextValue);
@@ -339,6 +343,7 @@ export default function ServiceProviderConnectionTab() {
             size="small"
             type={showCredential ? 'text' : 'password'}
             value={credentialValue}
+            disabled={isFormDisabled}
             onFocus={() => {
               if (isCredentialMasked) {
                 setCredentialValue('');
@@ -365,6 +370,7 @@ export default function ServiceProviderConnectionTab() {
                   <InputAdornment position="end">
                     <IconButton
                       size="small"
+                      disabled={isFormDisabled}
                       onClick={() => setShowCredential((prev) => !prev)}
                       aria-label={
                         showCredential ? 'Hide credentials' : 'Show credentials'

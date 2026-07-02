@@ -1147,6 +1147,24 @@
 .cfg-plan-type--request { background: #e6f2fb; color: #0277bd; }
 .cfg-plan-type--event   { background: #e6f4ea; color: #2e7d32; }
 
+.cfg-limit-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.688rem;
+  font-weight: 600;
+  font-family: monospace;
+  background: #f0f2f5;
+  color: #1a2433;
+  margin: 2px 4px 2px 0;
+}
+
+.cfg-btn-sm {
+  padding: 4px 10px;
+  font-size: .8rem;
+}
+
 /* ── Add / Edit modal (labels, plans) ─────────────────── */
 
 .cfg-form-modal {

@@ -30,9 +30,11 @@ type OrganizationRepository interface {
 	GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error)
 	GetOrganizationByUUID(orgId string) (*model.Organization, error)
 	GetOrganizationByHandle(handle string) (*model.Organization, error)
+	GetOrganizationByIdpOrgRefUUID(idpOrgRefUUID string) (*model.Organization, error)
 	UpdateOrganization(org *model.Organization) error
 	DeleteOrganization(orgId string) error
 	ListOrganizations(limit, offset int) ([]*model.Organization, error)
+	CountOrganizations() (int, error)
 }
 
 // ProjectRepository defines the interface for project data access
@@ -55,6 +57,8 @@ type ArtifactRepository interface {
 	GetByHandle(handle, orgUUID string) (*model.Artifact, error)
 	GetByUUID(uuid, orgUUID string) (*model.Artifact, error)
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
+	GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error)
+	GetMetadataByUUIDs(uuids []string, orgUUID string) (map[string]*model.APIMetadata, error)
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 	ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error)
 }
@@ -98,7 +102,6 @@ type APIRepository interface {
 	GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error)
 	GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) ([]*model.API, error)
 	GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
-	GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
 	DeleteAPI(apiUUID, orgUUID string) error
 
@@ -221,7 +224,6 @@ type LLMProviderTemplateRepository interface {
 	RenameFamily(baseHandle, orgUUID, name string) error
 	SetEnabled(templateID, orgUUID, version string, enabled bool) error
 	DeleteVersion(templateID, orgUUID, version string) error
-	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
 	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)
@@ -237,6 +239,9 @@ type LLMProviderRepository interface {
 	Update(p *model.LLMProvider) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the provider if one
+	// does not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // APIKeyRepository defines the interface for API key persistence
@@ -264,6 +269,9 @@ type LLMProxyRepository interface {
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
+	// not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -278,6 +286,7 @@ type MCPProxyRepository interface {
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence

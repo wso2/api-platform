@@ -48,6 +48,14 @@ function loadSubscriptionPlans() {
     }
 }
 
+// Sample api.yaml files author `type` using the short keyword form (REST, MCP, WEBSUB, ...);
+// map it to the same stored values constants.API_TYPE uses elsewhere.
+function normalizeSampleApiType(rawType) {
+    if (!rawType || typeof rawType !== 'string') return constants.API_TYPE.REST;
+    const keyword = rawType.replace(/\s+/g, '').toUpperCase();
+    return constants.API_TYPE[keyword] || constants.API_TYPE.REST;
+}
+
 function parseApiYaml(apiHandle, samplesDir) {
     const apiYamlPath = path.join(resolveDir(samplesDir), apiHandle, 'api.yaml');
     if (!fs.existsSync(apiYamlPath)) return null;
@@ -64,11 +72,16 @@ function parseApiYaml(apiHandle, samplesDir) {
     const plansMap = loadSubscriptionPlans();
     const plans = (spec.subscriptionPlans || []).map(p => {
         const plan = plansMap[p];
+        const rc = plan?.requestCount;
+        const ec = plan?.eventCount;
         return {
             handle: p,
             name: plan?.name ?? p,
             description: plan?.description ?? '',
-            requestCount: plan?.requestCount ?? 1000,
+            limits: Array.isArray(plan?.limits) ? plan.limits
+                : rc != null ? [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: rc }]
+                : ec != null ? [{ limitType: 'EVENT_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: ec }]
+                : [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: 1000 }],
         };
     });
     // Collect images from web/ and expose them as /mock/{handle}/web/{filename} URLs
@@ -90,7 +103,7 @@ function parseApiYaml(apiHandle, samplesDir) {
         name: spec.displayName || name,
         version: spec.version || '',
         description: spec.description || '',
-        type: spec.type || 'REST',
+        type: normalizeSampleApiType(spec.type),
         status: spec.status || 'PUBLISHED',
         tags: spec.tags || [],
         labels: spec.labels || [],
@@ -275,7 +288,7 @@ function loadApplications() {
         const items = Array.isArray(doc.items) ? doc.items : [];
         return items.map(item => ({
             id: item.metadata?.name,
-            name: item.spec?.displayName || item.metadata?.name,
+            displayName: item.spec?.displayName || item.metadata?.name,
             description: item.spec?.description || '',
         }));
     } catch (_) {
