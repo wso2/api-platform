@@ -313,7 +313,16 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	if targetDeployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if targetDeployment.GatewayID != gatewayID {
+	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
+	// gateway UUID stored on the deployment before comparing.
+	resolvedGateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayID), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if resolvedGateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	if targetDeployment.GatewayID != resolvedGateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 
@@ -398,7 +407,16 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	if deployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if deployment.GatewayID != gatewayID {
+	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
+	// gateway UUID stored on the deployment before comparing.
+	resolvedGateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayID), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if resolvedGateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	if deployment.GatewayID != resolvedGateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
@@ -1459,7 +1477,16 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	if targetDeployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if targetDeployment.GatewayID != gatewayID {
+	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
+	// gateway UUID stored on the deployment before comparing.
+	resolvedGateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayID), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if resolvedGateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	if targetDeployment.GatewayID != resolvedGateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 
@@ -1544,7 +1571,16 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	if deployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if deployment.GatewayID != gatewayID {
+	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
+	// gateway UUID stored on the deployment before comparing.
+	resolvedGateway, err := s.gatewayRepo.GetByHandleAndOrgID(strings.TrimSpace(gatewayID), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if resolvedGateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	if deployment.GatewayID != resolvedGateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
