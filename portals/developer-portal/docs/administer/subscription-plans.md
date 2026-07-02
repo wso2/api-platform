@@ -31,7 +31,7 @@ Use the `SubscriptionPlan` manifest format:
 
 ```yaml
 # plan.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: SubscriptionPlan
 
 metadata:
@@ -64,7 +64,7 @@ To create multiple plans in one request, use the `SubscriptionPlanList` kind:
 
 ```yaml
 # plans.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: SubscriptionPlanList
 
 items:
@@ -102,7 +102,7 @@ curl http://localhost:3000/api/v0.9/subscription-plans -H "Authorization: Bearer
 ## Get a Subscription Plan
 
 ```bash
-curl http://localhost:3000/api/v0.9/subscription-plans/{planIdOrName} \
+curl http://localhost:3000/api/v0.9/subscription-plans/{planId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -110,7 +110,7 @@ curl http://localhost:3000/api/v0.9/subscription-plans/{planIdOrName} \
 
 ```yaml
 # plan-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: SubscriptionPlan
 
 metadata:
@@ -132,7 +132,7 @@ curl -X PUT http://localhost:3000/api/v0.9/subscription-plans \
 ## Delete a Subscription Plan
 
 ```bash
-curl -X DELETE "http://localhost:3000/api/v0.9/subscription-plans/{planName}" \
+curl -X DELETE "http://localhost:3000/api/v0.9/subscription-plans/{planId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
