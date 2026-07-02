@@ -329,6 +329,43 @@ func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
 	return nil
 }
 
+// UpdateToken rotates a subscription's token: the new value is hashed (for the uniqueness/lookup
+// column) and encrypted (for at-rest storage), mirroring Create. Returns ErrSubscriptionNotFound
+// when no row matches.
+func (r *SubscriptionRepo) UpdateToken(subscriptionID, orgUUID, newToken string) error {
+	if newToken == "" {
+		return fmt.Errorf("subscription token cannot be empty")
+	}
+	hashedToken := hashSubscriptionToken(newToken)
+
+	key, err := getSubscriptionTokenEncryptionKey()
+	if err != nil {
+		return fmt.Errorf("subscription token encryption: %w", err)
+	}
+	encryptedToken, err := utils.EncryptSubscriptionToken(key, newToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt subscription token: %w", err)
+	}
+
+	query := `
+		UPDATE subscriptions
+		SET subscription_token = ?, subscription_token_hash = ?, updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ?
+	`
+	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now(), subscriptionID, orgUUID)
+	if err != nil {
+		if isSubscriptionUniqueViolation(err) {
+			return constants.ErrSubscriptionAlreadyExists
+		}
+		return fmt.Errorf("failed to update subscription token: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return constants.ErrSubscriptionNotFound
+	}
+	return nil
+}
+
 // Delete removes a subscription by ID and organization
 func (r *SubscriptionRepo) Delete(subscriptionID, orgUUID string) error {
 	query := `DELETE FROM subscriptions WHERE uuid = ? AND organization_uuid = ?`

@@ -517,6 +517,43 @@ func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID stri
 	return err
 }
 
+// GetApplicationsByAPIKeyID returns the applications the given API key is currently mapped to within
+// the organization. Used to broadcast a mapping update to the affected gateways when a key is
+// dissociated — the previously-owning application must be captured before the mapping is removed.
+func (r *ApplicationRepo) GetApplicationsByAPIKeyID(apiKeyID, orgID string) ([]*model.Application, error) {
+	rows, err := r.db.Query(r.db.Rebind(`
+		SELECT a.uuid, a.handle, a.project_uuid, a.organization_uuid, a.created_by, a.updated_by, a.display_name, a.description, a.type, a.created_at, a.updated_at
+		FROM applications a
+		INNER JOIN application_api_key_mappings m ON m.application_uuid = a.uuid
+		WHERE m.api_key_id = ? AND a.organization_uuid = ?
+	`), apiKeyID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apps []*model.Application
+	for rows.Next() {
+		app, err := scanApplication(rows)
+		if err != nil {
+			return nil, err
+		}
+		apps = append(apps, app)
+	}
+	return apps, rows.Err()
+}
+
+// RemoveAPIKeyFromAllApplications removes the given API key from every application it is mapped to.
+// Used to reconcile a Developer Portal apikey.application_updated event (a key belongs to at most
+// one application), where the previous application is not carried in the event.
+func (r *ApplicationRepo) RemoveAPIKeyFromAllApplications(apiKeyID string) error {
+	_, err := r.db.Exec(r.db.Rebind(`
+		DELETE FROM application_api_key_mappings
+		WHERE api_key_id = ?
+	`), apiKeyID)
+	return err
+}
+
 func (r *ApplicationRepo) RemoveApplicationAssociation(applicationUUID, targetUUID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`
 		DELETE FROM application_artifact_mappings
@@ -531,6 +568,7 @@ type rowScanner interface {
 
 func scanApplication(scanner rowScanner) (*model.Application, error) {
 	var app model.Application
+	var projectUUID sql.NullString
 	var createdBy sql.NullString
 	var updatedBy sql.NullString
 	var description sql.NullString
@@ -538,7 +576,7 @@ func scanApplication(scanner rowScanner) (*model.Application, error) {
 	err := scanner.Scan(
 		&app.UUID,
 		&app.Handle,
-		&app.ProjectUUID,
+		&projectUUID,
 		&app.OrganizationUUID,
 		&createdBy,
 		&updatedBy,
@@ -552,6 +590,9 @@ func scanApplication(scanner rowScanner) (*model.Application, error) {
 		return nil, err
 	}
 
+	if projectUUID.Valid {
+		app.ProjectUUID = projectUUID.String
+	}
 	if createdBy.Valid {
 		app.CreatedBy = createdBy.String
 	}

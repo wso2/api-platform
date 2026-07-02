@@ -100,7 +100,7 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create the API key and broadcast to gateways
-	err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, orgId, userId, &req)
+	err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, userId, &req)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -192,7 +192,7 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the API key and broadcast to gateways
-	err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, orgId, keyName, userId, &req)
+	err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, &req)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -252,7 +252,7 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	userId := r.Header.Get("x-user-id")
 
 	// Revoke the API key and broadcast to gateways
-	err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, orgId, keyName, userId)
+	err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {

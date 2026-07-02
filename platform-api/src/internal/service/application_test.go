@@ -48,6 +48,13 @@ type mockApplicationRepository struct {
 	handleExists            bool
 	handleExistsErr         error
 	createErr               error
+	appsByAPIKey            []*model.Application
+	appsByAPIKeyErr         error
+	getAppsByKeyCalled      bool
+	removeAllCalled         bool
+	removedAllAPIKeyID      string
+	deleteCalled            bool
+	deployedGatewayLookups  []string
 	addMappedCalled         bool
 	removeMappedCalled      bool
 	createCalled            bool
@@ -212,7 +219,24 @@ func (m *mockApplicationRepository) RemoveApplicationAssociation(applicationUUID
 	return nil
 }
 
+func (m *mockApplicationRepository) GetApplicationsByAPIKeyID(apiKeyID, orgID string) ([]*model.Application, error) {
+	m.getAppsByKeyCalled = true
+	return m.appsByAPIKey, m.appsByAPIKeyErr
+}
+
+func (m *mockApplicationRepository) DeleteApplication(appID, orgID string) error {
+	m.deleteCalled = true
+	return nil
+}
+
+func (m *mockApplicationRepository) RemoveAPIKeyFromAllApplications(apiKeyID string) error {
+	m.removeAllCalled = true
+	m.removedAllAPIKeyID = apiKeyID
+	return nil
+}
+
 func (m *mockApplicationRepository) GetDeployedGatewayIDsByArtifactUUID(artifactID, orgID string) ([]string, error) {
+	m.deployedGatewayLookups = append(m.deployedGatewayLookups, artifactID)
 	if m.deployedGatewayErr != nil {
 		return nil, m.deployedGatewayErr
 	}
@@ -787,7 +811,101 @@ func TestRemoveMappedAPIKey_DoesNotFailWhenBroadcastResolutionFails(t *testing.T
 	}
 }
 
-func TestCreateApplication_RequiresProjectID(t *testing.T) {
+// TestSetAPIKeyApplication_DissociateBroadcastsToPriorApp verifies that dissociating a key (the
+// apikey.application_updated event with a null application) captures the previously-owning
+// application before removing the mapping and broadcasts a mapping update to that application's
+// gateways — otherwise the gateway would keep the stale key→application mapping until pull-sync.
+func TestSetAPIKeyApplication_DissociateBroadcastsToPriorApp(t *testing.T) {
+	orgID := "org-1"
+
+	appRepo := &mockApplicationRepository{
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("my-key", "order-api"): {
+				ID:           "key-1",
+				APIKeyUUID:   "key-uuid-1",
+				Name:         "my-key",
+				ArtifactID:   "artifact-1",
+				ArtifactType: constants.RestApi,
+			},
+		},
+		artifactByID: map[string]*model.Artifact{
+			// Resolves the api ref_id to the artifact handle, and (as the broadcast hint) to a
+			// supported artifact type so gateway targeting runs.
+			"artifact-1": {UUID: "artifact-1", Handle: "order-api", Type: constants.RestApi},
+		},
+		// The key currently belongs to this application; the dissociation must broadcast for it.
+		appsByAPIKey: []*model.Application{
+			{UUID: "app-1", Handle: "my-app", OrganizationUUID: orgID},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
+
+	// appIDOrHandle empty => dissociation.
+	if err := svc.SetAPIKeyApplication("my-key", "artifact-1", constants.RestApi, "", orgID, ""); err != nil {
+		t.Fatalf("expected nil error on dissociation, got %v", err)
+	}
+
+	if !appRepo.getAppsByKeyCalled {
+		t.Fatalf("expected GetApplicationsByAPIKeyID to be called before removing the mapping")
+	}
+	if !appRepo.removeAllCalled || appRepo.removedAllAPIKeyID != "key-1" {
+		t.Fatalf("expected RemoveAPIKeyFromAllApplications for key-1, got called=%v id=%q",
+			appRepo.removeAllCalled, appRepo.removedAllAPIKeyID)
+	}
+	// The broadcast must target the removed key's artifact so the right gateways are notified even
+	// though the application now has no keys left.
+	found := false
+	for _, a := range appRepo.deployedGatewayLookups {
+		if a == "artifact-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected dissociation to broadcast for the removed key's artifact (artifact-1); gateway lookups=%v",
+			appRepo.deployedGatewayLookups)
+	}
+}
+
+// TestDeleteApplication_BroadcastsMappingClear verifies that deleting an application broadcasts an
+// empty mapping set to the gateways that held its keys, so they drop the key→application mappings
+// (the Platform API DB clears them via cascade, but nothing else notifies the gateways).
+func TestDeleteApplication_BroadcastsMappingClear(t *testing.T) {
+	orgID := "org-1"
+
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-1", Handle: "my-app", Name: "My App", Type: "web", OrganizationUUID: orgID},
+		mappedKeys: []*model.ApplicationAPIKey{
+			{ID: "key-1", APIKeyUUID: "key-uuid-1", ArtifactID: "artifact-1"},
+		},
+		artifactByID: map[string]*model.Artifact{
+			"artifact-1": {UUID: "artifact-1", Handle: "order-api", Type: constants.RestApi},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}, auditRepo: &noopAuditRepo{}}
+
+	if err := svc.DeleteApplication("my-app", orgID, ""); err != nil {
+		t.Fatalf("expected nil error deleting application, got %v", err)
+	}
+	if !appRepo.deleteCalled {
+		t.Fatalf("expected the application to be deleted")
+	}
+	// The mapping-clear broadcast must target the deleted app's key artifact so the right gateways
+	// are notified even though the application (and its remaining keys) are gone.
+	found := false
+	for _, a := range appRepo.deployedGatewayLookups {
+		if a == "artifact-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected delete to broadcast for the removed key's artifact (artifact-1); gateway lookups=%v",
+			appRepo.deployedGatewayLookups)
+	}
+}
+
+func TestCreateApplication_AllowsMissingProjectID(t *testing.T) {
 	orgID := "org-1"
 
 	appRepo := &mockApplicationRepository{}
@@ -800,20 +918,81 @@ func TestCreateApplication_RequiresProjectID(t *testing.T) {
 		appRepo:     appRepo,
 		projectRepo: projectRepo,
 		orgRepo:     orgRepo,
+		auditRepo:   &noopAuditRepo{},
 	}
 
+	// project_uuid is optional: creating without a project id succeeds and persists a project-less
+	// application rather than erroring.
 	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
 		DisplayName: "Sample App",
 		Type:        api.ApplicationType("genai"),
 	}, orgID, "")
-	if !errors.Is(err, constants.ErrProjectNotFound) {
-		t.Fatalf("expected ErrProjectNotFound, got %v", err)
+	if err != nil {
+		t.Fatalf("expected no error when project id is missing, got %v", err)
 	}
-	if resp != nil {
-		t.Fatalf("expected nil response when project id is missing")
+	if !appRepo.createCalled {
+		t.Fatalf("expected repository create to be called when project id is missing")
 	}
-	if appRepo.createCalled {
-		t.Fatalf("expected repository create not to be called when project id is missing")
+	if appRepo.createdApplication == nil || appRepo.createdApplication.ProjectUUID != "" {
+		t.Fatalf("expected created application to have an empty project uuid, got %+v", appRepo.createdApplication)
+	}
+	if resp == nil {
+		t.Fatalf("expected a non-nil response")
+	}
+	if resp.ProjectId != "" {
+		t.Fatalf("expected an empty projectId in the response, got %q", resp.ProjectId)
+	}
+}
+
+func TestCreateApplication_AcceptsWebType(t *testing.T) {
+	orgID := "org-1"
+
+	appRepo := &mockApplicationRepository{}
+	projectRepo := &mockProjectRepository{}
+	orgRepo := &mockApplicationOrganizationRepository{
+		org: &model.Organization{ID: orgID},
+	}
+
+	svc := &ApplicationService{
+		appRepo:     appRepo,
+		projectRepo: projectRepo,
+		orgRepo:     orgRepo,
+		auditRepo:   &noopAuditRepo{},
+	}
+
+	// "web" is an accepted application type (alongside "genai"): webhook-reconciled applications
+	// carry their own type, so creation must not be hardcoded to genai.
+	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
+		DisplayName: "My Mobile App",
+		Type:        api.ApplicationType("web"),
+	}, orgID, "")
+	if err != nil {
+		t.Fatalf("expected no error for web type, got %v", err)
+	}
+	if appRepo.createdApplication == nil || appRepo.createdApplication.Type != "web" {
+		t.Fatalf("expected created application type 'web', got %+v", appRepo.createdApplication)
+	}
+	if resp == nil || resp.Type != api.ApplicationType("web") {
+		t.Fatalf("expected response type 'web', got %+v", resp)
+	}
+}
+
+func TestCreateApplication_RejectsUnsupportedType(t *testing.T) {
+	orgID := "org-1"
+
+	svc := &ApplicationService{
+		appRepo:     &mockApplicationRepository{},
+		projectRepo: &mockProjectRepository{},
+		orgRepo:     &mockApplicationOrganizationRepository{org: &model.Organization{ID: orgID}},
+		auditRepo:   &noopAuditRepo{},
+	}
+
+	_, err := svc.CreateApplication(&api.CreateApplicationRequest{
+		DisplayName: "Bad Type App",
+		Type:        api.ApplicationType("mobile"),
+	}, orgID, "")
+	if !errors.Is(err, constants.ErrUnsupportedApplicationType) {
+		t.Fatalf("expected ErrUnsupportedApplicationType, got %v", err)
 	}
 }
 

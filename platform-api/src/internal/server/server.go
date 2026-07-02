@@ -49,6 +49,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	internalvault "platform-api/src/internal/vault"
+	"platform-api/src/internal/webhook"
 	"platform-api/src/internal/websocket"
 
 	"github.com/wso2/api-platform/common/authenticators"
@@ -238,7 +239,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, auditRepo, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, appRepo, auditRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
@@ -451,6 +452,29 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			projectService.RegisterDeletionGuard(guard)
 		}
 	}
+	slogger.Info("Registered API routes successfully")
+
+	// Register the control-plane webhook receiver (Developer Portal -> Platform API) when enabled.
+	// Authenticity is established by HMAC signature; the route is excluded from JWT/IDP auth via
+	// cfg.Auth.SkipPaths (see config defaults).
+	if cfg.Webhook.Enabled {
+		webhookDecryptor, err := webhook.NewDecryptor(cfg.Webhook.PrivateKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize webhook decryptor: %w", err)
+		}
+		webhookReceiver := webhook.NewReceiver(
+			cfg.Webhook,
+			webhookDecryptor,
+			apiKeyService,
+			subscriptionService,
+			appService,
+			orgRepo,
+			slogger,
+		)
+		webhookReceiver.RegisterRoutes(mux)
+		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath, "gatewayType", cfg.Webhook.GatewayType)
+	}
+
 	slogger.Info("Registered API routes successfully")
 
 	// Build the middleware chain that wraps the mux.

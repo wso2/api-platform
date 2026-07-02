@@ -277,11 +277,12 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 
 // CreateAPIKey hashes an external API key and broadcasts it to gateways where the API is deployed.
 // This method is used when external platforms inject API keys to hybrid gateways.
-func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, userId string, req *api.CreateAPIKeyRequest) error {
-	// Resolve API handle to UUID
-	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId, userId string, req *api.CreateAPIKeyRequest) error {
+	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
+	// kinds resolves to exactly one artifact.
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
 	if err != nil {
-		s.slogger.Error("Failed to get API metadata for API key creation", "apiHandle", apiHandle, "error", err)
+		s.slogger.Error("Failed to get API metadata for API key creation", "apiHandle", apiHandle, "kind", kind, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
 	}
 	if apiMetadata == nil {
@@ -402,11 +403,12 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
-func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
-	// Resolve API handle to UUID
-	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
+	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
+	// kinds resolves to exactly one artifact.
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
 	if err != nil {
-		s.slogger.Error("Failed to get API metadata for API key update", "apiHandle", apiHandle, "error", err)
+		s.slogger.Error("Failed to get API metadata for API key update", "apiHandle", apiHandle, "kind", kind, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
 	}
 	if apiMetadata == nil {
@@ -512,11 +514,12 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 }
 
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
-func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string) error {
-	// Resolve API handle to UUID
-	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string) error {
+	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
+	// kinds resolves to exactly one artifact.
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
 	if err != nil {
-		s.slogger.Error("Failed to get API metadata for API key revocation", "apiHandle", apiHandle, "error", err)
+		s.slogger.Error("Failed to get API metadata for API key revocation", "apiHandle", apiHandle, "kind", kind, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
 	}
 	if apiMetadata == nil {
