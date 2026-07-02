@@ -366,9 +366,11 @@ export function GatewayCard({ gateway, deployment }: GatewayCardProps) {
             <Box sx={{ mt: 0.75 }}>
               <StatusChip deployed={isDeployed} />
             </Box>
-            {(gateway.functionalityType || gateway.vhost) && (
+            {(gateway.functionalityType ||
+              gateway.endpoints?.[0] ||
+              gateway.vhost) && (
               <Stack spacing={0.5} mt={1}>
-                {gateway.vhost && (
+                {(gateway.endpoints?.[0] || gateway.vhost) && (
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     <Network
                       size={13}
@@ -378,9 +380,9 @@ export function GatewayCard({ gateway, deployment }: GatewayCardProps) {
                       variant="caption"
                       color="text.secondary"
                       noWrap
-                      title={gateway.vhost}
+                      title={gateway.endpoints?.[0] || gateway.vhost}
                     >
-                      {gateway.vhost}
+                      {gateway.endpoints?.[0] || gateway.vhost}
                     </Typography>
                   </Stack>
                 )}
