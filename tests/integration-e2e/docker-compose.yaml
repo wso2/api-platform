@@ -65,7 +65,7 @@ services:
 
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config.toml"]
     environment:
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
@@ -167,7 +167,7 @@ services:
     image: ghcr.io/wso2/api-platform/sample-service:latest
     command: ["-addr", ":9080", "-pretty"]
     ports:
-      - "9080:9080"
+      - "${SAMPLE_BACKEND_HOST_PORT:-9080}:9080"
     networks: [e2e]
 
   # Second gateway (own controller + runtime + DB) for the multi-gateway

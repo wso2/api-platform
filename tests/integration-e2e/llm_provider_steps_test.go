@@ -23,9 +23,10 @@ package e2e
 //  1. Create a secret in platform-api (POST /api/v0.9/secrets, multipart/form-data).
 //  2. Create an LLM provider whose upstream auth value is a {{ secret "handle" }}
 //     placeholder (POST /api/v0.9/llm-providers).
-//  3. Deploy the provider to the gateway (POST /api/v0.9/llm-providers/{id}/deployments).
-//     The platform-api broadcasts a llmprovider.deployed WebSocket event; the controller
-//     resolves {{ secret "..." }} references on demand (no restart required).
+//  3. Deploy the provider to the gateway (POST /api/v0.9/llm-providers/{id}/deployments),
+//     then restart the gateway-controller so its one-time startup sync runs: it fetches
+//     all secrets first (syncSecretsBulk), then renders every deployed provider, so the
+//     secret reference is always resolved before the provider is processed.
 //  4. Poll the gateway management API until the provider appears, confirming that
 //     the controller successfully resolved secret references at deploy time.
 
@@ -91,7 +92,7 @@ func (w *world) anLLMProviderReferencingSecret() error {
 	// calling FetchPlatformSecretValue on demand — that is the behaviour under test.
 	secretPlaceholder := `{{ secret "` + w.secretHandle + `" }}`
 
-	st, body, err := apiCall(http.MethodPost, "/api/v0.9/llm-providers", suite.token, map[string]any{
+	st, body, err := apiCall(http.MethodPost, "/llm-providers", suite.token, map[string]any{
 		"id":          w.llmProviderID,
 		"displayName": "e2e-llm-provider-" + suffix,
 		"description": "E2E test LLM provider",
@@ -120,11 +121,12 @@ func (w *world) anLLMProviderReferencingSecret() error {
 	return nil
 }
 
-// deployLLMProviderToGateway deploys the LLM provider to gateway 1. The platform-api
-// broadcasts a llmprovider.deployed WebSocket event to the connected controller. The
-// controller's handleLLMProviderDeployedEvent fetches the provider definition, calls
-// syncSecretRefsFromYAML to resolve any {{ secret "..." }} references on demand, then
-// creates the LLM provider configuration — no restart required.
+// deployLLMProviderToGateway deploys the LLM provider to gateway 1 and then
+// restarts the gateway controller so it picks up the deployment via its
+// startup full-sync path. On startup the controller calls syncSecretsBulk
+// first (which fetches all secrets the gateway has access to) before rendering
+// any artifact YAML, so secret references are always resolved before the
+// provider is processed — no event-driven timing race.
 func (w *world) deployLLMProviderToGateway() error {
 	if w.llmProviderID == "" {
 		return fmt.Errorf("no LLM provider id — run 'an LLM provider that references the secret' first")
@@ -132,7 +134,7 @@ func (w *world) deployLLMProviderToGateway() error {
 
 	st, body, err := apiCall(
 		http.MethodPost,
-		"/api/v0.9/llm-providers/"+w.llmProviderID+"/deployments",
+		"/llm-providers/"+w.llmProviderID+"/deployments",
 		suite.token,
 		map[string]any{
 			"name":      "dep-" + randHex(),
@@ -147,6 +149,13 @@ func (w *world) deployLLMProviderToGateway() error {
 	if st >= 300 || w.llmDepID == "" {
 		return fmt.Errorf("deploy LLM provider failed (%d): %s", st, body)
 	}
+
+	// Restart the controller so it runs its one-time startup sync, which
+	// fetches all secrets first and then processes all deployed providers.
+	// This mirrors how deploy() works for REST APIs (steps_test.go).
+	if err := compose(nil, "restart", "gateway-controller"); err != nil {
+		return fmt.Errorf("restart gateway-controller: %w", err)
+	}
 	return nil
 }
 
@@ -157,11 +166,16 @@ func (w *world) gatewayHasLLMProviderConfigured() error {
 	return waitGatewayLLMProvider(w.llmProviderID)
 }
 
+// llmProviderPollTimeout is the maximum time to wait for the gateway to report
+// a deployed LLM provider. It is longer than the general pollTimeout to account
+// for the full event-driven path: EventHub replay, secret fetch, and rendering.
+const llmProviderPollTimeout = 3 * pollTimeout
+
 // waitGatewayLLMProvider polls GET /api/management/v1/llm-providers/{id} on the
 // gateway management API until it returns 200 or the poll timeout expires.
 func waitGatewayLLMProvider(providerID string) error {
 	url := gwMgmtAPI + "/api/management/v1/llm-providers/" + providerID
-	deadline := time.Now().Add(pollTimeout)
+	deadline := time.Now().Add(llmProviderPollTimeout)
 	var lastStatus int
 	for time.Now().Before(deadline) {
 		req, err := http.NewRequest(http.MethodGet, url, nil)
