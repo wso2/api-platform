@@ -196,6 +196,9 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 		if sessionIDs := respCtx.ResponseHeaders.Get("mcp-session-id"); len(sessionIDs) > 0 {
 			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
 		}
+		if contentTypes := respCtx.ResponseHeaders.Get("content-type"); len(contentTypes) > 0 {
+			analyticsMetadata["response_content_type"] = contentTypes[0]
+		}
 	}
 
 	if len(analyticsMetadata) > 0 {
@@ -255,7 +258,7 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 
 			props.JsonRpcMethod = extractString(JsonRpcMethodJsonPath)
 			props.CapabilityName = extractString(McpCapabilityNameJsonPath)
-			props.Capability = extractString(McpResourceUriJsonPath)
+			props.Capability = deriveMCPCapability(props.JsonRpcMethod)
 
 			clientInfo := McpClientInfo{
 				RequestedProtocolVersion: extractStringFromJsonpath(mcpPayload, ProtocolVersionJsonPath),
@@ -757,10 +760,16 @@ func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpRespon
 		props.ServerInfo = &serverInfo
 	}
 
-	isError, err := extractBoolFromJsonpath(payload, IsErrorJsonPath)
-	if err == nil {
-		props.IsError = &isError
+	// isError denotes whether the JSON-RPC response represents an error. It is true when a
+	// protocol-level error object is present ($.error) or when a tool result explicitly sets
+	// result.isError=true; false otherwise. Always emitted so consumers get a definitive flag.
+	isError := false
+	if errVal, hasError := payload["error"]; hasError && errVal != nil {
+		isError = true
+	} else if resultIsError, err := extractBoolFromJsonpath(payload, IsErrorJsonPath); err == nil {
+		isError = resultIsError
 	}
+	props.IsError = &isError
 
 	errorCode, err := extractIntFromJsonpath(payload, JsonRpcErrorCodeJsonPath)
 	if err == nil {
@@ -966,5 +975,21 @@ func extractBoolFromJsonpath(payload map[string]interface{}, path string) (bool,
 		return lower == "true" || lower == "1" || lower == "yes", nil
 	default:
 		return false, fmt.Errorf("unexpected type %T at path %s", val, path)
+	}
+}
+
+// deriveMCPCapability maps an MCP JSON-RPC method to a capability type for analytics.
+// It returns "" when the method has no mapping, in which case the caller omits the
+// field (mirrors carbon-apimgt's SynapseAnalyticsDataProvider behavior).
+func deriveMCPCapability(method string) string {
+	switch {
+	case strings.HasPrefix(method, "tools/"):
+		return "TOOL"
+	case strings.HasPrefix(method, "resources/"):
+		return "RESOURCE"
+	case strings.HasPrefix(method, "prompts/"):
+		return "PROMPT"
+	default:
+		return ""
 	}
 }

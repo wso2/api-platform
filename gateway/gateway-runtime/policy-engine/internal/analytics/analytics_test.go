@@ -711,7 +711,39 @@ func TestPrepareAnalyticEvent_WithMCPAnalytics(t *testing.T) {
 
 	mcpMap, ok := mcpAnalytics.(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, "session-123", mcpMap["mcp_session_id"])
+	assert.Equal(t, "session-123", mcpMap["sessionId"])
+}
+
+func TestPrepareAnalyticEvent_MCPCapabilityContentTypeAndSizes(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:               "Mcp",
+		"mcp_session_id":         "session-123",
+		"mcp_request_properties": `{"jsonRpcMethod":"tools/call","capability":"TOOL","capabilityName":"calculator"}`,
+		"response_content_type":  "text/event-stream",
+	})
+	// requestSize is sourced from the Envoy access-log request body byte count.
+	logEntry.Request.RequestBodyBytes = 42
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+	require.NotNil(t, event)
+
+	// requestSize is published at the root level for all API kinds.
+	assert.Equal(t, uint64(42), event.Properties["requestSize"])
+	// responseContentType is captured from the system policy's response headers
+	// and published at the root level (not duplicated inside mcpAnalytics).
+	assert.Equal(t, "text/event-stream", event.Properties["responseContentType"])
+
+	mcpAnalytics, ok := event.Properties["mcpAnalytics"]
+	require.True(t, ok)
+	mcpMap, ok := mcpAnalytics.(map[string]interface{})
+	require.True(t, ok)
+
+	// capability/capabilityName flow through from mcp_request_properties.
+	assert.Equal(t, "TOOL", mcpMap["capability"])
+	assert.Equal(t, "calculator", mcpMap["capabilityName"])
 }
 
 func TestPrepareAnalyticEvent_WithMCPAnalyticsInvalidJSON(t *testing.T) {

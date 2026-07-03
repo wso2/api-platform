@@ -276,6 +276,11 @@ func (m *Moesif) Publish(event *dto.Event) {
 		metadataMap["responseSize"] = responseSize
 	}
 
+	// requestSize
+	if requestSize, ok := event.Properties["requestSize"]; ok && requestSize != nil {
+		metadataMap["requestSize"] = requestSize
+	}
+
 	// Advanced latency info
 	if event.Latencies != nil {
 		metadataMap["backendLatency"] = event.Latencies.BackendLatency

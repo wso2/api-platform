@@ -426,6 +426,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties["responseContentType"] = Unknown
 	}
 
+	// requestSize is common to all API kinds; mirror responseSize using the Envoy access-log byte count.
+	if request != nil {
+		event.Properties["requestSize"] = request.GetRequestBodyBytes()
+	}
+
 	//Adding request and response headers for the analytics event
 	if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
 		event.Properties["requestHeaders"] = requestHeaders
@@ -451,7 +456,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if keyValuePairsFromMetadata[APITypeKey] != "" && keyValuePairsFromMetadata[APITypeKey] == "Mcp" {
 		mcpAnalytics := make(map[string]interface{})
 		if mcpSessionID, ok := keyValuePairsFromMetadata["mcp_session_id"]; ok && mcpSessionID != "" {
-			mcpAnalytics["mcp_session_id"] = mcpSessionID
+			mcpAnalytics["sessionId"] = mcpSessionID
 		}
 		if mcpRequestProps, ok := keyValuePairsFromMetadata["mcp_request_properties"]; ok && mcpRequestProps != "" {
 			// Parse the JSON string into a map
@@ -487,6 +492,10 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			} else {
 				slog.Debug("MCP error code already exists in mcpAnalytics, skipping adding it again", "mcpErrorCode", mcpErrorCode)
 			}
+		}
+		// responseContentType is captured by the analytics system policy from the response headers.
+		if ct, ok := keyValuePairsFromMetadata["response_content_type"]; ok && ct != "" {
+			event.Properties["responseContentType"] = ct
 		}
 		event.Properties["mcpAnalytics"] = mcpAnalytics
 	}
