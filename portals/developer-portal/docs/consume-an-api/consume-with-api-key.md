@@ -65,6 +65,25 @@ Revoked keys cannot be recovered. Generate a new key if you need access again.
 
 ---
 
+## Associate an API Key with an Application
+
+API keys are always generated for an API directly — never for an application. Associating a key with an application afterward is optional and exists purely for **usage analytics attribution**: it groups a key's request metrics under an application in reporting. It has no effect on the key's validity or authorization, and a key works identically whether or not it's associated with an application.
+
+1. Sign in to the Developer Portal and open **My Applications** in the sidebar.
+2. Select the application you want to attribute usage to.
+3. Go to the application's **API Keys** tab.
+4. Click **Associate existing key**.
+5. In the dialog, select the **API** the key belongs to, then select the specific **Key** from that API's existing keys.
+6. Click **Associate**.
+
+The key now appears in the application's **API Keys** list, alongside the API it belongs to and its status.
+
+To remove the association later, click **Remove** next to the key in the same list — this only detaches the key from the application; the key itself remains active and usable.
+
+> **Note:** An application can have keys associated from multiple different APIs, and a single API key can be reassociated to a different application at any time by repeating this flow.
+
+---
+
 ## Key Lifecycle Events
 
 When you generate, regenerate, or revoke an API key, the portal publishes a real-time webhook event to the organization's configured webhook subscriber(s). If the organization has a subscriber wired up to its API Gateway, the change is enforced immediately — there is no propagation delay.
@@ -73,3 +92,5 @@ When you generate, regenerate, or revoke an API key, the portal publishes a real
 
 - [Subscribe to an API](subscriptions.md) — subscribe if the API requires a subscription
 - [Consume with OAuth2](consume-with-oauth2.md) — alternative for OAuth2-secured APIs
+- [Create an Application](../manage-applications/create-an-application.md) — set up an application to associate keys with
+- [API Key Management REST API](api-key-rest-api.md) — scripted/CI equivalent of everything in this guide, including associate/dissociate
