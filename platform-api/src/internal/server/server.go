@@ -44,10 +44,12 @@ import (
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
+	"platform-api/src/internal/plugin"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	internalvault "platform-api/src/internal/vault"
+	"platform-api/src/internal/webhook"
 	"platform-api/src/internal/websocket"
 
 	"github.com/wso2/api-platform/common/authenticators"
@@ -71,8 +73,30 @@ type Server struct {
 	logger         *slog.Logger
 }
 
+// validateAuthConfig enforces production auth requirements when demo mode is off.
+func validateAuthConfig(cfg *config.Server) error {
+	if demoMode() {
+		return nil
+	}
+	if cfg.Auth.FileBased.Enabled {
+		return fmt.Errorf("file-based authentication (AUTH_FILE_BASED_ENABLED=true) is not allowed when APIP_DEMO_MODE=false; configure an IDP (AUTH_IDP_ENABLED=true) or JWT (AUTH_JWT_ENABLED=true) instead")
+	}
+	if !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
+		return fmt.Errorf("APIP_DEMO_MODE=false requires a real auth mode; set AUTH_IDP_ENABLED=true or AUTH_JWT_ENABLED=true")
+	}
+	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
+		return fmt.Errorf("JWT signature validation cannot be skipped (AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set AUTH_JWT_SKIP_VALIDATION=false for production")
+	}
+	return nil
+}
+
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
+	if err := validateAuthConfig(cfg); err != nil {
+		slogger.Error("Invalid auth configuration for production mode", "error", err)
+		return nil, err
+	}
+
 	// Initialize database using configuration
 	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
@@ -93,26 +117,30 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger.Debug("Skipping schema DDL execution — schema must be pre-provisioned", "driver", cfg.Database.Driver)
 	}
 
+	// Initialize the artifact table registry. Core tables are seeded here; plugins
+	// extend it during Init before any request is served.
+	artifactTableRegistry := repository.NewArtifactTableRegistry()
+
 	// Initialize repositories
 	orgRepo := repository.NewOrganizationRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 	apiRepo := repository.NewAPIRepo(db)
-	appRepo := repository.NewApplicationRepo(db)
+	appRepo := repository.NewApplicationRepo(db, artifactTableRegistry)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	customPolicyRepo := repository.NewCustomPolicyRepo(db)
-	artifactRepo := repository.NewArtifactRepo(db)
-	deploymentRepo := repository.NewDeploymentRepo(db)
+	artifactRepo := repository.NewArtifactRepo(db, artifactTableRegistry)
+	deploymentRepo := repository.NewDeploymentRepo(db, artifactTableRegistry)
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
 	subscriptionPlanRepo := repository.NewSubscriptionPlanRepo(db)
 	llmTemplateRepo := repository.NewLLMProviderTemplateRepo(db)
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
-	websubAPIRepo := repository.NewWebSubAPIRepo(db)
-	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
-	apiKeyRepo := repository.NewAPIKeyRepo(db)
+	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db)
+	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
+	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
 
 	// Seed the file-based organization on startup if file-based auth mode is enabled.
 	if cfg.Auth.FileBased.Enabled {
@@ -199,6 +227,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	apiUtil := &utils.APIUtil{}
 
 	// Initialize services
+	identityService := service.NewIdentityService(userIdentityMappingRepo)
 	orgService := service.NewOrganizationService(
 		orgRepo,
 		projectRepo,
@@ -208,30 +237,28 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		llmProviderRepo,
 		llmProxyRepo,
 		mcpProxyRepo,
-		websubAPIRepo,
 		llmTemplateSeeder,
 		auditRepo,
+		userOrgMappingRepo,
+		identityService,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, websubAPIRepo, auditRepo, slogger)
-	gatewayEventsService := service.NewGatewayEventsService(eventHub, slogger)
-	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, appRepo, auditRepo, identityService, slogger)
+	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
+	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
-		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
-	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo)
-	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, gatewayEventsService, auditRepo, slogger)
-	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, auditRepo, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, websubAPIRepo, webbrokerAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, apiUtil, slogger, auditRepo, identityService)
+	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
+	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.APIKey.HashingAlgorithms, slogger)
-	gitService := service.NewGitService()
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
-	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo)
-	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
-	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
-	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
-	websubAPIService := service.NewWebSubAPIService(websubAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
-	webbrokerAPIService := service.NewWebBrokerAPIService(webbrokerAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
+	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
+	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
 	// Initialize the shared database encryption key used for all encrypted DB columns.
 	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
@@ -241,14 +268,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	if dbEncryptionKey == "" && cfg.Auth.JWT.SecretKey != "" {
 		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
 		dbEncryptionKey = hex.EncodeToString(h[:])
-	}
-	hmacSecretRepo := repository.NewWebSubAPIHmacSecretRepo(db)
-	hmacSecretService, hmacErr := service.NewWebSubAPIHmacSecretService(
-		hmacSecretRepo, websubAPIRepo, gatewayEventsService, gatewayRepo,
-		dbEncryptionKey, slogger,
-	)
-	if hmacErr != nil {
-		slogger.Warn("WebSub HMAC secret service disabled — no valid encryption key configured", "error", hmacErr)
 	}
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
@@ -260,9 +279,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		cfg,
 		slogger,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
-	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, slogger)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
 		deploymentRepo,
@@ -278,28 +297,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		gatewayRepo,
 		orgRepo,
 		artifactRepo,
-		gatewayEventsService,
-		cfg,
-		slogger,
-	)
-	websubAPIDeploymentService := service.NewWebSubAPIDeploymentService(
-		websubAPIRepo,
-		deploymentRepo,
-		gatewayRepo,
-		orgRepo,
-		artifactRepo,
-		apiRepo,
-		gatewayEventsService,
-		cfg,
-		slogger,
-	)
-	webbrokerAPIDeploymentService := service.NewWebBrokerAPIDeploymentService(
-		webbrokerAPIRepo,
-		deploymentRepo,
-		gatewayRepo,
-		orgRepo,
-		artifactRepo,
-		apiRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
@@ -333,40 +330,32 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	if vaultErr != nil {
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
-	secretService := service.NewSecretService(secretRepo, secretVault)
+	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, slogger)
-	projectHandler := handler.NewProjectHandler(projectService, slogger)
-	apiHandler := handler.NewAPIHandler(apiService, slogger)
-	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
-	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, slogger)
-	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
-	appHandler := handler.NewApplicationHandler(appService, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
+	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
+	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
+	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
+	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
+	appHandler := handler.NewApplicationHandler(appService, identityService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
-	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, hmacSecretService, artifactImportService, secretService, slogger)
-	hmacSecretHandler := handler.NewWebSubAPIHmacSecretHandler(hmacSecretService, slogger)
-	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
-	gitHandler := handler.NewGitHandler(gitService, slogger)
-	deploymentHandler := handler.NewDeploymentHandler(deploymentService, slogger)
-	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService, slogger)
+	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, slogger)
+	deploymentHandler := handler.NewDeploymentHandler(deploymentService, identityService, slogger)
+	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService, identityService, slogger)
 	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, slogger)
-	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, slogger)
-	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, slogger)
-	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, slogger)
+	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, identityService, slogger)
+	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, identityService, slogger)
+	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
-	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
-	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
-	websubAPIHandler := handler.NewWebSubAPIHandler(websubAPIService, slogger)
-	websubAPIKeyHandler := handler.NewWebSubAPIKeyHandler(websubAPIService, apiKeyService, slogger)
-	websubAPIDeploymentHandler := handler.NewWebSubAPIDeploymentHandler(websubAPIDeploymentService, slogger)
-	webbrokerAPIHandler := handler.NewWebBrokerAPIHandler(webbrokerAPIService, slogger)
-	webbrokerAPIKeyHandler := handler.NewWebBrokerAPIKeyHandler(webbrokerAPIService, apiKeyService, slogger)
-	webbrokerAPIDeploymentHandler := handler.NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService, slogger)
+	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
+	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
-	secretHandler := handler.NewSecretHandler(secretService, slogger)
+	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
 		Enabled:  cfg.Deployments.TimeoutEnabled,
@@ -412,7 +401,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	wsHandler.RegisterRoutes(mux)
 	internalGatewayHandler.RegisterRoutes(mux)
 	apiKeyHandler.RegisterRoutes(mux)
-	gitHandler.RegisterRoutes(mux)
 	deploymentHandler.RegisterRoutes(mux)
 	llmHandler.RegisterRoutes(mux)
 	llmDeploymentHandler.RegisterRoutes(mux)
@@ -422,14 +410,77 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyDeploymentHandler.RegisterRoutes(mux)
 	mcpProxyHandler.RegisterRoutes(mux)
 	mcpProxyDeploymentHandler.RegisterRoutes(mux)
-	websubAPIHandler.RegisterRoutes(mux)
-	websubAPIKeyHandler.RegisterRoutes(mux)
-	websubAPIDeploymentHandler.RegisterRoutes(mux)
-	hmacSecretHandler.RegisterRoutes(mux)
-	webbrokerAPIHandler.RegisterRoutes(mux)
-	webbrokerAPIKeyHandler.RegisterRoutes(mux)
-	webbrokerAPIDeploymentHandler.RegisterRoutes(mux)
 	secretHandler.RegisterRoutes(mux)
+
+	// Initialize plugins and register their routes.
+	// Plugins contribute routes, DB schema, and OpenAPI scopes at startup.
+	pluginDeps := &plugin.Deps{
+		DB:                    db,
+		Config:                cfg,
+		Logger:                slogger,
+		EventHub:              eventHub,
+		ArtifactTableRegistry: artifactTableRegistry,
+		GatewayRepo:           gatewayRepo,
+		OrgRepo:               orgRepo,
+		ProjectRepo:           projectRepo,
+		ArtifactRepo:          artifactRepo,
+		DeploymentRepo:        deploymentRepo,
+		APIKeyRepo:            apiKeyRepo,
+		AuditRepo:             auditRepo,
+		SecretRepo:            secretRepo,
+		APIRepo:               apiRepo,
+		GatewayEventsService:  gatewayEventsService,
+		APIKeyService:         apiKeyService,
+		IdentityService:       identityService,
+		DBEncryptionKey:       dbEncryptionKey,
+	}
+	for _, p := range plugin.All() {
+		if err := p.Init(pluginDeps); err != nil {
+			return nil, fmt.Errorf("plugin %q failed to initialize: %w", p.Name(), err)
+		}
+		// Merge plugin-contributed scopes into the main registry.
+		if spec := p.OpenAPISpec(); len(spec) > 0 {
+			pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
+			if regErr != nil {
+				slogger.Warn("plugin scope registry load failed", "plugin", p.Name(), "error", regErr)
+			} else {
+				scopeRegistry.Merge(pluginRegistry)
+			}
+		}
+		p.RegisterRoutes(mux)
+		slogger.Info("Plugin initialized", "name", p.Name())
+		// Wire plugin-owned repos/services into core services.
+		if ep, ok := p.(plugin.EventArtifactPlugin); ok {
+			internalGatewayService.SetEventArtifactRepos(ep.GetWebSubAPIRepo(), ep.GetWebBrokerAPIRepo())
+			internalGatewayHandler.SetHmacSecretService(ep.GetHmacSecretService())
+		}
+		if guard, ok := p.(service.ProjectDeletionGuard); ok {
+			projectService.RegisterDeletionGuard(guard)
+		}
+	}
+	slogger.Info("Registered API routes successfully")
+
+	// Register the control-plane webhook receiver (Developer Portal -> Platform API) when enabled.
+	// Authenticity is established by HMAC signature; the route is excluded from JWT/IDP auth via
+	// cfg.Auth.SkipPaths (see config defaults).
+	if cfg.Webhook.Enabled {
+		webhookDecryptor, err := webhook.NewDecryptor(cfg.Webhook.PrivateKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize webhook decryptor: %w", err)
+		}
+		webhookReceiver := webhook.NewReceiver(
+			cfg.Webhook,
+			webhookDecryptor,
+			apiKeyService,
+			subscriptionService,
+			appService,
+			orgRepo,
+			slogger,
+		)
+		webhookReceiver.RegisterRoutes(mux)
+		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath, "gatewayType", cfg.Webhook.GatewayType)
+	}
+
 	slogger.Info("Registered API routes successfully")
 
 	// Build the middleware chain that wraps the mux.
@@ -461,6 +512,21 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		}
 		chain = append(chain, authenticator.Middleware()...)
 	}
+
+	// Resolve the organization claim (the platform UUID in file-based mode, or
+	// the IDP's organization id in IDP mode) into the platform organization UUID
+	// so downstream handlers scope their queries by the correct value.
+	chain = append(chain, middleware.OrganizationResolverMiddleware(
+		func(orgClaim string) (string, bool) {
+			if org, err := orgRepo.GetOrganizationByIdpOrgRefUUID(orgClaim); err == nil && org != nil {
+				return org.ID, true
+			}
+			if org, err := orgRepo.GetOrganizationByUUID(orgClaim); err == nil && org != nil {
+				return org.ID, true
+			}
+			return "", false
+		},
+	))
 
 	// Apply the OpenAPI-driven scope enforcer after authentication so identity
 	// values are already in the context when scope checks run.
@@ -681,6 +747,14 @@ func (s *Server) Start(port string, certDir string) error {
 
 	// Generate new certificate if not loaded
 	if cert.Certificate == nil {
+		if !demoMode() {
+			return fmt.Errorf(
+				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
+					"mount real certificates or set TLS_CERT_DIR to a directory containing cert.pem and key.pem; "+
+					"self-signed certificate generation is only permitted in demo mode",
+				certDir,
+			)
+		}
 		s.logger.Info("Generating self-signed certificate for development...")
 		// Ensure cert directory exists
 		if err := os.MkdirAll(certDir, 0755); err != nil {
@@ -752,6 +826,11 @@ func (s *Server) Start(port string, certDir string) error {
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			s.logger.Error("HTTP server shutdown error", "error", err)
 		}
+		for _, p := range plugin.All() {
+			if err := p.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
+			}
+		}
 		s.wsManager.Shutdown()
 		s.dispatcher.Shutdown()
 		if err := s.eventHub.Close(); err != nil {
@@ -778,34 +857,53 @@ func (s *Server) GetMux() *http.ServeMux {
 }
 
 // seedFileBasedOrg ensures the file-based auth organization exists in the DB.
-// It fetches by the configured handle first; only creates the org when no
-// matching org is found. The org ID in cfg is updated to the persisted value
-// so the login handler issues tokens with the correct org ID.
+// It fetches by the configured handle (Organization.ID) first; only creates the
+// org when no matching org is found. The organization's idp_organization_ref_uuid
+// is stored back into cfg (Organization.UUID) so the login handler issues tokens
+// whose `organization` claim matches the value the organization resolver looks up.
 func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
 	ba := &cfg.Auth.FileBased
 
-	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.Handle)
+	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.ID)
 	if err != nil {
 		return fmt.Errorf("failed to check file-based organization: %w", err)
 	}
 	if existing != nil {
-		ba.Organization.ID = existing.ID
-		slogger.Info("File-based organization already exists", "id", existing.ID, "handle", existing.Handle)
+		// The `organization` claim is resolved via idp_organization_ref_uuid, so
+		// carry that value (not the PK) even though they coincide for file-based orgs.
+		ba.Organization.UUID = existing.IdpOrganizationRefUUID
+		slogger.Info("File-based organization already exists", "uuid", existing.ID, "handle", existing.Handle)
 		return nil
+	}
+
+	// Honor an operator-pinned UUID (config/env) so the org — and therefore the
+	// `organization` claim — stays stable across restarts and fresh databases;
+	// generate one only when none is configured.
+	uuid := ba.Organization.UUID
+	if uuid == "" {
+		uuid, err = utils.GenerateUUID()
+		if err != nil {
+			return fmt.Errorf("failed to generate file-based organization UUID: %w", err)
+		}
 	}
 
 	now := time.Now()
 	org := &model.Organization{
-		ID:        ba.Organization.ID,
-		Name:      ba.Organization.Name,
-		Handle:    ba.Organization.Handle,
-		Region:    ba.Organization.Region,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:     uuid,
+		Name:   ba.Organization.DisplayName,
+		Handle: ba.Organization.ID,
+		Region: ba.Organization.Region,
+		// File-based auth has no external IDP, so the organization references
+		// itself: the org claim in issued tokens is this UUID, and the resolver
+		// matches it via the same idp_organization_ref_uuid path as IDP orgs.
+		IdpOrganizationRefUUID: uuid,
+		CreatedAt:              now,
+		UpdatedAt:              now,
 	}
 	if err := orgRepo.CreateOrganization(org); err != nil {
 		return fmt.Errorf("failed to create file-based organization: %w", err)
 	}
-	slogger.Info("Seeded file-based organization", "id", org.ID, "handle", org.Handle)
+	ba.Organization.UUID = uuid
+	slogger.Info("Seeded file-based organization", "uuid", org.ID, "handle", org.Handle)
 	return nil
 }

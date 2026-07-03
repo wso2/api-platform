@@ -1,4 +1,4 @@
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: GraphQL
 
 metadata:
@@ -21,9 +21,7 @@ spec:
 
   subscriptionPlans: []
 
-  visibility: PUBLIC
   agentVisibility: VISIBLE
-  visibleGroups: []
 
   businessInformation:
     businessOwner: Trevor Blades

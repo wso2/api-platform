@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelNameBtn.disabled = true;
 
             const result = await saveApplicationChanges(applicationId, {
-                name: newName,
+                displayName: newName,
                 description: applicationDescription.dataset.original
             }, nameEditError);
 
@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelDescriptionBtn.disabled = true;
 
             const result = await saveApplicationChanges(applicationId, {
-                name: applicationName.dataset.original,
+                displayName: applicationName.dataset.original,
                 description: newDescription
             }, descriptionEditError);
 
@@ -146,15 +146,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 errorElement.style.display = 'none';
             }
 
-            const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${applicationId}`), {
+            const response = await fetch(devportalApi.root(`/applications/${applicationId}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    ...data,
-                    type: 'WEB'
-                }),
+                body: JSON.stringify(data),
             });
 
             if (!response.ok) {

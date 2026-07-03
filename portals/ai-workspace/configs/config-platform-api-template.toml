@@ -104,10 +104,9 @@ enabled  = false
 enabled = true
 
 [auth.file_based.organization]
-id     = ""             # Required: stable UUID for this org — generate with: uuidgen
-name   = "My Organization"
-handle = "my-org"       # URL-safe slug
-region = "us"
+id           = "default"          # Required: organization handle (URL-safe slug)
+display_name = "Default"
+region       = "us"
 
 # Add one [[auth.file_based.users]] block per user.
 # Generate a bcrypt hash with: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
@@ -115,7 +114,7 @@ region = "us"
 username      = "admin"
 password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # Full scope set — trim to restrict permissions for this user.
-scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage"
+scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
 
 # Additional users — uncomment and repeat this block as needed
 # [[auth.file_based.users]]

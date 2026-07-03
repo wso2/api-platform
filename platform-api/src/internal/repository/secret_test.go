@@ -27,7 +27,9 @@ import (
 
 // ---- helpers ----------------------------------------------------------------
 
-func createTestSecret(t *testing.T, db interface{ Exec(string, ...interface{}) (interface{ RowsAffected() (int64, error) }, error) }, orgID, handle string) {
+func createTestSecret(t *testing.T, db interface {
+	Exec(string, ...interface{}) (interface{ RowsAffected() (int64, error) }, error)
+}, orgID, handle string) {
 	t.Helper()
 }
 
@@ -231,7 +233,7 @@ func TestSecretRepo_List_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		s := &model.Secret{
 			OrganizationID: orgID,
-			Handle:         string(rune('a' + i)) + "-secret",
+			Handle:         string(rune('a'+i)) + "-secret",
 			Ciphertext:     []byte("ct"),
 			Hash:           "h",
 			CreatedBy:      "u",
@@ -423,7 +425,7 @@ func TestSecretRepo_FindRefs_WithArtifactLevelRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
-	_, err = db.Exec(`INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration, created_at, updated_at)
+	_, err = db.Exec(`INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, project_uuid, lifecycle_status, configuration, created_at, updated_at)
 		VALUES ('art-uuid-001', 'org-ref-002', 'my-api', 'My API', 'v1.0', 'proj-ref-002', 'CREATED', '{}', datetime('now'), datetime('now'))`)
 	if err != nil {
 		t.Fatalf("insert rest_api: %v", err)

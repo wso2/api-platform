@@ -20,25 +20,26 @@ const sequelize = require('../db/sequelizeConfig');
 const apiKeyDao = require('../dao/apiKeyDao');
 const apiDao = require('../dao/apiDao');
 const applicationDao = require('../dao/applicationDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { publish } = require('./webhooks/eventPublisher');
 const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
+const constants = require('../utils/constants');
 
-const KEY_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+const KEY_HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const EXPIRES_AT_HAS_TZ = /(?:Z|[+-]\d{2}:\d{2})$/;
 const MIN_EXPIRY_MS = Date.UTC(1970, 0, 1);
 const MAX_EXPIRY_MS = Date.UTC(2100, 11, 31, 23, 59, 59, 999);
 
 function generateSecret() {
-    return 'ak_' + crypto.randomBytes(32).toString('base64').replace(/[+/=]/g, (c) =>
-        c === '+' ? '-' : c === '/' ? '_' : '');
+    return crypto.randomBytes(32).toString('base64url');
 }
 
-function parseAndValidateName(raw) {
+function parseAndValidateHandle(raw) {
     if (typeof raw !== 'string') return null;
     const n = raw.trim();
-    return KEY_NAME_PATTERN.test(n) ? n : null;
+    return KEY_HANDLE_PATTERN.test(n) ? n : null;
 }
 
 function parseExpiresAt(raw) {
@@ -74,21 +75,23 @@ async function resolveApi(orgId, apiId) {
     const row = rows[0];
     const dv = row.dataValues || row;
     return {
-        apiId: dv.API_ID,
-        apiName: dv.API_NAME || null,
-        apiVersion: dv.API_VERSION || null,
-        apiRefId: dv.REFERENCE_ID || ''
+        id: dv.uuid,
+        name: dv.name || null,
+        version: dv.version || null,
+        refId: dv.ref_id || '',
+        type: dv.type || null
     };
 }
 
 async function resolveApiDirect(orgId, apiId) {
-    const rows = await apiDao.getByCondition({ API_ID: apiId, ORG_ID: orgId });
+    const rows = await apiDao.getByCondition({ uuid: apiId, org_uuid: orgId });
     if (!rows || rows.length === 0) return null;
     const dv = rows[0].dataValues || rows[0];
     return {
-        apiName: dv.API_NAME || null,
-        apiVersion: dv.API_VERSION || null,
-        apiRefId: dv.REFERENCE_ID || ''
+        name: dv.name || null,
+        version: dv.version || null,
+        refId: dv.ref_id || '',
+        type: dv.type || null
     };
 }
 
@@ -96,63 +99,51 @@ async function resolveSubscription(orgId, subscriptionId) {
     if (!subscriptionId) return null;
     const sub = await subDao.getById(orgId, subscriptionId);
     if (!sub) return null;
-    const plan = sub.DP_SUBSCRIPTION_PLAN;
+    const plan = sub.dp_subscription_plan;
     return {
-        ref_id: sub.SUB_ID,
-        plan_ref_id: plan ? (plan.REF_ID || null) : null,
-        plan_name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null
+        ref_id: sub.uuid,
+        plan_ref_id: plan ? (plan.ref_id || null) : null,
+        plan_name: plan ? (plan.display_name || null) : null
     };
 }
 
 /**
  * Validate that an app exists, belongs to orgId, and was created by actor.
- * Returns { id, name } or null. Throws 404 only when an appId was actually given.
+ * Returns { id, display_name, handle } or null. Throws 404 only when an appId was actually given.
  */
 async function resolveApp(orgId, appId, actor) {
     if (!appId) return null;
     const app = await applicationDao.get(orgId, appId, actor);
     if (!app) throw Object.assign(new Error('Application not found'), { status: 404 });
-    return { id: app.APP_ID, name: app.NAME };
+    return { id: app.uuid, display_name: app.display_name, handle: app.handle };
 }
 
 function applicationOf(key) {
-    const app = key.DP_APPLICATION;
-    return app ? { id: app.APP_ID, name: app.NAME } : null;
+    const app = key.dp_api_key_app_mapping?.dp_application;
+    return app ? { id: app.uuid, display_name: app.display_name, handle: app.handle } : null;
 }
 
 /**
- * Publish apikey.application_updated for a single key — { key_id, application }.
- * `application` is { id, name } when associated, or null when cleared.
+ * Publish apikey.application_updated for a single key — { key_id, handle, display_name, api, application }.
+ * `application` is { id, display_name, handle } when associated, or null when cleared.
  */
-async function publishKeyApplicationUpdated(orgId, keyId, application, transaction) {
+async function publishKeyApplicationUpdated(orgId, keyId, handle, displayName, api, application, transaction) {
     await publish('apikey.application_updated',
-        { key_id: keyId, application },
+        { key_id: keyId, handle, display_name: displayName, api, application },
         { transaction, orgId, aggregateType: 'apikey', aggregateId: keyId }
     );
 }
 
 /**
- * Fan out an application-level change (rename or delete) to every key currently
- * associated with that app, as individual per-key apikey.application_updated events.
- * `application` is { id, name } for a rename, or null for a delete.
- */
-async function notifyApplicationKeysChanged(orgId, appId, application, transaction) {
-    if (!appId) return;
-    const keys = await apiKeyDao.list(orgId, { appId }, transaction);
-    for (const key of keys) {
-        await publishKeyApplicationUpdated(orgId, key.KEY_ID, application, transaction);
-    }
-}
-
-/**
- * Generate a new API key. Returns { keyId, name, plaintext, expiresAt, status }.
+ * Generate a new API key. Returns { keyId, id, displayName, key, expiresAt, status }.
  * The plaintext is shown to the caller exactly once and never persisted.
  */
-async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, actor }) {
+async function generate({ orgId, apiId, subscriptionId, appId, handle, displayName, expiresAt, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
-    const normalizedName = parseAndValidateName(name);
-    if (!normalizedName) throw Object.assign(new Error('name must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    const normalizedHandle = parseAndValidateHandle(handle);
+    if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    const normalizedDisplayName = typeof displayName === 'string' && displayName.trim() ? displayName.trim() : normalizedHandle;
 
     const expiry = parseExpiresAt(expiresAt);
     if (!expiry.ok) throw Object.assign(new Error(expiry.description), { status: 400 });
@@ -165,31 +156,36 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
     let plaintext = generateSecret();
     const subscription = await resolveSubscription(orgId, subscriptionId);
     let keyId;
+    let audit;
 
     try {
         await sequelize.transaction(async (t) => {
             const key = await apiKeyDao.create(
-                { apiId: api.apiId, subscriptionId, appId: application ? application.id : null, orgId,
-                  name: normalizedName, expiresAt: expiry.date, createdBy: actor },
+                { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
+                  handle: normalizedHandle, displayName: normalizedDisplayName, expiresAt: expiry.date, createdBy: actor },
                 t
             );
-            keyId = key.KEY_ID;
+            keyId = key.uuid;
+            audit = await userIdpReferenceDao.buildSingleAuditFields(key);
 
             await publish('apikey.generated',
                 {
                     key_id: keyId,
-                    name: normalizedName,
+                    handle: normalizedHandle,
+                    display_name: normalizedDisplayName,
                     expires_at: expiry.date ? expiry.date.toISOString() : null,
-                    api: { name: api.apiName, version: api.apiVersion, ref_id: api.apiRefId },
+                    api: { name: api.name, version: api.version, ref_id: api.refId, type: api.type },
                     ...(subscription && { subscription }),
                     ...(application && { application })
                 },
                 { transaction: t, orgId,
-                  aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
+                  aggregateType: 'apikey', aggregateId: keyId, secretFields: { key: plaintext } }
             );
 
             if (application) {
-                await publishKeyApplicationUpdated(orgId, keyId, application, t);
+                await publishKeyApplicationUpdated(orgId, keyId, normalizedHandle, normalizedDisplayName,
+                    { name: api.name, version: api.version, ref_id: api.refId, type: api.type },
+                    application, t);
             }
         });
     } catch (err) {
@@ -197,39 +193,50 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
         throw err;
     }
 
-    logger.info('[apiKeyService] key generated', { keyId, orgId, apiId, appId: application ? application.id : null, actor });
-    return { keyId, name: normalizedName, key: plaintext, expiresAt: expiry.date, status: 'ACTIVE' };
+    logger.info('API key generated', { keyId, orgId, apiId, appId: application ? application.id : null, actor });
+    return { keyId, id: normalizedHandle, displayName: normalizedDisplayName, key: plaintext, expiresAt: expiry.date, status: constants.API_KEY_STATUS.ACTIVE, ...audit };
 }
 
 /**
  * Regenerate an existing key: same keyId, new secret, status stays ACTIVE.
  * The old secret is silently invalidated by whatever consumes the webhook event.
  */
-async function regenerate({ orgId, keyId, actor }) {
+async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
-    if (existing.STATUS === 'REVOKED') throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
+    if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (existing.status === constants.API_KEY_STATUS.REVOKED) throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
 
-    const apiInfo = await resolveApiDirect(orgId, existing.API_ID);
+    const expiry = parseExpiresAt(expiresAt);
+    if (!expiry.ok) throw Object.assign(new Error(expiry.description), { status: 400 });
+    const newExpiresAt = expiresAt === undefined ? existing.expires_at : expiry.date;
+
+    const apiInfo = await resolveApiDirect(orgId, existing.api_uuid);
     let plaintext = generateSecret();
-    const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_ID);
+    const subscription = await resolveSubscription(orgId, existing.subscription_uuid);
     const application = applicationOf(existing);
 
     try {
         await sequelize.transaction(async (t) => {
+            if (expiresAt !== undefined) {
+                const updated = await apiKeyDao.updateExpiry(orgId, keyId, newExpiresAt, actor, t);
+                if (!updated) throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
+            }
+
             await publish('apikey.regenerated',
                 {
                     key_id: keyId,
-                    name: existing.NAME,
-                    expires_at: existing.EXPIRES_AT ? new Date(existing.EXPIRES_AT).toISOString() : null,
-                    api: { name: apiInfo ? apiInfo.apiName : null, version: apiInfo ? apiInfo.apiVersion : null, ref_id: apiInfo ? apiInfo.apiRefId : '' },
+                    handle: existing.handle,
+                    display_name: existing.display_name,
+                    expires_at: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
+                    api: { name: apiInfo ? apiInfo.name : null, version: apiInfo ? apiInfo.version : null, ref_id: apiInfo ? apiInfo.refId : '', type: apiInfo ? apiInfo.type : null },
                     ...(subscription && { subscription }),
                     ...(application && { application })
                 },
                 { transaction: t, orgId,
-                  aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
+                  aggregateType: 'apikey', aggregateId: keyId, secretFields: { key: plaintext } }
             );
         });
     } catch (err) {
@@ -237,31 +244,33 @@ async function regenerate({ orgId, keyId, actor }) {
         throw err;
     }
 
-    logger.info('[apiKeyService] key regenerated', { keyId, orgId, actor });
-    return { keyId, name: existing.NAME, key: plaintext, expiresAt: existing.EXPIRES_AT, status: 'ACTIVE' };
+    logger.info('API key regenerated', { keyId, orgId, actor });
+    return { keyId, id: existing.handle, displayName: existing.display_name, key: plaintext, expiresAt: newExpiresAt, status: constants.API_KEY_STATUS.ACTIVE };
 }
 
 /**
  * Revoke a key. Fires apikey.revoked so webhook subscribers can reject it immediately.
  */
-async function revoke({ orgId, keyId, actor }) {
+async function revoke({ orgId, apiId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-    const revokeApiInfo = await resolveApiDirect(orgId, existing.API_ID);
-    const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_ID);
+    const revokeApiInfo = await resolveApiDirect(orgId, existing.api_uuid);
+    const subscription = await resolveSubscription(orgId, existing.subscription_uuid);
 
     await sequelize.transaction(async (t) => {
-        const revoked = await apiKeyDao.revoke(orgId, keyId, t);
+        const revoked = await apiKeyDao.revoke(orgId, keyId, actor, t);
         if (!revoked) throw Object.assign(new Error('Key already revoked or not found'), { status: 409 });
 
         await publish('apikey.revoked',
             {
                 key_id: keyId,
-                name: existing.NAME,
-                api: { name: revokeApiInfo ? revokeApiInfo.apiName : null, version: revokeApiInfo ? revokeApiInfo.apiVersion : null, ref_id: revokeApiInfo ? revokeApiInfo.apiRefId : '' },
+                handle: existing.handle,
+                display_name: existing.display_name,
+                api: { name: revokeApiInfo ? revokeApiInfo.name : null, version: revokeApiInfo ? revokeApiInfo.version : null, ref_id: revokeApiInfo ? revokeApiInfo.refId : '', type: revokeApiInfo ? revokeApiInfo.type : null },
                 ...(subscription && { subscription })
             },
             { transaction: t, orgId,
@@ -269,7 +278,7 @@ async function revoke({ orgId, keyId, actor }) {
         );
     });
 
-    logger.info('[apiKeyService] key revoked', { keyId, orgId, actor });
+    logger.info('API key revoked', { keyId, orgId, actor });
 }
 
 async function list(orgId, filters, transaction) {
@@ -282,50 +291,56 @@ async function list(orgId, filters, transaction) {
  * for this key; the previously-associated app (if any) needs no event of its own since
  * none of its other keys are affected.
  */
-async function associateApplication({ orgId, keyId, appId, actor }) {
+async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
-    if (existing.STATUS === 'REVOKED') throw Object.assign(new Error('Cannot associate a revoked key'), { status: 409 });
+    if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (existing.status === constants.API_KEY_STATUS.REVOKED) throw Object.assign(new Error('Cannot associate a revoked key'), { status: 409 });
 
     const application = await resolveApp(orgId, appId, actor);
     if (!application) throw Object.assign(new Error('appId is required'), { status: 400 });
 
     await sequelize.transaction(async (t) => {
-        const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, t, { activeOnly: true });
+        const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, actor, t, { activeOnly: true });
         if (!updated) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-        await publishKeyApplicationUpdated(orgId, keyId, application, t);
+        const meta = existing.dp_api_metadata;
+        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
+        await publishKeyApplicationUpdated(orgId, keyId, existing.handle, existing.display_name, api, application, t);
     });
 
-    logger.info('[apiKeyService] key associated to app', { keyId, orgId, appId: application.id, actor });
-    return { keyId, application };
+    logger.info('API key associated to application', { keyId, orgId, appId: application.id, actor });
+    return { keyId, application: { id: application.handle, displayName: application.display_name } };
 }
 
 /**
  * Remove a key's app association, if any. No-op (but not an error) if the key
  * had no app associated.
  */
-async function removeApplicationAssociation({ orgId, keyId, actor }) {
+async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
+    if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-    if (!existing.APP_ID) return { keyId, application: null };
+    if (!existing.dp_api_key_app_mapping) return { keyId, application: null };
 
     await sequelize.transaction(async (t) => {
-        await apiKeyDao.setApplication(orgId, keyId, null, t);
-        await publishKeyApplicationUpdated(orgId, keyId, null, t);
+        await apiKeyDao.setApplication(orgId, keyId, null, actor, t);
+        const meta = existing.dp_api_metadata;
+        const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
+        await publishKeyApplicationUpdated(orgId, keyId, existing.handle, existing.display_name, api, null, t);
     });
 
-    logger.info('[apiKeyService] key application association removed', { keyId, orgId, actor });
+    logger.info('API key application association removed', { keyId, orgId, actor });
     return { keyId, application: null };
 }
 
 module.exports = {
     generate, regenerate, revoke, list,
-    associateApplication, removeApplicationAssociation, notifyApplicationKeysChanged,
+    associateApplication, removeApplicationAssociation,
     publishKeyApplicationUpdated
 };

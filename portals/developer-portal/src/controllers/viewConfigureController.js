@@ -20,13 +20,14 @@ const path = require('path');
 const logger = require('../config/logger');
 const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
+const apiFileDao = require('../dao/apiFileDao');
 const viewDao = require('../dao/viewDao');
 const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
-const apiFlowService = require('../services/apiFlowService');
+const apiWorkflowService = require('../services/apiWorkflowService');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 const { config } = require('../config/configLoader');
@@ -34,9 +35,9 @@ const constants = require('../utils/constants');
 
 const loadViewSettingsPage = async (req, res) => {
 
-    let orgID;
+    let orgId;
     const viewName = req.params.viewName || 'default';
-    const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'api-flows', 'page.hbs');
+    const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'settings', 'page.hbs');
     const layoutPath = path.join(process.cwd(), 'src', 'defaultContent', 'layout', 'main.hbs');
 
     const baseUrl = '/' + req.params.orgName + '/views/' + viewName;
@@ -45,40 +46,43 @@ const loadViewSettingsPage = async (req, res) => {
         baseUrl,
         viewName,
         csrfToken,
-        showApiWorkflowsNav: config.features?.apiWorkflows?.enabled === true
+        showApiWorkflowsNav: config.features?.apiWorkflows?.enabled === true,
+        demoMode: config.demo?.enabled === true
     };
     try {
         const orgName = req.params.orgName;
         templateContent.loggedOrg = orgName;
-        orgID = await orgDao.getId(orgName);
+        orgId = await orgDao.getId(orgName);
         const orgDetails = await orgDao.get(orgName);
-        templateContent.devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
-        templateContent.orgID = orgID;
+        templateContent.devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        templateContent.orgId = orgId;
 
-        const viewId = await viewDao.getId(orgID, viewName);
-        const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
-        templateContent.apiFlows = apiFlows;
+        const viewId = await viewDao.getId(orgId, viewName);
+        const apiWorkflows = await apiWorkflowService.getAllAPIWorkflowsFromDB(orgId, viewId);
+        templateContent.apiWorkflows = apiWorkflows;
 
-        const allAPIs = await apiDao.getByCondition({ ORG_ID: orgID });
+        const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
+        const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
         templateContent.orgAPIs = allAPIs.map(api => ({
-            apiId: api.API_ID,
-            apiName: api.API_NAME,
-            apiHandle: api.API_HANDLE,
-            apiDescription: api.API_DESCRIPTION,
-            apiType: api.API_TYPE,
-            apiVersion: api.API_VERSION,
-            apiStatus: api.STATUS,
-            productionUrl: api.PRODUCTION_URL,
-            sandboxUrl: api.SANDBOX_URL,
-            tags: api.TAGS || '',
-            agentVisibility: api.AGENT_VISIBILITY,
-            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.PLAN_NAME),
+            apiId: api.handle,
+            apiName: api.name,
+            apiHandle: api.handle,
+            apiDescription: api.description,
+            apiType: api.type,
+            apiVersion: api.version,
+            apiStatus: api.status,
+            productionUrl: api.production_url,
+            sandboxUrl: api.sandbox_url,
+            tags: (api.dp_tags || []).map(tag => tag.name),
+            agentVisibility: api.agent_visibility,
+            subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.display_name),
+            existingDocs: docNamesByApiId[api.uuid] || [],
         }));
 
         let orgLabels = [];
         try {
-            const labelsRaw = await labelDao.list(orgID);
-            orgLabels = labelsRaw.map(l => ({ labelId: l.LABEL_ID, name: l.NAME, displayName: l.DISPLAY_NAME }));
+            const labelsRaw = await labelDao.list(orgId);
+            orgLabels = labelsRaw.map(l => ({ labelId: l.uuid, id: l.handle, displayName: l.display_name }));
         } catch (err) {
             logger.warn('Failed to load labels for settings page', { error: err.message });
         }
@@ -86,14 +90,19 @@ const loadViewSettingsPage = async (req, res) => {
 
         let orgPlans = [];
         try {
-            const plansRaw = await subscriptionPlanDao.list(orgID);
+            const plansRaw = await subscriptionPlanDao.list(orgId);
             orgPlans = plansRaw.map(p => ({
-                planId: p.PLAN_ID,
-                planName: p.PLAN_NAME,
-                displayName: p.DISPLAY_NAME,
-                description: p.DESCRIPTION || '',
-                requestCount: p.REQUEST_COUNT,
-                refId: p.REF_ID || '',
+                planId: p.handle,
+                planName: p.handle,
+                displayName: p.display_name,
+                description: p.description || '',
+                refId: p.ref_id || '',
+                limits: (p.limits || []).map(l => ({
+                    limitType:  l.limit_type,
+                    timeUnit:   l.time_unit ?? null,
+                    timeAmount: l.time_amount,
+                    limitCount: Number(l.limit_count),
+                })),
             }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });
@@ -102,7 +111,7 @@ const loadViewSettingsPage = async (req, res) => {
 
         let webhookSubscribers = [];
         try {
-            const webhookSubscriberRecords = await whDao.list(orgID);
+            const webhookSubscriberRecords = await whDao.list(orgId);
             webhookSubscribers = webhookSubscriberRecords.map(r => new WebhookSubscriberDTO(r));
         } catch (err) {
             logger.warn('Failed to load webhook subscribers for settings page', { error: err.message });
@@ -111,18 +120,18 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.webhookEventTypes = [...VALID_EVENT_TYPES];
 
         const configAsset = await orgDao.getContent({
-            orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
+            orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         let llmsConfig = { aiEnabled: true, portalName: '', portalDescription: '' };
         if (configAsset) {
-            try { llmsConfig = { ...llmsConfig, ...JSON.parse(configAsset.FILE_CONTENT.toString('utf8')) }; } catch (e) { /* ignore */ }
+            try { llmsConfig = { ...llmsConfig, ...JSON.parse(configAsset.file_content.toString('utf8')) }; } catch (e) { /* ignore */ }
         }
         templateContent.llmsConfig = llmsConfig;
-        templateContent.llmsConfigContext = { orgID, viewName, csrfToken, baseUrl };
+        templateContent.llmsConfigContext = { orgId, viewName, csrfToken, baseUrl };
 
         templateContent.profile = req.user;
         const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
-        const dbLayout = orgID ? await loadLayoutFromAPI(orgID, viewName) : '';
+        const dbLayout = orgId ? await loadLayoutFromAPI(orgId, viewName) : '';
         let html;
         if (dbLayout) {
             html = await renderGivenTemplate(templateResponse, dbLayout, templateContent);
@@ -143,14 +152,14 @@ const loadViewSettingsPage = async (req, res) => {
 const getLlmsConfig = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
-        const orgID = await orgDao.getId(orgName);
+        const orgId = await orgDao.getId(orgName);
         const asset = await orgDao.getContent({
-            orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
+            orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         if (!asset) {
             return res.json({ aiEnabled: true, portalName: '', portalDescription: '' });
         }
-        res.json(JSON.parse(asset.FILE_CONTENT.toString('utf8')));
+        res.json(JSON.parse(asset.file_content.toString('utf8')));
     } catch (err) {
         logger.error('Error getting llms config', { error: err.message, stack: err.stack });
         res.status(500).json({ error: err.message });
@@ -168,19 +177,20 @@ const saveLlmsConfig = async (req, res) => {
         .trim().replace(/[<>"'&]/g, '').slice(0, 1000);
 
     try {
-        const orgID = await orgDao.getId(orgName);
+        const orgId = await orgDao.getId(orgName);
+        const userId = util.resolveActor(req);
         const content = Buffer.from(JSON.stringify({ aiEnabled, portalName, portalDescription }));
         const orgData = {
-            orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName,
-            fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG
+            orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName,
+            fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG,
         };
         const existing = await orgDao.getContent({
-            orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
+            orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         if (existing) {
-            await orgDao.updateContent(orgData);
+            await orgDao.updateContent({ ...orgData, updatedBy: userId });
         } else {
-            await orgDao.createContent(orgData);
+            await orgDao.createContent({ ...orgData, createdBy: userId });
         }
         res.json({ message: 'Saved successfully' });
     } catch (err) {

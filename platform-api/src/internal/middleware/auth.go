@@ -41,6 +41,7 @@ const (
 	keyOrganization  contextKey = "organization"
 	keyOrgName       contextKey = "org_name"
 	keyOrgHandle     contextKey = "org_handle"
+	keyIdpOrgRef     contextKey = "idp_org_ref"
 	keyScope         contextKey = "scope"
 	keyAudience      contextKey = "audience"
 	keyClaims        contextKey = "claims"
@@ -49,14 +50,14 @@ const (
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
 type CustomClaims struct {
-	Audience      string   `json:"aud"`
-	Email         string   `json:"email"`
-	FirstName     string   `json:"firstName"`
-	LastName      string   `json:"lastName"`
-	JTI           string   `json:"jti"`
-	Organization  string   `json:"organization"`
-	Scope         string   `json:"scope"`
-	Username      string   `json:"username"`
+	Audience     string `json:"aud"`
+	Email        string `json:"email"`
+	FirstName    string `json:"firstName"`
+	LastName     string `json:"lastName"`
+	JTI          string `json:"jti"`
+	Organization string `json:"organization"`
+	Scope        string `json:"scope"`
+	Username     string `json:"username"`
 	jwt.RegisteredClaims
 }
 
@@ -190,7 +191,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	}
 
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, keyUserID, sub)
+	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, ""))
 	ctx = context.WithValue(ctx, keyUsername, claimsObj.Username)
 	ctx = context.WithValue(ctx, keyEmail, claimsObj.Email)
 	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
@@ -229,11 +230,9 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) 
 			orgName := getStringClaim(mapClaims, claimNames.OrgNameClaim)
 			orgHandle := getStringClaim(mapClaims, claimNames.OrgHandleClaim)
 
-			userID := authCtx.UserID
-			if claimNames.UserIDClaim != "" {
-				if v := getStringClaim(mapClaims, claimNames.UserIDClaim); v != "" {
-					userID = v
-				}
+			userID := resolveUserID(mapClaims, claimNames.UserIDClaim)
+			if userID == "" {
+				userID = authCtx.UserID
 			}
 
 			username := getStringClaim(mapClaims, claimNames.UsernameClaim)
@@ -244,12 +243,12 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) 
 
 			sub, _ := mapClaims["sub"].(string)
 			claimsObj := &CustomClaims{
-				Organization: org,
-				Username:     username,
-				Email:        email,
-				Scope:        scope,
-				Audience:     aud,
-				JTI:          jti,
+				Organization:     org,
+				Username:         username,
+				Email:            email,
+				Scope:            scope,
+				Audience:         aud,
+				JTI:              jti,
 				RegisteredClaims: jwt.RegisteredClaims{Subject: sub},
 			}
 
@@ -349,6 +348,21 @@ func getStringClaim(claims jwt.MapClaims, name string) string {
 	return v
 }
 
+// resolveUserID returns the stable user identifier used for audit fields
+// (createdBy/updatedBy/etc.). It prefers an explicitly configured claim name,
+// then the conventional "user_id" claim, and finally falls back to "sub".
+// Returns an empty string only when none of these are present.
+func resolveUserID(claims jwt.MapClaims, configuredClaim string) string {
+	if v := getStringClaim(claims, configuredClaim); v != "" {
+		return v
+	}
+	if v := getStringClaim(claims, "user_id"); v != "" {
+		return v
+	}
+	sub, _ := claims["sub"].(string)
+	return sub
+}
+
 func audienceToString(claims jwt.MapClaims) string {
 	switch v := claims["aud"].(type) {
 	case string:
@@ -387,9 +401,76 @@ func GetOrgHandleFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyOrgHandle)
 }
 
+// GetIdpOrgRefFromRequest extracts the raw organization claim carried by the
+// token (the IDP's organization id in IDP mode). Unlike the organization key —
+// which OrganizationResolverMiddleware rewrites to the platform UUID — this
+// always reflects the value the token asserted. Returns false when unset.
+func GetIdpOrgRefFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyIdpOrgRef)
+}
+
+// OrgUUIDResolver maps a token's organization claim to the platform
+// organization UUID, returning true when a matching organization exists.
+type OrgUUIDResolver func(orgClaim string) (string, bool)
+
+// OrganizationResolverMiddleware resolves the organization claim populated by the
+// authentication middleware into the platform organization UUID, and stores that
+// UUID back under the organization context key. Downstream handlers therefore
+// scope their queries by the correct UUID regardless of whether the token carries
+// the platform UUID (file-based auth) or the IDP's organization id (IDP auth).
+//
+// The raw claim is preserved under a separate key (see GetIdpOrgRefFromRequest)
+// for callers that need the original IDP reference — notably organization
+// registration, where no organization exists yet to resolve against.
+func OrganizationResolverMiddleware(resolve OrgUUIDResolver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claim, ok := GetOrganizationFromRequest(r)
+			if !ok || resolve == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := context.WithValue(r.Context(), keyIdpOrgRef, claim)
+			if uuid, found := resolve(claim); found {
+				ctx = context.WithValue(ctx, keyOrganization, uuid)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // GetUserIDFromRequest extracts the user ID from the request context.
 func GetUserIDFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyUserID)
+}
+
+// GetSubClaimFromRequest extracts the token's OIDC "sub" (subject) claim from
+// the request context. This is the raw IdP subject identifier — distinct from
+// GetUserIDFromRequest, which returns the configured-claim/user_id/sub
+// precedence value used historically for audit columns. Prefer this for keying
+// the internal-UUID mapping (see service.IdentityService).
+func GetSubClaimFromRequest(r *http.Request) (string, bool) {
+	claims, ok := GetClaimsFromRequest(r)
+	if !ok || claims == nil || claims.Subject == "" {
+		return "", false
+	}
+	return claims.Subject, true
+}
+
+// GetActorIdentityFromRequest resolves the raw identity-provider identifier for
+// the actor behind r, preferring the token's "sub" claim and falling back to
+// GetUserIDFromRequest (configured-claim/user_id/sub) when sub is unavailable
+// (e.g. non-OIDC IdPs, or test/internal callers that only set the legacy
+// context key). ok is false only when neither source has a value — callers
+// that must reject unauthenticated requests should treat that as 401.
+// This mirrors the precedence used by service.IdentityService.InternalUserID;
+// use it at call sites that need the raw id before mapping (e.g. to
+// distinguish "claim missing" from "mapping failed").
+func GetActorIdentityFromRequest(r *http.Request) (string, bool) {
+	if sub, ok := GetSubClaimFromRequest(r); ok {
+		return sub, true
+	}
+	return GetUserIDFromRequest(r)
 }
 
 // GetUsernameFromRequest extracts the username from the request context.
@@ -485,6 +566,7 @@ func NewTestContextMiddleware(next http.Handler) http.Handler {
 		}
 		if user := r.Header.Get("X-Test-User"); user != "" {
 			ctx = context.WithValue(ctx, keyUsername, user)
+			ctx = context.WithValue(ctx, keyUserID, user)
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -501,4 +583,3 @@ func WithUserID(r *http.Request, id string) *http.Request {
 }
 
 // --- Compatibility shims for common/authenticators ---
-

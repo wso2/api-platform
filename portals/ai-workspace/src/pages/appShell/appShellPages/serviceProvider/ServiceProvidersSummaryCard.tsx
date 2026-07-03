@@ -60,7 +60,7 @@ function getInitials(name: string): string {
 
 export type ServiceProviderSummaryItem = {
   id: string;
-  name: string;
+  displayName: string;
   status?: string;
   lastUpdated?: string;
   modelCount?: number;
@@ -182,8 +182,14 @@ export default function ServiceProvidersSummaryCard({
                 flex: 1,
                 minHeight: 300,
                 display: 'flex',
+                width: '100%',
                 alignItems: 'center',
                 justifyContent: 'center',
+                px: 3,
+                py: 0,
+                '&:last-child': {
+                  paddingBottom: 0,
+                },
               }
             : {}),
         }}
@@ -238,7 +244,7 @@ export default function ServiceProvidersSummaryCard({
             spacing={1.5}
             alignItems="center"
             justifyContent="center"
-            sx={{ textAlign: 'center', py: 2, width: '100%' }}
+            sx={{ textAlign: 'center', py: 2, width: '100%', mx: 'auto' }}
           >
             <Box
               component="img"
@@ -307,14 +313,14 @@ export default function ServiceProvidersSummaryCard({
         ) : (
           <Stack divider={<Divider />} spacing={1}>
             {visibleProviders.map((provider) => {
-              const providerId = provider.id ?? provider.name;
+              const providerId = provider.id;
               const lastUpdated = provider.lastUpdated;
               const templateKey = (provider.template ?? '').toLowerCase();
               const templateDisplayName = getProviderTemplateDisplayName(
                 provider.template
               );
               const providerDisplayName = truncateProviderDisplayName(
-                provider.name
+                provider.displayName
               );
               const templateLogo = templateLogoMap[templateKey];
               const hasTemplateLogo = Boolean(templateLogo);
@@ -370,7 +376,7 @@ export default function ServiceProvidersSummaryCard({
                           '& img': { objectFit: 'contain' },
                         }}
                       >
-                        {getInitials(provider.name)}
+                        {getInitials(provider.displayName)}
                       </Avatar>
                     }
                     title={

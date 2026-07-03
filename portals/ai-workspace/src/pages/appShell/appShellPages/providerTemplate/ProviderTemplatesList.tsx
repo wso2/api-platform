@@ -113,14 +113,12 @@ export default function ProviderTemplatesList({
     if (!query) return templates;
     return templates.filter(
       (template) =>
-        template.name.toLowerCase().includes(query) ||
+        template.displayName.toLowerCase().includes(query) ||
         (template.description ?? '').toLowerCase().includes(query)
     );
   }, [templates, searchQuery]);
 
-  // Paginate the custom templates ~2 rows at a time. Clamp the page so it stays
-  // valid when the filtered list shrinks (e.g. while searching).
-  const CUSTOM_PAGE_SIZE = 6;
+  const CUSTOM_PAGE_SIZE = 8;
   const [customPage, setCustomPage] = useState(1);
   const customTotalPages = Math.max(
     1,
@@ -144,7 +142,7 @@ export default function ProviderTemplatesList({
     if (!query) return builtInTemplates;
     return builtInTemplates.filter(
       (template) =>
-        template.name.toLowerCase().includes(query) ||
+        template.displayName.toLowerCase().includes(query) ||
         (template.description ?? '').toLowerCase().includes(query)
     );
   }, [builtInTemplates, searchQuery]);
@@ -206,16 +204,16 @@ export default function ProviderTemplatesList({
                 '& img': { objectFit: 'contain' },
               }}
             >
-              {!hasLogo ? getInitials(template.name) : null}
+              {!hasLogo ? getInitials(template.displayName) : null}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography
                 variant="h5"
                 noWrap
                 sx={{ fontWeight: 600 }}
-                title={template.name}
+                title={template.displayName}
               >
-                {truncateProviderDisplayName(template.name)}
+                {truncateProviderDisplayName(template.displayName)}
               </Typography>
               <Typography
                 variant="body2"

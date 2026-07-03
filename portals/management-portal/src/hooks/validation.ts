@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { getApiConfig } from "./apiConfig";
 
 /** ----- Types ----- */
 
@@ -61,62 +60,28 @@ export type ApiNameVersionValidationRequest = {
   version: string;
 };
 
-/** ----- Helpers ----- */
-
-const parseError = async (res: Response) => {
-  let body = "";
-  try {
-    body = await res.text();
-    try {
-      const json = JSON.parse(body);
-      if (json?.message)
-        return `${res.status} ${res.statusText} — ${json.message}`;
-      if (json?.error?.message)
-        return `${res.status} ${res.statusText} — ${json.error.message}`;
-    } catch {
-      /* not JSON */
-    }
-  } catch {
-    /* ignore */
-  }
-  return `${res.status} ${res.statusText}${body ? ` ${body}` : ""}`;
-};
-
-const authedFetch = async (path: string, init?: RequestInit) => {
-  const { token, baseUrl } = getApiConfig();
-  return fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init?.headers || {}),
-    },
-  });
-};
-
 /** ----- Hook ----- */
 
 export const useGithubProjectValidation = () => {
-  /** POST: /api/v0.9/api-projects/validate */
+  /**
+   * No longer supported: /api/v0.9/api-projects/validate
+   * Validating API projects from a Git repository has been removed from the
+   * platform. Instead of calling the backend, return a "not supported"
+   * validation response.
+   */
   const validateGithubApiProject = useCallback(
     async (
-      payload: GithubProjectValidationRequest,
-      opts?: { signal?: AbortSignal }
+      _payload: GithubProjectValidationRequest,
+      _opts?: { signal?: AbortSignal }
     ): Promise<GithubProjectValidationResponse> => {
-      const res = await authedFetch(`/api/v0.9/api-projects/validate`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-        signal: opts?.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Failed to validate API project: ${await parseError(res)}`
-        );
-      }
-
-      return (await res.json()) as GithubProjectValidationResponse;
+      return {
+        isAPIProjectValid: false,
+        isAPIConfigValid: false,
+        isAPIDefinitionValid: false,
+        errors: [
+          "Validating API projects from a Git repository is no longer supported.",
+        ],
+      };
     },
     []
   );
@@ -125,58 +90,34 @@ export const useGithubProjectValidation = () => {
 };
 
 export const useOpenApiValidation = () => {
+  /**
+   * No longer supported: POST /api/v0.9/rest-apis/validate-openapi
+   * Validating an OpenAPI definition has been removed from the platform.
+   * Instead of calling the backend, return a "not supported" validation
+   * response.
+   */
   const validateOpenApiUrl = useCallback(
     async (
-      url: string,
-      opts?: { signal?: AbortSignal }
+      _url: string,
+      _opts?: { signal?: AbortSignal }
     ): Promise<OpenApiValidationResponse> => {
-      const { token, baseUrl } = getApiConfig();
-
-      const formData = new FormData();
-      formData.append("url", url);
-
-      const res = await fetch(`${baseUrl}/api/v0.9/validate/open-api`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-        signal: opts?.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Failed to validate OpenAPI from URL: ${await parseError(res)}`
-        );
-      }
-
-      return (await res.json()) as OpenApiValidationResponse;
+      return {
+        isAPIDefinitionValid: false,
+        errors: ["Validating an OpenAPI definition is no longer supported."],
+      };
     },
     []
   );
 
   const validateOpenApiFile = useCallback(
     async (
-      file: File,
-      opts?: { signal?: AbortSignal }
+      _file: File,
+      _opts?: { signal?: AbortSignal }
     ): Promise<OpenApiValidationResponse> => {
-      const { token, baseUrl } = getApiConfig();
-
-      const formData = new FormData();
-      formData.append("definition", file);
-
-      const res = await fetch(`${baseUrl}/api/v0.9/validate/open-api`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-        signal: opts?.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Failed to validate OpenAPI file: ${await parseError(res)}`
-        );
-      }
-
-      return (await res.json()) as OpenApiValidationResponse;
+      return {
+        isAPIDefinitionValid: false,
+        errors: ["Validating an OpenAPI definition is no longer supported."],
+      };
     },
     []
   );
@@ -184,55 +125,42 @@ export const useOpenApiValidation = () => {
   return { validateOpenApiUrl, validateOpenApiFile };
 };
 
-/** NEW: API uniqueness validation hook */
+/** API uniqueness validation hook */
 export const useApiUniquenessValidation = () => {
-  /** GET: /api/v0.9/apis/validate?name=...&version=... */
+  /**
+   * No longer supported: GET /api/v0.9/apis/validate
+   * Checking API name/version or identifier uniqueness has been removed from
+   * the platform. Instead of calling the backend, return a "not supported"
+   * validation response.
+   */
   const validateApiNameVersion = useCallback(
     async (
-      payload: ApiNameVersionValidationRequest,
-      opts?: { signal?: AbortSignal }
+      _payload: ApiNameVersionValidationRequest,
+      _opts?: { signal?: AbortSignal }
     ): Promise<ApiUniquenessValidationResponse> => {
-      const qs = new URLSearchParams({
-        name: payload.name,
-        version: payload.version,
-      }).toString();
-
-      const res = await authedFetch(`/api/v0.9/apis/validate?${qs}`, {
-        method: "GET",
-        signal: opts?.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Failed to validate API name & version: ${await parseError(res)}`
-        );
-      }
-
-      return (await res.json()) as ApiUniquenessValidationResponse;
+      return {
+        valid: false,
+        error: {
+          code: "not-supported",
+          message: "Validating API name & version is no longer supported.",
+        },
+      };
     },
     []
   );
 
-  /** GET: /api/v0.9/apis/validate?identifier=... */
   const validateApiIdentifier = useCallback(
     async (
-      identifier: string,
-      opts?: { signal?: AbortSignal }
+      _identifier: string,
+      _opts?: { signal?: AbortSignal }
     ): Promise<ApiUniquenessValidationResponse> => {
-      const qs = new URLSearchParams({ identifier }).toString();
-
-      const res = await authedFetch(`/api/v0.9/apis/validate?${qs}`, {
-        method: "GET",
-        signal: opts?.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Failed to validate API identifier: ${await parseError(res)}`
-        );
-      }
-
-      return (await res.json()) as ApiUniquenessValidationResponse;
+      return {
+        valid: false,
+        error: {
+          code: "not-supported",
+          message: "Validating API identifier is no longer supported.",
+        },
+      };
     },
     []
   );

@@ -19,71 +19,45 @@
 // ============================================================================
 // Platform API Client
 // ----------------------------------------------------------------------------
-// Replaces the Asgardeo-backed httpRequest with native fetch.
-// All calls go to PLATFORM_API_BASE_URL (default: https://localhost:9243/api/v0.9).
+// Native-fetch client for the Platform API, routed same-origin through the BFF.
 //
-// Token storage:
-//   localStorage.setItem('platform_auth_token', '<your-token>')
-// Run the STS service (sts/README.md) to obtain a token.
+// Auth model (BFF):
+//   Every request rides the HttpOnly `_bff_session` cookie (credentials:
+//   'include'), which now carries the JWT itself; the BFF reads that token
+//   straight from the cookie and injects it as the bearer when proxying to the
+//   Platform API. State-mutating requests carry a custom CSRF header that
+//   cross-site attackers cannot set.
 // ============================================================================
 
-import { PLATFORM_API_BASE_URL } from '../config.env';
+import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { logger } from '../utils/logger';
 import { HttpMethod, ApiRequestConfig, GQLResponse } from '../utils/types';
 
 export type { HttpMethod, ApiRequestConfig, GQLResponse };
 
-const TOKEN_KEY     = 'platform_auth_token';
-const ORG_TOKEN_KEY = 'platform_org_token';
-
-/**
- * Token for all org-scoped workspace API calls (projects, proxies, gateways, …).
- * Returns an empty string when no token is available — unauthenticated requests
- * will be rejected by the platform API with HTTP 401.
- * Priority: localStorage('platform_auth_token') → ''.
- */
-export const getStoredToken = (): string =>
-  localStorage.getItem(TOKEN_KEY) ?? '';
-
-/**
- * Token specifically for GET /organizations — must have the registered org UUID
- * in the JWT `organization` claim so the platform API resolves the right org.
- * Priority: localStorage('platform_org_token') → localStorage('platform_auth_token') → ''.
- */
-export const getOrgToken = (): string =>
-  localStorage.getItem(ORG_TOKEN_KEY) ??
-  localStorage.getItem(TOKEN_KEY) ??
-  '';
-
-/** Persist a bearer token for subsequent requests (overrides the dev fallback). */
-export const setStoredToken = (token: string) =>
-  localStorage.setItem(TOKEN_KEY, token);
-
-/** Clear the stored bearer token (falls back to DEV_FALLBACK_TOKEN until removed). */
-export const clearStoredToken = () =>
-  localStorage.removeItem(TOKEN_KEY);
-
 // ---------------------------------------------------------------------------
-// No-op shim so existing call-sites that call setHttpRequestFn(httpRequest)
-// continue to compile without changes.
+// Token shims — tokens now live server-side in the BFF session, never in the
+// browser. These are kept as no-ops so existing call-sites keep compiling.
 // ---------------------------------------------------------------------------
+export const getStoredToken = (): string => '';
+export const getOrgToken = (): string => '';
+export const setStoredToken = (_token: string) => { /* tokens are BFF-side only */ };
+export const clearStoredToken = () => { /* tokens are BFF-side only */ };
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const setHttpRequestFn = (_fn: unknown) => { /* no-op in platform mode */ };
 
 /**
- * Default headers — adds Authorization if a token is stored.
+ * Default headers. No Authorization header — the BFF injects the bearer token.
+ * The CSRF header is always sent (harmless on GET, required on mutations).
  */
 const buildHeaders = (extra?: Record<string, string>): Record<string, string> => {
-  const h: Record<string, string> = {
+  return {
     Accept: 'application/json',
     'Content-Type': 'application/json',
+    [CSRF_HEADER]: CSRF_VALUE,
     ...extra,
   };
-  const token = getStoredToken();
-  if (token) {
-    h.Authorization = `Bearer ${token}`;
-  }
-  return h;
 };
 
 /**
@@ -116,6 +90,7 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
 
   const res = await fetch(url, {
     method,
+    credentials: 'include',
     headers: buildHeaders(headers),
     body: data && ['POST', 'PUT', 'PATCH'].includes(method)
       ? JSON.stringify(data)
@@ -124,15 +99,18 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
+    let data: unknown;
     try {
-      const body = await res.json();
-      message = body?.description ?? body?.message ?? body?.error ?? message;
+      data = await res.json();
+      const d = data as Record<string, unknown>;
+      message = (d?.description ?? d?.message ?? d?.error ?? message) as string;
     } catch { /* body not JSON */ }
     logger.error(`[platformApiClient] ${method} ${url} → ${res.status}: ${message}`);
-    // Attach the HTTP status so callers (e.g. ErrorAlert) can react to it —
-    // notably surfacing a logout action on 401 instead of a futile retry.
-    const err = new Error(message) as Error & { status?: number };
+    // Attach status and raw parsed body so callers can inspect structured error
+    // payloads (e.g. 409 DeleteSecretConflict) without re-fetching.
+    const err = new Error(message) as Error & { status?: number; data?: unknown };
     err.status = res.status;
+    err.data = data;
     throw err;
   }
 
@@ -158,18 +136,19 @@ export const post = <T>(
  * POST with multipart/form-data body (e.g. for the secrets endpoint).
  * Omits Content-Type so the browser sets it with the correct boundary.
  */
-export const postForm = async <T>(
+const sendForm = async <T>(
+  method: 'POST' | 'PUT',
   path: string,
   form: FormData,
   baseUrl?: string,
 ): Promise<T> => {
   const resolvedBase = baseUrl || PLATFORM_API_BASE_URL;
   const url = buildUrl(path, resolvedBase);
-  const token = getStoredToken();
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // No Content-Type — the browser sets the multipart boundary. The BFF injects
+  // the bearer token; we only add the CSRF header for this state-mutating call.
+  const headers: Record<string, string> = { Accept: 'application/json', [CSRF_HEADER]: CSRF_VALUE };
 
-  const res = await fetch(url, { method: 'POST', headers, body: form });
+  const res = await fetch(url, { method, credentials: 'include', headers, body: form });
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
@@ -177,11 +156,19 @@ export const postForm = async <T>(
       const body = await res.json();
       message = body?.description ?? body?.message ?? body?.error ?? message;
     } catch { /* body not JSON */ }
-    throw new Error(message);
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
 
   return res.json() as Promise<T>;
 };
+
+export const postForm = <T>(path: string, form: FormData, baseUrl?: string): Promise<T> =>
+  sendForm<T>('POST', path, form, baseUrl);
+
+export const putForm = <T>(path: string, form: FormData, baseUrl?: string): Promise<T> =>
+  sendForm<T>('PUT', path, form, baseUrl);
 
 export const put = <T>(
   path: string,

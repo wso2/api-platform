@@ -77,7 +77,6 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	registerPaginationSteps(ctx, w)
 	registerLLMSteps(ctx, w)
 	registerMCPSteps(ctx, w)
-	registerWebBrokerSteps(ctx, w)
 	registerSecretSteps(ctx, w)
 	registerDeploymentSteps(ctx, w)
 }

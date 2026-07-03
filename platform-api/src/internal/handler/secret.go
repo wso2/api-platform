@@ -35,20 +35,21 @@ import (
 
 type SecretHandler struct {
 	secretService *service.SecretService
+	identity      *service.IdentityService
 	slogger       *slog.Logger
 }
 
-func NewSecretHandler(secretService *service.SecretService, slogger *slog.Logger) *SecretHandler {
-	return &SecretHandler{secretService: secretService, slogger: slogger}
+func NewSecretHandler(secretService *service.SecretService, identity *service.IdentityService, slogger *slog.Logger) *SecretHandler {
+	return &SecretHandler{secretService: secretService, identity: identity, slogger: slogger}
 }
 
 func (h *SecretHandler) RegisterRoutes(mux *http.ServeMux) {
 	for _, version := range []string{"/api/v0.9", "/api/v1"} {
 		mux.HandleFunc("POST "+version+"/secrets", h.CreateSecret)
 		mux.HandleFunc("GET "+version+"/secrets", h.ListSecrets)
-		mux.HandleFunc("GET "+version+"/secrets/{id}", h.GetSecret)
-		mux.HandleFunc("PUT "+version+"/secrets/{id}", h.UpdateSecret)
-		mux.HandleFunc("DELETE "+version+"/secrets/{id}", h.DeleteSecret)
+		mux.HandleFunc("GET "+version+"/secrets/{secretId}", h.GetSecret)
+		mux.HandleFunc("PUT "+version+"/secrets/{secretId}", h.UpdateSecret)
+		mux.HandleFunc("DELETE "+version+"/secrets/{secretId}", h.DeleteSecret)
 	}
 }
 
@@ -59,24 +60,27 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username, _ := middleware.GetUsernameFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "create secret")
+	if !ok {
+		return
+	}
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		_ = r.ParseForm()
 	}
 	req := dto.CreateSecretRequest{
-		Handle:      r.FormValue("handle"),
-		DisplayName: r.FormValue("name"),
+		Handle:      r.FormValue("id"),
+		DisplayName: r.FormValue("displayName"),
 		Description: r.FormValue("description"),
 		Value:       r.FormValue("value"),
 		Type:        r.FormValue("type"),
 	}
-	if req.Handle == "" || req.Value == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "handle and value are required"))
+	if req.Handle == "" || req.DisplayName == "" || req.Value == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "id, displayName and value are required"))
 		return
 	}
 
-	resp, err := h.secretService.Create(orgID, username, &req)
+	resp, err := h.secretService.Create(orgID, userID, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretAlreadyExists) {
 			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "A secret with this name already exists in this scope"))
@@ -144,7 +148,7 @@ func (h *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handle := r.PathValue("id")
+	handle := r.PathValue("secretId")
 	if handle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
@@ -171,19 +175,22 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handle := r.PathValue("id")
+	handle := r.PathValue("secretId")
 	if handle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
 	}
 
-	username, _ := middleware.GetUsernameFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "update secret")
+	if !ok {
+		return
+	}
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		_ = r.ParseForm()
 	}
 	req := dto.UpdateSecretRequest{
-		DisplayName: r.FormValue("name"),
+		DisplayName: r.FormValue("displayName"),
 		Description: r.FormValue("description"),
 		Value:       r.FormValue("value"),
 	}
@@ -192,7 +199,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.secretService.Update(orgID, handle, username, &req)
+	resp, err := h.secretService.Update(orgID, handle, userID, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
@@ -213,15 +220,18 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handle := r.PathValue("id")
+	handle := r.PathValue("secretId")
 	if handle == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
 	}
 
-	username, _ := middleware.GetUsernameFromRequest(r)
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "delete secret")
+	if !ok {
+		return
+	}
 
-	err := h.secretService.Delete(orgID, handle, username)
+	err := h.secretService.Delete(orgID, handle, userID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))

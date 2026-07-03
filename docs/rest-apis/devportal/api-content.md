@@ -4,13 +4,13 @@
 
 <a id="opIdcreateApiContent"></a>
 
-`POST /o/{orgId}/devportal/v1/apis/{apiId}/content`
+`POST /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content \
+curl -X POST https://localhost:3000/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -53,8 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|orgId|path|string|true|none|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
@@ -87,8 +86,8 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -151,13 +150,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdreplaceApiContent"></a>
 
-`PUT /o/{orgId}/devportal/v1/apis/{apiId}/content`
+`PUT /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content \
+curl -X PUT https://localhost:3000/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -168,7 +167,7 @@ curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId
 
 Replaces or adds static content files for an existing API.
 
-The upload format is the same as `POST /o/{orgId}/devportal/v1/apis/{apiId}/content`.
+The upload format is the same as `POST /api/v0.9/apis/{apiId}/assets`.
 Existing files with the same stored `type` and `fileName` are updated; new files are created.
 Image metadata is updated only when image metadata can be resolved from the upload or request body.
 
@@ -197,8 +196,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
-|orgId|path|string|true|none|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
@@ -231,8 +229,8 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -295,13 +293,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 <a id="opIdgetApiContentFile"></a>
 
-`GET /o/{orgId}/devportal/v1/apis/{apiId}/content`
+`GET /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
@@ -327,8 +325,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
-|orgId|path|string|true|none|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -358,8 +355,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -418,13 +415,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteApiContentFile"></a>
 
-`DELETE /o/{orgId}/devportal/v1/apis/{apiId}/content`
+`DELETE /apis/{apiId}/assets`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content?type=document \
+curl -X DELETE https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -448,9 +445,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
-|fileName|query|string|false|File name selector used by file retrieval and organization content deletion.|
-|orgId|path|string|true|none|
-|apiId|path|string|true|none|
+|fileName|query|string|false|File name selector used to delete a single stored API content file.|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -464,8 +460,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

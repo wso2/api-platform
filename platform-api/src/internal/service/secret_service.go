@@ -32,7 +32,6 @@ import (
 	"platform-api/src/internal/vault"
 )
 
-
 type SecretInUseError struct {
 	References []model.SecretReference
 }
@@ -42,12 +41,48 @@ func (e *SecretInUseError) Error() string {
 }
 
 type SecretService struct {
-	repo  repository.SecretRepository
-	vault vault.SecretVault
+	repo     repository.SecretRepository
+	vault    vault.SecretVault
+	identity *IdentityService
 }
 
-func NewSecretService(repo repository.SecretRepository, v vault.SecretVault) *SecretService {
-	return &SecretService{repo: repo, vault: v}
+func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService) *SecretService {
+	return &SecretService{repo: repo, vault: v, identity: identity}
+}
+
+// toSecretResponse converts secret via secretToResponse and resolves its
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *SecretService) toSecretResponse(secret *model.Secret) (*dto.SecretResponse, error) {
+	resp := secretToResponse(secret)
+	if resp == nil {
+		return nil, nil
+	}
+	createdBy, err := s.identity.SubForUUID(resp.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
+	resp.CreatedBy = createdBy
+	updatedBy, err := s.identity.SubForUUID(resp.UpdatedBy)
+	if err != nil {
+		return nil, err
+	}
+	resp.UpdatedBy = updatedBy
+	return resp, nil
+}
+
+// toSecretSummary converts secret via secretToSummary and resolves its
+// createdBy UUID to its raw external identity.
+func (s *SecretService) toSecretSummary(secret *model.Secret) (*dto.SecretSummary, error) {
+	resp := secretToSummary(secret)
+	if resp == nil {
+		return nil, nil
+	}
+	createdBy, err := s.identity.SubForUUID(resp.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
+	resp.CreatedBy = createdBy
+	return resp, nil
 }
 
 func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretRequest) (*dto.SecretResponse, error) {
@@ -92,7 +127,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		return nil, fmt.Errorf("failed to persist secret: %w", err)
 	}
 
-	return secretToResponse(secret), nil
+	return s.toSecretResponse(secret)
 }
 
 func (s *SecretService) List(orgID string, limit, offset int, updatedAfter *time.Time) (*dto.SecretListResponse, error) {
@@ -108,7 +143,11 @@ func (s *SecretService) List(orgID string, limit, offset int, updatedAfter *time
 
 	summaries := make([]*dto.SecretSummary, 0, len(secrets))
 	for _, sec := range secrets {
-		summaries = append(summaries, secretToSummary(sec))
+		summary, err := s.toSecretSummary(sec)
+		if err != nil {
+			return nil, err
+		}
+		summaries = append(summaries, summary)
 	}
 
 	return &dto.SecretListResponse{
@@ -126,7 +165,7 @@ func (s *SecretService) Get(orgID, handle string) (*dto.SecretSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	return secretToSummary(secret), nil
+	return s.toSecretSummary(secret)
 }
 
 func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateSecretRequest) (*dto.SecretResponse, error) {
@@ -156,7 +195,7 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
 
-	return secretToResponse(existing), nil
+	return s.toSecretResponse(existing)
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
@@ -233,9 +272,10 @@ func hashSecret(key []byte, plaintext string) string {
 
 func secretToResponse(s *model.Secret) *dto.SecretResponse {
 	return &dto.SecretResponse{
-		UUID:        s.UUID,
 		Handle:      s.Handle,
 		DisplayName: s.DisplayName,
+		CreatedBy:   s.CreatedBy,
+		UpdatedBy:   s.UpdatedBy,
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,
 	}
@@ -243,7 +283,6 @@ func secretToResponse(s *model.Secret) *dto.SecretResponse {
 
 func secretToSummary(s *model.Secret) *dto.SecretSummary {
 	return &dto.SecretSummary{
-		ID:          s.UUID,
 		Handle:      s.Handle,
 		DisplayName: s.DisplayName,
 		Description: s.Description,
@@ -251,6 +290,7 @@ func secretToSummary(s *model.Secret) *dto.SecretSummary {
 		Provider:    s.Provider,
 		Status:      s.Status,
 		Hash:        s.Hash,
+		CreatedBy:   s.CreatedBy,
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,
 	}

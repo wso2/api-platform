@@ -1,6 +1,6 @@
 # Getting a Bearer Token via curl (IDP Mode)
 
-When the Developer Portal is configured with an external IDP (e.g. Asgardeo), REST API calls to `/o/{orgId}/devportal/v1/*` must include an `Authorization: Bearer <token>` header. This guide shows how to obtain that token from the terminal without a browser.
+When the Developer Portal is configured with an external IDP (e.g. Asgardeo), REST API calls to `/api/v0.9/*` must include an `Authorization: Bearer <token>` header. This guide shows how to obtain that token from the terminal without a browser.
 
 ## Prerequisites
 
@@ -117,7 +117,7 @@ echo "TOKEN=$TOKEN"
 
 ```bash
 ORG_UUID=<org-uuid>    # ORG_ID from the DP_ORGANIZATION table, e.g. 65789d2d-0238-412a-995c-5ce74c82e169
-BASE="https://localhost:3000/o/${ORG_UUID}/devportal/v1"
+BASE="https://localhost:3000/o/${ORG_UUID}/api/v0.9"
 
 # List APIs
 curl -sk "${BASE}/apis" -H "Authorization: Bearer $TOKEN" | jq .
@@ -129,7 +129,7 @@ curl -sk "${BASE}/applications" -H "Authorization: Bearer $TOKEN" | jq .
 curl -sk -X POST "${BASE}/applications" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name": "My CLI App", "description": "Created via API", "type": "WEB"}' | jq .
+  -d '{"displayName": "My CLI App", "description": "Created via API"}' | jq .
 ```
 
 ---

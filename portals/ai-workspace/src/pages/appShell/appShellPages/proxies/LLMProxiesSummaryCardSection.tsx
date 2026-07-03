@@ -257,7 +257,7 @@ export default function LLMProxiesSummaryCardSection({
                       sx={{ minWidth: 0 }}
                     >
                       <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
-                        {truncateWords(proxy.name || 'No Name', 12)}
+                        {truncateWords(proxy.displayName || 'No Name', 12)}
                       </Typography>
                       <Chip
                         label={proxy.version || '—'}

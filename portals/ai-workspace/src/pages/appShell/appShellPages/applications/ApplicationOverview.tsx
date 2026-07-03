@@ -33,8 +33,6 @@ import {
   IconButton,
   PageContent,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
@@ -54,7 +52,6 @@ import { applicationApis } from '../../../../apis/applicationApis';
 import type { Application } from '../../../../utils/types';
 import { ApplicationAssociationsProvider } from '../../../../contexts/ApplicationAssociationsContext';
 import AssociationsTab from './OverviewTabs/AssociationsTab';
-import APIKeyTab from './OverviewTabs/APIKeyTab';
 
 type LocationState = {
   applicationAdded?: boolean;
@@ -87,9 +84,6 @@ export default function ApplicationOverview() {
   const [application, setApplication] = useState<Application | null>(null);
   const [isApplicationLoading, setIsApplicationLoading] = useState(true);
   const [applicationError, setApplicationError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'associations' | 'apiKeys'>(
-    'associations'
-  );
 
   const loadApplication = useCallback(async () => {
     if (!applicationId || !currentOrganization?.uuid) {
@@ -109,7 +103,6 @@ export default function ApplicationOverview() {
 
       const fetchedApplication = await applicationApis.getApplication(
         applicationId,
-        currentOrganization.uuid,
         apimBaseUrl
       );
       setApplication(fetchedApplication);
@@ -200,7 +193,7 @@ export default function ApplicationOverview() {
                   color: 'primary.contrastText',
                 }}
               >
-                {(application.name || '—')
+                {(application.displayName || '—')
                   .trim()
                   .slice(0, 2)
                   .toUpperCase()}
@@ -214,7 +207,7 @@ export default function ApplicationOverview() {
                   flexWrap="wrap"
                 >
                   <Typography variant="h3">
-                    {application.name || '—'}
+                    {application.displayName || '—'}
                   </Typography>
                   <Tooltip title="Edit Application">
                     <IconButton
@@ -260,33 +253,15 @@ export default function ApplicationOverview() {
               application.
             </Typography>
           </Box>
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={(_, value: 'associations' | 'apiKeys') => {
-              if (value !== null) setViewMode(value);
-            }}
-            size="small"
-            sx={{ flexShrink: 0, mt: 0.5, '& .MuiToggleButton-root': { textTransform: 'none' } }}
-          >
-            <ToggleButton value="associations">Associations</ToggleButton>
-            <ToggleButton value="apiKeys">API Keys</ToggleButton>
-          </ToggleButtonGroup>
         </Box>
 
         <Card>
           <Box sx={{ p: 2 }}>
-            {viewMode === 'associations' ? (
-              applicationId ? (
-                <ApplicationAssociationsProvider applicationId={applicationId}>
-                  <AssociationsTab />
-                </ApplicationAssociationsProvider>
-              ) : null
-            ) : (
-              applicationId ? (
-                <APIKeyTab applicationId={applicationId} />
-              ) : null
-            )}
+            {applicationId ? (
+              <ApplicationAssociationsProvider applicationId={applicationId}>
+                <AssociationsTab />
+              </ApplicationAssociationsProvider>
+            ) : null}
           </Box>
         </Card>
       </Stack>

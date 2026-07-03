@@ -49,17 +49,19 @@ type FileBasedUsers []FileBasedUser
 
 // FileBasedOrg holds the single organization used in file-based auth mode.
 type FileBasedOrg struct {
-	// ID is the org UUID. Auto-generated at startup if empty.
+	// ID is the organization handle (URL-safe slug), e.g. "default".
 	ID string `koanf:"id"`
 
-	// Name is the display name of the organization.
-	Name string `koanf:"name"`
-
-	// Handle is the URL-safe slug for the organization.
-	Handle string `koanf:"handle"`
+	// DisplayName is the human-readable name of the organization.
+	DisplayName string `koanf:"display_name"`
 
 	// Region is the deployment region for the organization.
 	Region string `koanf:"region"`
+
+	// UUID is the platform organization UUID. File-based auth has no external
+	// IDP, so this value is stored as idp_organization_ref_uuid and emitted as
+	// the `organization` claim in issued tokens.
+	UUID string `koanf:"uuid"`
 }
 
 // FileBased holds configuration for local username/password authentication.
@@ -84,10 +86,12 @@ type Server struct {
 	WebSocket        WebSocket        `koanf:"websocket"`
 	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
 	Deployments      Deployments      `koanf:"deployments"`
+	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
 	TLS              TLS              `koanf:"tls"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
+	Webhook          Webhook          `koanf:"webhook"`
 
 	EnableScopeValidation bool `koanf:"enable_scope_validation"`
 }
@@ -129,6 +133,28 @@ type EventHub struct {
 	PollInterval    time.Duration `koanf:"poll_interval"`
 	CleanupInterval time.Duration `koanf:"cleanup_interval"`
 	RetentionPeriod time.Duration `koanf:"retention_period"`
+}
+
+// Webhook holds configuration for the control-plane webhook receiver. The Developer Portal
+// delivers signed events (API key / subscription changes) to this endpoint. See
+// docs-local/platform-api-webhook.md.
+type Webhook struct {
+	// Enabled controls whether the webhook endpoint is registered.
+	Enabled bool `koanf:"enabled"`
+	// Secret is the HMAC-SHA256 shared secret used to verify request signatures.
+	Secret string `koanf:"secret"`
+	// PrivateKeyPath points to the PEM RSA private key used to decrypt encrypted_key fields.
+	// Optional: required only for events that carry encrypted secrets (API key generate/regenerate).
+	PrivateKeyPath string `koanf:"private_key_path"`
+	// GatewayType filters events meant for this platform type. Events with a different
+	// gateway_type are accepted as a no-op.
+	GatewayType string `koanf:"gateway_type"`
+	// SignatureTolerance bounds how old a signed request may be (replay protection).
+	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
+	// MaxBodySize caps the request body size in bytes.
+	MaxBodySize int64 `koanf:"max_body_size"`
+	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
+	SignatureHeader string `koanf:"signature_header"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -178,7 +204,7 @@ type Database struct {
 
 	EncryptionKey                  string `koanf:"encryption_key"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
-	SecretEncryptionKey string `koanf:"secret_encryption_key"`
+	SecretEncryptionKey            string `koanf:"secret_encryption_key"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.
@@ -207,6 +233,24 @@ type Deployments struct {
 	TimeoutEnabled            bool `koanf:"timeout_enabled"`
 	TimeoutInterval           int  `koanf:"timeout_interval"`
 	TimeoutDuration           int  `koanf:"timeout_duration"`
+}
+
+// ArtifactLimits holds the maximum number of each artifact kind an organization
+// may create. Each limit is optional: a value <= 0 (the default) means unlimited,
+// so organizations may create as many artifacts of that kind as they want.
+type ArtifactLimits struct {
+	MaxLLMProvidersPerOrg  int `koanf:"max_llm_providers_per_org"`
+	MaxLLMProxiesPerOrg    int `koanf:"max_llm_proxies_per_org"`
+	MaxMCPProxiesPerOrg    int `koanf:"max_mcp_proxies_per_org"`
+	MaxWebSubAPIsPerOrg    int `koanf:"max_websub_apis_per_org"`
+	MaxWebBrokerAPIsPerOrg int `koanf:"max_webbroker_apis_per_org"`
+}
+
+// LimitReached reports whether an organization currently holding currentCount
+// artifacts of some kind has reached its configured limit. A limit <= 0 means
+// unlimited, in which case this always returns false.
+func LimitReached(currentCount, limit int) bool {
+	return limit > 0 && currentCount >= limit
 }
 
 // APIKey holds API key-specific configuration.
@@ -291,17 +335,30 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
 		return nil, err
 	}
+	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
+		return nil, err
+	}
 	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
+		return nil, err
+	}
+	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
 		return nil, err
 	}
 
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
+		if !demoMode() {
+			return nil, fmt.Errorf(
+				"AUTH_JWT_SECRET_KEY must be configured when APIP_DEMO_MODE=false and JWT authentication is enabled; " +
+					"generate a secret with: openssl rand -hex 32",
+			)
+		}
 		key, err := generateRandomSecret()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
 		}
 		cfg.Auth.JWT.SecretKey = key
-		slog.Warn("auth.jwt.secret_key is not set — generated an ephemeral random key; all sessions will be invalidated on restart")
+		slog.Warn("AUTH_JWT_SECRET_KEY not set — generated an ephemeral demo key (restart will invalidate all sessions)",
+			slog.String("AUTH_JWT_SECRET_KEY", key))
 	}
 
 	// SecretEncryptionKey is optional when the shared DATABASE_ENCRYPTION_KEY is configured;
@@ -336,6 +393,16 @@ func generateRandomSecret() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// demoMode reports whether APIP_DEMO_MODE is enabled.
+// Defaults to true when the variable is unset.
+func demoMode() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+	if v == "" {
+		return true
+	}
+	return v == "true" || v == "1"
 }
 
 // envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
@@ -441,10 +508,10 @@ func envToKoanfKey(s string) string {
 		return "auth.file_based.enabled"
 	case "auth_file_based_organization_id":
 		return "auth.file_based.organization.id"
-	case "auth_file_based_organization_name":
-		return "auth.file_based.organization.name"
-	case "auth_file_based_organization_handle":
-		return "auth.file_based.organization.handle"
+	case "auth_file_based_organization_uuid":
+		return "auth.file_based.organization.uuid"
+	case "auth_file_based_organization_display_name":
+		return "auth.file_based.organization.display_name"
 	case "auth_file_based_organization_region":
 		return "auth.file_based.organization.region"
 	case "auth_file_based_users":
@@ -506,6 +573,18 @@ func envToKoanfKey(s string) string {
 	case "deployments_timeout_duration":
 		return "deployments.timeout_duration"
 
+	// Artifact limits (per organization; <= 0 means unlimited)
+	case "artifact_limits_max_llm_providers_per_org":
+		return "artifact_limits.max_llm_providers_per_org"
+	case "artifact_limits_max_llm_proxies_per_org":
+		return "artifact_limits.max_llm_proxies_per_org"
+	case "artifact_limits_max_mcp_proxies_per_org":
+		return "artifact_limits.max_mcp_proxies_per_org"
+	case "artifact_limits_max_websub_apis_per_org":
+		return "artifact_limits.max_websub_apis_per_org"
+	case "artifact_limits_max_webbroker_apis_per_org":
+		return "artifact_limits.max_webbroker_apis_per_org"
+
 	// TLS
 	case "tls_cert_dir":
 		return "tls.cert_dir"
@@ -527,6 +606,22 @@ func envToKoanfKey(s string) string {
 		return "event_hub.cleanup_interval"
 	case "event_hub_retention_period":
 		return "event_hub.retention_period"
+
+	// Webhook
+	case "webhook_enabled":
+		return "webhook.enabled"
+	case "webhook_secret":
+		return "webhook.secret"
+	case "webhook_private_key_path":
+		return "webhook.private_key_path"
+	case "webhook_gateway_type":
+		return "webhook.gateway_type"
+	case "webhook_signature_tolerance":
+		return "webhook.signature_tolerance"
+	case "webhook_max_body_size":
+		return "webhook.max_body_size"
+	case "webhook_signature_header":
+		return "webhook.signature_header"
 
 	default:
 		return ""
@@ -580,6 +675,27 @@ func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
 	return nil
 }
 
+// validateAuthModeExclusivity enforces that IDP (JWKS) auth is not enabled
+// alongside the local auth modes. When an IDP is configured every token must be
+// validated against its JWKS; leaving local HMAC auth on would let the server
+// silently validate (file-based) or accept (local JWT) tokens with the local
+// secret instead, shadowing the IDP. So enabling the IDP requires consciously
+// turning the local modes off.
+func validateAuthModeExclusivity(auth *Auth) error {
+	if !auth.IDP.Enabled {
+		return nil
+	}
+	if auth.JWT.Enabled {
+		return fmt.Errorf("auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive: " +
+			"set auth.jwt.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
+	}
+	if auth.FileBased.Enabled {
+		return fmt.Errorf("auth.idp.enabled=true and auth.file_based.enabled=true are mutually exclusive: " +
+			"set auth.file_based.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
+	}
+	return nil
+}
+
 func validateIDPConfig(idp *IDP) error {
 	if !idp.Enabled {
 		return nil
@@ -608,14 +724,35 @@ func validateFileBasedConfig(cfg *FileBased) error {
 	if cfg.Organization.ID == "" {
 		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.id to be configured")
 	}
-	if cfg.Organization.Name == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.name to be configured")
-	}
-	if cfg.Organization.Handle == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.handle to be configured")
+	if cfg.Organization.DisplayName == "" {
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.display_name to be configured")
 	}
 	if len(cfg.Users) == 0 {
 		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
+	}
+	return nil
+}
+
+// validateWebhookConfig validates and fills defaults for the webhook receiver config.
+// It is a no-op when the webhook is disabled.
+func validateWebhookConfig(w *Webhook) error {
+	if !w.Enabled {
+		return nil
+	}
+	if w.Secret == "" {
+		return fmt.Errorf("webhook.enabled=true requires webhook.secret to be configured")
+	}
+	if w.SignatureTolerance <= 0 {
+		w.SignatureTolerance = 5 * time.Minute
+	}
+	if w.MaxBodySize <= 0 {
+		w.MaxBodySize = 1 << 20 // 1 MiB
+	}
+	if w.SignatureHeader == "" {
+		w.SignatureHeader = "X-Devportal-Signature"
+	}
+	if w.GatewayType == "" {
+		w.GatewayType = "wso2/api-platform"
 	}
 	return nil
 }

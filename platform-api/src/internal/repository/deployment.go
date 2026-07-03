@@ -33,13 +33,15 @@ import (
 
 // DeploymentRepo implements DeploymentRepository
 type DeploymentRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
 // NewDeploymentRepo creates a new deployment repository
-func NewDeploymentRepo(db *database.DB) DeploymentRepository {
+func NewDeploymentRepo(db *database.DB, reg *ArtifactTableRegistry) DeploymentRepository {
 	return &DeploymentRepo{
-		db: db,
+		db:  db,
+		reg: reg,
 	}
 }
 
@@ -138,7 +140,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 
 	// 3. Insert new deployment artifact
 	deploymentQuery := `
-		INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at)
+		INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
@@ -230,7 +232,7 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 	deployment := &model.Deployment{}
 
 	query := `
-		SELECT uuid, name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at
+		SELECT uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at
 		FROM deployments
 		WHERE uuid = ? AND artifact_uuid = ? AND organization_uuid = ?
 	`
@@ -284,7 +286,7 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 
 	query := `
 		SELECT
-			d.uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
+			d.uuid, d.display_name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
 			d.base_deployment_uuid, d.content, d.metadata, d.created_by, d.created_at,
 			s.status, s.updated_at AS status_updated_at
 		FROM deployments d
@@ -564,7 +566,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 
 	query := `
 		SELECT
-			d.uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
+			d.uuid, d.display_name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
 			d.base_deployment_uuid, d.metadata, d.created_by, d.created_at,
 			s.status, s.updated_at AS status_updated_at, s.status_reason
 		FROM deployments d
@@ -632,7 +634,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	query := `
         WITH AnnotatedDeployments AS (
             SELECT
-				d.uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
+				d.uuid, d.display_name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
                 d.base_deployment_uuid, d.metadata, d.created_by, d.created_at,
                 s.status as current_status,
                 s.updated_at as status_updated_at,
@@ -662,7 +664,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	query += `
         )
         SELECT
-			uuid, name, artifact_uuid, organization_uuid, gateway_uuid,
+			uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid,
             base_deployment_uuid, metadata, created_by, created_at,
             current_status, status_updated_at, status_reason
         FROM AnnotatedDeployments
@@ -812,12 +814,7 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 		FROM deployment_status s
 		INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
 		INNER JOIN (
-			SELECT uuid, handle, origin FROM rest_apis
-			UNION ALL SELECT uuid, handle, origin FROM websub_apis
-			UNION ALL SELECT uuid, handle, origin FROM webbroker_apis
-			UNION ALL SELECT uuid, handle, origin FROM llm_providers
-			UNION ALL SELECT uuid, handle, origin FROM llm_proxies
-			UNION ALL SELECT uuid, handle, origin FROM mcp_proxies
+			` + r.reg.UnionAllSelect("uuid", "handle", "origin") + `
 		) src ON src.uuid = s.artifact_uuid
 		WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
 			AND src.origin <> 'gateway_api'`

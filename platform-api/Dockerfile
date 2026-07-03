@@ -18,6 +18,10 @@
 # Global build arguments
 ARG PORT=9243
 
+# Set EXPERIMENTAL=true to include the event-gateway plugin.
+# The resulting image should be tagged with a "-experimental" suffix.
+ARG EXPERIMENTAL=false
+
 # Build stage
 FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
@@ -25,6 +29,7 @@ ARG TARGETARCH
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
+ARG EXPERIMENTAL=false
 
 WORKDIR /build
 
@@ -59,10 +64,13 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     else \
         export CC=gcc; \
     fi && \
+    BUILD_TAGS="" && \
+    if [ "$EXPERIMENTAL" = "true" ]; then BUILD_TAGS="-tags experimental"; fi && \
     CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=${TARGETARCH} \
     go build -a \
+        ${BUILD_TAGS} \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT}" \
         -o platform-api ./cmd/main.go
 
@@ -72,9 +80,12 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
 FROM ubuntu:24.04
 
 ARG PORT
+ARG EXPERIMENTAL=false
 ARG USERNAME=wso2
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
+
+LABEL org.opencontainers.image.experimental="${EXPERIMENTAL}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -88,12 +99,15 @@ RUN groupadd -g $USER_UID appgroup && \
 
 COPY --from=builder /build/platform-api .
 
-# Schema files and LLM provider templates
-COPY src/internal/database/schema.sql            ./schema.sql
-COPY src/internal/database/schema.postgres.sql   ./schema.postgres.sql
-COPY src/internal/database/schema.sqlserver.sql ./schema.sqlserver.sql
-COPY src/internal/database/schema.sqlite.sql     ./schema.sqlite.sql
-COPY src/resources/default-llm-provider-templates ./default-llm-provider-templates
+# Schema files, LLM provider templates and OpenAPI spec.
+# These are copied to the same relative locations the binary expects by default
+# (see config.defaultConfig), so no DB_SCHEMA_PATH / LLM_TEMPLATE_DEFINITIONS_PATH
+# env overrides are needed. Any of them can still be overridden via config.toml.
+COPY src/internal/database/schema.sql            ./internal/database/schema.sql
+COPY src/internal/database/schema.postgres.sql   ./internal/database/schema.postgres.sql
+COPY src/internal/database/schema.sqlserver.sql  ./internal/database/schema.sqlserver.sql
+COPY src/internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.sql
+COPY src/resources/default-llm-provider-templates ./resources/default-llm-provider-templates
 COPY src/resources/openapi.yaml                  ./resources/openapi.yaml
 
 RUN mkdir -p /app/data /app/data/certs && \
@@ -103,12 +117,11 @@ EXPOSE ${PORT}
 
 ENV LOG_LEVEL=INFO
 ENV PORT=${PORT}
-# SQLite defaults — override DATABASE_DRIVER / DATABASE_* for PostgreSQL
-ENV DATABASE_DRIVER=sqlite3
-ENV DATABASE_DB_PATH=/app/data/api_platform.db
-ENV DB_SCHEMA_PATH=./schema.sql
-ENV LLM_TEMPLATE_DEFINITIONS_PATH=./default-llm-provider-templates
-ENV TLS_CERT_DIR=/app/data/certs
+# Database driver, paths, and TLS cert dir are NOT baked as env vars: the binary's
+# compiled defaults (sqlite3 at ./data/api_platform.db, certs at ./data/certs,
+# schema/templates/openapi under the relative paths mirrored above) already resolve
+# correctly against WORKDIR /app. Override any of them in config.toml — e.g. set
+# [database] driver = "postgres" — without an env var silently shadowing the file.
 
 USER $USERNAME
 

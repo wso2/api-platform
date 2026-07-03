@@ -53,11 +53,13 @@ type GatewayInternalAPIService struct {
 	slogger              *slog.Logger
 }
 
-// NewGatewayInternalAPIService creates a new gateway internal API service
+// NewGatewayInternalAPIService creates a new gateway internal API service.
+// websubAPIRepo and webbrokerAPIRepo are nil in OSS builds and injected by the
+// event-gateway plugin in experimental builds via SetEventArtifactRepos.
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
-	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, websubAPIRepo repository.WebSubAPIRepository,
-	webbrokerAPIRepo repository.WebBrokerAPIRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
+	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
+	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
@@ -67,8 +69,6 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		providerRepo:         providerRepo,
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
-		websubAPIRepo:        websubAPIRepo,
-		webbrokerAPIRepo:     webbrokerAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -80,6 +80,16 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
+}
+
+// SetEventArtifactRepos injects the WebSub/WebBroker repositories after construction.
+// Called by the server when the event-gateway plugin is loaded (experimental builds).
+func (s *GatewayInternalAPIService) SetEventArtifactRepos(
+	websubRepo repository.WebSubAPIRepository,
+	webbrokerRepo repository.WebBrokerAPIRepository,
+) {
+	s.websubAPIRepo = websubRepo
+	s.webbrokerAPIRepo = webbrokerRepo
 }
 
 // GetSecretsByGateway returns secrets referenced by artifacts deployed on this gateway.
@@ -297,8 +307,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 		items[i] = dto.GatewaySubscriptionPlanInfo{
 			ID:                 plan.UUID,
 			Handle:             plan.Handle,
-			Name:               plan.Name,
-			BillingPlan:        plan.BillingPlan,
+			PlanName:           plan.Name,
 			StopOnQuotaReach:   plan.StopOnQuotaReach,
 			ThrottleLimitCount: plan.ThrottleLimitCount,
 			ThrottleLimitUnit:  plan.ThrottleLimitUnit,
@@ -339,6 +348,9 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	if s.websubAPIRepo == nil {
+		return nil, constants.ErrWebSubAPINotFound
+	}
 	websubAPI, err := s.websubAPIRepo.GetByUUID(apiID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get WebSub API: %w", err)
@@ -364,6 +376,9 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 
 // GetActiveWebBrokerAPIDeploymentByGateway retrieves the currently deployed WebBroker API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	if s.webbrokerAPIRepo == nil {
+		return nil, constants.ErrWebBrokerAPINotFound
+	}
 	webbrokerAPI, err := s.webbrokerAPIRepo.GetByUUID(apiID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get WebBroker API: %w", err)

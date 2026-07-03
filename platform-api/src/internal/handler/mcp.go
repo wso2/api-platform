@@ -35,14 +35,16 @@ import (
 )
 
 type MCPProxyHandler struct {
-	service *service.MCPProxyService
-	slogger *slog.Logger
+	service  *service.MCPProxyService
+	identity *service.IdentityService
+	slogger  *slog.Logger
 }
 
-func NewMCPProxyHandler(service *service.MCPProxyService, slogger *slog.Logger) *MCPProxyHandler {
+func NewMCPProxyHandler(service *service.MCPProxyService, identity *service.IdentityService, slogger *slog.Logger) *MCPProxyHandler {
 	return &MCPProxyHandler{
-		service: service,
-		slogger: slogger,
+		service:  service,
+		identity: identity,
+		slogger:  slogger,
 	}
 }
 
@@ -50,9 +52,9 @@ func (h *MCPProxyHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies", h.CreateMCPProxy)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies", h.ListMCPProxies)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/fetch-server-info", h.FetchMCPProxyServerInfo)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{id}", h.GetMCPProxy)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/mcp-proxies/{id}", h.UpdateMCPProxy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{id}", h.DeleteMCPProxy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}", h.GetMCPProxy)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}", h.UpdateMCPProxy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}", h.DeleteMCPProxy)
 }
 
 // CreateMCPProxy handles POST /api/v0.9/mcp-proxies
@@ -71,7 +73,10 @@ func (h *MCPProxyHandler) CreateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create MCP proxy")
+	if !ok {
+		return
+	}
 
 	if req.ProjectId == nil {
 		h.slogger.Debug("No project ID provided for MCP proxy, proceeding without project association", "mcpProxyId", req.Id)
@@ -142,7 +147,7 @@ func (h *MCPProxyHandler) GetMCPProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("mcpProxyId")
 
 	resp, err := h.service.Get(orgID, id)
 	if err != nil {
@@ -161,7 +166,7 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
+	id := r.PathValue("mcpProxyId")
 
 	var req api.MCPProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -170,7 +175,10 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update MCP proxy")
+	if !ok {
+		return
+	}
 	resp, err := h.service.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -188,8 +196,11 @@ func (h *MCPProxyHandler) DeleteMCPProxy(w http.ResponseWriter, r *http.Request)
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := r.PathValue("id")
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	id := r.PathValue("mcpProxyId")
+	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete MCP proxy")
+	if !ok {
+		return
+	}
 
 	if err := h.service.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)
@@ -245,6 +256,9 @@ func (h *MCPProxyHandler) handleServiceError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, constants.ErrHandleImmutable):
+		h.slogger.Error("MCP handle immutability violation", "reason", err.Error())
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrInvalidInput):
 		h.slogger.Error("MCP request validation failed", "reason", err.Error())
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))

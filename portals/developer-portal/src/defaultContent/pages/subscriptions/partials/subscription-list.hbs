@@ -2,8 +2,7 @@
 <div class="sub-scroll table-responsive">
   <div class="sub-tablewrap">
     <script>
-      window.__tokenMap = window.__tokenMap || {};
-      window.__subscriptionOrgID = "{{@root.orgID}}";
+      window.__subscriptionOrgId = "{{@root.orgId}}";
     </script>
     <table class="sub-table" id="subscriptions-table">
       <thead>
@@ -20,7 +19,11 @@
       </thead>
       <tbody>
         {{#each subscriptions}}
-        <tr id="sub-row-{{this.id}}">
+        <tr id="sub-row-{{this.id}}"
+            data-sub-id="{{this.id}}"
+            data-api-name="{{this.apiName}}"
+            data-plan-name="{{this.planName}}"
+            data-status="{{this.status}}">
           <td>
             <a class="sub-api-link" href="{{../baseUrl}}/api/{{this.apiHandle}}">{{this.apiName}}</a>
           </td>
@@ -29,7 +32,7 @@
             <span class="sub-type-pill">{{#if this.type}}{{this.type}}{{else}}Token-based{{/if}}</span>
           </td>
           <td>{{this.planName}}</td>
-          <td style="color:#8a98a6;">{{#if this.applicationName}}{{this.applicationName}}{{else}}—{{/if}}</td>
+          <td style="color:#8a98a6;">{{#if this.applicationName}}{{this.applicationName}}{{else}}-{{/if}}</td>
           <td>
             <span class="sub-status-pill {{#if (eq this.status 'ACTIVE')}}sub-status-pill--active{{else}}sub-status-pill--inactive{{/if}}">
               <span class="sub-status-dot"></span>
@@ -41,11 +44,11 @@
           </td>
           <td>
             <div class="sub-actions">
-              <button class="sub-action-btn sub-action-btn--delete {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                title="Delete"
-                {{#unless @root.isReadOnlyMode}}onclick="prepareDeleteSubscription('{{../orgID}}', '{{this.id}}')"{{/unless}}
+              <button class="sub-action-btn sub-action-btn--manage {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                title="Manage subscription"
+                {{#unless @root.isReadOnlyMode}}onclick="openSubManage('{{this.id}}')"{{/unless}}
                 {{#if @root.isReadOnlyMode}}disabled{{/if}}>
-                <i class="bi bi-trash"></i>
+                <i class="bi bi-sliders"></i>
               </button>
             </div>
           </td>
@@ -55,16 +58,6 @@
     </table>
   </div>
 </div>
-{{!-- <div class="dp-empty" id="no-subscriptions" style="display:none;">
-  <span class="dp-empty-icon">
-    <i class="bi bi-inbox"></i>
-  </span>
-  <h2 class="dp-empty-title">No subscriptions yet</h2>
-  <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
-  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
-    <i class="bi bi-plus"></i> Create subscription
-  </button>
-</div> --}}
 {{else}}
 <div class="dp-empty" id="no-subscriptions">
   <span class="dp-empty-icon">
@@ -72,8 +65,89 @@
   </span>
   <h2 class="dp-empty-title">No subscriptions yet</h2>
   <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
-  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
-    <i class="bi bi-plus"></i> Create subscription
-  </button>
 </div>
 {{/if}}
+
+{{#unless @root.isReadOnlyMode}}
+<!-- Manage subscription modal -->
+<div id="subManageModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="mc-manage-modal">
+    <div class="mc-manage-header">
+      <div class="mc-manage-header-info">
+        <span class="mc-manage-plan-icon"><i class="bi bi-lightning-charge-fill"></i></span>
+        <div>
+          <h2 id="subManageApiName" class="mc-manage-plan-name"></h2>
+          <div class="mc-manage-subtitle"><span id="subManagePlanName"></span> · API subscription</div>
+        </div>
+      </div>
+      <button id="subManageClose" class="mc-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="mc-manage-body">
+      <div class="mc-manage-status-row">
+        <span class="mc-manage-status-label">Status</span>
+        <span id="subManageStatusBadge" class="mc-manage-status-badge mc-manage-status-badge--active">Active</span>
+      </div>
+      <div class="mc-token-label" style="margin-top:1.25rem;">
+        <i class="bi bi-key" style="color:#637282;"></i>
+        <span>Subscription token</span>
+      </div>
+      <div class="mc-token-field mc-token-field--manage">
+        <div id="subManageTokenVal" class="mc-token-val mc-token-val--manage"></div>
+        <div class="mc-token-field-actions">
+          <button id="subManageRevealBtn" class="mc-token-action-btn" title="Reveal token">
+            <i id="subManageRevealIcon" class="bi bi-eye"></i>
+          </button>
+          <button id="subManageCopyBtn" class="copy-btn mc-token-copy-btn" title="Copy token">
+            <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+            <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
+          </button>
+        </div>
+      </div>
+      <p class="mc-config-note" style="margin:0.625rem 0 0;">Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when calling this API.</p>
+      <hr class="mc-manage-divider">
+      <div class="mc-manage-actions">
+        <button id="subManageRegenerateBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--regenerate">
+          <i class="bi bi-arrow-clockwise"></i> Regenerate Token
+        </button>
+        <button id="subManageSuspendBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--suspend">
+          <i class="bi bi-pause-circle"></i>
+          <span class="sub-suspend-label">Suspend</span>
+        </button>
+        <button id="subManageUnsubBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub">
+          <i class="bi bi-trash"></i> Unsubscribe
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Unsubscribe confirmation dialog -->
+<div id="subUnsubDialog" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="mc-unsub-dialog">
+    <div class="mc-unsub-header">
+      <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
+      <h2 id="subUnsubTitle" class="mc-unsub-title">Unsubscribe?</h2>
+    </div>
+    <p id="subUnsubDesc" class="mc-unsub-desc">Your applications will lose access to this API and any tokens will stop working. You can re-subscribe at any time.</p>
+    <div class="mc-unsub-actions">
+      <button id="subUnsubCancelBtn" class="dp-btn dp-btn--outline">Cancel</button>
+      <button id="subUnsubConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Unsubscribe</button>
+    </div>
+  </div>
+</div>
+
+<!-- Regenerate token confirmation dialog -->
+<div id="subRegenerateDialog" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="mc-unsub-dialog">
+    <div class="mc-unsub-header">
+      <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
+      <h2 class="mc-unsub-title">Regenerate token?</h2>
+    </div>
+    <p class="mc-unsub-desc">Your current token will be invalidated immediately. Any applications using it will need to be updated with the new token.</p>
+    <div class="mc-unsub-actions">
+      <button id="subRegenerateCancelBtn" class="dp-btn dp-btn--outline">Cancel</button>
+      <button id="subRegenerateConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Regenerate</button>
+    </div>
+  </div>
+</div>
+{{/unless}}

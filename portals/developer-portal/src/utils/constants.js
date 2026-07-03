@@ -16,21 +16,22 @@
  * under the License.
  */
 // Devportal API base segment and version — single source of truth for the
-// org-scoped invocation prefix `/o/{orgId}/devportal/v1`. Change these two to
-// bump the base segment (e.g. devportalv2) or version (e.g. v2) everywhere.
-const DEVPORTAL_BASE_SEGMENT = 'devportal';
-const DEVPORTAL_VERSION = 'v1';
-// Express route prefix for org-scoped routes, e.g. '/o/:orgId/devportal/v1'
-const DEVPORTAL_ORG_PREFIX = `/o/:orgId/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
-// Builder for a concrete org path used in server-side URL generation,
-// e.g. devportalOrgPath('abc') => '/o/abc/devportal/v1'
-const devportalOrgPath = (orgId) => `/o/${orgId}/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// invocation prefix `/api/v0.9`. Change these two to bump the base segment
+// (e.g. devportalv2) or version (e.g. v2) everywhere.
+const DEVPORTAL_BASE_SEGMENT = 'api';
+const DEVPORTAL_VERSION = 'v0.9';
+// Express route prefix for devportal routes, e.g. '/api/v0.9'
+const DEVPORTAL_BASE_PATH = `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// Builder for the devportal base path used in server-side URL generation.
+// The orgId argument is accepted for backward-compatibility but not used —
+// org context is resolved from the token/session, not the URL.
+const devportalOrgPath = (_orgId) => `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
 
 module.exports = {
     DEVPORTAL_API: {
         BASE_SEGMENT: DEVPORTAL_BASE_SEGMENT,
         VERSION: DEVPORTAL_VERSION,
-        ORG_PREFIX: DEVPORTAL_ORG_PREFIX,
+        BASE_PATH: DEVPORTAL_BASE_PATH,
         orgPath: devportalOrgPath,
     },
     IMAGE: 'image',
@@ -39,37 +40,54 @@ module.exports = {
     CHARSET_UTF8: 'utf-8',
     FILE_NAME_PARAM: '&fileName=',
     API_ICON: 'api-icon',
-    API_TEMPLATE_FILE_NAME: '/content?type=IMAGE&fileName=',
-    API_TYPE_QUERY: '/content?type=',
+    API_TEMPLATE_FILE_NAME: '/assets?type=IMAGE&fileName=',
+    API_TYPE_QUERY: '/assets?type=',
     BASE_URL: 'https://localhost:',
     BASE_URL_NAME: 'baseUrl',
-    ORG_ID: 'orgID',
-    ORG_IDENTIFIER: 'organizationIdentifier',
+    ORG_ID: 'orgId',
+    ORG_IDENTIFIER: 'idpRefId',
     ORG_HANDLE: 'orgHandle',
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
     USER_ID: 'sub',
+    SYSTEM_ACTOR: 'system',
     BASIC_HEADER: 'basicAuthHeader',
-    API_VISIBILITY: {
-        PUBLIC: 'PUBLIC',
-        PRIVATE: 'PRIVATE'
-    },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
         DEPRECATED: "DEPRECATED"
     },
+    API_WORKFLOW_STATUS: {
+        DRAFT: "DRAFT",
+        PUBLISHED: "PUBLISHED",
+    },
+    API_WORKFLOW_CONTENT_TYPE: {
+        ARAZZO: "ARAZZO",
+        MD: "MD",
+    },
+    AGENT_VISIBILITY: {
+        VISIBLE: "VISIBLE",
+        HIDDEN: "HIDDEN",
+    },
+    SUBSCRIPTION_STATUS: {
+        ACTIVE: "ACTIVE",
+        INACTIVE: "INACTIVE",
+    },
+    API_KEY_STATUS: {
+        ACTIVE: "ACTIVE",
+        REVOKED: "REVOKED",
+    },
     API_TYPE: {
-        REST: "REST",
+        REST: "RestApi",
         SOAP: "SOAP",
-        MCP: "MCP",
+        MCP: "Mcp",
         WS: "WS",
-        WEBSUB: "WEBSUB",
+        WEBSUB: "WebSubApi",
         GRAPHQL: "GRAPHQL",
     },
     DEVPORTAL_MODE: {
         DEFAULT: "DEFAULT",
-        MCP_ONLY: "MCPSERVERSONLY",
-        API_PROXIES: "APISONLY",
+        MCP_SERVERS_ONLY: "MCP_SERVERS_ONLY",
+        APIS_ONLY: "APIS_ONLY",
     },
     DOC_TYPES: {
         DOC_ID: 'DOC_',
@@ -151,7 +169,7 @@ module.exports = {
         API_FILE_PATH: '/apis/',
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
-        DEVPORTAL_CONFIGURE: ['/*/configure', '/*/views/*/configure'],
+        DEVPORTAL_CONFIGURE: ['/*/settings', '/*/views/*/settings'],
         DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         DEVPORTAL_API_LISTING: '/*/apis',
         DEVPORTAL_TECHNICAL_PAGES: ['*/application'],
@@ -198,39 +216,34 @@ module.exports = {
     },
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
-            "planName": "Bronze",
-            "description": "Allows 1000 requests per minute",
-            "requestCount": 1000,
+            "handle": "Bronze",
             "displayName": "Bronze",
-            "type": "requestcount",
+            "description": "Allows 1000 requests per minute",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 1000 }],
         },
         {
-            "planName": "Gold",
-            "description": "Allows 5000 requests per minute",
-            "displayName": "Gold",
-            "requestCount": 5000,
-            "type": "requestcount",
-        },
-        {
-            "planName": "Silver",
-            "description": "Allows 2000 requests per minute",
+            "handle": "Silver",
             "displayName": "Silver",
-            "requestCount": 2000,
-            "type": "requestcount",
+            "description": "Allows 2000 requests per minute",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 2000 }],
         },
         {
-            "planName": "Unlimited",
-            "description": "Allows unlimited requests",
+            "handle": "Gold",
+            "displayName": "Gold",
+            "description": "Allows 5000 requests per minute",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 5000 }],
+        },
+        {
+            "handle": "Unlimited",
             "displayName": "Unlimited",
-            "requestCount": -1,
-            "type": "requestcount",
+            "description": "Allows unlimited requests",
+            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
         },
         {
-            "planName": "AsyncUnlimited",
-            "description": "Allows unlimited requests for Async APIs",
+            "handle": "AsyncUnlimited",
             "displayName": "AsyncUnlimited",
-            "requestCount": -1,
-            "type": "requestcount",
+            "description": "Allows unlimited requests for Async APIs",
+            "limits": [{ "limitType": "EVENT_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
         }
     ],
     ERROR_MESSAGE: {
@@ -284,7 +297,6 @@ module.exports = {
         KEY_MANAGER_DELETE_ERROR: "Error while deleting key manager",
         KEY_MANAGER_RETRIEVE_ERROR: "Error while retrieving key manager",
         KEY_MANAGER_NOT_FOUND: "Key manager not found",
-        KEY_MANAGER_ENCRYPTION_ERROR: "Key manager encryption key not configured",
         WEBHOOK_SUBSCRIBER_CREATE_ERROR: "Error while creating webhook subscriber",
         WEBHOOK_SUBSCRIBER_UPDATE_ERROR: "Error while updating webhook subscriber",
         WEBHOOK_SUBSCRIBER_DELETE_ERROR: "Error while deleting webhook subscriber",
@@ -295,6 +307,11 @@ module.exports = {
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",
         API_NOT_FOUND: "Requested API not found",
+        API_WORKFLOW_CREATE_ERROR: "Error while creating API workflow",
+        API_WORKFLOW_UPDATE_ERROR: "Error while updating API workflow",
+        API_WORKFLOW_DELETE_ERROR: "Error while deleting API workflow",
+        API_WORKFLOW_RETRIEVE_ERROR: "Error while fetching API workflow",
+        API_WORKFLOW_NOT_FOUND: "API workflow not found",
         COMMON_AUTH_ERROR_MESSAGE: "User is not authenticated to perform this request",
         COMMON_ERROR_MESSAGE: "Oops! Something went wrong",
         COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE: "Requested page not found!"

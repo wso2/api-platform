@@ -74,7 +74,7 @@ func (w *world) seedAPIAndGateway() error {
 		OrganizationID:    w.orgID,
 		Name:              "dep gateway",
 		Handle:            "dep-gw-" + id()[:6],
-		Vhost:             "localhost",
+		Endpoints:         []string{"https://localhost:8443", "wss://localhost:8444"},
 		FunctionalityType: "REGULAR",
 		Version:           "1.0.0",
 		Properties:        map[string]interface{}{"region": "us"},
@@ -92,7 +92,7 @@ func (w *world) seedAPIAndGateway() error {
 // increasing created_at values keep the ordering deterministic for the ranking
 // and current-lookup queries.
 func (w *world) createDeploymentsN(n, hardLimit int) error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	base := time.Now()
 	for i := range n {
 		deployed := model.DeploymentStatusDeployed
@@ -132,7 +132,7 @@ func (w *world) createDeploymentsWithLimit(n, limit int) error {
 }
 
 func (w *world) currentDeploymentStatusIs(status string) error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	_, got, _, err := repo.GetStatus(w.depArtifactID, w.orgID, w.depGatewayID)
 	if err != nil {
 		return fmt.Errorf("[%s] GetStatus failed: %w", w.it.driver, err)
@@ -152,7 +152,7 @@ func (w *world) apiHasNoActiveDeployment() error {
 }
 
 func (w *world) activeDeploymentIs(want bool) error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	active, err := repo.HasActiveDeployment(w.depArtifactID, w.orgID)
 	if err != nil {
 		return fmt.Errorf("[%s] HasActiveDeployment failed: %w", w.it.driver, err)
@@ -164,7 +164,7 @@ func (w *world) activeDeploymentIs(want bool) error {
 }
 
 func (w *world) currentDeploymentIsLatest() error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	got, err := repo.GetCurrentByGateway(w.depArtifactID, w.depGatewayID, w.orgID)
 	if err != nil {
 		return fmt.Errorf("[%s] GetCurrentByGateway failed: %w", w.it.driver, err)
@@ -177,7 +177,7 @@ func (w *world) currentDeploymentIsLatest() error {
 }
 
 func (w *world) currentDeploymentContentRoundTrip() error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	current := w.depIDs[len(w.depIDs)-1]
 	got, err := repo.GetWithContent(current, w.depArtifactID, w.orgID)
 	if err != nil {
@@ -190,7 +190,7 @@ func (w *world) currentDeploymentContentRoundTrip() error {
 }
 
 func (w *world) listDeploymentsWithState(want int) error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	list, err := repo.GetDeploymentsWithState(w.depArtifactID, w.orgID, nil, nil, 5)
 	if err != nil {
 		return fmt.Errorf("[%s] GetDeploymentsWithState failed: %w", w.it.driver, err)
@@ -202,7 +202,7 @@ func (w *world) listDeploymentsWithState(want int) error {
 }
 
 func (w *world) undeployCurrent() error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	current, _, _, err := repo.GetStatus(w.depArtifactID, w.orgID, w.depGatewayID)
 	if err != nil {
 		return fmt.Errorf("[%s] GetStatus (before undeploy) failed: %w", w.it.driver, err)
@@ -215,7 +215,7 @@ func (w *world) undeployCurrent() error {
 }
 
 func (w *world) noCurrentDeployment() error {
-	repo := repository.NewDeploymentRepo(w.it.db)
+	repo := repository.NewDeploymentRepo(w.it.db, repository.NewArtifactTableRegistry())
 	got, err := repo.GetCurrentByGateway(w.depArtifactID, w.depGatewayID, w.orgID)
 	if err != nil {
 		return fmt.Errorf("[%s] GetCurrentByGateway (after undeploy) failed: %w", w.it.driver, err)

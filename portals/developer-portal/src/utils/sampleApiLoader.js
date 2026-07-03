@@ -42,10 +42,18 @@ function loadSubscriptionPlans() {
     try {
         const plans = yaml.load(fs.readFileSync(plansPath, 'utf-8'));
         if (!Array.isArray(plans)) return {};
-        return Object.fromEntries(plans.map(p => [p.planName, p]));
+        return Object.fromEntries(plans.map(p => [p.handle, p]));
     } catch (_) {
         return {};
     }
+}
+
+// Sample api.yaml files author `type` using the short keyword form (REST, MCP, WEBSUB, ...);
+// map it to the same stored values constants.API_TYPE uses elsewhere.
+function normalizeSampleApiType(rawType) {
+    if (!rawType || typeof rawType !== 'string') return constants.API_TYPE.REST;
+    const keyword = rawType.replace(/\s+/g, '').toUpperCase();
+    return constants.API_TYPE[keyword] || constants.API_TYPE.REST;
 }
 
 function parseApiYaml(apiHandle, samplesDir) {
@@ -64,11 +72,16 @@ function parseApiYaml(apiHandle, samplesDir) {
     const plansMap = loadSubscriptionPlans();
     const plans = (spec.subscriptionPlans || []).map(p => {
         const plan = plansMap[p];
+        const rc = plan?.requestCount;
+        const ec = plan?.eventCount;
         return {
-            planName: p,
+            handle: p,
             displayName: plan?.displayName ?? p,
             description: plan?.description ?? '',
-            requestCount: plan?.requestCount ?? 1000,
+            limits: Array.isArray(plan?.limits) ? plan.limits
+                : rc != null ? [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: rc }]
+                : ec != null ? [{ limitType: 'EVENT_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: ec }]
+                : [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: 1000 }],
         };
     });
     // Collect images from web/ and expose them as /mock/{handle}/web/{filename} URLs
@@ -85,26 +98,22 @@ function parseApiYaml(apiHandle, samplesDir) {
     }
 
     return {
-        apiID: name,
-        apiHandle: name,
-        apiInfo: {
-            apiName: spec.displayName || name,
-            apiVersion: spec.version || '',
-            apiDescription: spec.description || '',
-            apiType: spec.type || 'REST',
-            apiStatus: spec.status || 'PUBLISHED',
-            visibility: spec.visibility || 'PUBLIC',
-            visibleGroups: spec.visibleGroups || [],
-            tags: spec.tags || [],
-            labels: spec.labels || [],
-            owners: spec.businessInformation ? {
-                businessOwner: spec.businessInformation.businessOwner,
-                businessOwnerEmail: spec.businessInformation.businessOwnerEmail,
-                technicalOwner: spec.businessInformation.technicalOwner,
-                technicalOwnerEmail: spec.businessInformation.technicalOwnerEmail,
-            } : undefined,
-            apiImageMetadata: Object.keys(apiImageMetadata).length ? apiImageMetadata : undefined,
-        },
+        id: name,
+        handle: name,
+        name: spec.displayName || name,
+        version: spec.version || '',
+        description: spec.description || '',
+        type: normalizeSampleApiType(spec.type),
+        status: spec.status || 'PUBLISHED',
+        tags: spec.tags || [],
+        labels: spec.labels || [],
+        owners: spec.businessInformation ? {
+            businessOwner: spec.businessInformation.businessOwner,
+            businessOwnerEmail: spec.businessInformation.businessOwnerEmail,
+            technicalOwner: spec.businessInformation.technicalOwner,
+            technicalOwnerEmail: spec.businessInformation.technicalOwnerEmail,
+        } : undefined,
+        apiImageMetadata: Object.keys(apiImageMetadata).length ? apiImageMetadata : undefined,
         endPoints: {
             sandboxURL: spec.endpoints?.sandboxUrl || '',
             productionURL: spec.endpoints?.productionUrl || '',
@@ -279,7 +288,7 @@ function loadApplications() {
         const items = Array.isArray(doc.items) ? doc.items : [];
         return items.map(item => ({
             id: item.metadata?.name,
-            name: item.spec?.displayName || item.metadata?.name,
+            displayName: item.spec?.displayName || item.metadata?.name,
             description: item.spec?.description || '',
         }));
     } catch (_) {

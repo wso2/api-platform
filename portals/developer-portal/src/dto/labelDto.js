@@ -19,16 +19,8 @@
 
 class LabelDTO {
     constructor(label) {
-        this.name = label.NAME;
-        this.displayName = label.DISPLAY_NAME;
-    }
-
-    setResponseData(data) {
-        this.data = data;
-    }
-
-    getResponseData() {
-        return this.data;
+        this.id = label.handle;
+        this.displayName = label.display_name;
     }
 }
 

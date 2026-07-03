@@ -1,304 +1,31 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes-organization-content">Organization Content</h1>
 
-## Upload organization layout content
+## Get a theme asset
 
-<a id="opIdcreateOrgContent"></a>
+<a id="opIdgetOrgAsset"></a>
 
-`POST /o/{orgId}/devportal/v1/views/{viewName}/layout`
-
-> Code samples
-
-```shell
-
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout \
-  -u {username}:{password} \
-  -H 'Content-Type: multipart/form-data' \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
-  -d @payload.json
-
-```
-
-Uploads a ZIP file containing organization layout assets for the selected view. The service extracts the archive, reads supported files, and stores each content item under the view.
-
-> Payload
-
-```yaml
-file: string
-
-```
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="upload-organization-layout-content-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|body|body|object|true|ZIP file upload. Organization content uploads are limited to 50 MB.|
-|» file|body|string(binary)|true|ZIP file containing organization layout assets.|
-|orgId|path|string|true|none|
-|viewName|path|string|true|none|
-
-> Example responses
-
-> 201 Response
-
-```json
-{
-  "orgId": "string",
-  "fileName": "string"
-}
-```
-
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
-
-```json
-{
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
-}
-```
-
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
-}
-```
-
-> 409 Response
-
-```json
-{
-  "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
-}
-```
-
-> 500 Response
-
-```json
-{
-  "status": "error",
-  "code": "INTERNAL_SERVER_ERROR",
-  "message": "An unexpected error occurred."
-}
-```
-
-<h3 id="upload-organization-layout-content-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Organization content upload accepted and stored successfully.|[OrganizationContentUploadResponse](schemas.md#schemaorganizationcontentuploadresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="upload-organization-layout-content-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
-
-## Replace organization layout content
-
-<a id="opIdupdateOrgContent"></a>
-
-`PUT /o/{orgId}/devportal/v1/views/{viewName}/layout`
+`GET /views/{viewId}/asset`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout \
-  -u {username}:{password} \
-  -H 'Content-Type: multipart/form-data' \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
-  -d @payload.json
-
-```
-
-Uploads a ZIP file and upserts the extracted organization layout assets for the selected view. Existing content records are updated and missing content records are created.
-
-> Payload
-
-```yaml
-file: string
-
-```
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="replace-organization-layout-content-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|body|body|object|true|ZIP file upload. Organization content uploads are limited to 50 MB.|
-|» file|body|string(binary)|true|ZIP file containing organization layout assets.|
-|orgId|path|string|true|none|
-|viewName|path|string|true|none|
-
-> Example responses
-
-> 201 Response
-
-```json
-{
-  "orgId": "string",
-  "fileName": "string"
-}
-```
-
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
-
-```json
-{
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
-}
-```
-
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
-}
-```
-
-> 409 Response
-
-```json
-{
-  "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
-}
-```
-
-> 500 Response
-
-```json
-{
-  "status": "error",
-  "code": "INTERNAL_SERVER_ERROR",
-  "message": "An unexpected error occurred."
-}
-```
-
-<h3 id="replace-organization-layout-content-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Organization content upload accepted and stored successfully.|[OrganizationContentUploadResponse](schemas.md#schemaorganizationcontentuploadresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="replace-organization-layout-content-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
-
-## Get a single organization layout asset
-
-<a id="opIdgetOrgLayoutContent"></a>
-
-`GET /o/{orgId}/devportal/v1/views/{viewName}/layout`
-
-> Code samples
-
-```shell
-
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout?fileType=string&fileName=string \
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/asset?fileType=string&fileName=string \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
 ```
 
-Retrieves one organization layout asset when `fileType` and `fileName` are supplied as query parameters. The response content type is derived from the stored file type and extension.
+Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and `fileName` query parameters. The response content type is derived from the stored file type and extension.
 
-<h3 id="get-a-single-organization-layout-asset-parameters">Parameters</h3>
+<h3 id="get-a-theme-asset-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |fileType|query|string|true|Organization content file type, such as style, image, text, template, or partial.|
 |fileName|query|string|true|Stored organization content file name.|
 |filePath|query|string|false|Optional relative content path used together with `fileType` and `fileName`.|
-|orgId|path|string|true|none|
-|viewName|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -308,32 +35,41 @@ Retrieves one organization layout asset when `fileType` and `fileName` are suppl
 "string"
 ```
 
-<h3 id="get-a-single-organization-layout-asset-responses">Responses</h3>
+<h3 id="get-a-theme-asset-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Stored organization content asset.|string|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Plain text success response.|string|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid or missing `fileType`/`fileName` query parameters.|string|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|No matching organization content asset was found.|string|
 
-## Delete organization layout content
+## Apply a theme
 
-<a id="opIddeleteOrgContent"></a>
+<a id="opIdapplyTheme"></a>
 
-`DELETE /o/{orgId}/devportal/v1/views/{viewName}/layout`
+`POST /views/{viewId}/apply-theme`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout \
+curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/apply-theme \
   -u {username}:{password} \
+  -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+  -H 'Authorization: Bearer {access-token}' \
+  -d @payload.json
 
 ```
 
-Deletes all organization layout content for the selected view, or deletes one content item when `fileName` is supplied as a query parameter.
+Uploads a ZIP file and atomically replaces the view's theme assets. Only the assets contained in the uploaded ZIP are present afterward.
+
+> Payload
+
+```yaml
+file: string
+
+```
 
 ### Authentication
 
@@ -342,15 +78,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="delete-organization-layout-content-parameters">Parameters</h3>
+<h3 id="apply-a-theme-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|fileName|query|string|false|File name selector used by file retrieval and organization content deletion.|
-|orgId|path|string|true|none|
-|viewName|path|string|true|none|
+|body|body|object|true|ZIP file upload. Organization content uploads are limited to 50 MB.|
+|» file|body|string(binary)|true|ZIP file containing organization theme assets.|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "string",
+  "fileName": "string"
+}
+```
 
 > Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
 
@@ -362,8 +107,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -381,16 +126,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "message": "Missing or invalid fields in the request payload"
-}
-```
-
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
 }
 ```
 
@@ -404,16 +139,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="delete-organization-layout-content-responses">Responses</h3>
+<h3 id="apply-a-theme-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Organization content deleted successfully.|None|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Organization content upload accepted and stored successfully.|[OrganizationContentUploadResponse](schemas.md#schemaorganizationcontentuploadresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="delete-organization-layout-content-responseschema">Response Schema</h3>
+<h3 id="apply-a-theme-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -422,117 +156,53 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |status|error|
 |status|error|
 
-## List organization layout assets by file type
+## Reset theme to defaults
 
-<a id="opIdgetOrgLayoutContentByFileType"></a>
+<a id="opIdresetTheme"></a>
 
-`GET /o/{orgId}/devportal/v1/views/{viewName}/layout/{fileType}`
+`POST /views/{viewId}/reset-theme`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout/{fileType} \
+curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/reset-theme \
   -u {username}:{password} \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Returns all stored organization layout content records for the selected file type and view.
+Deletes all stored theme assets for the view, reverting it to built-in defaults.
 
-<h3 id="list-organization-layout-assets-by-file-type-parameters">Parameters</h3>
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="reset-theme-to-defaults-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|viewName|path|string|true|none|
-|fileType|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
-> 200 Response
-
-```json
-{
-  "list": [
-    {
-      "orgId": "string",
-      "fileName": "string",
-      "fileContent": "string"
-    }
-  ],
-  "pagination": {
-    "total": 42,
-    "limit": 20,
-    "offset": 0
-  }
-}
-```
-
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
+> 500 Response
 
 ```json
 {
   "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
-}
-```
-
-> 404 Response
-
-```
-"string"
-```
-
-<h3 id="list-organization-layout-assets-by-file-type-responses">Responses</h3>
+<h3 id="reset-theme-to-defaults-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of organization content records for the requested file type.|Inline|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
-
-<h3 id="list-organization-layout-assets-by-file-type-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» list|[[OrganizationContentListItemResponse](schemas.md#schemaorganizationcontentlistitemresponse)]|false|none|none|
-|»» orgId|string|false|none|none|
-|»» fileName|string|false|none|none|
-|»» fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
-|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
-|»» total|integer|true|none|Total number of records matching the query.|
-|»» limit|integer|true|none|Maximum number of records returned in this response.|
-|»» offset|integer|true|none|Number of records skipped before this page.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Theme reset successfully.|None|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|

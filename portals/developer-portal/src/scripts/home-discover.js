@@ -38,9 +38,9 @@
     if (copyBtn) {
         copyBtn.addEventListener('click', function () {
             navigator.clipboard.writeText(prompt).then(function () {
-                const icon = copyBtn.querySelector('i');
-                icon.classList.replace('bi-copy', 'bi-check2');
-                setTimeout(function () { icon.classList.replace('bi-check2', 'bi-copy'); }, 1800);
+                copyBtn.classList.add('copy-btn--copied');
+                if (copyBtn._copyTimer) clearTimeout(copyBtn._copyTimer);
+                copyBtn._copyTimer = setTimeout(function () { copyBtn.classList.remove('copy-btn--copied'); }, 1600);
             });
         });
     }

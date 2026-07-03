@@ -21,8 +21,8 @@
 # the docker-compose.yml one level up.
 #
 # Quick start:
-#   1. Copy configs/config-platform-api.toml.example to configs/config-platform-api.toml
-#      and adjust users/org as needed.
+#   1. (Optional) Edit configs/config-platform-api.toml to adjust users/org as needed
+#      — ships with a default admin/admin user, ready to use as-is.
 #   2. docker compose up
 #   3. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
@@ -36,6 +36,10 @@
 #   Edit configs/config-platform-api.toml to customise Platform API settings (users, org, etc.).
 #   Every devportal config value can also be overridden via a DP_* env var.
 #   Create a .env file next to this file for persistent overrides.
+#
+# Demo mode (off by default):
+#   demo=true docker compose up
+#   Enables the "Seed sample APIs" button in Settings and the onboarding prompt.
 #
 # Database:
 #   SQLite is used by default — no external database required.
@@ -55,7 +59,7 @@
 services:
   # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.10.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
@@ -142,6 +146,12 @@ services:
       # Seed a default organization on startup (idempotent)
       DP_DEFAULTORGNAME: "default"
 
+      # Demo mode — off by default. When enabled, the Settings > Manage APIs page
+      # shows a "Seed sample APIs" button and admins get a one-time onboarding
+      # prompt to deploy sample APIs/MCPs. Enable with:
+      #   demo=true docker compose up
+      DP_DEMO_ENABLED: "${demo:-false}"
+
       # Auto-generate default subscription plans for every new org
       DP_GENERATEDEFAULTSUBPLANS: "true"
 
@@ -155,7 +165,7 @@ services:
       DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
       DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
 
-      # AES-256-GCM key for encrypting subscription tokens and key manager credentials at rest.
+      # AES-256-GCM key for encrypting subscription tokens and webhook secrets at rest.
       # Generate once with: openssl rand -hex 32
       # Store in .env as: DP_ADVANCED_ENCRYPTIONKEY=<64-char hex>
       # Must remain stable across restarts — changing it makes existing encrypted data unreadable.

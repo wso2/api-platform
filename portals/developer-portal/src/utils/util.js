@@ -100,42 +100,42 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     });
 }
 
-async function loadLayoutFromAPI(orgID, viewName) {
+async function loadLayoutFromAPI(orgId, viewName) {
 
     var layoutContent = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         fileType: constants.FILE_TYPE.LAYOUT,
         fileName: constants.FILE_NAME.MAIN,
         viewName: viewName
     });
     if (layoutContent) {
-        return layoutContent.FILE_CONTENT.toString(constants.CHARSET_UTF8);
+        return layoutContent.file_content.toString(constants.CHARSET_UTF8);
     } else {
         return "";
     }
 }
 
-async function loadTemplateFromAPI(orgID, filePath, viewName) {
+async function loadTemplateFromAPI(orgId, filePath, viewName) {
 
     var templateContent = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         filePath: filePath,
         fileType: constants.FILE_TYPE.TEMPLATE,
         fileName: constants.FILE_NAME.PAGE,
         viewName: viewName
     });
-    return templateContent ? templateContent.FILE_CONTENT.toString(constants.CHARSET_UTF8) : "";
+    return templateContent ? templateContent.file_content.toString(constants.CHARSET_UTF8) : "";
 }
 
-async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, viewName) {
+async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, viewName) {
 
     const templateResponse = fs.readFileSync(path.join(process.cwd(), filePrefix + filePath + '/page.hbs'), constants.CHARSET_UTF8);
     const completeLayoutPath = path.join(process.cwd(), filePrefix + 'layout/main.hbs');
 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
-    const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
+    const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`);
+        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
@@ -157,16 +157,16 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
 
 }
 
-async function renderLlmsTxt(templateContent, orgID, viewName) {
+async function renderLlmsTxt(templateContent, orgId, viewName) {
 
     const dbPartial = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         fileType: 'partial',
         viewName: viewName,
         fileName: 'llms-txt.hbs'
     });
     const partialSource = dbPartial
-        ? dbPartial.FILE_CONTENT.toString(constants.CHARSET_UTF8)
+        ? dbPartial.file_content.toString(constants.CHARSET_UTF8)
         : fs.readFileSync(
             path.join(process.cwd(), filePrefix + 'pages/llms-txt/partials/llms-txt.hbs'),
             constants.CHARSET_UTF8
@@ -180,17 +180,17 @@ async function renderLlmsTxt(templateContent, orgID, viewName) {
     return Handlebars.compile(pageSource)(templateContent);
 }
 
-async function renderMarkdownTemplateFromAPI(templateContent, orgID, filePath, viewName) {
+async function renderMarkdownTemplateFromAPI(templateContent, orgId, filePath, viewName) {
 
     const partialName = path.basename(filePath) + '-md';
     const dbPartial = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         fileType: 'partial',
         viewName: viewName,
         fileName: partialName + '.hbs'
     });
     const partialSource = dbPartial
-        ? dbPartial.FILE_CONTENT.toString(constants.CHARSET_UTF8)
+        ? dbPartial.file_content.toString(constants.CHARSET_UTF8)
         : fs.readFileSync(
             path.join(process.cwd(), filePrefix + filePath + '/partials/' + partialName + '.hbs'),
             constants.CHARSET_UTF8
@@ -288,6 +288,23 @@ function toPaginatedList(list, req) {
         list,
         pagination: { total: list.length, limit, offset },
     };
+}
+
+/**
+ * Resolve the acting user identity from a request for audit columns
+ * (CREATED_BY / UPDATED_BY). Covers every auth mode wired in the portal:
+ *   - OpenAPI router (authResolver): oauth2 / platform-jwt set req.auth.userId
+ *   - enforceSecurity router (e.g. MCP registry): sets req[constants.USER_ID]
+ *   - session/passport users: req.user.sub
+ * Machine credentials (API key, mTLS) carry no user identity, so fall back to
+ * the SYSTEM actor to keep the NOT NULL audit columns satisfiable instead of
+ * throwing a constraint violation.
+ */
+function resolveActor(req) {
+    return req?.auth?.userId
+        || req?.[constants.USER_ID]
+        || req?.user?.[constants.USER_ID]
+        || constants.SYSTEM_ACTOR;
 }
 
 const unzipDirectory = async (zipPath, extractPath) => {
@@ -617,23 +634,23 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 if (file.name.endsWith(".css")) {
                     fileType = "style"
                     if (file.name === "main.css") {
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=api-content.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=api-content.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=home.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
                     if (file.name === "main.hbs") {
-                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=`);
+                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("partials")) {
-                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     validateScripts(strContent);
                     fileType = "partial"
@@ -687,15 +704,12 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/filter.js' defer></script>",
             "<script src='/technical-scripts/common.js' defer></script>",
             "<script src='/technical-scripts/subscription.js' defer></script>",
-            "<script src='/technical-scripts/add-application-form.js' defer></script>",
-            "<script src='/technical-scripts/subscription.js' defer></script>",
             "<script src='/technical-scripts/subscription-modal.js' defer></script>",
             "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
             "<script src='/technical-scripts/api-keys-page.js' defer></script>",
             '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
-            '<script src="/technical-scripts/api-key-generation.js" defer></script>',
             "<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>",
-            "<script src='/technical-scripts/api-flow-detail.js' defer></script>",
+            "<script src='/technical-scripts/api-workflow-detail.js' defer></script>",
             "<script src='/technical-scripts/api-workflows.js' defer></script>",
             "<script src='/technical-scripts/api-agent-prompt.js' defer></script>",
             '<script src="/technical-scripts/home-discover.js" defer></script>',
@@ -708,20 +722,20 @@ function validateScripts(strContent) {
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafeSubscriptions ../subscriptions}}}</script>",
             // Token-meta bootstrap (api-landing/partials/api-subscription-plans.hbs)
-            "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgID for on-demand fetches\n                        window.__subscriptionOrgID = \"{{@root.orgID}}\";\n                    })();\n                </script>",
+            "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgId for on-demand fetches\n                        window.__subscriptionOrgId = \"{{@root.orgId}}\";\n                    })();\n                </script>",
             // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
-            // API flows JSON data island (pages/api-flows/page.hbs)
-            "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
+            // API workflows JSON data island (pages/api-workflows/page.hbs)
+            "<script type=\"application/json\" id=\"apiWorkflowsDataContainer\">{{{json apiWorkflows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
-            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"apiHandle\":\"{{apiMetadata.apiHandle}}\"}</script>",
+            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"id\":\"{{apiMetadata.id}}\"}</script>",
             // Home discover data island (pages/home/page.hbs)
             "<script type=\"application/json\" id=\"homeDiscoverData\">{\"baseUrl\":\"{{baseUrl}}\"}</script>",
             // Existing-subs bootstrap (api-landing/partials/api-subscription-plans.hbs)
-            "<script>\n                (function() {\n                    window.__subscriptionOrgID = window.__subscriptionOrgID || \"{{@root.orgID}}\";\n                    var raw = document.getElementById('existing-subs-data').textContent || '[]';\n                    try {\n                        var parsed = JSON.parse(raw);\n                        window.existingSubscriptions = parsed.map(function(sub) {\n                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };\n                        });\n                    } catch (e) {\n                        window.existingSubscriptions = [];\n                    }\n                })();\n            </script>",
-            // tokenMap + orgID bootstrap (api-subscriptions/partials/api-subscription-list.hbs
+            "<script>\n                (function() {\n                    window.__subscriptionOrgId = window.__subscriptionOrgId || \"{{@root.orgId}}\";\n                    var raw = document.getElementById('existing-subs-data').textContent || '[]';\n                    try {\n                        var parsed = JSON.parse(raw);\n                        window.existingSubscriptions = parsed.map(function(sub) {\n                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };\n                        });\n                    } catch (e) {\n                        window.existingSubscriptions = [];\n                    }\n                })();\n            </script>",
+            // tokenMap + orgId bootstrap (api-subscriptions/partials/api-subscription-list.hbs
             // and subscriptions/partials/subscription-list.hbs)
-            "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgID = \"{{@root.orgID}}\";\n            </script>",
+            "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
             // Modal click handler (apis/partials/api-listing.hbs)
             "<script>\n    (function(){\n      function findClosest(el, selector){\n        while(el && el !== document){\n          if(el.matches && el.matches(selector)) return el;\n          el = el.parentNode;\n        }\n        return null;\n      }\n\n      document.addEventListener('click', function(e){\n        var modalTrigger = findClosest(e.target, '[data-modal]');\n        if(modalTrigger){\n          e.preventDefault();\n          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){\n            return;\n          }\n          if(typeof loadModal === 'function'){\n            loadModal(modalTrigger.getAttribute('data-modal'));\n          } else {\n            var id = modalTrigger.getAttribute('data-modal');\n            var el = document.getElementById(id);\n            if(el) {\n              el.style.display = 'flex';\n              document.body.classList.add('modal-open');\n              if(typeof prepareSubscriptionModal === 'function') {\n                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }\n              }\n            }\n          }\n          return;\n        }\n\n        var nav = findClosest(e.target, '[data-href]');\n        if(nav){\n          var href = nav.getAttribute('data-href');\n          if(href){ window.location.href = href; }\n        }\n      }, false);\n    })();\n  </script>",
         ]);
@@ -759,47 +773,46 @@ function validateScripts(strContent) {
     }
 }
 
-function appendAPIImageURL(subList, req, orgID) {
+function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
-        const images = element.apiInfo.apiImageMetadata;
+        const images = element.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
-            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
+            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
-            element.apiInfo.apiImageMetadata[key] = modifiedApiImageURL;
+            element.apiImageMetadata[key] = modifiedApiImageURL;
         }
     });
 }
 
-async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
+async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
     const enrichedPlans = [];
     if (subscriptionPlans) {
         for (const plan of subscriptionPlans) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
+            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.id);
             if (!subscriptionPlan) {
-                logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
-                    orgID,
-                    planName: plan.planName
+                logger.warn('Subscription plan not found, skipping', {
+                    orgId,
+                    id: plan.id
                 });
                 continue;
             }
             enrichedPlans.push({
-                planID: subscriptionPlan.planID,
+                id: subscriptionPlan.id,
                 displayName: subscriptionPlan.displayName,
-                planName: subscriptionPlan.planName,
                 description: subscriptionPlan.description,
-                requestCount: subscriptionPlan.requestCount,
+                limits: subscriptionPlan.limits || [],
             });
         }
     }
     return enrichedPlans;
 }
 
-const loadSubscriptionPlan = async (orgID, planName) => {
+const loadSubscriptionPlan = async (orgId, planName) => {
 
     try {
-        const planData = await subscriptionPlanDao.getByName(orgID, planName);
+        const planData = await subscriptionPlanDao.getByName(orgId, planName);
         if (planData) {
             return new subscriptionPlanDTO(planData);
         } else {
@@ -807,7 +820,7 @@ const loadSubscriptionPlan = async (orgID, planName) => {
         }
     } catch (error) {
         logger.error("Error occurred while loading subscription plans", {
-            orgID: orgID,
+            orgId: orgId,
             planName: planName,
             error: error.message,
             stack: error.stack
@@ -831,7 +844,6 @@ async function listFiles(path) {
         logger.debug('Files in directory', {
             path: path,
             fileCount: files.length,
-            files: files
         });
     });
     return files;
@@ -875,52 +887,54 @@ function resolveApiType(apiType) {
         return constants.API_TYPE.REST;
     }
 
-    const resolvedType = apiType.replace(/\s+/g, '').toUpperCase();
-    if (!Object.values(constants.API_TYPE).includes(resolvedType)) {
+    // Accept the stored value as-is (e.g. "RestApi", sent by devportal's own UI),
+    // otherwise fall back to the short authoring keyword (e.g. "REST" in an uploaded api.yaml).
+    if (Object.values(constants.API_TYPE).includes(apiType)) {
+        return apiType;
+    }
+
+    const keyword = apiType.replace(/\s+/g, '').toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(constants.API_TYPE, keyword)) {
         throw new Sequelize.ValidationError(
             "Invalid api type. Supported values: REST, WS, GRAPHQL, SOAP, WEBSUB, MCP"
         );
     }
-    return resolvedType;
+    return constants.API_TYPE[keyword];
 }
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {
     searchResults = searchResults.filter(api => {
-        // MCP servers published via the registry have no referenceID
-        if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
+        // MCP servers published via the registry have no referenceId
+        if (api?.type === constants.API_TYPE.MCP && !api.refId) {
             return true;
         }
-        return allowedAPIs.some(allowedAPI => api.apiReferenceID === allowedAPI.id);
+        return allowedAPIs.some(allowedAPI => api.refId === allowedAPI.id);
     });
     return searchResults;
 }
 
 const enforcePortalMode = async (req, res, next) => {
     const orgDetails = await orgDao.get(req.params.orgName);
-    const portalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const portalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
-    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.API_PROXIES) ||
-        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_ONLY)) {
+    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.APIS_ONLY) ||
+        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_SERVERS_ONLY)) {
         next();
     } else {
-        const templateContent = {
-            errorMessage: constants.ERROR_MESSAGE.COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE,
-            devportalMode: portalMode,
-            baseUrl: '/' + req.params.orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
-        }
-        const html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.send(html);
+        const err = new Error('Page not found');
+        err.status = 404;
+        next(err);
     }
 }
 
-async function isAiDisabledForPortal(orgID, viewName) {
+async function isAiDisabledForPortal(orgId, viewName) {
     const configAsset = await orgDao.getContent({
-        orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
+        orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
     });
     if (!configAsset) return false;
     try {
-        const llmsConfig = JSON.parse(configAsset.FILE_CONTENT.toString('utf8'));
+        const llmsConfig = JSON.parse(configAsset.file_content.toString('utf8'));
         return llmsConfig.aiEnabled === false;
     } catch (e) {
         return false;
@@ -961,4 +975,6 @@ module.exports = {
     normalizeStringArray,
     resolveApiType,
     toPaginatedList,
+    resolveActor,
+    filePrefix,
 }

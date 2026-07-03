@@ -17,7 +17,11 @@
 
 package config
 
-import "time"
+import (
+	"time"
+
+	"platform-api/src/internal/constants"
+)
 
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
@@ -30,11 +34,11 @@ func defaultConfig() *Server {
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
 		EnableScopeValidation:      true,
 		Database: Database{
-			Driver:           "sqlite3",
-			Path:             "./data/api_platform.db",
-			MaxOpenConns:     25,
-			MaxIdleConns:     10,
-			ConnMaxLifetime:  300,
+			Driver:          "sqlite3",
+			Path:            "./data/api_platform.db",
+			MaxOpenConns:    25,
+			MaxIdleConns:    10,
+			ConnMaxLifetime: 300,
 		},
 		Auth: Auth{
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
@@ -55,6 +59,7 @@ func defaultConfig() *Server {
 				"/api/internal/v1/secrets",
 				"/api/internal/v1/websub-apis",
 				"/api/internal/v1/webbroker-apis",
+				"/api/internal/" + constants.APIVersion + "/webhook/events",
 			},
 			JWT: JWT{
 				Enabled:        true,
@@ -77,16 +82,17 @@ func defaultConfig() *Server {
 			FileBased: FileBased{
 				Enabled: false,
 				Organization: FileBasedOrg{
-					ID:     "99089a17-72e0-4dd8-a2f4-c8dfbb085295",
-					Name:   "AP Organization",
-					Handle: "ap-org",
-					Region: "us",
+					ID:          "default",
+					DisplayName: "Default",
+					Region:      "us",
+					// UUID left empty: seedFileBasedOrg generates one at startup
+					// unless an operator pins it via config/env for a stable org.
 				},
 				Users: FileBasedUsers{
 					{
 						Username:     "admin",
 						PasswordHash: "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.",
-						Scopes:       "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage",
+						Scopes:       "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage",
 					},
 				},
 			},
@@ -121,6 +127,11 @@ func defaultConfig() *Server {
 			TimeoutInterval:  20,
 			TimeoutDuration:  60,
 		},
+		// ArtifactLimits are unlimited by default: every limit is left at its
+		// zero value, which LimitReached treats as "no limit". Operators can cap
+		// a specific artifact kind per organization by setting a positive value
+		// (config file key artifact_limits.max_* or env ARTIFACT_LIMITS_MAX_*).
+		ArtifactLimits: ArtifactLimits{},
 		TLS: TLS{
 			CertDir: "./data/certs",
 		},
@@ -131,6 +142,13 @@ func defaultConfig() *Server {
 			PollInterval:    3 * time.Second,
 			CleanupInterval: 10 * time.Minute,
 			RetentionPeriod: 1 * time.Hour,
+		},
+		Webhook: Webhook{
+			Enabled:            false,
+			GatewayType:        "wso2/api-platform",
+			SignatureTolerance: 5 * time.Minute,
+			MaxBodySize:        1 << 20, // 1 MiB
+			SignatureHeader:    "X-Devportal-Signature",
 		},
 	}
 }

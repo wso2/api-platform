@@ -19,9 +19,18 @@ const yaml = require('js-yaml');
 const { Sequelize } = require('sequelize');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
+
+/**
+ * Supported key manager types. Every type proxies token requests identically
+ * (a standard OAuth2 client_credentials request), so this list exists purely
+ * to validate the `type` field when an admin configures a key manager.
+ */
+const SUPPORTED_KM_TYPES = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
 
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
@@ -33,18 +42,11 @@ const logger = require('../config/logger');
 function mapYamlToKeyManager(yamlDoc) {
     const spec = yamlDoc.spec || {};
     return {
-        name: yamlDoc.metadata?.name || spec.name,
+        handle: yamlDoc.metadata?.name || spec.name,
+        displayName: spec.displayName || spec.name,
         type: spec.type,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
-        clientRegistrationEndpoint: spec.clientRegistrationEndpoint,
-        issuer: spec.issuer || null,
-        jwksURL: spec.jwksURL || null,
-        adminClientId: spec.adminClientId || '',
-        adminClientSecret: spec.adminClientSecret || '',
-        supportedGrantTypes: spec.grantTypes || spec.supportedGrantTypes || ['client_credentials'],
-        supportedScopes: spec.scopes || spec.supportedScopes || ['openid'],
-        additionalProperties: spec.additionalProperties || {},
     };
 }
 
@@ -90,15 +92,38 @@ function _resolvePayload(req) {
     if (file) {
         return parseKeyManagerFromYamlFile(file.buffer);
     }
-    return req.body;
+    const payload = req.body;
+    if (payload && payload.id) {
+        payload.handle = payload.id;
+    }
+    return payload;
 }
 
+const generateHandle = (name) =>
+    name.toLowerCase().trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 100);
+
+// Handles are used to build route segments, so user-supplied ids must be restricted
+// to the same safe character set generateHandle() produces.
+const HANDLE_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 function _validateRequiredFields(payload) {
-    const missing = ['name', 'type', 'tokenEndpoint', 'clientRegistrationEndpoint',
-        'adminClientId', 'adminClientSecret']
+    const missing = ['displayName', 'type', 'tokenEndpoint']
         .filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
+    }
+    const endpoint = payload.tokenEndpoint.trim();
+    if (!endpoint) {
+        return 'tokenEndpoint must not be blank';
+    }
+    try {
+        new URL(endpoint);
+    } catch {
+        return 'tokenEndpoint must be a valid URL';
     }
     return null;
 }
@@ -109,21 +134,42 @@ function _validateRequiredFields(payload) {
 
 const createKeyManager = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
+        const orgId = req.orgId;
         const payload = _resolvePayload(req);
 
         const validationError = _validateRequiredFields(payload);
         if (validationError) {
             return res.status(400).json({ error: validationError });
         }
+        const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
+        if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
+            return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
+        }
+        const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
+        const resolvedHandle = hadExplicitHandle ? payload.handle.trim() : generateHandle(payload.displayName);
+        if (hadExplicitHandle && !HANDLE_PATTERN.test(resolvedHandle)) {
+            return res.status(400).json({ error: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
+        }
 
-        const record = await kmDao.create(orgId, payload);
-        const dto = new KeyManagerDTO(record);
+        const userId = util.resolveActor(req);
+        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle, type: resolvedType }, userId);
+        logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after key manager creation', {
+                error: auditError.message,
+                kmId: record.uuid
+            });
+            audit = { createdAt: record.created_at, updatedAt: record.updated_at };
+        }
+        const dto = new KeyManagerDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             return res.status(409).json({
-                error: `A key manager with name "${req.body?.name}" already exists in this organization.`
+                error: `A key manager with id "${req.body?.id}" already exists in this organization.`
             });
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
@@ -136,11 +182,37 @@ const createKeyManager = async (req, res) => {
 
 const updateKeyManager = async (req, res) => {
     try {
-        const { kmId } = req.params;
+        const orgId = req.orgId;
+        const { kmId: kmHandle } = req.params;
         const payload = _resolvePayload(req);
 
-        const [, updatedRows] = await kmDao.update(kmId, payload);
-        const dto = new KeyManagerDTO(updatedRows[0]);
+        if (payload.type !== undefined) {
+            const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
+            if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
+                return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
+            }
+            payload.type = resolvedType;
+        }
+
+        const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
+        if (!kmId) {
+            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+        }
+
+        const userId = util.resolveActor(req);
+        const [, updatedRows] = await kmDao.update(kmId, payload, userId);
+        logUserAction('KEY_MANAGER_UPDATED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
+        let audit;
+        try {
+            audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
+        } catch (auditError) {
+            logger.error('Audit field resolution failed after key manager update', {
+                error: auditError.message,
+                kmId
+            });
+            audit = { createdAt: updatedRows[0].created_at, updatedAt: updatedRows[0].updated_at };
+        }
+        const dto = new KeyManagerDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -148,7 +220,7 @@ const updateKeyManager = async (req, res) => {
         }
         if (error instanceof Sequelize.UniqueConstraintError) {
             return res.status(409).json({
-                error: `A key manager with that name already exists in this organization.`
+                error: `A key manager with that id already exists in this organization.`
             });
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
@@ -159,11 +231,17 @@ const updateKeyManager = async (req, res) => {
     }
 };
 
+/**
+ * Admins get the full configuration for every key manager; other callers get the
+ * minimal, developer-facing view of enabled key managers only (no admin creds).
+ */
 const getKeyManagers = async (req, res) => {
     try {
-        const orgId = req.params.orgId;
-        const records = await kmDao.list(orgId);
-        const dtos = records.map(r => new KeyManagerDTO(r));
+        const orgId = req.orgId;
+        const isAdmin = req.user?.isAdmin;
+        const records = isAdmin ? await kmDao.list(orgId) : await kmDao.listEnabled(orgId);
+        const auditList = isAdmin ? await userIdpReferenceDao.buildListAuditFields(records) : [];
+        const dtos = records.map((r, i) => (isAdmin ? new KeyManagerDTO(r, auditList[i]) : new KeyManagerPublicDTO(r)));
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
@@ -173,9 +251,15 @@ const getKeyManagers = async (req, res) => {
 
 const getKeyManager = async (req, res) => {
     try {
-        const { kmId } = req.params;
+        const orgId = req.orgId;
+        const { kmId: kmHandle } = req.params;
+        const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
+        if (!kmId) {
+            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+        }
         const record = await kmDao.get(kmId);
-        const dto = new KeyManagerDTO(record);
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+        const dto = new KeyManagerDTO(record, audit);
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -188,8 +272,14 @@ const getKeyManager = async (req, res) => {
 
 const deleteKeyManager = async (req, res) => {
     try {
-        const { kmId } = req.params;
+        const orgId = req.orgId;
+        const { kmId: kmHandle } = req.params;
+        const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
+        if (!kmId) {
+            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+        }
         await kmDao.delete(kmId);
+        logUserAction('KEY_MANAGER_DELETED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -200,28 +290,12 @@ const deleteKeyManager = async (req, res) => {
     }
 };
 
-/**
- * Developer-facing: list only enabled key managers (no admin creds).
- */
-const getAvailableKeyManagers = async (req, res) => {
-    try {
-        const orgId = req.params.orgId;
-        const records = await kmDao.listEnabled(orgId);
-        const dtos = records.map(r => new KeyManagerPublicDTO(r));
-        return res.status(200).json(util.toPaginatedList(dtos, req));
-    } catch (error) {
-        logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR });
-    }
-};
-
 module.exports = {
     createKeyManager,
     updateKeyManager,
     getKeyManagers,
     getKeyManager,
     deleteKeyManager,
-    getAvailableKeyManagers,
     // Exported for use in org creation YAML ingestion
     mapYamlToKeyManager,
     parseKeyManagerFromYamlFile,

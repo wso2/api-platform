@@ -51,7 +51,7 @@ func TestReadOnlyReflectsOrigin(t *testing.T) {
 	} {
 		rest, err := apiUtil.ModelToRESTAPI(&model.API{
 			Handle: "h", Name: "n", Version: "v1.0", ProjectID: projectUUID, Origin: tc.origin,
-		})
+		}, "test-project")
 		if err != nil {
 			t.Fatalf("ModelToRESTAPI(%q): %v", tc.origin, err)
 		}

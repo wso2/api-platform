@@ -21,8 +21,6 @@
 package integration
 
 import (
-	"fmt"
-
 	"github.com/cucumber/godog"
 )
 
@@ -42,15 +40,10 @@ func registerCascadeSteps(ctx *godog.ScenarioContext, w *world) {
 	ctx.Step(`^the application artifact mapping is removed$`, w.appArtifactMappingRemoved)
 
 	ctx.Step(`^I delete the project$`, w.deleteProject)
-	ctx.Step(`^the application is removed$`, w.applicationRemoved)
+	ctx.Step(`^the application is retained$`, w.applicationRetained)
 
 	ctx.Step(`^I delete the subscription and its plan$`, w.deleteSubscriptionAndPlan)
 	ctx.Step(`^the subscription plan limit is removed$`, w.subscriptionPlanLimitRemoved)
-
-	ctx.Step(`^a WebSub API with (\d+) HMAC secrets$`, w.seedWebSubWithSecrets)
-	ctx.Step(`^I delete the WebSub API artifact$`, w.deleteWebSubArtifact)
-	ctx.Step(`^the HMAC secrets are removed$`, w.hmacSecretsRemoved)
-	ctx.Step(`^the WebSub API row is removed$`, w.webSubRowRemoved)
 }
 
 // --- REST API delete cascade ------------------------------------------------
@@ -101,8 +94,13 @@ func (w *world) deleteProject() error {
 	return w.it.exec(`DELETE FROM projects WHERE uuid = ?`, w.g.project)
 }
 
-func (w *world) applicationRemoved() error {
-	return w.wantCount("applications", "uuid", w.g.app, 0)
+// applicationRetained verifies the application survives a project deletion.
+// Applications are intentionally decoupled from a project's lifecycle: the
+// applications.project_uuid column carries no cascading foreign key, so removing
+// the project leaves the application row in place (it is only cascade-deleted via
+// its organization).
+func (w *world) applicationRetained() error {
+	return w.wantCount("applications", "uuid", w.g.app, 1)
 }
 
 // --- Subscription plan delete cascade ---------------------------------------
@@ -118,66 +116,4 @@ func (w *world) deleteSubscriptionAndPlan() error {
 
 func (w *world) subscriptionPlanLimitRemoved() error {
 	return w.wantCount("subscription_plan_limits", "uuid", w.g.planLimit, 0)
-}
-
-// --- WebSub API delete cascade ----------------------------------------------
-
-func (w *world) seedWebSubWithSecrets(n int) error {
-	orgUUID := id()
-	projectUUID := id()
-	artifactUUID := id()
-
-	steps := []struct {
-		query string
-		args  []any
-	}{
-		{`INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
-			[]any{orgUUID, "wsc-" + orgUUID[:8], "cascade org", "us"}},
-		{`INSERT INTO projects (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
-			[]any{projectUUID, "cascade-proj", "cascade-proj", orgUUID}},
-		{`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
-			[]any{artifactUUID, "WebSubApi", orgUUID}},
-		{`INSERT INTO websub_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			[]any{artifactUUID, orgUUID, "ws-api-" + artifactUUID[:8], "ws-api", "v1.0", projectUUID, "CREATED", []byte("{}")}},
-	}
-	for _, s := range steps {
-		if err := w.it.exec(s.query, s.args...); err != nil {
-			return err
-		}
-	}
-
-	handles := []string{"github-secret", "gitlab-secret"}
-	for i := range n {
-		handle := fmt.Sprintf("secret-%d", i)
-		if i < len(handles) {
-			handle = handles[i]
-		}
-		if err := w.it.exec(
-			`INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, handle, encrypted_secret, status) VALUES (?, ?, ?, ?, ?)`,
-			id(), artifactUUID, handle, []byte(fmt.Sprintf("enc%d", i+1)), "active"); err != nil {
-			return err
-		}
-	}
-
-	if err := w.wantCount("websub_api_hmac_secrets", "artifact_uuid", artifactUUID, n); err != nil {
-		return fmt.Errorf("precondition: %w", err)
-	}
-	if err := w.wantCount("websub_apis", "uuid", artifactUUID, 1); err != nil {
-		return fmt.Errorf("precondition: %w", err)
-	}
-
-	w.artifactUUID = artifactUUID
-	return nil
-}
-
-func (w *world) deleteWebSubArtifact() error {
-	return w.it.exec(`DELETE FROM artifacts WHERE uuid = ?`, w.artifactUUID)
-}
-
-func (w *world) hmacSecretsRemoved() error {
-	return w.wantCount("websub_api_hmac_secrets", "artifact_uuid", w.artifactUUID, 0)
-}
-
-func (w *world) webSubRowRemoved() error {
-	return w.wantCount("websub_apis", "uuid", w.artifactUUID, 0)
 }

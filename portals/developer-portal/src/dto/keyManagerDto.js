@@ -15,29 +15,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
 
 /**
  * DTO for key manager responses.
  * Never exposes admin credentials in API responses.
  */
 class KeyManagerDTO {
-    constructor(km) {
-        this.id = km.KM_ID;
-        this.orgId = km.ORG_ID;
-        this.name = km.NAME;
-        this.type = km.TYPE;
-        this.enabled = km.ENABLED;
-        this.tokenEndpoint = km.TOKEN_ENDPOINT;
-        this.clientRegistrationEndpoint = km.CLIENT_REG_ENDPOINT;
-        if (km.ISSUER) {
-            this.issuer = km.ISSUER;
-        }
-        if (km.JWKS_URL) {
-            this.jwksURL = km.JWKS_URL;
-        }
-        this.supportedGrantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
-        this.supportedScopes = km.SUPPORTED_SCOPES || ['openid'];
-        this.additionalProperties = km.ADDITIONAL_PROPERTIES || {};
+    constructor(km, audit) {
+        this.id = km.handle;
+        this.displayName = km.display_name;
+        this.orgId = km.org_uuid;
+        this.type = km.type;
+        this.enabled = !!km.enabled;
+        this.tokenEndpoint = km.token_endpoint;
+        applyAudit(this, audit);
     }
 }
 
@@ -47,12 +39,10 @@ class KeyManagerDTO {
  */
 class KeyManagerPublicDTO {
     constructor(km) {
-        this.id = km.KM_ID;
-        this.name = km.NAME;
-        this.type = km.TYPE;
-        this.tokenEndpoint = km.TOKEN_ENDPOINT;
-        this.supportedGrantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
-        this.supportedScopes = km.SUPPORTED_SCOPES || ['openid'];
+        this.id = km.handle;
+        this.displayName = km.display_name;
+        this.type = km.type;
+        this.tokenEndpoint = km.token_endpoint;
     }
 }
 

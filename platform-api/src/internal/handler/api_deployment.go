@@ -22,6 +22,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -30,17 +31,18 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type DeploymentHandler struct {
 	deploymentService *service.DeploymentService
+	identity          *service.IdentityService
 	slogger           *slog.Logger
 }
 
-func NewDeploymentHandler(deploymentService *service.DeploymentService, slogger *slog.Logger) *DeploymentHandler {
+func NewDeploymentHandler(deploymentService *service.DeploymentService, identity *service.IdentityService, slogger *slog.Logger) *DeploymentHandler {
 	return &DeploymentHandler{
 		deploymentService: deploymentService,
+		identity:          identity,
 		slogger:           slogger,
 	}
 }
@@ -55,7 +57,7 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -79,13 +81,16 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.GatewayId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"gatewayId is required"))
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "deploy API")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -144,7 +149,7 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -168,7 +173,10 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 			"API ID is required"))
 		return
 	}
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "undeploy API")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
@@ -217,7 +225,7 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -241,7 +249,10 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 			"API ID is required"))
 		return
 	}
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "restore API deployment")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
@@ -291,7 +302,7 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
@@ -305,7 +316,10 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "delete API deployment")
+	if !ok {
+		return
+	}
 	err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -344,7 +358,7 @@ func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
@@ -389,7 +403,7 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiId := r.PathValue("apiId")
+	apiId := r.PathValue("restApiId")
 	if apiId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -438,7 +452,7 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 // RegisterRoutes registers all deployment-related routes
 func (h *DeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
 	h.slogger.Debug("Registering deployment routes")
-	base := constants.APIBasePath + "/rest-apis/{apiId}"
+	base := constants.APIBasePath + "/rest-apis/{restApiId}"
 	mux.HandleFunc("POST "+base+"/deployments", h.DeployAPI)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/restore", h.RestoreDeployment)

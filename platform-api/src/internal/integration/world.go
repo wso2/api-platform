@@ -78,9 +78,6 @@ type world struct {
 	// MCP control-plane scenario.
 	mcpHandle string
 
-	// WebBroker API scenario.
-	webbrokerHandles []string
-
 	// Secret scenario.
 	secretHandles     []string
 	firstSecretCipher []byte
@@ -163,35 +160,35 @@ func (w *world) seedOrgGraph() error {
 		query string
 		args  []any
 	}{
-		{`INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
-			[]any{g.org, "h-" + g.org[:8], "it org", "us"}},
-		{`INSERT INTO projects (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
+		{`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
+			[]any{g.org, "h-" + g.org[:8], "it org", "us", "idp-ref"}},
+		{`INSERT INTO projects (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
 			[]any{g.project, "proj", "proj", g.org}},
-		{`INSERT INTO applications (uuid, handle, project_uuid, organization_uuid, name, type) VALUES (?, ?, ?, ?, ?, ?)`,
+		{`INSERT INTO applications (uuid, handle, project_uuid, organization_uuid, display_name, type) VALUES (?, ?, ?, ?, ?, ?)`,
 			[]any{g.app, "app-" + g.app[:8], g.project, g.org, "app", "standard"}},
 		// REST API: an artifact + its rest_apis row (shared uuid).
 		{`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 			[]any{g.apiArtifact, "rest_api", g.org}},
-		{`INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		{`INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			[]any{g.apiArtifact, g.org, "api-" + g.apiArtifact[:8], "api", "v1.0", g.project, "CREATED", []byte("{}")}},
-		{`INSERT INTO subscription_plans (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
+		{`INSERT INTO subscription_plans (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
 			[]any{g.plan, "plan-" + g.plan[:8], "Plan " + g.plan[:8], g.org}},
 		{`INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, limit_type, limit_count, time_unit) VALUES (?, ?, ?, ?, ?)`,
 			[]any{g.planLimit, g.plan, "REQUEST_COUNT", 100, "MINUTE"}},
 		{`INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, subscription_token, subscription_token_hash, subscription_plan_uuid, organization_uuid) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			[]any{g.sub, g.apiArtifact, "subscriber", "tok-" + g.sub[:8], "hash-" + g.sub[:8], g.plan, g.org}},
 		// Gateway + a deployment + its current status.
-		{`INSERT INTO gateways (uuid, organization_uuid, handle, name, vhost, properties) VALUES (?, ?, ?, ?, ?, ?)`,
-			[]any{g.gateway, g.org, "gw-" + g.gateway[:8], "gw", "localhost", []byte("{}")}},
+		{`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, properties) VALUES (?, ?, ?, ?, ?)`,
+			[]any{g.gateway, g.org, "gw-" + g.gateway[:8], "gw", []byte("{}")}},
 		{`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 			[]any{g.depArtifact, "rest_api", g.org}},
-		{`INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,
+		{`INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,
 			[]any{g.deploy, "d", g.depArtifact, g.org, g.gateway, []byte("x")}},
 		{`INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid) VALUES (?, ?, ?, ?)`,
 			[]any{g.depArtifact, g.org, g.gateway, g.deploy}},
 		// An API key on the deployment artifact + its application mapping.
-		{`INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?)`,
-			[]any{g.apiKey, g.depArtifact, "key", "ab12", []byte("{}")}},
+		{`INSERT INTO api_keys (uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?, ?)`,
+			[]any{g.apiKey, g.depArtifact, "key", "key", "ab12", []byte("{}")}},
 		{`INSERT INTO application_api_key_mappings (application_uuid, api_key_id) VALUES (?, ?)`,
 			[]any{g.app, g.apiKey}},
 		{`INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid) VALUES (?, ?)`,

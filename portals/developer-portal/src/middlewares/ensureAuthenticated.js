@@ -27,6 +27,7 @@ const jwt = require('jsonwebtoken');
 const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
+const { resolveUserUuid } = require('./authMiddleware');
 
 function enforceSecurity(scope) {
     return async function (req, res, next) {
@@ -58,12 +59,9 @@ function enforceSecurity(scope) {
                     }
                 }
                 const decodedAccessToken = jwt.decode(token);
-                req[constants.USER_ID] = decodedAccessToken?.[constants.USER_ID];
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
                 return validateAuthentication(scope)(req, res, next);
             } else if (config.advanced.apiKey.enabled) {
-                if (req.headers.organization) {
-                    req.params.orgId = req.headers.organization;
-                }
                 enforceAPIKey(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
@@ -121,32 +119,43 @@ const ensureAuthenticated = async (req, res, next) => {
             req.user[constants.ORG_IDENTIFIER] = req.user.userOrg;
         }
     }
+    // Resolve the acting user's internal UUID for every authenticated request, not just
+    // pages gated by authenticatedPages below — resolveActor() (used for created_by/updated_by
+    // audit columns and "my resources" filters like subscriptions) must return the same
+    // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
+    if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
+        if (req.user.isLocalAuth && !config.identityProvider?.clientId) {
+            req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
+        } else {
+            const earlyToken = accessTokenPresent(req);
+            if (earlyToken) {
+                const earlyDecoded = jwt.decode(earlyToken);
+                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID]);
+            }
+        }
+    }
     if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
         config.authenticatedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-        let orgID;
-        if (req.params.orgName) {
-            orgID = req.params.orgName;
-        } else {
-            orgID = req.params.orgId;
-        }
+        const orgId = req.params.orgName;
         let orgDetails;
-        if (orgID !== undefined) {
-            orgDetails = await orgDao.get(orgID);
+        if (orgId !== undefined) {
+            orgDetails = await orgDao.get(orgId);
         }
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
         if (req.isAuthenticated()) {
             // Config-auth: skip all token/exchange checks; roles already in session
             if (req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
-                req[constants.USER_ID] = req.user[constants.USER_ID];
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
                 if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                         req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                         if (orgDetails) {
-                            req.user[constants.ORG_ID] = orgDetails.ORG_ID;
-                            req.user[constants.ORG_IDENTIFIER] = orgDetails.ORGANIZATION_IDENTIFIER;
+                            req.user[constants.ORG_UUID] = orgDetails.uuid;
+                            req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
                     if (!config.advanced.disabledRoleValidation) {
@@ -154,7 +163,9 @@ const ensureAuthenticated = async (req, res, next) => {
                         if (ensurePermission(req.originalUrl, role, req)) {
                             return next();
                         } else {
-                            return res.status(403).send("User unauthorized");
+                            const err = new Error('Forbidden');
+                            err.status = 403;
+                            return next(err);
                         }
                     }
                 }
@@ -163,7 +174,8 @@ const ensureAuthenticated = async (req, res, next) => {
             const token = accessTokenPresent(req);
             if (token) {
                 const decodedAccessToken = jwt.decode(token);
-                req[constants.USER_ID] = decodedAccessToken?.[constants.USER_ID];
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
             }
             if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];
@@ -172,13 +184,13 @@ const ensureAuthenticated = async (req, res, next) => {
                     req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                     req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                     if (orgDetails) {
-                        req.user[constants.ORG_ID] = orgDetails.ORG_ID;
-                        req.user[constants.ORG_IDENTIFIER] = orgDetails.ORGANIZATION_IDENTIFIER;
+                        req.user[constants.ORG_UUID] = orgDetails.uuid;
+                        req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                     }
                 }
                 const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
                 if (!isMatch) {
-                    const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
+                    const orgIdentifier = orgDetails?.idp_ref_id;
                     const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
                     if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
                         const err = new Error('Forbidden');
@@ -190,7 +202,9 @@ const ensureAuthenticated = async (req, res, next) => {
                     if (ensurePermission(req.originalUrl, role, req)) {
                         return next();
                     } else {
-                        return res.status(403).send("User unauthorized");
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
                     }
                 }
             }

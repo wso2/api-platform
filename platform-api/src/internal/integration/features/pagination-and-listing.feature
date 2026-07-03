@@ -38,8 +38,3 @@ Feature: Pagination and filtered listing across database engines
     Then the application is found by its UUID
     And the application is found by its handle
     And a missing application identifier returns nothing
-
-  Scenario: WebSub API create and paginated list
-    Given an organization and project exist
-    When I create 4 WebSub APIs in the project
-    Then paging WebSub APIs 2 at a time covers all 4 without overlap

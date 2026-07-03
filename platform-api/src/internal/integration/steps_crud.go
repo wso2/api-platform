@@ -210,7 +210,7 @@ func (w *world) createGateways(n int) error {
 			Name:              fmt.Sprintf("gateway %d", i),
 			Handle:            fmt.Sprintf("gw-%d-%s", i, id()[:6]),
 			Description:       "created by integration test",
-			Vhost:             "localhost",
+			Endpoints:         []string{"https://localhost:8443", "wss://localhost:8444"},
 			FunctionalityType: "REGULAR",
 			Version:           "1.0.0",
 			Properties:        map[string]interface{}{"region": "us"},
@@ -366,12 +366,13 @@ func (w *world) seedAPIForKeys() error {
 }
 
 func (w *world) createAPIKeys(n int) error {
-	keyRepo := repository.NewAPIKeyRepo(w.it.db)
+	keyRepo := repository.NewAPIKeyRepo(w.it.db, repository.NewArtifactTableRegistry())
 	for i := range n {
 		key := &model.APIKey{
 			UUID:           id(),
 			ArtifactUUID:   w.artifactUUID,
 			Name:           fmt.Sprintf("key-%d", i),
+			DisplayName:    fmt.Sprintf("Key %d", i),
 			MaskedAPIKey:   "ab12",
 			APIKeyHashes:   `{"sha256":"` + id() + `"}`,
 			Status:         "active",
@@ -386,7 +387,7 @@ func (w *world) createAPIKeys(n int) error {
 }
 
 func (w *world) firstAPIKeyStatusAndTarget(status, target string) error {
-	keyRepo := repository.NewAPIKeyRepo(w.it.db)
+	keyRepo := repository.NewAPIKeyRepo(w.it.db, repository.NewArtifactTableRegistry())
 	got, err := keyRepo.GetByArtifactAndName(w.artifactUUID, "key-0")
 	if err != nil {
 		return fmt.Errorf("[%s] GetByArtifactAndName failed: %w", w.it.driver, err)
@@ -401,7 +402,7 @@ func (w *world) firstAPIKeyStatusAndTarget(status, target string) error {
 }
 
 func (w *world) listAPIKeysByArtifact(want int) error {
-	keyRepo := repository.NewAPIKeyRepo(w.it.db)
+	keyRepo := repository.NewAPIKeyRepo(w.it.db, repository.NewArtifactTableRegistry())
 	keys, err := keyRepo.ListByArtifact(w.artifactUUID)
 	if err != nil {
 		return fmt.Errorf("[%s] ListByArtifact failed: %w", w.it.driver, err)
@@ -413,7 +414,7 @@ func (w *world) listAPIKeysByArtifact(want int) error {
 }
 
 func (w *world) updateFirstAPIKey() error {
-	keyRepo := repository.NewAPIKeyRepo(w.it.db)
+	keyRepo := repository.NewAPIKeyRepo(w.it.db, repository.NewArtifactTableRegistry())
 	got, err := keyRepo.GetByArtifactAndName(w.artifactUUID, "key-0")
 	if err != nil {
 		return fmt.Errorf("[%s] GetByArtifactAndName failed: %w", w.it.driver, err)
@@ -427,7 +428,7 @@ func (w *world) updateFirstAPIKey() error {
 }
 
 func (w *world) firstAPIKeyMaskedUpdated() error {
-	keyRepo := repository.NewAPIKeyRepo(w.it.db)
+	keyRepo := repository.NewAPIKeyRepo(w.it.db, repository.NewArtifactTableRegistry())
 	afterUpdate, err := keyRepo.GetByArtifactAndName(w.artifactUUID, "key-0")
 	if err != nil {
 		return fmt.Errorf("[%s] GetByArtifactAndName after update failed: %w", w.it.driver, err)
@@ -439,7 +440,7 @@ func (w *world) firstAPIKeyMaskedUpdated() error {
 }
 
 func (w *world) revokeFirstAPIKey() error {
-	keyRepo := repository.NewAPIKeyRepo(w.it.db)
+	keyRepo := repository.NewAPIKeyRepo(w.it.db, repository.NewArtifactTableRegistry())
 	if err := keyRepo.Revoke(w.artifactUUID, "key-0"); err != nil {
 		return fmt.Errorf("[%s] APIKey Revoke failed: %w", w.it.driver, err)
 	}
@@ -447,7 +448,7 @@ func (w *world) revokeFirstAPIKey() error {
 }
 
 func (w *world) firstAPIKeyStatus(status string) error {
-	keyRepo := repository.NewAPIKeyRepo(w.it.db)
+	keyRepo := repository.NewAPIKeyRepo(w.it.db, repository.NewArtifactTableRegistry())
 	got, err := keyRepo.GetByArtifactAndName(w.artifactUUID, "key-0")
 	if err != nil {
 		return fmt.Errorf("[%s] GetByArtifactAndName after revoke failed: %w", w.it.driver, err)

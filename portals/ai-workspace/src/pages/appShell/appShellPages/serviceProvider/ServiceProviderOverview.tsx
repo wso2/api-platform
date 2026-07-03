@@ -95,6 +95,10 @@ import {
   AIEntityProvider,
   useAIEntity,
 } from '../../../../contexts/AIEntitiesContext';
+import {
+  DisabledActionTooltip,
+  GatewayArtifactReadOnlyBanner,
+} from '../../../../utils/readOnlyArtifacts';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -203,7 +207,6 @@ const tabs = [
   'Guardrails & Policies',
   'Models',
 ];
-const MAX_LLM_PROXIES_PER_ORG = 5;
 
 type RateLimitingDraftActions = {
   saveDraftChanges: () => Promise<boolean>;
@@ -406,6 +409,8 @@ function ServiceProviderOverviewContent() {
   };
 
   const handleDeployNavigation = () => {
+    // DP-originated artifacts: the deployments page is viewable (actions are disabled
+    // there), so navigate rather than blocking with a warning.
     if (hasUnsavedChanges) {
       showSnackbar(UNSAVED_CHANGES_MESSAGE, 'error');
       return;
@@ -462,9 +467,11 @@ function ServiceProviderOverviewContent() {
     void refreshOrgProxyCount();
   }, [refreshOrgProxyCount]);
 
-  const isProxyQuotaReached = orgProxyCount >= MAX_LLM_PROXIES_PER_ORG;
+  const isProxyQuotaReached = false;
   const proxyQuotaTooltip =
     'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  const createProxyTooltip = isProxyQuotaReached ? proxyQuotaTooltip : '';
 
   const handleCreateProxyClick = () => {
     if (!provider?.id || isProxyQuotaReached) {
@@ -519,6 +526,7 @@ function ServiceProviderOverviewContent() {
     if (stepId === 'add-guardrails') {
       setTabIndex(5);
     } else if (stepId === 'deploy-to-gateway') {
+      // DP artifacts can still open the (read-only) deployments page.
       if (!provider?.id) return;
       const deployPath = isProjectLevel
         ? buildProjectPath(
@@ -772,8 +780,8 @@ function ServiceProviderOverviewContent() {
       document.body.removeChild(textarea);
     }
   };
-  const providerKey = provider.id ?? provider.name;
-  const providerDisplayName = truncateProviderDisplayName(provider.name);
+  const providerKey = provider.id ?? provider.displayName;
+  const providerDisplayName = truncateProviderDisplayName(provider.displayName);
   const logoUrl = PROVIDER_LOGO_MAP[providerKey];
   const hasLogo = Boolean(logoUrl);
   const templateDisplayName = getProviderTemplateDisplayName(provider.template);
@@ -881,7 +889,7 @@ function ServiceProviderOverviewContent() {
               ) : (
                 projectsForCurrentOrganization.map((project: ProjectBase) => (
                   <MenuItem key={project.id} value={project.id}>
-                    {project.name}
+                    {project.displayName}
                   </MenuItem>
                 ))
               )}
@@ -966,7 +974,7 @@ function ServiceProviderOverviewContent() {
                       },
                     }}
                   >
-                    {!hasLogo ? getInitials(provider.name) : null}
+                    {!hasLogo ? getInitials(provider.displayName) : null}
                   </Avatar>
                   <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                     <Stack
@@ -1194,7 +1202,7 @@ function ServiceProviderOverviewContent() {
       </Button>
       <Box mt={1}>
         <LLLMStepBanner
-          providerName={provider.name}
+          providerName={provider.displayName}
           onStepClick={handleLLLMStepBannerClick}
           refreshTrigger={stepBannerRefreshTrigger}
         />
@@ -1229,7 +1237,7 @@ function ServiceProviderOverviewContent() {
                   },
                 }}
               >
-                {!hasLogo ? getInitials(provider.name) : null}
+                {!hasLogo ? getInitials(provider.displayName) : null}
               </Avatar>
               <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                 <Stack
@@ -1274,11 +1282,17 @@ function ServiceProviderOverviewContent() {
                     variant="outlined"
                     color="primary"
                   />
-                  <Tooltip title="Edit Service Provider">
-                    <IconButton component={RouterLink} to="edit" size="small">
-                      <Edit size={16} />
-                    </IconButton>
-                  </Tooltip>
+                  {/* Edit page (name/version/context/description). Enabled even for
+                      gateway-created providers — the page itself keeps the runtime
+                      fields (name/version/context) read-only and allows only the
+                      description, which is not part of the gateway runtime artifact. */}
+                  <IconButton
+                    component={RouterLink}
+                    to="edit"
+                    size="small"
+                  >
+                    <Edit size={16} />
+                  </IconButton>
                 </Stack>
                 <Typography variant="body2" color="text.secondary">
                   {truncatedDescription}
@@ -1316,33 +1330,45 @@ function ServiceProviderOverviewContent() {
                 width: { xs: '100%', sm: 200 },
               }}
             >
+              {/* For gateway-created (read-only) providers the deployments remain
+                  viewable (deploy/redeploy/restore/undeploy are disabled on the page
+                  itself), so the button navigates but is relabelled "View Deployments". */}
               <Button
                 variant="contained"
                 component={RouterLink}
                 to="deploy"
-                onClick={handleBlockedNavigation}
+                onClick={isReadOnlyProvider ? undefined : handleBlockedNavigation}
                 fullWidth
               >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
-                  defaultMessage={'Deploy to Gateway'}
-                />
+                {isReadOnlyProvider ? (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.view.deployments"
+                    defaultMessage={'View Deployments'}
+                  />
+                ) : (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
+                    defaultMessage={'Deploy to Gateway'}
+                  />
+                )}
               </Button>
-              <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
-                <Box component="span" sx={{ width: '100%' }}>
-                  <Button
-                    variant="outlined"
-                    onClick={handleCreateProxyClick}
-                    disabled={!provider.id || isProxyQuotaReached}
-                    fullWidth
-                  >
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                      defaultMessage="Create App LLM Proxy"
-                    />
-                  </Button>
-                </Box>
-              </Tooltip>
+              <DisabledActionTooltip
+                disabled={isProxyQuotaReached}
+                title={createProxyTooltip}
+                fullWidth
+              >
+                <Button
+                  variant="outlined"
+                  onClick={handleCreateProxyClick}
+                  disabled={!provider.id || isProxyQuotaReached}
+                  fullWidth
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
+                    defaultMessage="Create App LLM Proxy"
+                  />
+                </Button>
+              </DisabledActionTooltip>
             </Stack>
           </Box>
         </Card>
@@ -1373,18 +1399,30 @@ function ServiceProviderOverviewContent() {
               </TabPanel>
 
               <TabPanel value={tabIndex} index={1}>
+                {isReadOnlyProvider && (
+                  <GatewayArtifactReadOnlyBanner message="Connection settings are managed by the gateway that created this provider and are read-only here." />
+                )}
                 <ServiceProviderConnectionTab />
               </TabPanel>
 
               <TabPanel value={tabIndex} index={2}>
+                {isReadOnlyProvider && (
+                  <GatewayArtifactReadOnlyBanner message="Access control is managed by the gateway that created this provider and is read-only here." />
+                )}
                 <ServiceProviderResourcesTab />
               </TabPanel>
 
               <TabPanel value={tabIndex} index={3}>
+                {isReadOnlyProvider && (
+                  <GatewayArtifactReadOnlyBanner message="Security settings are managed by the gateway that created this provider and are read-only here." />
+                )}
                 <ServiceProviderSecurityTab />
               </TabPanel>
 
               <TabPanel value={tabIndex} index={4}>
+                {isReadOnlyProvider && (
+                  <GatewayArtifactReadOnlyBanner message="Rate limiting is managed by the gateway that created this provider and is read-only here." />
+                )}
                 <ServiceProviderRateLimitingTab
                   onDirtyChange={setIsRateLimitingDirty}
                   onActionsChange={setRateLimitingActions}
@@ -1392,6 +1430,9 @@ function ServiceProviderOverviewContent() {
               </TabPanel>
 
               <TabPanel value={tabIndex} index={5}>
+                {isReadOnlyProvider && (
+                  <GatewayArtifactReadOnlyBanner message="Guardrails & policies are managed by the gateway that created this provider and are read-only here." />
+                )}
                 <ServiceProviderGuardrailsTab />
               </TabPanel>
 

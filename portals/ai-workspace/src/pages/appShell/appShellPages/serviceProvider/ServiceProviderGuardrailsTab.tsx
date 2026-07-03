@@ -64,6 +64,9 @@ import type { AccessControl } from '../../../../utils/types';
 import { parsePolicyYaml } from '../../PolicyParameterEditor/yamlParser';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import {
+  DisabledActionTooltip,
+} from '../../../../utils/readOnlyArtifacts';
 
 type ResourceItem = {
   method: string;
@@ -157,6 +160,7 @@ const parseOpenApiText = (
 export default function ServiceProviderGuardrailsTab() {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
   const {
     guardrails: availableGuardrails = [],
     isLoading: isLoadingGuardrails,
@@ -576,7 +580,7 @@ export default function ServiceProviderGuardrailsTab() {
     pathIndex: number | null,
     source: 'global' | 'operation' | 'legacy'
   ) => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isReadOnlyProvider) return;
 
     const {
       status,
@@ -657,18 +661,21 @@ export default function ServiceProviderGuardrailsTab() {
             </Grid>
 
             <Grid size={{ xs: 12, sm: 'auto' }}>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<Plus size={16} />}
-                onClick={openAddDrawerForGlobal}
-                sx={{ whiteSpace: 'nowrap' }}
-              >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.add.guardrail"
-                  defaultMessage={'Add'}
-                />
-              </Button>
+              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Plus size={16} />}
+                  onClick={openAddDrawerForGlobal}
+                  disabled={isReadOnlyProvider}
+                  sx={{ whiteSpace: 'nowrap' }}
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.add.guardrail"
+                    defaultMessage={'Add'}
+                  />
+                </Button>
+              </DisabledActionTooltip>
             </Grid>
           </Grid>
 
@@ -686,13 +693,22 @@ export default function ServiceProviderGuardrailsTab() {
               <GuardrailPill
                 key={g.id}
                 label={`${g.displayName} (${g.version})`}
-                onClick={() =>
-                  handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
-                    scope: 'global',
-                  }, g.source)
+                onClick={
+                  isReadOnlyProvider
+                    ? undefined
+                    : () =>
+                      handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
+                        scope: 'global',
+                      }, g.source)
                 }
-                onRemove={() =>
-                  void handleRemoveAppliedGuardrail(g.policyIndex, g.pathIndex, g.source)
+                onRemove={
+                  isReadOnlyProvider
+                    ? undefined
+                    : () =>
+                      void handleRemoveAppliedGuardrail(
+                          g.policyIndex,
+                          g.pathIndex, g.source
+                      )
                 }
               />
             ))}
@@ -929,22 +945,27 @@ export default function ServiceProviderGuardrailsTab() {
                               </Grid>
 
                               <Grid size={{ xs: 12, sm: 'auto' }}>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={<Plus size={16} />}
-                                  onClick={() =>
-                                    openAddDrawerForResource(
-                                      method,
-                                      resource.path
-                                    )
-                                  }
+                                <DisabledActionTooltip
+                                  disabled={isReadOnlyProvider}
                                 >
-                                  <FormattedMessage
-                                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.add.guardrail"
-                                    defaultMessage={'Add'}
-                                  />
-                                </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Plus size={16} />}
+                                    onClick={() =>
+                                      openAddDrawerForResource(
+                                        method,
+                                        resource.path
+                                      )
+                                    }
+                                    disabled={isReadOnlyProvider}
+                                  >
+                                    <FormattedMessage
+                                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.add.guardrail"
+                                      defaultMessage={'Add'}
+                                    />
+                                  </Button>
+                                </DisabledActionTooltip>
                               </Grid>
 
                               <Grid size={{ xs: 12 }}>
@@ -964,24 +985,30 @@ export default function ServiceProviderGuardrailsTab() {
                                           /^v/,
                                           ''
                                         )})`}
-                                        onClick={() =>
-                                          handleEditGuardrailPill(
-                                            guardrail.policyIndex,
-                                            guardrail.pathIndex,
-                                            {
-                                              scope: 'resource',
-                                              method,
-                                              path: resource.path,
-                                            },
-                                            guardrail.source
-                                          )
+                                        onClick={
+                                          isReadOnlyProvider
+                                            ? undefined
+                                            : () =>
+                                              handleEditGuardrailPill(
+                                                guardrail.policyIndex,
+                                                guardrail.pathIndex,
+                                                {
+                                                  scope: 'resource',
+                                                  method,
+                                                  path: resource.path,
+                                                },
+                                                guardrail.source
+                                              )
                                         }
-                                        onRemove={() =>
-                                          void handleRemoveAppliedGuardrail(
-                                            guardrail.policyIndex,
-                                            guardrail.pathIndex,
-                                            guardrail.source
-                                          )
+                                        onRemove={
+                                          isReadOnlyProvider
+                                            ? undefined
+                                            : () =>
+                                              void handleRemoveAppliedGuardrail(
+                                                guardrail.policyIndex,
+                                                guardrail.pathIndex,
+                                                guardrail.source
+                                              )
                                         }
                                       />
                                     ))

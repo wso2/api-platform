@@ -93,7 +93,6 @@ const PROVIDER_LOGO_MAP: Record<string, string> = {
   mistralai: MistralAILogo,
   mistral: MistralAILogo,
 };
-const MAX_LLM_PROVIDERS_PER_ORG = 5;
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -153,8 +152,7 @@ export default function ServiceProviders() {
   // Access the list from the API response
   const providers = providersResponse.list;
   const emptyMessage = 'No Available LLM Providers';
-  const isProviderQuotaReached =
-    (providersResponse.count ?? providers.length) >= MAX_LLM_PROVIDERS_PER_ORG;
+  const isProviderQuotaReached = false;
   const providerQuotaTooltip =
     'You cannot create more providers because your organization has reached the maximum limit of 5 LLM providers.';
 
@@ -166,7 +164,7 @@ export default function ServiceProviders() {
       const lastUpdated =
         provider.lastUpdated ?? provider.updatedAt ?? provider.createdAt;
       return (
-        provider.name.toLowerCase().includes(query) ||
+        provider.displayName.toLowerCase().includes(query) ||
         formatRelativeTime(lastUpdated).toLowerCase().includes(query) ||
         (provider.status ?? '').toLowerCase().includes(query)
       );
@@ -521,7 +519,7 @@ export default function ServiceProviders() {
 
           <Grid container spacing={2} sx={{ mt: 1 }}>
             {filteredProviders.map((provider) => {
-              const providerId = provider.id ?? provider.name;
+              const providerId = provider.id ?? provider.displayName;
               const providerStatus = provider.status ?? 'Unknown';
               const lastUpdated =
                 provider.lastUpdated ??
@@ -535,7 +533,7 @@ export default function ServiceProviders() {
                 provider.template
               );
               const providerDisplayName = truncateProviderDisplayName(
-                provider.name
+                provider.displayName
               );
               const templateKey = (provider.template ?? '').toLowerCase();
               const templateLogo = PROVIDER_LOGO_MAP[templateKey];
@@ -628,7 +626,7 @@ export default function ServiceProviders() {
                               },
                             }}
                           >
-                            {!hasLogo ? getInitials(provider.name) : null}
+                            {!hasLogo ? getInitials(provider.displayName) : null}
                           </Avatar>
 
                           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -737,7 +735,7 @@ export default function ServiceProviders() {
                               event.stopPropagation();
                               setAssignTarget({
                                 id: providerId,
-                                name: provider.name,
+                                name: provider.displayName,
                               });
                             }}
                           >
@@ -755,7 +753,7 @@ export default function ServiceProviders() {
                                 event.stopPropagation();
                                 void checkProviderUsageAndConfirmDelete(
                                   providerId,
-                                  provider.name
+                                  provider.displayName
                                 );
                               }}
                               aria-label={`Delete ${providerDisplayName}`}
@@ -879,7 +877,7 @@ export default function ServiceProviders() {
                       }}
                     />
                   }
-                  label={`${application.name} • ${application.owner}`}
+                  label={`${application.displayName} • ${application.owner}`}
                 />
               ))
             )}

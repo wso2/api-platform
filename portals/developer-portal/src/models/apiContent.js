@@ -18,31 +18,66 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 
-const APIContent = sequelize.define('DP_API_CONTENT', {
-    API_ID: {
-        type: DataTypes.UUID,
-        allowNull: false,
+const APIContent = sequelize.define('dp_api_content', {
+    uuid: {
+        type: DataTypes.STRING(40),
+        defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    FILE_CONTENT: {
+    api_uuid: {
+        type: DataTypes.STRING(40),
+        allowNull: false,
+    },
+    file_content: {
         type: DataTypes.BLOB,
         allowNull: false,
     },
-    TYPE: {
-        type: DataTypes.STRING,
+    type: {
+        type: DataTypes.STRING(64),
         allowNull: false,
-        primaryKey: true,
     },
-    FILE_NAME: {
+    file_name: {
         type: DataTypes.STRING,
         allowNull: false,
-        primaryKey: true,
-    }
+    },
+    lookup_key: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    created_by: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    updated_by: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_API_CONTENT',
-    returning: false,
+    tableName: 'dp_api_contents',
+    returning: true,
+    indexes: [
+        {
+            name: 'uq_api_content_api_type_file_name',
+            unique: true,
+            fields: ['api_uuid', 'type', 'file_name']
+        },
+        {
+            name: 'uq_api_content_api_type_lookup_key',
+            unique: true,
+            fields: ['api_uuid', 'type', 'lookup_key']
+        }
+    ]
 });
 
-// Export both models
 module.exports = APIContent;

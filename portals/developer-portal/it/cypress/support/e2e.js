@@ -30,8 +30,8 @@ before(() => {
         headers: apiKey ? { 'x-wso2-api-key': apiKey } : {},
         failOnStatusCode: false,
     }).then((resp) => {
-        if (resp.status === 200 && resp.body && resp.body.length > 0) {
-            Cypress.env('ORG_ID', resp.body[0].orgID);
+        if (resp.status === 200 && resp.body && resp.body.list && resp.body.list.length > 0) {
+            Cypress.env('ORG_ID', resp.body.list[0].orgId);
         }
     });
 });

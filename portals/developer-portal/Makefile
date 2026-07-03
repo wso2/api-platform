@@ -33,7 +33,7 @@ DEVPORTAL_IMAGE := $(DOCKER_REGISTRY)/developer-portal
 REPO_ROOT         := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR      := $(REPO_ROOT)/docs/rest-apis/devportal
-OPENAPI_SPEC      := docs/devportal-openapi-spec-v1.yaml
+OPENAPI_SPEC      := docs/devportal-openapi-spec-v0.9.yaml
 
 .DEFAULT_GOAL := help
 
@@ -142,6 +142,7 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@mkdir -p $(DIST_DIR)/configs
 	@cp -R database $(DIST_DIR)
 	@cp configs/config.yaml.example $(DIST_DIR)/configs/config.yaml
+	@cp configs/config-platform-api.toml.example $(DIST_DIR)/configs/config-platform-api.toml
 	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak \
 	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \

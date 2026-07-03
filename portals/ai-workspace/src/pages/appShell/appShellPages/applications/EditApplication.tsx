@@ -74,16 +74,15 @@ export default function EditApplication() {
       const cached = getApplicationById(applicationId);
       if (cached) {
         setApplication(cached);
-        setName(cached.name || '');
+        setName(cached.displayName || '');
         setDescription(cached.description || '');
       }
       const fetched = await applicationApis.getApplication(
         applicationId,
-        currentOrganization.uuid,
         apimBaseUrl
       );
       setApplication(fetched);
-      setName(fetched.name || '');
+      setName(fetched.displayName || '');
       setDescription(fetched.description || '');
     } catch {
       // handled by loading state
@@ -114,7 +113,7 @@ export default function EditApplication() {
     setIsSubmitting(true);
     try {
       await updateApplication(applicationId, {
-        name,
+        displayName: name,
         description: description || undefined,
       });
 

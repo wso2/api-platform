@@ -52,7 +52,7 @@ Documentation MUST maintain bidirectional links between requirements and impleme
 
 All HTTP APIs MUST follow REST principles and conventions:
 
-- **Versioned Endpoints**: All routes under `/api/v1` namespace; version in path not header
+- **Versioned Endpoints**: All routes under `/api/v0.9` namespace; version in path not header
 - **Standard HTTP Semantics**: POST for creation, GET for retrieval, PUT/PATCH for updates, DELETE for removal
 - **Resource-Oriented URLs**: `/organizations/:id`, `/projects/:id`, `/apis/:id` structure
 - **JSON Content Type**: Request and response bodies use `application/json`

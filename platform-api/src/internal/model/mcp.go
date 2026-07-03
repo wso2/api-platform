@@ -22,19 +22,21 @@ package model
 import "time"
 
 type MCPProxy struct {
-	UUID             string                `json:"uuid" db:"-"`
-	Handle           string                `json:"id" db:"-"`
-	OrganizationUUID string                `json:"organizationId" db:"-"`
-	ProjectUUID      *string               `json:"projectId" db:"-"`
-	Name             string                `json:"name" db:"-"`
-	Description      string                `json:"description,omitempty" db:"-"`
-	CreatedBy        string                `json:"createdBy,omitempty" db:"created_by"`
-	UpdatedBy        string                `json:"updatedBy,omitempty" db:"updated_by"`
-	Version          string                `json:"version" db:"-"`
-	CreatedAt        time.Time             `json:"createdAt" db:"-"`
-	UpdatedAt        time.Time             `json:"updatedAt" db:"-"`
-	Configuration    MCPProxyConfiguration `json:"configuration" db:"-"`
-	Origin           string                `json:"origin,omitempty" db:"origin"`
+	UUID                      string                     `json:"uuid" db:"-"`
+	Handle                    string                     `json:"id" db:"-"`
+	OrganizationUUID          string                     `json:"organizationId" db:"-"`
+	ProjectUUID               *string                    `json:"projectId" db:"-"`
+	Name                      string                     `json:"name" db:"-"`
+	Description               string                     `json:"description,omitempty" db:"-"`
+	CreatedBy                 string                     `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy                 string                     `json:"updatedBy,omitempty" db:"updated_by"`
+	Version                   string                     `json:"version" db:"-"`
+	CreatedAt                 time.Time                  `json:"createdAt" db:"-"`
+	UpdatedAt                 time.Time                  `json:"updatedAt" db:"-"`
+	Configuration             MCPProxyConfiguration      `json:"configuration" db:"-"`
+	Origin                    string                     `json:"origin,omitempty" db:"origin"`
+	AssociatedGateways        []AssociatedGatewayMapping `json:"-" db:"-"`
+	ReplaceAssociatedGateways bool                       `json:"-" db:"-"`
 }
 
 type MCPProxyConfiguration struct {

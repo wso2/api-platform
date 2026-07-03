@@ -26,15 +26,16 @@ const { trackHomePageVisit } = require('../utils/telemetryUtil');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
+const { areSamplesSeeded } = require('../services/sampleSeederService');
 
 
-const loadOrganizationContent = async (req, res) => {
+const loadOrganizationContent = async (req, res, next) => {
 
     let html = "";
     if (config.designMode?.enabled) {
         html = await loadOrgContentFromFile(req, res);
     } else {
-        html = await loadOrgContentFromAPI(req, res);
+        html = await loadOrgContentFromAPI(req, res, next);
     }
     res.send(html);
 }
@@ -48,7 +49,7 @@ const loadDefaultLandingPage = async (req, res) => {
     
     // Track home page visit telemetry for default landing page
     trackHomePageVisit({
-        idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+        idpId: req.isAuthenticated() ? req.user?.sub : undefined
     }, req);
     
     res.send(html);
@@ -63,17 +64,17 @@ const loadOrgContentFromFile = async (req, res) => {
     };
 
     trackHomePageVisit({
-        idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+        idpId: req.isAuthenticated() ? req.user?.sub : undefined
     }, req);
 
     return renderTemplate(layoutPath + 'pages/home/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
 }
 
-const loadOrgContentFromAPI = async (req, res) => {
+const loadOrgContentFromAPI = async (req, res, next) => {
     let html;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const orgId = await orgDao.getId(orgName);
         let profile = null;
@@ -90,13 +91,15 @@ const loadOrgContentFromAPI = async (req, res) => {
             devportalMode: devportalMode,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
             profile: req.isAuthenticated() ? profile : null,
-            showOnboarding: !!(profile?.isAdmin),
+            // In demo mode, show to everyone (including anonymous visitors) — it's a public
+            // demo sandbox, not an admin-only workflow. Outside demo mode this is always false.
+            showOnboarding: config.demo?.enabled === true && !areSamplesSeeded(),
         };
         html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/home', req.params.viewName);
         // Track home page visit telemetry
         trackHomePageVisit({ 
             orgId: orgId, 
-            idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+            idpId: req.isAuthenticated() ? req.user?.sub : undefined
         }, req);
     } catch (error) {
         logger.error(`Failed to load organization`, {
@@ -104,13 +107,8 @@ const loadOrgContentFromAPI = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        const templateContent = {
-            devportalMode: devportalMode,
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        }
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        return res.send(html);
+        error.status = 500;
+        return next(error);
     }
     return html;
 }

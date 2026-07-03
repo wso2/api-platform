@@ -32,6 +32,7 @@ var (
 	ErrOrganizationNotFound   = errors.New("organization not found")
 	ErrMultipleOrganizations  = errors.New("multiple organizations found")
 	ErrInvalidInput           = errors.New("invalid input parameters")
+	ErrHandleImmutable        = errors.New("id is immutable and cannot be changed")
 )
 
 var (
@@ -41,6 +42,7 @@ var (
 	ErrOrganizationMustHAveAtLeastOneProject = errors.New("organization must have at least one project")
 	ErrProjectHasAssociatedAPIs              = errors.New("project has associated APIs")
 	ErrProjectHasAssociatedMCPProxies        = errors.New("project has associated MCP proxies")
+	ErrProjectHasAssociatedApplications      = errors.New("project has associated applications")
 	ErrorInvalidProjectUUID                  = errors.New("invalid project UUID")
 )
 
@@ -112,6 +114,14 @@ var (
 	// control plane while still deployed on one or more gateways. It can only be deleted
 	// once it is undeployed on all gateways it was deployed to.
 	ErrArtifactDeployed = errors.New("artifact is still deployed on a gateway and cannot be deleted")
+	// ErrArtifactRuntimeImmutable is returned when an update to a data-plane-originated
+	// (origin=DP) artifact would change its gateway runtime artifact. The gateway owns
+	// the runtime artifact, so a change to it cannot be applied from the control plane;
+	// edits that leave the runtime artifact unchanged (description, lifecycle status,
+	// display metadata, docs) are allowed. It is a distinct error from ErrArtifactReadOnly
+	// (which blocks all edits) and is mapped to 403 separately by the guard-response handler.
+	ErrArtifactRuntimeImmutable = errors.New(
+		"the update changes the gateway runtime configuration, which is owned by the data-plane gateway and cannot be modified from the control plane")
 )
 
 var (
@@ -125,18 +135,19 @@ var (
 )
 
 var (
-	ErrLLMProviderTemplateExists   = errors.New("llm provider template already exists")
-	ErrLLMProviderTemplateNotFound = errors.New("llm provider template not found")
-	ErrLLMProviderTemplateVersionExists = errors.New("llm provider template version already exists")
-	ErrLLMProviderTemplateInUse    = errors.New("llm provider template is in use by one or more providers")
+	ErrLLMProviderTemplateExists            = errors.New("llm provider template already exists")
+	ErrLLMProviderTemplateNotFound          = errors.New("llm provider template not found")
+	ErrLLMProviderTemplateVersionExists     = errors.New("llm provider template version already exists")
+	ErrLLMProviderTemplateInUse             = errors.New("llm provider template is in use by one or more providers")
 	ErrLLMProviderTemplateReadOnly          = errors.New("built-in llm provider template is read-only")
+	ErrLLMProviderTemplateNotToggleable     = errors.New("only built-in templates can be enabled or disabled")
 	ErrLLMProviderTemplateManagedByReserved = errors.New("'wso2' is reserved and cannot be used as managedBy on custom templates")
-	ErrLLMProviderExists           = errors.New("llm provider already exists")
-	ErrLLMProviderNotFound         = errors.New("llm provider not found")
-	ErrLLMProviderLimitReached     = errors.New("llm provider limit reached for organization")
-	ErrLLMProxyExists              = errors.New("llm proxy already exists")
-	ErrLLMProxyNotFound            = errors.New("llm proxy not found")
-	ErrLLMProxyLimitReached        = errors.New("llm proxy limit reached for organization")
+	ErrLLMProviderExists                    = errors.New("llm provider already exists")
+	ErrLLMProviderNotFound                  = errors.New("llm provider not found")
+	ErrLLMProviderLimitReached              = errors.New("llm provider limit reached for organization")
+	ErrLLMProxyExists                       = errors.New("llm proxy already exists")
+	ErrLLMProxyNotFound                     = errors.New("llm proxy not found")
+	ErrLLMProxyLimitReached                 = errors.New("llm proxy limit reached for organization")
 )
 
 var (

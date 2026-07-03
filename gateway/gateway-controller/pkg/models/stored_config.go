@@ -92,6 +92,7 @@ type StoredConfig struct {
 	Handle              string       `json:"handle"`
 	DisplayName         string       `json:"displayName"`
 	Version             string       `json:"version"`
+	DataVersion         string       `json:"dataVersion"`
 	Configuration       any          `json:"configuration"`
 	SourceConfiguration any          `json:"source_configuration,omitempty"`
 	DesiredState        DesiredState `json:"desiredState"`
@@ -109,6 +110,37 @@ type StoredConfig struct {
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
 	return fmt.Sprintf("%s:%s:%s", c.Kind, c.DisplayName, c.Version)
+}
+
+// GetApiVersion returns the YAML apiVersion string (e.g.
+// "gateway.api-platform.wso2.com/v1") of the artifact. It prefers
+// SourceConfiguration (the user-authored artifact, e.g. an LLMProxyConfiguration)
+// and falls back to Configuration (which for LLM kinds is the derived RestAPI).
+// Returns "" if neither carries a recognised typed configuration.
+func (c *StoredConfig) GetApiVersion() string {
+	if v := apiVersionOf(c.SourceConfiguration); v != "" {
+		return v
+	}
+	return apiVersionOf(c.Configuration)
+}
+
+// apiVersionOf extracts the apiVersion from a typed configuration value.
+func apiVersionOf(cfg any) string {
+	switch sc := cfg.(type) {
+	case api.RestAPI:
+		return string(sc.ApiVersion)
+	case api.WebSubAPI:
+		return string(sc.ApiVersion)
+	case api.WebBrokerApi:
+		return string(sc.ApiVersion)
+	case api.LLMProviderConfiguration:
+		return string(sc.ApiVersion)
+	case api.LLMProxyConfiguration:
+		return string(sc.ApiVersion)
+	case api.MCPProxyConfiguration:
+		return string(sc.ApiVersion)
+	}
+	return ""
 }
 
 // GetContext returns the context path from SourceConfiguration with $version resolved.

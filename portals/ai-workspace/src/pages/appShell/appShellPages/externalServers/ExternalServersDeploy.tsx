@@ -19,7 +19,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Button,
+  CircularProgress,
   PageContent,
   Stack,
   Typography,
@@ -39,30 +41,16 @@ import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
 
 type ExternalServersDeployLayoutProps = {
-  serverId: string;
+  server: MCPServer | null;
 };
 
-function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutProps) {
+function ExternalServersDeployLayout({ server }: ExternalServersDeployLayoutProps) {
   const navigate = useNavigate();
   const { deployments } = useGatewayDeploy();
-  const { currentOrganization } = useAppShell();
-  const organizationId = currentOrganization?.uuid ?? '';
-  const apimBaseUrl = PLATFORM_API_BASE_URL;
-
-  const [server, setServer] = useState<MCPServer | null>(null);
-
-  useEffect(() => {
-    if (!serverId || !organizationId) return;
-    let cancelled = false;
-    mcpProxiesApis
-      .getMCPServer(serverId, organizationId, apimBaseUrl)
-      .then((res) => { if (!cancelled) setServer(res); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [serverId, organizationId, apimBaseUrl]);
 
   const hasDeployments = (deployments?.list ?? []).some((d) => d.status === 'DEPLOYED');
   const hasPolicies = (server?.policies?.length ?? 0) > 0;
+  const isReadOnly = Boolean(server?.readOnly);
 
   const handleStepClick = (stepId: ExternalServerStepBannerStepId) => {
     if (stepId === 'add-policies') {
@@ -80,7 +68,7 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
       </Button>
 
       <ExternalServerStepBanner
-        serverName={server?.name}
+        serverName={server?.displayName}
         hasPolicies={hasPolicies}
         hasDeployments={hasDeployments}
         onStepClick={handleStepClick}
@@ -99,6 +87,13 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
             defaultMessage="Deploy MCP Proxy to your Gateways"
           />
         </Typography>
+        {isReadOnly && (
+          <Alert severity="info">
+            This MCP proxy was created from a gateway. You can view its
+            deployments, but deploy, redeploy, restore and undeploy actions are
+            managed by the gateway and are unavailable in AI Workspace.
+          </Alert>
+        )}
         <GatewayDeployMainSection showConfigureOption={false} />
       </Stack>
     </PageContent>
@@ -107,6 +102,26 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
 
 export default function ExternalServersDeploy() {
   const { serverId } = useParams<{ serverId: string }>();
+  const { currentOrganization } = useAppShell();
+  const organizationId = currentOrganization?.uuid ?? '';
+  const apimBaseUrl = PLATFORM_API_BASE_URL;
+
+  const [server, setServer] = useState<MCPServer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!serverId || !organizationId) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    mcpProxiesApis
+      .getMCPServer(serverId, PLATFORM_API_BASE_URL)
+      .then((res) => { if (!cancelled) setServer(res); })
+      .catch(() => { if (!cancelled) setError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [serverId, organizationId, apimBaseUrl]);
 
   if (!serverId) {
     return (
@@ -121,9 +136,40 @@ export default function ExternalServersDeploy() {
     );
   }
 
+  if (loading) {
+    return (
+      <PageContent fullWidth>
+        <Stack alignItems="center" sx={{ py: 6 }}>
+          <CircularProgress />
+        </Stack>
+      </PageContent>
+    );
+  }
+
+  // A failed or empty fetch must NOT fall back to a writable deploy UI: the
+  // read-only guard is derived from the server, so rendering the deploy actions
+  // without a resolved server would expose deploy/undeploy on a gateway-managed
+  // (read-only) proxy. Show an error instead and gate the writable UI entirely.
+  if (error || !server) {
+    return (
+      <PageContent fullWidth>
+        <Alert severity="error">
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.externalServers.deploy.failed.to.load.server"
+            defaultMessage="Failed to load the MCP proxy. Please try again."
+          />
+        </Alert>
+      </PageContent>
+    );
+  }
+
   return (
-    <GatewayDeployProvider apiId={serverId} resourceType="mcp-server">
-      <ExternalServersDeployLayout serverId={serverId} />
+    <GatewayDeployProvider
+      apiId={serverId}
+      resourceType="mcp-server"
+      readOnly={Boolean(server.readOnly)}
+    >
+      <ExternalServersDeployLayout server={server} />
     </GatewayDeployProvider>
   );
 }

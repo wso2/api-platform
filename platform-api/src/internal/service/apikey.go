@@ -223,30 +223,32 @@ func generateAPIKeyName(displayName string) (string, error) {
 	return name, nil
 }
 
-// resolveUniqueKeyName returns the caller-supplied name if present, otherwise derives one
+// resolveUniqueKeyName uses the caller-supplied name if present, otherwise derives one
 // from the display name (or the API handle as a fallback) using the same slug algorithm
-// as the gateway controller. It retries with a short random suffix on collision.
+// as the gateway controller. Either way, it retries with a short random suffix on collision.
 func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.CreateAPIKeyRequest, apiHandle string) (string, error) {
-	if req.Name != nil && strings.TrimSpace(*req.Name) != "" {
-		return strings.TrimSpace(*req.Name), nil
-	}
-
-	// Determine display name to slug from
-	var displayName string
-	if req.DisplayName != nil && strings.TrimSpace(*req.DisplayName) != "" {
-		displayName = strings.TrimSpace(*req.DisplayName)
+	var baseName string
+	if req.Id != nil && strings.TrimSpace(*req.Id) != "" {
+		baseName = strings.TrimSpace(*req.Id)
 	} else {
-		// Auto-generate: "<api-handle>-key-<short-id>"
-		shortID, err := utils.GenerateUUID()
-		if err != nil {
-			return "", fmt.Errorf("failed to generate short ID: %w", err)
+		// Determine display name to slug from
+		var displayName string
+		if strings.TrimSpace(req.DisplayName) != "" {
+			displayName = strings.TrimSpace(req.DisplayName)
+		} else {
+			// Auto-generate: "<api-handle>-key-<short-id>"
+			shortID, err := utils.GenerateUUID()
+			if err != nil {
+				return "", fmt.Errorf("failed to generate short ID: %w", err)
+			}
+			displayName = fmt.Sprintf("%s-key-%s", apiHandle, shortID[:8])
 		}
-		displayName = fmt.Sprintf("%s-key-%s", apiHandle, shortID[:8])
-	}
 
-	baseName, err := generateAPIKeyName(displayName)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate API key name: %w", err)
+		var err error
+		baseName, err = generateAPIKeyName(displayName)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate API key name: %w", err)
+		}
 	}
 
 	// Check for collision and retry with a short suffix (up to 5 attempts)
@@ -275,11 +277,12 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 
 // CreateAPIKey hashes an external API key and broadcasts it to gateways where the API is deployed.
 // This method is used when external platforms inject API keys to hybrid gateways.
-func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, userId string, req *api.CreateAPIKeyRequest) error {
-	// Resolve API handle to UUID
-	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId, userId string, req *api.CreateAPIKeyRequest) error {
+	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
+	// kinds resolves to exactly one artifact.
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
 	if err != nil {
-		s.slogger.Error("Failed to get API metadata for API key creation", "apiHandle", apiHandle, "error", err)
+		s.slogger.Error("Failed to get API metadata for API key creation", "apiHandle", apiHandle, "kind", kind, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
 	}
 	if apiMetadata == nil {
@@ -332,10 +335,16 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	}
 	allowedTargets := constants.APIKeyAllowedTargetsAll
 
+	displayName := strings.TrimSpace(req.DisplayName)
+	if displayName == "" {
+		displayName = keyName
+	}
+
 	dbKey := &model.APIKey{
 		UUID:           apiKeyUUID,
 		ArtifactUUID:   apiId,
 		Name:           keyName,
+		DisplayName:    displayName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         constants.APIKeyStatusActive,
@@ -394,11 +403,12 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
-func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
-	// Resolve API handle to UUID
-	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
+	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
+	// kinds resolves to exactly one artifact.
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
 	if err != nil {
-		s.slogger.Error("Failed to get API metadata for API key update", "apiHandle", apiHandle, "error", err)
+		s.slogger.Error("Failed to get API metadata for API key update", "apiHandle", apiHandle, "kind", kind, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
 	}
 	if apiMetadata == nil {
@@ -504,11 +514,12 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 }
 
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
-func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string) error {
-	// Resolve API handle to UUID
-	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string) error {
+	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
+	// kinds resolves to exactly one artifact.
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
 	if err != nil {
-		s.slogger.Error("Failed to get API metadata for API key revocation", "apiHandle", apiHandle, "error", err)
+		s.slogger.Error("Failed to get API metadata for API key revocation", "apiHandle", apiHandle, "kind", kind, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
 	}
 	if apiMetadata == nil {

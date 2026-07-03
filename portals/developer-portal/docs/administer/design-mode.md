@@ -143,7 +143,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 Initial upload:
 
 ```bash
-curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout" \
+curl -X POST "http://localhost:3000/api/v0.9/views/{viewName}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
@@ -151,7 +151,7 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layo
 Update an existing layout:
 
 ```bash
-curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout" \
+curl -X PUT "http://localhost:3000/api/v0.9/views/{viewName}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
@@ -159,7 +159,7 @@ curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layou
 Revert to the default layout:
 
 ```bash
-curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout/template" \
+curl -X DELETE "http://localhost:3000/api/v0.9/views/{viewName}/layout/template" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -186,7 +186,7 @@ samples/
 ### `api.yaml` Format (REST API)
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: RestApi
 
 metadata:
@@ -214,7 +214,7 @@ spec:
 ### `api.yaml` Format (MCP Server)
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: MCP
 
 metadata:
@@ -261,7 +261,7 @@ The portal re-reads API definitions from disk on every page request. Edit `api.y
 The Applications page is available in design mode and shows entries from `applicationsPath`. The format follows the same Kubernetes-style manifest used across all sample files:
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: ApplicationList
 items:
 

@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplateFromAPI, renderTemplate } = require('../utils/util');
+const { renderTemplateFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -24,38 +24,38 @@ const orgDao = require('../dao/organizationDao');
 const subDao = require('../dao/subscriptionDao');
 
 
-const loadSubscriptions = async (req, res) => {
+const loadSubscriptions = async (req, res, next) => {
 
     let html;
     const { orgName, viewName } = req.params;
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgId = orgDetails.uuid;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         let allSubscriptions = [];
         try {
-            const createdBy = req.user && req.user.sub;
-            const localSubs = await subDao.list(orgID, { createdBy });
+            const createdBy = req.user && resolveActor(req);
+            const localSubs = await subDao.list(orgId, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
-                id: sub.SUB_ID,
+                id: sub.uuid,
                 type: 'TOKEN_BASED',
-                apiName: sub.DP_API_METADATA?.API_NAME || '',
-                apiVersion: sub.DP_API_METADATA?.API_VERSION || '',
-                apiHandle: sub.DP_API_METADATA?.API_HANDLE || '#',
-                planName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
-                status: sub.STATUS,
-                subscriptionToken: sub.SUB_TOKEN,
-                createdAt: sub.CREATED_AT || null,
+                apiName: sub.dp_api_metadata?.name || '',
+                apiVersion: sub.dp_api_metadata?.version || '',
+                apiHandle: sub.dp_api_metadata?.handle || '#',
+                planName: sub.dp_subscription_plan?.display_name || '',
+                status: sub.status,
+                subscriptionToken: sub.token,
+                createdAt: sub.created_at || null,
             }));
         } catch (err) {
             logger.warn('Failed to load subscriptions', {
-                error: err.message, orgID
+                error: err.message, orgId
             });
         }
 
@@ -71,12 +71,12 @@ const loadSubscriptions = async (req, res) => {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
             devportalMode: devportalMode,
-            orgID: orgID,
+            orgId: orgId,
             subscriptions: allSubscriptions,
             isReadOnlyMode: config.readOnlyMode,
         };
 
-        html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/subscriptions', viewName);
+        html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/subscriptions', viewName);
         res.send(html);
     } catch (error) {
         logger.error('Error loading subscriptions page', {
@@ -84,14 +84,8 @@ const loadSubscriptions = async (req, res) => {
             stack: error.stack,
             orgName
         });
-        const devportalMode = constants.DEVPORTAL_MODE.DEFAULT;
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: devportalMode,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        };
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.status(500).send(html);
+        error.status = 500;
+        return next(error);
     }
 };
 

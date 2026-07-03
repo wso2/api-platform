@@ -34,7 +34,6 @@ import React, {
 import { logger } from '../utils/logger';
 import type { Organization, ValidateUserResponse } from '../utils/types';
 import { PLATFORM_API_BASE_URL } from '../config.env';
-import { getOrgToken } from '../clients/choreoApiClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,19 +64,20 @@ const ChoreoUserContext = createContext<ChoreoUserContextType | null>(null);
  * Fetch the current user's organization from the Platform API.
  * Returns a single org wrapped in an array (Platform API returns one org per JWT).
  *
- * TODO: [REMOVE BEFORE PRODUCTION] getStoredToken() falls back to a hardcoded
- *       dev token in choreoApiClient.ts. Remove DEV_FALLBACK_TOKEN once real
- *       auth is wired up.
+ * Routed same-origin through the BFF: the request carries the HttpOnly
+ * `_bff_session` cookie (credentials: 'include') and the BFF injects the bearer
+ * token. The browser holds no token, so no Authorization header is set here.
  */
 async function fetchPlatformOrganization(): Promise<Organization[]> {
-  // getStoredToken() always returns a string (sessionStorage value or DEV_FALLBACK_TOKEN)
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${getOrgToken()}`,
   };
 
-  const res = await fetch(`${PLATFORM_API_BASE_URL}/organizations`, { headers });
+  const res = await fetch(`${PLATFORM_API_BASE_URL}/organizations`, {
+    credentials: 'include',
+    headers,
+  });
 
   if (!res.ok) {
     if (res.status === 404) {
@@ -96,7 +96,7 @@ async function fetchPlatformOrganization(): Promise<Organization[]> {
     id: platformOrg.id,      // UUID string
     uuid: platformOrg.id,    // alias kept for backward compat
     handle: platformOrg.handle,
-    name: platformOrg.name,
+    name: platformOrg.displayName,
     region: platformOrg.region,
     owner: { id: 0, idpId: '' },
   };

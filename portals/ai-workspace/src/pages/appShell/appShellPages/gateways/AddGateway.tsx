@@ -130,10 +130,11 @@ export default function AddGateway() {
     if (!isFormValid()) return;
 
     try {
+      const normalizedVhost = normalizeVhost(vhost);
       const createdGateway = await createGateway({
         displayName,
-        name,
-        vhost: normalizeVhost(vhost),
+        id: name,
+        endpoints: normalizedVhost ? [normalizedVhost] : undefined,
         functionalityType,
         description: description || undefined,
         version: selectedVersion!.version,
@@ -149,7 +150,7 @@ export default function AddGateway() {
       // Redirect to the gateway view page
       const viewPath = buildOrgPath(
         currentOrganization,
-        `/gateways/view/${createdGateway.name}`,
+        `/gateways/view/${createdGateway.id}`,
       );
       navigate(viewPath);
     } catch (error: any) {

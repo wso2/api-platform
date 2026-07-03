@@ -127,6 +127,8 @@ func GetErrorResponse(err error) (int, interface{}) {
 		return makeError(http.StatusBadRequest, "Organization must have at least one project")
 	case errors.Is(err, constants.ErrProjectHasAssociatedAPIs):
 		return makeError(http.StatusBadRequest, "Project has associated APIs")
+	case errors.Is(err, constants.ErrProjectHasAssociatedApplications):
+		return makeError(http.StatusBadRequest, "Project has associated applications")
 
 	// API errors
 	case errors.Is(err, constants.ErrAPINotFound):

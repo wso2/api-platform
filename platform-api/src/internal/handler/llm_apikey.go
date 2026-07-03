@@ -22,6 +22,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -35,18 +36,20 @@ import (
 // LLMProviderAPIKeyHandler handles API key operations for LLM providers
 type LLMProviderAPIKeyHandler struct {
 	apiKeyService *service.LLMProviderAPIKeyService
+	identity      *service.IdentityService
 	slogger       *slog.Logger
 }
 
 // NewLLMProviderAPIKeyHandler creates a new LLM provider API key handler
-func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService, slogger *slog.Logger) *LLMProviderAPIKeyHandler {
+func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService, identity *service.IdentityService, slogger *slog.Logger) *LLMProviderAPIKeyHandler {
 	return &LLMProviderAPIKeyHandler{
 		apiKeyService: apiKeyService,
+		identity:      identity,
 		slogger:       slogger,
 	}
 }
 
-// ListAPIKeys handles GET /api/v0.9/llm-providers/{id}/api-keys
+// ListAPIKeys handles GET /api/v0.9/llm-providers/{llmProviderId}/api-keys
 func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -55,14 +58,17 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	providerID := r.PathValue("id")
+	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
 		return
 	}
 
-	callerUserID := r.Header.Get("x-user-id")
+	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "list LLM provider API keys")
+	if !ok {
+		return
+	}
 
 	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID)
 	if err != nil {
@@ -80,7 +86,7 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/llm-providers/{id}/api-keys/{keyName}
+// DeleteAPIKey handles DELETE /api/v0.9/llm-providers/{llmProviderId}/api-keys/{apiKeyId}
 func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -89,21 +95,24 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	providerID := r.PathValue("id")
+	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
 		return
 	}
 
-	keyName := r.PathValue("keyName")
+	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API key name is required"))
 		return
 	}
 
-	callerUserID := r.Header.Get("x-user-id")
+	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM provider API key")
+	if !ok {
+		return
+	}
 
 	err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName)
 	if err != nil {
@@ -132,7 +141,7 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// CreateAPIKey handles POST /api/v0.9/llm-providers/{id}/api-keys
+// CreateAPIKey handles POST /api/v0.9/llm-providers/{llmProviderId}/api-keys
 func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -141,7 +150,7 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	providerID := r.PathValue("id")
+	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
@@ -156,16 +165,18 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Validate that at least one of name or displayName is provided
-	nameProvided := req.Name != nil && *req.Name != ""
-	displayNameProvided := req.DisplayName != nil && *req.DisplayName != ""
-	if !nameProvided && !displayNameProvided {
+	// Validate that displayName is provided (name is optional; auto-generated from displayName if absent)
+	req.DisplayName = strings.TrimSpace(req.DisplayName)
+	if req.DisplayName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"At least one of 'name' or 'displayName' must be provided"))
+			"'displayName' is required"))
 		return
 	}
 
-	userID := r.Header.Get("x-user-id")
+	userID, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM provider API key")
+	if !ok {
+		return
+	}
 
 	response, err := h.apiKeyService.CreateLLMProviderAPIKey(r.Context(), providerID, orgID, userID, &req)
 	if err != nil {
@@ -186,14 +197,14 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	h.slogger.Info("Successfully created LLM provider API key", "providerId", providerID, "organizationId", orgID, "keyId", response.KeyId)
+	h.slogger.Info("Successfully created LLM provider API key", "providerId", providerID, "organizationId", orgID, "keyId", response.Id)
 
 	httputil.WriteJSON(w, http.StatusCreated, response)
 }
 
 // RegisterRoutes registers LLM provider API key routes with the router
 func (h *LLMProviderAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers/{id}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{id}/api-keys", h.ListAPIKeys)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{id}/api-keys/{keyName}", h.DeleteAPIKey)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys", h.CreateAPIKey)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys", h.ListAPIKeys)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys/{apiKeyId}", h.DeleteAPIKey)
 }

@@ -82,11 +82,11 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 	// Insert into mcp_proxies table
 	query := `
 		INSERT INTO mcp_proxies (
-			uuid, handle, name, version, project_uuid, description, created_by, configuration, origin, created_at, updated_at, organization_uuid
+			uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, configuration, origin, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
+		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.UpdatedBy, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -95,6 +95,11 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 
 	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, p.UUID, []byte(configurationJSON)); err != nil {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
+	// Persist gateway associations (if any) within the same transaction.
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -107,18 +112,18 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
 
 	var p model.MCPProxy
-	var createdBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+		&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -126,6 +131,7 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 
 	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
@@ -135,6 +141,12 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 		}
 	}
 
+	associations, err := loadArtifactGatewayAssociations(r.db, p.UUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load gateway associations for MCP proxy %s: %w", p.Handle, err)
+	}
+	p.AssociatedGateways = associations
+
 	return &p, nil
 }
 
@@ -142,18 +154,18 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE uuid = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
 
 	var p model.MCPProxy
-	var createdBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+		&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -161,6 +173,7 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 
 	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
@@ -178,8 +191,8 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -193,16 +206,17 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
@@ -224,8 +238,8 @@ func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
 func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, configuration
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
 		ORDER BY created_at DESC
@@ -239,16 +253,17 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
+			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
@@ -305,7 +320,7 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	// Update mcp_proxies table (name/version/updated_at now live here)
 	query = `
 		UPDATE mcp_proxies
-		SET name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
 		p.Name, p.Version, p.Description, configurationJSON, p.UpdatedBy, now,
@@ -326,10 +341,25 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
+	// Replace the full set of gateway associations within the same transaction when the
+	// caller manages associations. Deployments are intentionally left untouched.
+	if p.ReplaceAssociatedGateways {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+			return err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
+}
+
+// EnsureGatewayAssociation creates a gateway association for the MCP proxy if one does not
+// already exist and resolves the metadata to use for the deployment. See
+// ensureArtifactGatewayAssociation for the full semantics.
+func (r *MCPProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
 }
 
 // Delete deletes an MCP proxy by its handle and organization UUID

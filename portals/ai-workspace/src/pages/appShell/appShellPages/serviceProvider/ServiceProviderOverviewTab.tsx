@@ -68,6 +68,10 @@ import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
 import { buildProjectPath } from '../../../../utils/projectRouting';
 import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
+import {
   getCurrentDeployment,
   getProxyIdentifier,
 } from './ProviderMap/ProviderMapTab';
@@ -155,6 +159,7 @@ export default function ServiceProviderOverviewTab({
   const apiKeyLocation = provider?.security?.apiKey?.in ?? 'header';
   const apiKeyName = provider?.security?.apiKey?.key ?? 'X-API-Key';
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
 
   const parsedOpenApiSpec = useMemo(
     () => parseOpenApiSpec(provider?.openapi || ''),
@@ -506,7 +511,7 @@ export default function ServiceProviderOverviewTab({
         provider.id,
         currentOrganization.uuid,
         {
-          name: buildApiKeyResourceName(trimmedDisplayName),
+          id: buildApiKeyResourceName(trimmedDisplayName),
           displayName: apiKeyDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',
@@ -576,9 +581,10 @@ export default function ServiceProviderOverviewTab({
 
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
+      // removed: ProjectBase no longer carries a `handler` alias field, so
+      // match on `id` only.
       const proxyProject = projectsForCurrentOrganization.find(
-        (project) =>
-          project.id === proxyProjectId || project.handler === proxyProjectId
+        (project) => project.id === proxyProjectId
       );
 
       if (!currentOrganization || !proxyProject) {
@@ -597,7 +603,11 @@ export default function ServiceProviderOverviewTab({
   );
 
   const handleDeleteApiKey = async () => {
-    if (!deleteTargetKeyName || !provider?.id || !currentOrganization?.uuid) {
+    if (
+      !deleteTargetKeyName ||
+      !provider?.id ||
+      !currentOrganization?.uuid
+    ) {
       return;
     }
 
@@ -610,7 +620,7 @@ export default function ServiceProviderOverviewTab({
         PLATFORM_API_BASE_URL
       );
       setApiKeys((prev) =>
-        prev.filter((key) => (key.name || '').trim() !== deleteTargetKeyName)
+        prev.filter((key) => (key.id || '').trim() !== deleteTargetKeyName)
       );
       setDeleteTargetKeyName(null);
       onApiKeyCreated?.();
@@ -813,25 +823,16 @@ export default function ServiceProviderOverviewTab({
                           />
                         </Typography>
                       </Box>
-                      <Tooltip
-                        title={
-                          deployedGateways.length === 0
-                            ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
-                            : ''
-                        }
-                        placement="top"
-                      >
-                        <span>
-                          <Button
-                            variant="contained"
-                            size="medium"
-                            onClick={handleOpenApiKeyModal}
-                            disabled={deployedGateways.length === 0}
-                          >
-                            Generate API Key
-                          </Button>
-                        </span>
-                      </Tooltip>
+                      <DisabledActionTooltip disabled={false}>
+                        <Button
+                          variant="contained"
+                          size="medium"
+                          onClick={handleOpenApiKeyModal}
+                          disabled={deployedGateways.length === 0}
+                        >
+                          Generate API Key
+                        </Button>
+                      </DisabledActionTooltip>
                     </Stack>
 
                     {keyError && (
@@ -885,11 +886,11 @@ export default function ServiceProviderOverviewTab({
                             {apiKeys.map((key) => (
                               <ListingTable.Row
                                 key={`${
-                                  key.name || key.maskedApiKey || 'api-key'
+                                  key.id || key.maskedApiKey || 'api-key'
                                 }-${key.expiresAt || ''}`}
                               >
                                 <ListingTable.Cell>
-                                  {key.name || '-'}
+                                  {key.displayName || key.id || '-'}
                                 </ListingTable.Cell>
                                 <ListingTable.Cell>
                                   {key.maskedApiKey || '-'}
@@ -908,7 +909,7 @@ export default function ServiceProviderOverviewTab({
                                 <ListingTable.Cell align="right">
                                   <Tooltip
                                     title={
-                                      key.name
+                                      key.id
                                         ? 'Delete API key'
                                         : 'Unable to delete key without a name'
                                     }
@@ -919,10 +920,10 @@ export default function ServiceProviderOverviewTab({
                                         color="error"
                                         onClick={() =>
                                           setDeleteTargetKeyName(
-                                            key.name?.trim() || null
+                                            key.id?.trim() || null
                                           )
                                         }
-                                        disabled={!key.name || isDeletingKey}
+                                        disabled={!key.id || isDeletingKey}
                                       >
                                         <Trash2 size={16} />
                                       </IconButton>

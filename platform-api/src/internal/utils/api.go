@@ -19,11 +19,8 @@ package utils
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -32,10 +29,6 @@ import (
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
-	"github.com/pb33f/libopenapi"
-	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
-	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
 	"gopkg.in/yaml.v3"
 )
 
@@ -75,21 +68,21 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 		lifeCycleStatus = string(*restAPI.LifeCycleStatus)
 	}
 
-	projectID := OpenAPIUUIDToString(restAPI.ProjectId)
-
 	apiModel := &model.API{
-		Handle:          handle,
-		Name:            restAPI.Name,
-		Kind:            kind,
-		Description:     description,
-		Version:         restAPI.Version,
-		CreatedBy:       createdBy,
-		ProjectID:       projectID,
+		Handle:      handle,
+		Name:        restAPI.DisplayName,
+		Kind:        kind,
+		Description: description,
+		Version:     restAPI.Version,
+		CreatedBy:   createdBy,
+		// ProjectID is set to the request-supplied project handle here; the caller must
+		// overwrite it with the resolved project's UUID before persisting.
+		ProjectID:       restAPI.ProjectId,
 		OrganizationID:  orgID,
 		LifeCycleStatus: lifeCycleStatus,
 		Channels:        u.ChannelsAPIToModel(restAPI.Channels),
 		Configuration: model.RestAPIConfig{
-			Name:              restAPI.Name,
+			Name:              restAPI.DisplayName,
 			Version:           restAPI.Version,
 			Context:           &restAPI.Context,
 			Transport:         stringSliceValue(restAPI.Transport),
@@ -113,14 +106,10 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 
 // ModelToRESTAPI converts internal model representation to REST API model.
 // Note: Model.Handle maps to RESTAPI.Id (user-facing identifier)
-func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
+// projectHandle is the handle of the project referenced by modelAPI.ProjectID (resolved by the caller).
+func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API, projectHandle string) (*api.RESTAPI, error) {
 	if modelAPI == nil {
 		return nil, nil
-	}
-
-	projectID, err := ParseOpenAPIUUID(modelAPI.ProjectID)
-	if err != nil {
-		return nil, err
 	}
 
 	var status *api.RESTAPILifeCycleStatus
@@ -138,14 +127,15 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
 		Id:                StringPtrIfNotEmpty(modelAPI.Handle),
 		Kind:              StringPtrIfNotEmpty(modelAPI.Kind),
 		LifeCycleStatus:   status,
-		Name:              modelAPI.Name,
+		DisplayName:       modelAPI.Name,
 		Operations:        u.OperationsModelToAPI(modelAPI.Configuration.Operations),
 		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
-		ProjectId:         *projectID,
+		ProjectId:         projectHandle,
 		ReadOnly:          BoolPtr(modelAPI.Origin == constants.OriginDP),
 		SubscriptionPlans: stringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
 		Transport:         stringSlicePtr(modelAPI.Configuration.Transport),
 		UpdatedAt:         TimePtrIfNotZero(modelAPI.UpdatedAt),
+		UpdatedBy:         StringPtrIfNotEmpty(modelAPI.UpdatedBy),
 		Upstream:          u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
 		Version:           modelAPI.Version,
 	}, nil
@@ -576,7 +566,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error)
 
 func (u *APIUtil) buildInfoSectionFromRESTAPI(restAPI *api.RESTAPI) dto.Info {
 	info := dto.Info{}
-	info.Title = restAPI.Name
+	info.Title = restAPI.DisplayName
 	info.Version = restAPI.Version
 
 	if restAPI.Description != nil {
@@ -787,7 +777,7 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 
 	// Create and populate generated RESTAPI model with available fields
 	restAPI := &api.RESTAPI{
-		Name:            yamlData.DisplayName,
+		DisplayName:     yamlData.DisplayName,
 		Context:         yamlData.Context,
 		Version:         yamlData.Version,
 		Operations:      &operations,
@@ -797,7 +787,7 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 		LifeCycleStatus: &lifeCycleStatus,
 		Kind:            StringPtrIfNotEmpty(kind),
 		Transport:       stringSlicePtr([]string{"http", "https"}),
-		ProjectId:       openapi_types.UUID{},
+		ProjectId:       "",
 
 		// Fields that may be set by caller:
 		// - Id
@@ -809,136 +799,7 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 	return restAPI
 }
 
-// Validation functions for OpenAPI specifications and WSO2 artifacts
-
-// ValidateOpenAPIDefinition performs comprehensive validation on OpenAPI content using libopenapi
-func (u *APIUtil) ValidateOpenAPIDefinition(content []byte) error {
-	// Create a new document from the content
-	document, err := libopenapi.NewDocument(content)
-	if err != nil {
-		return fmt.Errorf("failed to parse document: %s", err.Error())
-	}
-
-	// Check the specification version
-	specInfo := document.GetSpecInfo()
-	if specInfo == nil {
-		return fmt.Errorf("unable to determine specification version")
-	}
-
-	// Handle different specification versions based on version string
-	switch {
-	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "3."):
-		return u.validateOpenAPI3Document(document)
-	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "2."):
-		return u.validateSwagger2Document(document)
-	default:
-		// Try to determine from the document structure
-		return u.validateDocumentByStructure(document)
-	}
-}
-
-// validateDocumentByStructure tries to validate by attempting to build both models
-func (u *APIUtil) validateDocumentByStructure(document libopenapi.Document) error {
-	// Try OpenAPI 3.x first
-	v3Model, v3Errs := document.BuildV3Model()
-	if v3Errs == nil && v3Model != nil {
-		return u.validateOpenAPI3Model(v3Model)
-	}
-
-	// Try Swagger 2.0
-	v2Model, v2Errs := document.BuildV2Model()
-	if v2Errs == nil && v2Model != nil {
-		return u.validateSwagger2Model(v2Model)
-	}
-
-	// Both failed, return error
-	var errorMessages []string
-	if v3Errs != nil {
-		errorMessages = append(errorMessages, "OpenAPI 3.x: "+v3Errs.Error())
-	}
-	if v2Errs != nil {
-		errorMessages = append(errorMessages, "Swagger 2.0: "+v2Errs.Error())
-	}
-
-	return fmt.Errorf("document validation failed: %s", strings.Join(errorMessages, "; "))
-}
-
-// validateOpenAPI3Document validates OpenAPI 3.x documents using libopenapi
-func (u *APIUtil) validateOpenAPI3Document(document libopenapi.Document) error {
-	// Build the OpenAPI 3.x model
-	docModel, err := document.BuildV3Model()
-	if err != nil {
-		return fmt.Errorf("OpenAPI 3.x model build error: %s", err.Error())
-	}
-
-	return u.validateOpenAPI3Model(docModel)
-}
-
-// validateOpenAPI3Model validates an OpenAPI 3.x model
-func (u *APIUtil) validateOpenAPI3Model(docModel *libopenapi.DocumentModel[v3high.Document]) error {
-	if docModel == nil {
-		return fmt.Errorf("invalid OpenAPI 3.x document model")
-	}
-
-	// Get the OpenAPI document
-	doc := &docModel.Model
-	if doc.Info == nil {
-		return fmt.Errorf("missing required field: info")
-	}
-
-	if doc.Info.Title == "" {
-		return fmt.Errorf("missing required field: info.title")
-	}
-
-	if doc.Info.Version == "" {
-		return fmt.Errorf("missing required field: info.version")
-	}
-
-	return nil
-}
-
-// validateSwagger2Document validates Swagger 2.0 documents using libopenapi
-func (u *APIUtil) validateSwagger2Document(document libopenapi.Document) error {
-	// Build the Swagger 2.0 model
-	docModel, err := document.BuildV2Model()
-	if err != nil {
-		return fmt.Errorf("Swagger 2.0 model build error: %s", err.Error())
-	}
-
-	return u.validateSwagger2Model(docModel)
-}
-
-// validateSwagger2Model validates a Swagger 2.0 model
-func (u *APIUtil) validateSwagger2Model(docModel *libopenapi.DocumentModel[v2high.Swagger]) error {
-	if docModel == nil {
-		return fmt.Errorf("invalid Swagger 2.0 document model")
-	}
-
-	// Get the Swagger document
-	doc := &docModel.Model
-	if doc.Info == nil {
-		return fmt.Errorf("missing required field: info")
-	}
-
-	if doc.Info.Title == "" {
-		return fmt.Errorf("missing required field: info.title")
-	}
-
-	if doc.Info.Version == "" {
-		return fmt.Errorf("missing required field: info.version")
-	}
-
-	if doc.Swagger == "" {
-		return fmt.Errorf("missing required field: swagger version")
-	}
-
-	// Validate that it's a proper 2.0 version
-	if !strings.HasPrefix(doc.Swagger, "2.") {
-		return fmt.Errorf("invalid swagger version: %s, expected 2.x", doc.Swagger)
-	}
-
-	return nil
-}
+// Validation functions for WSO2 artifacts
 
 // ValidateWSO2Artifact validates the structure of WSO2 artifact
 func (u *APIUtil) ValidateWSO2Artifact(artifact *dto.APIDeploymentYAML) error {
@@ -987,374 +848,4 @@ func (u *APIUtil) ValidateAPIDefinitionConsistency(openAPIContent []byte, wso2Ar
 	}
 
 	return nil
-}
-
-// FetchOpenAPIFromURL fetches OpenAPI content from a URL
-func (u *APIUtil) FetchOpenAPIFromURL(url string) ([]byte, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch URL: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
-	}
-
-	content, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	return content, nil
-}
-
-// ParseAPIDefinitionToRESTAPI parses OpenAPI 3.x or Swagger 2.0 content and extracts metadata into a generated api.RESTAPI.
-//
-// Notes:
-//   - The returned RESTAPI is *partial*: fields like Context and ProjectId are not present in OpenAPI and will be empty.
-//   - ProjectId is set to the zero UUID to satisfy generated model requirements.
-func (u *APIUtil) ParseAPIDefinitionToRESTAPI(content []byte) (*api.RESTAPI, error) {
-	document, err := libopenapi.NewDocument(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse API definition: %w", err)
-	}
-
-	specInfo := document.GetSpecInfo()
-	if specInfo == nil {
-		return nil, fmt.Errorf("unable to determine API specification version")
-	}
-
-	switch {
-	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "3."):
-		return u.parseOpenAPI3DocumentToRESTAPI(document)
-	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "2."):
-		return u.parseSwagger2DocumentToRESTAPI(document)
-	default:
-		return u.parseDocumentByStructureToRESTAPI(document)
-	}
-}
-
-func (u *APIUtil) parseOpenAPI3DocumentToRESTAPI(document libopenapi.Document) (*api.RESTAPI, error) {
-	docModel, err := document.BuildV3Model()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build OpenAPI 3.x model: %w", err)
-	}
-	if docModel == nil {
-		return nil, fmt.Errorf("invalid OpenAPI 3.x document model")
-	}
-
-	doc := &docModel.Model
-	if doc.Info == nil {
-		return nil, fmt.Errorf("missing required field: info")
-	}
-
-	rest := &api.RESTAPI{
-		Name:      doc.Info.Title,
-		Context:   "",
-		Version:   doc.Info.Version,
-		ProjectId: openapi_types.UUID{},
-		Kind:      StringPtrIfNotEmpty(constants.RestApi),
-		Upstream:  api.Upstream{},
-		Transport: stringSlicePtr([]string{"http", "https"}),
-	}
-	if doc.Info.Description != "" {
-		rest.Description = StringPtrIfNotEmpty(doc.Info.Description)
-	}
-
-	ops := u.extractOperationsFromV3PathsAPI(doc.Paths)
-	if len(ops) > 0 {
-		rest.Operations = &ops
-	}
-
-	// Extract upstream from servers
-	if len(doc.Servers) > 0 {
-		rest.Upstream = api.Upstream{
-			Main: api.UpstreamDefinition{
-				Url: StringPtrIfNotEmpty(doc.Servers[0].URL),
-			},
-		}
-	}
-
-	return rest, nil
-}
-
-func (u *APIUtil) parseSwagger2DocumentToRESTAPI(document libopenapi.Document) (*api.RESTAPI, error) {
-	docModel, err := document.BuildV2Model()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build Swagger 2.0 model: %w", err)
-	}
-	if docModel == nil {
-		return nil, fmt.Errorf("invalid Swagger 2.0 document model")
-	}
-
-	doc := &docModel.Model
-	if doc.Info == nil {
-		return nil, fmt.Errorf("missing required field: info")
-	}
-
-	rest := &api.RESTAPI{
-		Name:      doc.Info.Title,
-		Context:   "",
-		Version:   doc.Info.Version,
-		ProjectId: openapi_types.UUID{},
-		Kind:      StringPtrIfNotEmpty(constants.RestApi),
-		Upstream:  api.Upstream{},
-		Transport: stringSlicePtr([]string{"http", "https"}),
-	}
-	if doc.Info.Description != "" {
-		rest.Description = StringPtrIfNotEmpty(doc.Info.Description)
-	}
-
-	ops := u.extractOperationsFromV2PathsAPI(doc.Paths)
-	if len(ops) > 0 {
-		rest.Operations = &ops
-	}
-
-	// Convert Swagger 2.0 host/basePath/schemes to upstream
-	rest.Upstream = u.convertSwagger2ToUpstreamAPI(doc.Host, doc.BasePath, doc.Schemes)
-
-	return rest, nil
-}
-
-func (u *APIUtil) parseDocumentByStructureToRESTAPI(document libopenapi.Document) (*api.RESTAPI, error) {
-	v3Model, v3Errs := document.BuildV3Model()
-	if v3Errs == nil && v3Model != nil {
-		return u.parseOpenAPI3DocumentToRESTAPI(document)
-	}
-
-	v2Model, v2Errs := document.BuildV2Model()
-	if v2Errs == nil && v2Model != nil {
-		return u.parseSwagger2DocumentToRESTAPI(document)
-	}
-
-	var errorMessages []string
-	if v3Errs != nil {
-		errorMessages = append(errorMessages, "OpenAPI 3.x: "+v3Errs.Error())
-	}
-	if v2Errs != nil {
-		errorMessages = append(errorMessages, "Swagger 2.0: "+v2Errs.Error())
-	}
-
-	return nil, fmt.Errorf("document parsing failed: %s", strings.Join(errorMessages, "; "))
-}
-
-func (u *APIUtil) extractOperationsFromV3PathsAPI(paths *v3high.Paths) []api.Operation {
-	operations := make([]api.Operation, 0)
-	if paths == nil || paths.PathItems == nil {
-		return operations
-	}
-
-	for pair := paths.PathItems.First(); pair != nil; pair = pair.Next() {
-		path := pair.Key()
-		pathItem := pair.Value()
-		if pathItem == nil {
-			continue
-		}
-
-		methodOps := map[string]*v3high.Operation{
-			"GET":     pathItem.Get,
-			"POST":    pathItem.Post,
-			"PUT":     pathItem.Put,
-			"PATCH":   pathItem.Patch,
-			"DELETE":  pathItem.Delete,
-			"OPTIONS": pathItem.Options,
-			"HEAD":    pathItem.Head,
-			"TRACE":   pathItem.Trace,
-		}
-
-		for method, operation := range methodOps {
-			if operation == nil {
-				continue
-			}
-
-			op := api.Operation{
-				Name:        StringPtrIfNotEmpty(operation.Summary),
-				Description: StringPtrIfNotEmpty(operation.Description),
-				Request: api.OperationRequest{
-					Method:   api.OperationRequestMethod(method),
-					Path:     path,
-					Policies: &[]api.Policy{},
-				},
-			}
-
-			operations = append(operations, op)
-		}
-	}
-
-	return operations
-}
-
-func (u *APIUtil) extractOperationsFromV2PathsAPI(paths *v2high.Paths) []api.Operation {
-	operations := make([]api.Operation, 0)
-	if paths == nil || paths.PathItems == nil {
-		return operations
-	}
-
-	for pair := paths.PathItems.First(); pair != nil; pair = pair.Next() {
-		path := pair.Key()
-		pathItem := pair.Value()
-		if pathItem == nil {
-			continue
-		}
-
-		methodOps := map[string]*v2high.Operation{
-			"GET":     pathItem.Get,
-			"POST":    pathItem.Post,
-			"PUT":     pathItem.Put,
-			"PATCH":   pathItem.Patch,
-			"DELETE":  pathItem.Delete,
-			"OPTIONS": pathItem.Options,
-			"HEAD":    pathItem.Head,
-		}
-
-		for method, operation := range methodOps {
-			if operation == nil {
-				continue
-			}
-
-			op := api.Operation{
-				Name:        StringPtrIfNotEmpty(operation.Summary),
-				Description: StringPtrIfNotEmpty(operation.Description),
-				Request: api.OperationRequest{
-					Method:   api.OperationRequestMethod(method),
-					Path:     path,
-					Policies: &[]api.Policy{},
-				},
-			}
-
-			operations = append(operations, op)
-		}
-	}
-
-	return operations
-}
-
-func (u *APIUtil) convertSwagger2ToUpstreamAPI(host, basePath string, schemes []string) api.Upstream {
-	if host == "" {
-		return api.Upstream{}
-	}
-	if len(schemes) == 0 {
-		schemes = []string{"https"}
-	}
-	if basePath == "" {
-		basePath = "/"
-	}
-	url := fmt.Sprintf("%s://%s%s", schemes[0], host, basePath)
-	return api.Upstream{
-		Main: api.UpstreamDefinition{Url: StringPtrIfNotEmpty(url)},
-	}
-}
-
-// ValidateAndParseOpenAPIToRESTAPI validates and parses OpenAPI definition content into a partial RESTAPI model.
-func (u *APIUtil) ValidateAndParseOpenAPIToRESTAPI(content []byte) (*api.RESTAPI, error) {
-	if err := u.ValidateOpenAPIDefinition(content); err != nil {
-		return nil, fmt.Errorf("invalid OpenAPI definition: %w", err)
-	}
-	apiModel, err := u.ParseAPIDefinitionToRESTAPI(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse OpenAPI definition: %w", err)
-	}
-	return apiModel, nil
-}
-
-// MergeRESTAPIDetails merges user-provided REST API details with extracted OpenAPI details.
-// User-provided details take precedence for scalar metadata; extracted operations are used when available.
-func (u *APIUtil) MergeRESTAPIDetails(userAPI *api.RESTAPI, extractedAPI *api.RESTAPI) *api.RESTAPI {
-	if userAPI == nil || extractedAPI == nil {
-		return nil
-	}
-
-	merged := &api.RESTAPI{
-		Name:      userAPI.Name,
-		Context:   userAPI.Context,
-		Version:   userAPI.Version,
-		ProjectId: userAPI.ProjectId,
-		Upstream:  api.Upstream{},
-	}
-
-	// Handle / Id
-	if userAPI.Id != nil && *userAPI.Id != "" {
-		merged.Id = userAPI.Id
-	} else {
-		merged.Id = extractedAPI.Id
-	}
-
-	// Description
-	if userAPI.Description != nil && *userAPI.Description != "" {
-		merged.Description = userAPI.Description
-	} else {
-		merged.Description = extractedAPI.Description
-	}
-
-	// CreatedBy
-	if userAPI.CreatedBy != nil && *userAPI.CreatedBy != "" {
-		merged.CreatedBy = userAPI.CreatedBy
-	} else {
-		merged.CreatedBy = extractedAPI.CreatedBy
-	}
-
-	// Kind
-	if userAPI.Kind != nil && *userAPI.Kind != "" {
-		merged.Kind = userAPI.Kind
-	} else {
-		merged.Kind = extractedAPI.Kind
-	}
-
-	// Transport
-	if userAPI.Transport != nil && len(*userAPI.Transport) > 0 {
-		merged.Transport = userAPI.Transport
-	} else {
-		merged.Transport = extractedAPI.Transport
-	}
-
-	// Lifecycle
-	if userAPI.LifeCycleStatus != nil && string(*userAPI.LifeCycleStatus) != "" {
-		merged.LifeCycleStatus = userAPI.LifeCycleStatus
-	} else {
-		merged.LifeCycleStatus = extractedAPI.LifeCycleStatus
-	}
-
-	// Upstream
-	if !isEmptyUpstreamAPI(userAPI.Upstream) {
-		merged.Upstream = userAPI.Upstream
-	} else {
-		merged.Upstream = extractedAPI.Upstream
-	}
-
-	// Policies/channels are only from user input
-	merged.Policies = userAPI.Policies
-	merged.Channels = userAPI.Channels
-
-	// Operations: prefer extracted ops when available
-	if extractedAPI.Operations != nil && len(*extractedAPI.Operations) > 0 {
-		merged.Operations = extractedAPI.Operations
-	} else {
-		merged.Operations = userAPI.Operations
-	}
-
-	return merged
-}
-
-func isEmptyUpstreamAPI(upstream api.Upstream) bool {
-	if !isEmptyUpstreamDefinitionAPI(upstream.Main) {
-		return false
-	}
-	if upstream.Sandbox != nil && !isEmptyUpstreamDefinitionAPI(*upstream.Sandbox) {
-		return false
-	}
-	return true
-}
-
-func isEmptyUpstreamDefinitionAPI(definition api.UpstreamDefinition) bool {
-	if definition.Url != nil && *definition.Url != "" {
-		return false
-	}
-	if definition.Ref != nil && *definition.Ref != "" {
-		return false
-	}
-	return true
 }

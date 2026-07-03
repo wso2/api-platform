@@ -4,13 +4,13 @@
 
 <a id="opIdlistSubscriptionPlans"></a>
 
-`GET /o/{orgId}/devportal/v1/subscription-plans`
+`GET /subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
+curl -X GET https://localhost:3000/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -31,7 +31,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |name|query|string|false|Filter by exact plan name. Returns an array of zero or one items.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -41,13 +40,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "planID": "string",
-      "planName": "string",
+      "id": "string",
       "displayName": "string",
       "description": "string",
-      "requestCount": 0,
+      "requestCount": "string",
       "refId": "string",
-      "orgID": "string"
+      "orgId": "string",
+      "createdBy": "alice@example.com",
+      "createdAt": "2026-05-07T08:30:00Z",
+      "updatedAt": "2026-05-07T08:30:00Z"
     }
   ],
   "pagination": {
@@ -68,8 +69,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -115,30 +116,16 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
-|»» planID|string|false|none|none|
-|»» planName|string|false|none|none|
+|»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
-|»» requestCount|any|false|none|none|
-
-*oneOf*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»» *anonymous*|integer|false|none|none|
-
-*xor*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»» *anonymous*|string|false|none|none|
-
-*continued*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
+|»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
-|»» orgID|string|false|none|none|
+|»» orgId|string|false|none|none|
+|»» createdBy|string|false|none|Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»» updatedBy|string|false|none|Identity of the user who last updated this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»» createdAt|string(date-time)|false|none|none|
+|»» updatedAt|string(date-time)|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -155,13 +142,13 @@ Status Code **200**
 
 <a id="opIdaddSubscriptionPlans"></a>
 
-`POST /o/{orgId}/devportal/v1/subscription-plans`
+`POST /subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
+curl -X POST https://localhost:3000/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -176,9 +163,8 @@ Creates one subscription plan when the request body is an object, or multiple su
 
 ```json
 {
-  "planID": "string",
+  "id": "Gold",
   "refId": "string",
-  "planName": "string",
   "displayName": "string",
   "description": "string",
   "type": "requestcount",
@@ -188,9 +174,8 @@ Creates one subscription plan when the request body is an object, or multiple su
 ```
 
 ```yaml
-planID: string
+id: Gold
 refId: string
-planName: string
 displayName: string
 description: string
 type: requestcount
@@ -211,7 +196,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -233,8 +217,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -298,13 +282,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdputSubscriptionPlans"></a>
 
-`PUT /o/{orgId}/devportal/v1/subscription-plans`
+`PUT /subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
+curl -X PUT https://localhost:3000/api/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -319,9 +303,8 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 
 ```json
 {
-  "planID": "string",
+  "id": "Gold",
   "refId": "string",
-  "planName": "string",
   "displayName": "string",
   "description": "string",
   "type": "requestcount",
@@ -331,9 +314,8 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 ```
 
 ```yaml
-planID: string
+id: Gold
 refId: string
-planName: string
 displayName: string
 description: string
 type: requestcount
@@ -354,7 +336,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -362,13 +343,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "planID": "string",
-  "planName": "string",
+  "id": "string",
   "displayName": "string",
   "description": "string",
-  "requestCount": 0,
+  "requestCount": "string",
   "refId": "string",
-  "orgID": "string"
+  "orgId": "string",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -382,8 +366,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -458,13 +442,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetSubscriptionPlan"></a>
 
-`GET /o/{orgId}/devportal/v1/subscription-plans/{planId}`
+`GET /subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans/{planId} \
+curl -X GET https://localhost:3000/api/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -484,8 +468,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|planId|path|string|true|none|
+|planId|path|string|true|The subscription plan's handle (unique per org).|
 
 > Example responses
 
@@ -493,13 +476,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "planID": "string",
-  "planName": "string",
+  "id": "string",
   "displayName": "string",
   "description": "string",
-  "requestCount": 0,
+  "requestCount": "string",
   "refId": "string",
-  "orgID": "string"
+  "orgId": "string",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -513,8 +499,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -577,13 +563,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscriptionPlan"></a>
 
-`DELETE /o/{orgId}/devportal/v1/subscription-plans/{planId}`
+`DELETE /subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans/{planId} \
+curl -X DELETE https://localhost:3000/api/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -603,8 +589,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|planId|path|string|true|none|
+|planId|path|string|true|The subscription plan's handle (unique per org).|
 
 > Example responses
 
@@ -618,8 +603,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

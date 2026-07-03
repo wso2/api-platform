@@ -1,4 +1,4 @@
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: RestApi
 
 metadata:
@@ -24,9 +24,7 @@ spec:
     - Gold
     - Bronze
 
-  visibility: PUBLIC
   agentVisibility: VISIBLE
-  visibleGroups: []
 
   businessInformation:
     businessOwner: Platform Owner

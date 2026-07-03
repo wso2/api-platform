@@ -18,6 +18,17 @@
 
 package constants
 
+import "regexp"
+
+// SecretPlaceholderRe matches {{ secret "handle" }} placeholders embedded in YAML
+// or JSON content. The quotes may be JSON-escaped (\") so both forms are matched.
+// The handle is in capture group 1.
+//
+// This is the single canonical definition — use it everywhere secret handles must
+// be extracted (on-demand sync, template pre-scan, etc.) to guarantee that
+// extraction and rendering can never silently diverge.
+var SecretPlaceholderRe = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
+
 const (
 	PlatformGatewayId = "platform-gateway-id"
 	// XDS/Envoy Constants

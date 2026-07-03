@@ -114,20 +114,6 @@ const (
 	APISubTypeSOAP      = "SOAP"
 )
 
-// Artifact Type Constants
-const (
-	ArtifactTypeAPI        = "API"
-	ArtifactTypeMCP        = "MCP"
-	ArtifactTypeAPIProduct = "API_PRODUCT"
-)
-
-// ValidArtifactTypes Valid artifact types deployed to gateways
-var ValidArtifactTypes = map[string]bool{
-	ArtifactTypeAPI:        true,
-	ArtifactTypeMCP:        true,
-	ArtifactTypeAPIProduct: true,
-}
-
 // Constants for association types
 const (
 	AssociationTypeGateway = "gateway"
@@ -139,22 +125,22 @@ const APIKeyAllowedTargetsAll = "ALL"
 // AdminRole is the role name that grants administrative privileges
 const AdminRole = "admin"
 
+// DeletedUser is returned for audit-identity fields (createdBy/updatedBy/
+// revokedBy/performedBy) and external/data-plane events when the stored
+// internal UUID has no entry in user_idp_references — an anonymous write, or
+// a user whose mapping was removed.
+const DeletedUser = "deleted_user"
+
 // Deployment limit constants
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement
-	DeploymentLimitBuffer = 5
-
-	// MaxLLMProvidersPerOrganization is the maximum number of LLM providers allowed per organization.
-	MaxLLMProvidersPerOrganization = 5
-	// MaxLLMProxiesPerOrganization is the maximum number of LLM proxies allowed per organization.
-	MaxLLMProxiesPerOrganization = 5
-	// MaxMCPProxiesPerOrganization is the maximum number of MCP proxies allowed per organization.
-	MaxMCPProxiesPerOrganization = 5
-	// MaxWebSubAPIsPerOrganization is the maximum number of WebSub APIs allowed per organization.
-	MaxWebSubAPIsPerOrganization = 5
-	// MaxWebBrokerAPIsPerOrganization is the maximum number of WebBroker APIs allowed per organization.
-	MaxWebBrokerAPIsPerOrganization = 5
+	DeploymentLimitBuffer = 100
 )
+
+// Per-organization artifact creation limits are no longer hardcoded here. They are
+// configured via config.ArtifactLimits (config file keys artifact_limits.max_* or
+// env vars ARTIFACT_LIMITS_MAX_*) and default to unlimited. Enforcement uses
+// config.LimitReached, which treats a limit <= 0 as "no limit".
 
 // Gateway artifact apiVersion (the `apiVersion:` field on deployment artifacts).
 // GatewayApiVersionV1Alpha1 is the legacy value for gateways < 1.2.0 — use it only
@@ -170,8 +156,8 @@ const (
 // axis from GatewayApiVersion* (the gateway artifact apiVersion) — the two are
 // governed independently and currently hold different values ("v0.9" vs "v1").
 const (
-    APIVersion  = "v0.9"
-    APIBasePath = "/api/" + APIVersion
+	APIVersion  = "v0.9"
+	APIBasePath = "/api/" + APIVersion
 )
 
 // Custom Policy ManagedBy constants
@@ -210,24 +196,22 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
-// ValidArtifactKinds holds accepted values for artifacts.type
+// ValidArtifactKinds holds accepted values for artifacts.type for the core (non-plugin)
+// artifact kinds. Plugin-owned kinds (e.g. WebSubApi, WebBrokerApi) are registered
+// into the ArtifactTableRegistry during plugin Init.
 var ValidArtifactKinds = map[string]bool{
-	RestApi:      true,
-	WebSubApi:    true,
-	WebBrokerApi: true,
-	LLMProvider:  true,
-	LLMProxy:     true,
-	MCPProxy:     true,
+	RestApi:     true,
+	LLMProvider: true,
+	LLMProxy:    true,
+	MCPProxy:    true,
 }
 
 // Throttle limit unit constants
 const (
-	ThrottleLimitUnitSecond = "SECOND"
 	ThrottleLimitUnitMinute = "MINUTE"
 	ThrottleLimitUnitHour   = "HOUR"
 	ThrottleLimitUnitDay    = "DAY"
 	ThrottleLimitUnitMonth  = "MONTH"
-	ThrottleLimitUnitYear   = "YEAR"
 )
 
 // Subscription plan limit type constants (subscription_plan_limits.limit_type).
@@ -242,12 +226,10 @@ const (
 
 // ValidThrottleLimitUnits holds accepted values for subscription_plan_limits.time_unit
 var ValidThrottleLimitUnits = map[string]bool{
-	ThrottleLimitUnitSecond: true,
 	ThrottleLimitUnitMinute: true,
 	ThrottleLimitUnitHour:   true,
 	ThrottleLimitUnitDay:    true,
 	ThrottleLimitUnitMonth:  true,
-	ThrottleLimitUnitYear:   true,
 }
 
 // Metadata key constants for deployment metadata

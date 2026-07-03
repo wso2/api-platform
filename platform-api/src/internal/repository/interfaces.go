@@ -30,9 +30,11 @@ type OrganizationRepository interface {
 	GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error)
 	GetOrganizationByUUID(orgId string) (*model.Organization, error)
 	GetOrganizationByHandle(handle string) (*model.Organization, error)
+	GetOrganizationByIdpOrgRefUUID(idpOrgRefUUID string) (*model.Organization, error)
 	UpdateOrganization(org *model.Organization) error
 	DeleteOrganization(orgId string) error
 	ListOrganizations(limit, offset int) ([]*model.Organization, error)
+	CountOrganizations() (int, error)
 }
 
 // ProjectRepository defines the interface for project data access
@@ -55,6 +57,8 @@ type ArtifactRepository interface {
 	GetByHandle(handle, orgUUID string) (*model.Artifact, error)
 	GetByUUID(uuid, orgUUID string) (*model.Artifact, error)
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
+	GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error)
+	GetMetadataByUUIDs(uuids []string, orgUUID string) (map[string]*model.APIMetadata, error)
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 	ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error)
 }
@@ -85,7 +89,9 @@ type ApplicationRepository interface {
 	ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error)
 	AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
 	AddApplicationAssociations(applicationUUID string, targetUUIDs []string) error
+	GetApplicationsByAPIKeyID(apiKeyID, orgID string) ([]*model.Application, error)
 	RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error
+	RemoveAPIKeyFromAllApplications(apiKeyID string) error
 	RemoveApplicationAssociation(applicationUUID, targetUUID string) error
 }
 
@@ -98,7 +104,6 @@ type APIRepository interface {
 	GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error)
 	GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) ([]*model.API, error)
 	GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
-	GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
 	DeleteAPI(apiUUID, orgUUID string) error
 
@@ -200,6 +205,7 @@ type SubscriptionRepository interface {
 	// CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
 	CountByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string) (int, error)
 	Update(sub *model.Subscription) error
+	UpdateToken(subscriptionID, orgUUID, newToken string) error
 	Delete(subscriptionID, orgUUID string) error
 	ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID string) (bool, error)
 }
@@ -221,7 +227,6 @@ type LLMProviderTemplateRepository interface {
 	RenameFamily(baseHandle, orgUUID, name string) error
 	SetEnabled(templateID, orgUUID, version string, enabled bool) error
 	DeleteVersion(templateID, orgUUID, version string) error
-	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
 	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)
@@ -237,6 +242,9 @@ type LLMProviderRepository interface {
 	Update(p *model.LLMProvider) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the provider if one
+	// does not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // APIKeyRepository defines the interface for API key persistence
@@ -264,6 +272,9 @@ type LLMProxyRepository interface {
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
+	// not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -278,6 +289,7 @@ type MCPProxyRepository interface {
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
@@ -349,4 +361,31 @@ type CustomPolicyRepository interface {
 // AuditRepository defines the interface for audit record writes.
 type AuditRepository interface {
 	Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error
+}
+
+// UserIdentityMappingRepository defines the interface for internal-UUID <-> IdP-identity mapping persistence.
+type UserIdentityMappingRepository interface {
+	GetOrCreateUUID(identity string) (string, error)
+	// GetSubByUUID returns the resolved actor identity mapped to uuid, or
+	// found=false if uuid has no mapping (a "hanging" UUID).
+	GetSubByUUID(uuid string) (identity string, found bool, err error)
+	// GetSubsByUUIDs batch-resolves multiple UUIDs to their mapped identity in
+	// a single query (avoids N+1 on list endpoints). UUIDs with no mapping are
+	// absent from the returned map.
+	GetSubsByUUIDs(uuids []string) (map[string]string, error)
+}
+
+// UserOrganizationMappingRepository defines the interface for user<->organization
+// membership persistence. Populate-only today (no reader depends on it). Both
+// FKs are declared without ON DELETE CASCADE; DeleteByUser/DeleteByOrg exist so
+// callers can perform the cascade in application code, in the same transaction
+// as the parent delete.
+type UserOrganizationMappingRepository interface {
+	// AddMembership records that userUUID has onboarded to orgUUID. Idempotent:
+	// a duplicate (userUUID, orgUUID) pair is a no-op, not an error.
+	AddMembership(userUUID, orgUUID string) error
+	// DeleteByUser removes all membership rows for userUUID, within tx.
+	DeleteByUser(tx *sql.Tx, userUUID string) error
+	// DeleteByOrg removes all membership rows for orgUUID, within tx.
+	DeleteByOrg(tx *sql.Tx, orgUUID string) error
 }

@@ -27,24 +27,23 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"time"
-
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type OrganizationService struct {
-	orgRepo           repository.OrganizationRepository
-	projectRepo       repository.ProjectRepository
-	applicationRepo   repository.ApplicationRepository
-	apiRepo           repository.APIRepository
-	gatewayRepo       repository.GatewayRepository
-	llmProviderRepo   repository.LLMProviderRepository
-	llmProxyRepo      repository.LLMProxyRepository
-	mcpProxyRepo      repository.MCPProxyRepository
-	websubAPIRepo     repository.WebSubAPIRepository
-	llmTemplateSeeder *LLMTemplateSeeder
-	auditRepo         repository.AuditRepository
-	config            *config.Server
-	slogger           *slog.Logger
+	orgRepo            repository.OrganizationRepository
+	projectRepo        repository.ProjectRepository
+	applicationRepo    repository.ApplicationRepository
+	apiRepo            repository.APIRepository
+	gatewayRepo        repository.GatewayRepository
+	llmProviderRepo    repository.LLMProviderRepository
+	llmProxyRepo       repository.LLMProxyRepository
+	mcpProxyRepo       repository.MCPProxyRepository
+	llmTemplateSeeder  *LLMTemplateSeeder
+	auditRepo          repository.AuditRepository
+	userOrgMappingRepo repository.UserOrganizationMappingRepository
+	identity           *IdentityService
+	config             *config.Server
+	slogger            *slog.Logger
 }
 
 func NewOrganizationService(orgRepo repository.OrganizationRepository,
@@ -55,120 +54,32 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	llmProviderRepo repository.LLMProviderRepository,
 	llmProxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
-	websubAPIRepo repository.WebSubAPIRepository,
 	llmTemplateSeeder *LLMTemplateSeeder,
 	auditRepo repository.AuditRepository,
+	userOrgMappingRepo repository.UserOrganizationMappingRepository,
+	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:           orgRepo,
-		projectRepo:       projectRepo,
-		applicationRepo:   applicationRepo,
-		apiRepo:           apiRepo,
-		gatewayRepo:       gatewayRepo,
-		llmProviderRepo:   llmProviderRepo,
-		llmProxyRepo:      llmProxyRepo,
-		mcpProxyRepo:      mcpProxyRepo,
-		websubAPIRepo:     websubAPIRepo,
-		llmTemplateSeeder: llmTemplateSeeder,
-		auditRepo:         auditRepo,
-		config:            cfg,
-		slogger:           slogger,
+		orgRepo:            orgRepo,
+		projectRepo:        projectRepo,
+		applicationRepo:    applicationRepo,
+		apiRepo:            apiRepo,
+		gatewayRepo:        gatewayRepo,
+		llmProviderRepo:    llmProviderRepo,
+		llmProxyRepo:       llmProxyRepo,
+		mcpProxyRepo:       mcpProxyRepo,
+		llmTemplateSeeder:  llmTemplateSeeder,
+		auditRepo:          auditRepo,
+		userOrgMappingRepo: userOrgMappingRepo,
+		identity:           identity,
+		config:             cfg,
+		slogger:            slogger,
 	}
 }
 
-func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.OrganizationSubscription, error) {
-	if _, err := s.GetOrganizationByUUID(orgID); err != nil {
-		return nil, err
-	}
-
-	llmProvidersCount, err := s.llmProviderRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	llmProxiesCount, err := s.llmProxyRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	applicationsCount, err := s.applicationRepo.CountApplicationsByOrganizationID(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	mcpProxiesCount, err := s.mcpProxyRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	websubAPICount, err := s.websubAPIRepo.Count(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	apis, err := s.apiRepo.GetAPIsByOrganizationUUID(orgID, "")
-	if err != nil {
-		return nil, err
-	}
-
-	llmProvidersLimit := constants.MaxLLMProvidersPerOrganization
-	llmProvidersRemaining := max(llmProvidersLimit-llmProvidersCount, 0)
-
-	llmProxiesLimit := constants.MaxLLMProxiesPerOrganization
-	llmProxiesRemaining := max(llmProxiesLimit-llmProxiesCount, 0)
-
-	mcpProxiesLimit := constants.MaxMCPProxiesPerOrganization
-	mcpProxiesRemaining := max(mcpProxiesLimit-mcpProxiesCount, 0)
-
-	websubAPIsLimit := constants.MaxWebSubAPIsPerOrganization
-	websubAPIsRemaining := max(websubAPIsLimit-websubAPICount, 0)
-
-	res := &api.OrganizationSubscription{
-		Plan: "free",
-		Quotas: api.OrganizationSubscriptionQuotas{
-			LlmProviders: api.OrganizationQuota{
-				Used:      llmProvidersCount,
-				Limit:     intPtr(llmProvidersLimit),
-				Remaining: intPtr(llmProvidersRemaining),
-			},
-			LlmProxies: api.OrganizationQuota{
-				Used:      llmProxiesCount,
-				Limit:     intPtr(llmProxiesLimit),
-				Remaining: intPtr(llmProxiesRemaining),
-			},
-			Applications: api.OrganizationQuota{
-				Used: applicationsCount,
-			},
-			McpProxies: api.OrganizationQuota{
-				Used:      mcpProxiesCount,
-				Limit:     intPtr(mcpProxiesLimit),
-				Remaining: intPtr(mcpProxiesRemaining),
-			},
-			Gateways: api.OrganizationQuota{
-				Used: len(gateways),
-			},
-			Apis: api.OrganizationQuota{
-				Used: len(apis),
-			},
-			WebsubApis: &api.OrganizationQuota{
-				Used:      websubAPICount,
-				Limit:     intPtr(websubAPIsLimit),
-				Remaining: intPtr(websubAPIsRemaining),
-			},
-		},
-	}
-
-	return res, nil
-}
-
-func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, performedBy string) (*api.Organization, error) {
+func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, idpOrgRefUUID string, performedBy string) (*api.Organization, error) {
 	// Auto-generate handle from name if not provided; otherwise validate the explicit handle.
 	if handle == "" {
 		generated, genErr := utils.GenerateHandle(name, func(h string) bool {
@@ -209,19 +120,33 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create organization in platform-api database first
 	org := &api.Organization{
-		Id:        &openapi_types.UUID{},
-		Handle:    handle,
-		Name:      name,
-		Region:    region,
-		CreatedAt: utils.TimePtrIfNotZero(time.Now()),
+		Id:          &handle,
+		DisplayName: name,
+		Region:      region,
+		CreatedAt:   utils.TimePtrIfNotZero(time.Now()),
 	}
 
 	orgModel := s.apiToModel(org, id)
+	// The IDP organization reference is derived server-side from the token's
+	// organization claim; it is stored internally and not exposed via the API.
+	orgModel.IdpOrganizationRefUUID = idpOrgRefUUID
+	orgModel.CreatedBy = performedBy
+	orgModel.UpdatedBy = performedBy
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", orgModel.ID, "organization", orgModel.ID, performedBy)
+
+	// Record that the registering user has onboarded to this organization.
+	// Best-effort: user_organization_mappings.user_uuid FKs to
+	// user_idp_references, so an anonymous actor (no mapping row, per
+	// D-ANON-KEY) cannot be org-mapped — that is expected, not an error.
+	if s.userOrgMappingRepo != nil {
+		if membershipErr := s.userOrgMappingRepo.AddMembership(performedBy, orgModel.ID); membershipErr != nil {
+			s.slogger.Warn("Failed to record organization membership", "organization", orgModel.ID, "error", membershipErr)
+		}
+	}
 
 	// Seed default LLM provider templates for the new organization (best-effort)
 	if s.llmTemplateSeeder != nil {
@@ -282,6 +207,49 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	return org, nil
 }
 
+// ListOrganizations returns a paginated list of organizations along with the
+// total number of organizations available across all pages.
+func (s *OrganizationService) ListOrganizations(limit, offset int) ([]api.Organization, int, error) {
+	total, err := s.orgRepo.CountOrganizations()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orgModels, err := s.orgRepo.ListOrganizations(limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orgs := make([]api.Organization, 0, len(orgModels))
+	for _, orgModel := range orgModels {
+		org, convErr := s.modelToAPI(orgModel)
+		if convErr != nil {
+			return nil, 0, convErr
+		}
+		orgs = append(orgs, *org)
+	}
+
+	return orgs, total, nil
+}
+
+func (s *OrganizationService) GetOrganizationByHandle(handle string) (*api.Organization, error) {
+	orgModel, err := s.orgRepo.GetOrganizationByHandle(handle)
+	if err != nil {
+		return nil, err
+	}
+
+	if orgModel == nil {
+		return nil, constants.ErrOrganizationNotFound
+	}
+
+	org, convErr := s.modelToAPI(orgModel)
+	if convErr != nil {
+		return nil, convErr
+	}
+
+	return org, nil
+}
+
 // Mapping functions
 func (s *OrganizationService) apiToModel(org *api.Organization, id string) *model.Organization {
 	if org == nil {
@@ -293,10 +261,14 @@ func (s *OrganizationService) apiToModel(org *api.Organization, id string) *mode
 		createdAt = *org.CreatedAt
 	}
 
+	handle := ""
+	if org.Id != nil {
+		handle = *org.Id
+	}
 	return &model.Organization{
 		ID:        id,
-		Handle:    org.Handle,
-		Name:      org.Name,
+		Handle:    handle,
+		Name:      org.DisplayName,
 		Region:    org.Region,
 		CreatedAt: createdAt,
 		UpdatedAt: time.Now(),
@@ -308,19 +280,22 @@ func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Org
 		return nil, nil
 	}
 
-	orgID, err := utils.ParseOpenAPIUUID(orgModel.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse organization ID as UUID: %w", err)
+	resp := &api.Organization{
+		Id:          &orgModel.Handle,
+		DisplayName: orgModel.Name,
+		Region:      orgModel.Region,
+		CreatedBy:   utils.StringPtrIfNotEmpty(orgModel.CreatedBy),
+		UpdatedBy:   utils.StringPtrIfNotEmpty(orgModel.UpdatedBy),
+		CreatedAt:   utils.TimePtrIfNotZero(orgModel.CreatedAt),
+		UpdatedAt:   utils.TimePtrIfNotZero(orgModel.UpdatedAt),
 	}
-
-	return &api.Organization{
-		Id:        orgID,
-		Handle:    orgModel.Handle,
-		Name:      orgModel.Name,
-		Region:    orgModel.Region,
-		CreatedAt: utils.TimePtrIfNotZero(orgModel.CreatedAt),
-		UpdatedAt: utils.TimePtrIfNotZero(orgModel.UpdatedAt),
-	}, nil
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func intPtr(value int) *int {

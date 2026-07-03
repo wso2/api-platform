@@ -15,10 +15,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { APIMetadata, APILabels } = require('../models/apiMetadata');
+const { APIMetadata, APILabels, APITags } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
-const APIImageMetadata = require('../models/apiImage');
+const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
+const APIContent = require('../models/apiContent');
 const Labels = require('../models/label');
+const Tags = require('../models/tag');
 const { Sequelize } = require('sequelize');
 const { Op } = require('sequelize');
 const constants = require('../utils/constants');
@@ -31,34 +33,32 @@ const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
     'utf8'
 );
 
-const create = async (orgID, apiMetadata, t) => {
+const create = async (orgId, apiMetadata, createdBy, t) => {
 
-    const apiInfo = apiMetadata.apiInfo;
     let owners = {};
-    if (apiInfo.owners) {
-        owners = apiInfo.owners;
+    if (apiMetadata.owners) {
+        owners = apiMetadata.owners;
     }
     try {
         const apiMetadataResponse = await APIMetadata.create({
-            REFERENCE_ID: apiInfo.referenceID,
-            STATUS: apiInfo.apiStatus,
-            API_NAME: apiInfo.apiName,
-            API_HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
-            API_DESCRIPTION: apiInfo.apiDescription,
-            API_VERSION: apiInfo.apiVersion,
-            API_TYPE: apiInfo.apiType,
-            VISIBILITY: apiInfo.visibility,
-            VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
-            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
-            TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
-            TECHNICAL_OWNER: owners.technicalOwner,
-            TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
-            BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
-            BUSINESS_OWNER: owners.businessOwner,
-            SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
-            PRODUCTION_URL: apiMetadata.endPoints.productionURL,
-            METADATA_SEARCH: apiMetadata,
-            ORG_ID: orgID
+            ref_id: apiMetadata.referenceId,
+            status: apiMetadata.status,
+            name: apiMetadata.name,
+            handle: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
+            description: apiMetadata.description,
+            version: apiMetadata.version,
+            type: apiMetadata.type,
+            agent_visibility: (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
+            technical_owner: owners.technicalOwner,
+            technical_owner_email: owners.technicalOwnerEmail,
+            business_owner_email: owners.businessOwnerEmail,
+            business_owner: owners.businessOwner,
+            sandbox_url: apiMetadata.endPoints.sandboxURL,
+            production_url: apiMetadata.endPoints.productionURL,
+            metadata_search: apiMetadata,
+            org_uuid: orgId,
+            created_by: createdBy,
+            updated_by: createdBy
         },
             { transaction: t }
         );
@@ -71,37 +71,35 @@ const create = async (orgID, apiMetadata, t) => {
     }
 };
 
-const update = async (orgID, apiID, apiMetadata, t) => {
+const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
 
-    const apiInfo = apiMetadata.apiInfo;
     let owners = {};
-    if (apiInfo.owners) {
-        owners = apiInfo.owners;
+    if (apiMetadata.owners) {
+        owners = apiMetadata.owners;
     }
     try {
         const [updateCount] = await APIMetadata.update({
-            REFERENCE_ID: apiInfo.referenceID,
-            STATUS: apiInfo.apiStatus,
-            API_NAME: apiInfo.apiName,
-            API_HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
-            API_DESCRIPTION: apiInfo.apiDescription,
-            API_VERSION: apiInfo.apiVersion,
-            API_TYPE: apiInfo.apiType,
-            TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
-            VISIBILITY: apiInfo.visibility,
-            VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
-            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
-            TECHNICAL_OWNER: owners.technicalOwner,
-            TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
-            BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
-            BUSINESS_OWNER: owners.businessOwner,
-            SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
-            PRODUCTION_URL: apiMetadata.endPoints.productionURL,
-            METADATA_SEARCH: apiMetadata,
+            ref_id: apiMetadata.referenceId,
+            status: apiMetadata.status,
+            name: apiMetadata.name,
+            handle: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
+            description: apiMetadata.description,
+            version: apiMetadata.version,
+            type: apiMetadata.type,
+            agent_visibility: (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase(),
+            technical_owner: owners.technicalOwner,
+            technical_owner_email: owners.technicalOwnerEmail,
+            business_owner_email: owners.businessOwnerEmail,
+            business_owner: owners.businessOwner,
+            sandbox_url: apiMetadata.endPoints.sandboxURL,
+            production_url: apiMetadata.endPoints.productionURL,
+            metadata_search: apiMetadata,
+            updated_by: updatedBy,
+            updated_at: new Date()
         }, {
             where: {
-                API_ID: apiID,
-                ORG_ID: orgID,
+                uuid: apiId,
+                org_uuid: orgId,
             },
             returning: false,
             transaction: t
@@ -110,7 +108,7 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             return [0, null];
         }
         const updatedInstance = await APIMetadata.findOne({
-            where: { API_ID: apiID, ORG_ID: orgID },
+            where: { uuid: apiId, org_uuid: orgId },
             transaction: t,
         });
         return [updateCount, [updatedInstance]];
@@ -122,13 +120,13 @@ const update = async (orgID, apiID, apiMetadata, t) => {
     }
 }
 
-const deleteApi = async (orgID, apiID, t) => {
+const deleteApi = async (orgId, apiId, t) => {
 
     try {
         const apiMetadataResponse = await APIMetadata.destroy({
             where: {
-                API_ID: apiID,
-                ORG_ID: orgID
+                uuid: apiId,
+                org_uuid: orgId
             },
             transaction: t
         });
@@ -141,31 +139,39 @@ const deleteApi = async (orgID, apiID, t) => {
     }
 }
 
-const get = async (orgID, apiID, t) => {
+const get = async (orgId, apiId, t) => {
 
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
-                model: APIImageMetadata,
+                model: APIContent,
                 where: {
-                    API_ID: apiID
+                    api_uuid: apiId,
+                    type: constants.DOC_TYPES.IMAGES
                 },
                 required: false
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
-                attributes: ["NAME"],
+                attributes: ["handle"],
                 through: { attributes: [] }
+            },
+            {
+                model: Tags,
+                attributes: ["name"],
+                through: { attributes: [] },
+                required: false
             }
             ],
             where: {
-                ORG_ID: orgID,
-                API_ID: apiID,
-                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                org_uuid: orgId,
+                uuid: apiId,
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             transaction: t
         });
@@ -178,40 +184,33 @@ const get = async (orgID, apiID, t) => {
     }
 };
 
-const getByCondition = async (condition, t) => {
+const getByCondition = async (condition, t, tags) => {
     try {
-        if (condition.TAGS) {
-            const tagsArray = condition.TAGS.split(",").map(tag => tag.trim());
-            condition.TAGS = {
-                [Op.or]: tagsArray.map(tag => ({
-                    [Op.and]: {
-                        [Sequelize.Op.or]: [
-                            {
-                                [Sequelize.Op.like]: `% ${tag} %`
-                            },
-                            {
-                                [Sequelize.Op.like]: `% ${tag}`
-                            },
-                            {
-                                [Sequelize.Op.like]: `${tag} %`
-                            },
-                            {
-                                [Sequelize.Op.eq]: `${tag}`
-                            }
-                        ]
-                    }
-                }))
-            };
+        const tagsInclude = {
+            model: Tags,
+            attributes: ["name"],
+            through: { attributes: [] },
+            required: false
+        };
+        if (tags) {
+            const tagsArray = tags.split(",").map(tag => tag.trim()).filter(Boolean);
+            if (tagsArray.length > 0) {
+                tagsInclude.required = true;
+                tagsInclude.where = { name: { [Op.in]: tagsArray } };
+            }
         }
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
-                model: APIImageMetadata,
+                model: APIContent,
+                where: { type: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
-            }
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
+            },
+            tagsInclude
             ],
             where: condition,
             transaction: t
@@ -225,219 +224,167 @@ const getByCondition = async (condition, t) => {
     }
 }
 
-const list = async (orgID, groups, viewName, t) => {
+const list = async (orgId, viewName, t) => {
 
     const viewDao = require('./viewDao');
-    const viewID = await viewDao.getId(orgID, viewName);
+    const viewId = await viewDao.getId(orgId, viewName, t);
     let apiList = [];
-    for (const group of groups) {
-        try {
-            const apiMetadataResponse = await APIMetadata.findAll({
-                where: {
-                    ORG_ID: orgID,
-                    VISIBLE_GROUPS: {
-                        [Op.like]: `%${group}%`
-                    },
-                    STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
-                },
-                include: [{
-                    model: APIImageMetadata,
-                    required: false
-                }, {
-                    model: SubscriptionPlan,
-                    through: { attributes: [] },
-                    required: false
-                },
-                {
-                    model: Labels,
-                    attributes: ["NAME"],
-                    required: true,
-                    through: { attributes: [] },
-                    where: {
-                        LABEL_ID: {
-                            [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
-                        }
-                    }
-                }
-                ],
-                transaction: t
-            });
-            if (apiMetadataResponse) {
-                apiList.push(...apiMetadataResponse);
-            }
-        } catch (error) {
-            {
-                if (error instanceof Sequelize.UniqueConstraintError) {
-                    throw error;
-                }
-                throw new Sequelize.DatabaseError(error);
-            }
-        }
-    }
-    // add all public apis
     try {
-        const publicAPIS = await APIMetadata.findAll({
+        const apiMetadataResponse = await APIMetadata.findAll({
             where: {
-                ORG_ID: orgID,
-                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                org_uuid: orgId,
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
-                model: APIImageMetadata,
+                model: APIContent,
+                where: { type: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
-                required: false
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
             },
             {
                 model: Labels,
-                attributes: ["NAME"],
+                attributes: ["handle"],
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    LABEL_ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
+                    uuid: {
+                        [Op.in]: Sequelize.literal(`(SELECT "label_uuid" FROM "dp_view_label_mappings" WHERE "view_uuid" = '${viewId}')`)
                     }
                 }
-            }
-            ],
-            transaction: t
-        });
-        apiList.push(...publicAPIS);
-    } catch (error) {
-        {
-            if (error instanceof Sequelize.UniqueConstraintError) {
-                throw error;
-            }
-            throw new Sequelize.DatabaseError(error);
-        }
-    }
-    return apiList;
-};
-
-const listFromAllViews = async (orgID, groups, t) => {
-
-    let apiList = [];
-    for (const group of groups) {
-        try {
-            const apiMetadataResponse = await APIMetadata.findAll({
-                where: {
-                    ORG_ID: orgID,
-                    VISIBLE_GROUPS: {
-                        [Op.like]: `%${group}%`
-                    },
-                    STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
-                },
-                include: [{
-                    model: APIImageMetadata,
-                    required: false
-                }, {
-                    model: SubscriptionPlan,
-                    through: { attributes: [] },
-                    required: false
-                },
-                {
-                    model: Labels,
-                    attributes: ["NAME"],
-                    required: false,
-                    through: { attributes: [] }
-                }
-                ],
-                transaction: t
-            });
-            if (apiMetadataResponse) {
-                apiList.push(...apiMetadataResponse);
-            }
-        } catch (error) {
-            {
-                if (error instanceof Sequelize.UniqueConstraintError) {
-                    throw error;
-                }
-                throw new Sequelize.DatabaseError(error);
-            }
-        }
-    }
-    // add all public apis
-    try {
-        const publicAPIS = await APIMetadata.findAll({
-            where: {
-                ORG_ID: orgID,
-                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
-            },
-            include: [{
-                model: APIImageMetadata,
-                required: false
-            }, {
-                model: SubscriptionPlan,
-                through: { attributes: [] },
-                required: false
             },
             {
-                model: Labels,
-                attributes: ["NAME"],
-                required: true,
+                model: Tags,
+                attributes: ["name"],
+                required: false,
                 through: { attributes: [] }
             }
             ],
             transaction: t
         });
-        apiList.push(...publicAPIS);
+        apiList = apiMetadataResponse;
     } catch (error) {
-        {
-            if (error instanceof Sequelize.UniqueConstraintError) {
-                throw error;
-            }
-            throw new Sequelize.DatabaseError(error);
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
         }
+        throw new Sequelize.DatabaseError(error);
     }
     return apiList;
 };
 
-const searchFallback = async (orgID, searchTerm, viewName, t) => {
+const listFromAllViews = async (orgId, t) => {
+
+    let apiList = [];
+    try {
+        const publicAPIS = await APIMetadata.findAll({
+            where: {
+                org_uuid: orgId,
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+            },
+            include: [{
+                model: APIContent,
+                where: { type: constants.DOC_TYPES.IMAGES },
+                required: false
+            }, {
+                model: SubscriptionPlan,
+                through: { attributes: [] },
+                required: false,
+                include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
+            },
+            {
+                model: Labels,
+                attributes: ["handle"],
+                required: true,
+                through: { attributes: [] }
+            },
+            {
+                model: Tags,
+                attributes: ["name"],
+                required: false,
+                through: { attributes: [] }
+            }
+            ],
+            transaction: t
+        });
+        apiList = publicAPIS;
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+    return apiList;
+};
+
+const searchFallback = async (orgId, searchTerm, viewName, t) => {
     const viewDao = require('./viewDao');
     const pattern = `%${searchTerm}%`;
-    const viewID = await viewDao.getId(orgID, viewName);
+    const viewId = await viewDao.getId(orgId, viewName, t);
+
+    const matchingTags = await Tags.findAll({
+        attributes: ['uuid'],
+        where: { org_uuid: orgId, name: { [Op.like]: pattern } },
+        transaction: t,
+    });
+    const matchingTagIDs = matchingTags.map(tag => tag.uuid);
+    const matchingTagAPIs = matchingTagIDs.length
+        ? await APITags.findAll({
+            attributes: ['api_uuid'],
+            where: { tag_uuid: { [Op.in]: matchingTagIDs } },
+            transaction: t,
+        })
+        : [];
+    const taggedAPIIDs = [...new Set(matchingTagAPIs.map(row => row.api_uuid))];
+
     return APIMetadata.findAll({
         where: {
-            ORG_ID: orgID,
-            STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
+            org_uuid: orgId,
+            status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
             [Op.or]: [
                 Sequelize.where(
-                    Sequelize.cast(Sequelize.col('DP_API_METADATA.METADATA_SEARCH'), 'TEXT'),
+                    Sequelize.cast(Sequelize.col('dp_api_metadata.metadata_search'), 'TEXT'),
                     { [Op.like]: pattern }
                 ),
-                Sequelize.where(
-                    Sequelize.col('DP_API_METADATA.TAGS'),
-                    { [Op.like]: pattern }
-                ),
+                { uuid: { [Op.in]: taggedAPIIDs } },
             ],
         },
         include: [
-            { model: APIImageMetadata, required: false },
-            { model: SubscriptionPlan, through: { attributes: [] }, required: false },
+            { model: APIContent, where: { type: constants.DOC_TYPES.IMAGES }, required: false },
+            { model: SubscriptionPlan, through: { attributes: [] }, required: false, include: [{ model: SubscriptionPlanLimit, as: 'limits' }] },
             {
                 model: Labels,
-                attributes: ['NAME'],
+                attributes: ['handle'],
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    LABEL_ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
+                    uuid: {
+                        [Op.in]: Sequelize.literal(`(SELECT "label_uuid" FROM "dp_view_label_mappings" WHERE "view_uuid" = '${viewId}')`)
                     }
                 }
+            },
+            {
+                model: Tags,
+                attributes: ['name'],
+                required: false,
+                through: { attributes: [] }
             },
         ],
         transaction: t,
     });
 };
 
-const search = async (orgID, groups, searchTerm, viewName, t) => {
+const search = async (orgId, searchTerm, viewName, t) => {
     if (APIMetadata.sequelize.getDialect() !== 'postgres') {
-        return searchFallback(orgID, searchTerm, viewName, t);
+        return searchFallback(orgId, searchTerm, viewName, t);
     }
     try {
+        const viewDao = require('./viewDao');
+        const viewId = await viewDao.getId(orgId, viewName, t);
         const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
-            replacements: { searchTerm, orgID },
+            replacements: { searchTerm, orgId, viewId },
             type: Sequelize.QueryTypes.SELECT,
         });
         return results;
@@ -449,17 +396,17 @@ const search = async (orgID, groups, searchTerm, viewName, t) => {
     }
 };
 
-const getId = async (orgID, apiHandle) => {
+const getId = async (orgId, apiHandle) => {
 
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['API_ID'],
+            attributes: ['uuid'],
             where: {
-                API_HANDLE: apiHandle,
-                ORG_ID: orgID
+                handle: apiHandle,
+                org_uuid: orgId
             }
         })
-        return api?.API_ID;
+        return api?.uuid;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -468,16 +415,20 @@ const getId = async (orgID, apiHandle) => {
     }
 }
 
-const getHandle = async (orgID, apiRefID) => {
+// Same as getId, but also constrains the match to a specific `type` (e.g. 'MCP') in a
+// single query — used by resource families that only manage one API type.
+const getIdByType = async (orgId, apiHandle, type) => {
+
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['API_HANDLE'],
+            attributes: ['uuid'],
             where: {
-                REFERENCE_ID: apiRefID,
-                ORG_ID: orgID
+                handle: apiHandle,
+                org_uuid: orgId,
+                type
             }
         })
-        return api.API_HANDLE;
+        return api?.uuid;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -486,17 +437,58 @@ const getHandle = async (orgID, apiRefID) => {
     }
 }
 
-const getIdByRef = async (orgID, referenceId, t) => {
+// Inverse of getIdByType — matches any type EXCEPT the excluded one. Used by /apis/*
+// once a type gets its own dedicated resource family (e.g. MCP via /mcp-servers), so
+// /apis/* stops resolving handles that belong to that dedicated family.
+const getIdExcludingType = async (orgId, apiHandle, excludedType) => {
+
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['API_ID'],
+            attributes: ['uuid'],
             where: {
-                REFERENCE_ID: referenceId,
-                ORG_ID: orgID
+                handle: apiHandle,
+                org_uuid: orgId,
+                type: { [Op.ne]: excludedType }
+            }
+        })
+        return api?.uuid;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const getHandle = async (orgId, apiRefId) => {
+    try {
+        const api = await APIMetadata.findOne({
+            attributes: ['handle'],
+            where: {
+                ref_id: apiRefId,
+                org_uuid: orgId
+            }
+        })
+        return api.handle;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const getIdByRef = async (orgId, referenceId, t) => {
+    try {
+        const api = await APIMetadata.findOne({
+            attributes: ['uuid'],
+            where: {
+                ref_id: referenceId,
+                org_uuid: orgId
             },
             transaction: t
         });
-        return api?.API_ID;
+        return api?.uuid;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -505,28 +497,27 @@ const getIdByRef = async (orgID, referenceId, t) => {
     }
 };
 
-const getSpecs = async (orgID, apiIDs) => {
-    const APIContent = require('../models/apiContent');
+const getSpecs = async (orgId, apiIds) => {
     try {
         const apiSpecsResponse = await APIContent.findAll({
             attributes: [
-                'API_ID',
-                'FILE_NAME',
-                'FILE_CONTENT'
+                'api_uuid',
+                'file_name',
+                'file_content'
             ],
             where: {
-                API_ID: {
-                    [Op.in]: apiIDs
+                api_uuid: {
+                    [Op.in]: apiIds
                 },
-                TYPE: constants.DOC_TYPES.API_DEFINITION
+                type: constants.DOC_TYPES.API_DEFINITION
             },
             include: [
                 {
                     model: APIMetadata,
                     required: true,
-                    attributes: ['API_NAME', 'API_VERSION', 'API_HANDLE'],
+                    attributes: ['name', 'version', 'handle'],
                     where: {
-                        ORG_ID: orgID
+                        org_uuid: orgId
                     }
                 }
             ]
@@ -535,9 +526,9 @@ const getSpecs = async (orgID, apiIDs) => {
         return apiSpecsResponse.map(spec => {
 
             return {
-                apiID: spec.API_ID,
-                fileName: spec.FILE_NAME,
-                apiSpec: spec.FILE_CONTENT ? spec.FILE_CONTENT.toString('utf8') : null
+                apiId: spec.api_uuid,
+                fileName: spec.file_name,
+                apiSpec: spec.file_content ? spec.file_content.toString('utf8') : null
             };
         }).filter(spec => spec !== null);
     } catch (error) {
@@ -555,8 +546,8 @@ const getSpecs = async (orgID, apiIDs) => {
 
 const existsByNameVersion = async (orgId, apiName, apiVersion) => {
     const row = await APIMetadata.findOne({
-        attributes: ['API_ID'],
-        where: { ORG_ID: orgId, API_NAME: apiName, API_VERSION: apiVersion },
+        attributes: ['uuid'],
+        where: { org_uuid: orgId, name: apiName, version: apiVersion },
     });
     return !!row;
 };
@@ -572,6 +563,8 @@ module.exports = {
     search,
     searchFallback,
     getId,
+    getIdByType,
+    getIdExcludingType,
     getHandle,
     getIdByRef,
     getSpecs,

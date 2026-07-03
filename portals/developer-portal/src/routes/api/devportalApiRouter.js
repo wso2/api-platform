@@ -20,7 +20,7 @@
 /*
  * Spec-driven /devportal router.
  *
- * Wires the OpenAPI spec at docs/devportal-openapi-spec-v1.yaml into the
+ * Wires the OpenAPI spec at docs/devportal-openapi-spec-v0.9.yaml into the
  * Express app. Pipeline per request:
  *
  *   1. authResolver        — populates req.auth (legacy auth-mode parity)
@@ -46,23 +46,41 @@ const constants = require('../../utils/constants');
 const logger = require('../../config/logger');
 const { authResolver, OAuth2Security, apiKeyAuth } = require('../../middlewares/authMiddleware');
 
-const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'devportal-openapi-spec-v1.yaml');
+const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'devportal-openapi-spec-v0.9.yaml');
 const HANDLERS_DIR = path.join(__dirname, 'handlers');
 
-// Top-level path segments that belong to the devportal API surface, derived
-// from the spec (e.g. 'o', 'applications', 'organizations', 'login', 'apis',
-// 'temp-arazzo-file'). The router is mounted at '/', so it sees every request;
-// this lets us pass rendered page routes (/:orgName/views/...) straight through
-// with next('router') so neither authResolver nor the validator touch them.
+// Top-level path segments that belong to the devportal API surface. The router
+// is mounted at '/', so it sees every request; this lets us pass rendered page
+// routes (/:orgName/views/...) straight through with next('router') so neither
+// authResolver nor the validator touch them.
+//
+// The version base (e.g. '/api/v0.9') lives in the spec's `servers[].url`, so
+// express-openapi-validator matches requests against `basePath + pathKey`. We
+// mirror that here: the segment we must recognize is the first segment of the
+// *combined* route (e.g. 'api' for a server basePath of '/api/v0.9'), not of the
+// bare path key. When no server basePath is set we fall back to the path key's
+// own first segment.
 let API_FIRST_SEGMENTS;
+function serverBasePath(url) {
+    // Strip scheme://host, keeping only the path portion. Tolerates server URL
+    // template variables (e.g. https://localhost:{port}/api/v0.9).
+    const noScheme = String(url).replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+    const slash = noScheme.indexOf('/');
+    const p = slash === -1 ? '' : noScheme.slice(slash);
+    return p === '/' ? '' : p.replace(/\/$/, '');
+}
 function apiFirstSegments() {
     if (!API_FIRST_SEGMENTS) {
         const doc = yaml.load(fs.readFileSync(SPEC_PATH, 'utf8'));
-        API_FIRST_SEGMENTS = new Set(
-            Object.keys(doc.paths || {})
-                .map((p) => p.split('/')[1])
-                .filter(Boolean)
-        );
+        const bases = (doc.servers || []).map((s) => serverBasePath(s.url));
+        const effectiveBases = bases.length ? bases : [''];
+        API_FIRST_SEGMENTS = new Set();
+        for (const base of effectiveBases) {
+            for (const p of Object.keys(doc.paths || {})) {
+                const seg = `${base}${p}`.split('/')[1];
+                if (seg) API_FIRST_SEGMENTS.add(seg);
+            }
+        }
     }
     return API_FIRST_SEGMENTS;
 }

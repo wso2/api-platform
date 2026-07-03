@@ -37,6 +37,7 @@ type LLMProviderAPIKeyService struct {
 	gatewayRepo          repository.GatewayRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
+	identity             *IdentityService
 	slogger              *slog.Logger
 }
 
@@ -46,6 +47,7 @@ func NewLLMProviderAPIKeyService(
 	gatewayRepo repository.GatewayRepository,
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
+	identity *IdentityService,
 	slogger *slog.Logger,
 ) *LLMProviderAPIKeyService {
 	return &LLMProviderAPIKeyService{
@@ -53,6 +55,7 @@ func NewLLMProviderAPIKeyService(
 		gatewayRepo:          gatewayRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
+		identity:             identity,
 		slogger:              slogger,
 	}
 }
@@ -83,12 +86,17 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		if k.CreatedBy != userID {
 			continue
 		}
+		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
+		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
+			return nil, err
+		}
 		item := api.APIKeyItem{
-			Name:           k.Name,
+			Id:             &k.Name,
+			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
-			CreatedBy:      k.CreatedBy,
+			CreatedBy:      createdBy,
 			UpdatedAt:      k.UpdatedAt,
 			ExpiresAt:      k.ExpiresAt,
 			Issuer:         k.Issuer,
@@ -190,38 +198,29 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	}
 
 	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
 	} else {
-		displayName := ""
-		if req.DisplayName != nil {
-			displayName = *req.DisplayName
-		}
-		if displayName == "" {
+		if req.DisplayName == "" {
 			s.slogger.Error("Failed to generate API key name", "providerId", providerID, "error", constants.ErrHandleSourceEmpty)
 			return nil, fmt.Errorf("failed to generate API key name: both name and displayName are empty: %w", constants.ErrHandleSourceEmpty)
 		}
-
-		name, err = utils.GenerateHandle(displayName, nil)
+		name, err = utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {
 			s.slogger.Error("Failed to generate API key name", "providerId", providerID, "error", err)
 			return nil, fmt.Errorf("failed to generate API key name: %w", err)
 		}
 	}
 
-	displayName := name
-	if req.DisplayName != nil && *req.DisplayName != "" {
-		displayName = *req.DisplayName
+	displayName := req.DisplayName
+	if displayName == "" {
+		displayName = name
 	}
 
 	var expiresAt *string
 	if req.ExpiresAt != nil {
 		expiresAtStr := req.ExpiresAt.Format(time.RFC3339)
 		expiresAt = &expiresAtStr
-	}
-
-	if displayName == "" {
-		displayName = name
 	}
 
 	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
@@ -264,6 +263,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		UUID:           apiKeyUUID,
 		ArtifactUUID:   provider.UUID,
 		Name:           name,
+		DisplayName:    displayName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",
@@ -319,7 +319,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	return &api.CreateLLMProviderAPIKeyResponse{
 		Status:  "success",
 		Message: "API key created successfully",
-		KeyId:   name,
+		Id:      name,
 		ApiKey:  apiKey,
 	}, nil
 }

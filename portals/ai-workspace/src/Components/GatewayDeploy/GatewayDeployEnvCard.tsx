@@ -44,6 +44,7 @@ export default function GatewayDeployEnvCard({
     deployingGatewayId,
     isDeployingToGateway,
     isPollingGateway,
+    readOnly,
   } = useGatewayDeploy();
 
   const isThisGatewayDeploying = deployingGatewayId === gateway.id;
@@ -176,7 +177,7 @@ export default function GatewayDeployEnvCard({
             color="error"
             size="small"
             onClick={handleUndeploy}
-            disabled={!isGatewayActive || isDeployingToGateway || isPolling}
+            disabled={readOnly || !isGatewayActive || isDeployingToGateway || isPolling}
           >
             {isThisGatewayDeploying ? 'Stopping...' : 'Stop'}
           </Button>
@@ -207,7 +208,7 @@ export default function GatewayDeployEnvCard({
             color="primary"
             size="small"
             onClick={handleRedeploy}
-            disabled={!isGatewayActive || isDeployingToGateway || isPolling}
+            disabled={readOnly || !isGatewayActive || isDeployingToGateway || isPolling}
           >
             Re-deploy
           </Button>
@@ -218,7 +219,7 @@ export default function GatewayDeployEnvCard({
             color="primary"
             size="small"
             onClick={handleRedeploy}
-            disabled={!isGatewayActive || isDeployingToGateway || isPolling}
+            disabled={readOnly || !isGatewayActive || isDeployingToGateway || isPolling}
           >
             {isThisGatewayDeploying ? 'Redeploying...' : 'Redeploy'}
           </Button>

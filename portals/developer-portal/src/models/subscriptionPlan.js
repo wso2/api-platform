@@ -18,49 +18,71 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
+const SubscriptionPlanLimit = require('./subscriptionPlanLimit');
 
-const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
-    PLAN_ID: {
-        type: DataTypes.UUID,
+const SubscriptionPlan = sequelize.define('dp_subscription_plan', {
+    uuid: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         allowNull: false,
         primaryKey: true
     },
-    PLAN_NAME: {
+    handle: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: 'unique_org_plan_name'
+        unique: 'unique_org_plan_handle'
     },
-    DISPLAY_NAME: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    DESCRIPTION: {
+    description: {
+        type: DataTypes.STRING(1023),
+        allowNull: true
+    },
+    ref_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    REQUEST_COUNT: {
-        type: DataTypes.STRING,
-        allowNull: true
+    org_uuid: {
+        type: DataTypes.STRING(40),
+        allowNull: true,
+        references: { model: 'dp_organizations', key: 'uuid' }
     },
-    REF_ID: {
+    created_by: {
         type: DataTypes.STRING,
-        allowNull: true
-    }
+        allowNull: false
+    },
+    created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    updated_by: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_SUBSCRIPTION_PLAN',
+    tableName: 'dp_subscription_plans',
     returning: true,
     indexes: [
-        { name: 'IDX_SUB_PLAN_ORG_NAME', unique: true, fields: ['ORG_ID', 'PLAN_NAME'] }
+        { name: 'uq_subscription_plan_org_handle', unique: true, fields: ['org_uuid', 'handle'] }
     ]
 });
 
 SubscriptionPlan.belongsTo(Organization, {
     foreignKey: {
-        name: 'ORG_ID',
-        unique: 'unique_org_plan_name'
+        name: 'org_uuid',
+        unique: 'unique_org_plan_handle'
     }
 });
+
+SubscriptionPlan.hasMany(SubscriptionPlanLimit, { foreignKey: 'plan_uuid', as: 'limits' });
 
 module.exports = SubscriptionPlan;

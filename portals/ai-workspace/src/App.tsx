@@ -23,7 +23,6 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { useAuth } from 'react-oidc-context';
 import AutoLoginPage from './pages/login/AutoLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
 import { AppShellProvider } from './contexts/AppShellContext';
@@ -83,7 +82,8 @@ import { LLMProvidersProvider } from './contexts/llmProvider';
 import React, { useRef, useState } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
-import { Box, CircularProgress } from '@wso2/oxygen-ui';
+import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
+import OoopsImage from './assets/images/Ooops.svg';
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -124,50 +124,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Processes the OIDC ?code= callback. Shows a spinner while react-oidc-context
-// exchanges the code; on success onSigninCallback in main.tsx navigates to the app.
-// On error, shows the reason and lets the user retry.
+// The OIDC ?code= callback is now handled server-side by the BFF at
+// /api/auth/callback (which sets the session cookie and 302s back into the app).
+// This SPA route only catches stray hits to the legacy /signin path and bounces
+// them home; the gate in main.tsx re-evaluates the session there.
 function SigninCallbackRoute() {
-  const auth = useAuth();
-  const navigate = useNavigate();
-
-  const handleRetry = React.useCallback(() => {
-    navigate('/login', { replace: true });
-  }, [navigate]);
-
-  if (auth.error) {
-    return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
-        <Box sx={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
-          <CircularProgress size={28} sx={{ mb: 3, color: 'error.main' }} />
-          <Box sx={{ mb: 1, fontSize: '1.125rem', fontWeight: 700 }}>
-            Sign-in failed
-          </Box>
-          <Box sx={{ mb: 3, color: 'text.secondary', fontSize: '0.875rem' }}>
-            {auth.error.message || 'An unexpected error occurred during authentication.'}
-          </Box>
-          <Box
-            component="button"
-            onClick={handleRetry}
-            sx={{
-              px: 3, py: 1, borderRadius: 1, border: 'none',
-              bgcolor: 'primary.main', color: 'primary.contrastText',
-              fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
-              '&:hover': { bgcolor: 'primary.dark' },
-            }}
-          >
-            Back to Sign In
-          </Box>
-        </Box>
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <CircularProgress />
-    </Box>
-  );
+  return <Navigate to="/" replace />;
 }
 
 type OrgInitState = 'checking' | 'provisioning' | 'done' | 'error';
@@ -179,8 +141,6 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const initiated = useRef(false);
   const [orgState, setOrgState] = useState<OrgInitState>('checking');
-  const [orgError, setOrgError] = useState<string | null>(null);
-  const [sessionExpired, setSessionExpired] = useState(false);
 
   React.useEffect(() => {
     if (initiated.current) return;
@@ -194,29 +154,23 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    checkOrganizationExists(org.id)
+    checkOrganizationExists(org.handle)
       .then(async (exists) => {
         if (!exists) {
           setOrgState('provisioning');
           await registerOrganization({
-            id: org.id,
-            name: org.name || org.handle,
-            handle: org.handle,
+            id: org.handle,
+            displayName: org.name || org.handle,
             region: DEFAULT_ORG_REGION,
           });
         }
         navigate(`/organizations/${org.handle}/home`, { replace: true });
         setOrgState('done');
       })
-      .catch((err: unknown) => {
-        // A 401 means the session is invalid/expired — retrying won't help.
-        // Surface a "session expired" screen with a logout action instead.
-        if ((err as { status?: number })?.status === 401) {
-          setSessionExpired(true);
-          setOrgState('error');
-          return;
-        }
-        setOrgError(err instanceof Error ? err.message : 'Failed to set up workspace');
+      .catch(() => {
+        // Any failure here (a 401 from an expired/invalid session, or an
+        // unexpected error) is unrecoverable without re-authenticating, so
+        // surface the error screen whose only action is to log out.
         setOrgState('error');
       });
   }, [user, navigate]);
@@ -231,14 +185,51 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
   }
 
   if (orgState === 'error') {
+    const onLogout = () => { void forceLogoutAndRedirect(); };
     return (
-      <OrgProvisioningPage
-        orgName={user?.org?.name ?? undefined}
-        error={sessionExpired ? null : orgError}
-        isSessionExpired={sessionExpired}
-        onLogout={() => { void forceLogoutAndRedirect(); }}
-        onRetry={() => { initiated.current = false; setOrgState('checking'); }}
-      />
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: 2,
+        }}
+      >
+        <Box
+          sx={{
+            width: 'min(560px, 100%)',
+            textAlign: 'center',
+          }}
+        >
+          <Stack spacing={1} alignItems="center">
+            <Box
+              component="img"
+              src={OoopsImage}
+              alt="Oops"
+              sx={{
+                width: 180,
+                maxWidth: '100%',
+                height: 'auto',
+              }}
+            />
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
+              Oops! This is embarrassing
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Something went wrong. Please log out and sign in again.
+            </Typography>
+            <Button variant="contained" onClick={onLogout}>
+              Logout
+            </Button>
+          </Stack>
+        </Box>
+      </Box>
     );
   }
 

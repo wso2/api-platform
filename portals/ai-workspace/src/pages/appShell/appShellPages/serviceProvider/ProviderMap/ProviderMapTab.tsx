@@ -98,7 +98,7 @@ export function getProxyIdentifier(proxy: Proxy): string | undefined {
     proxyRecord.id,
     proxyRecord.proxyId,
     proxyRecord.uuid,
-    proxyRecord.name,
+    proxyRecord.displayName,
   ];
 
   return candidates.find(
@@ -282,10 +282,10 @@ export function ProxyCard({
                 variant="subtitle2"
                 fontWeight={600}
                 noWrap
-                title={proxy.name}
+                title={proxy.displayName}
                 sx={{ flex: 1, minWidth: 0 }}
               >
-                {proxy.name}
+                {proxy.displayName}
               </Typography>
             </Stack>
             <Box>
@@ -649,9 +649,10 @@ export default function ProviderMapTab() {
 
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
+      // removed: ProjectBase no longer carries a `handler` alias field, so
+      // match on `id` only.
       const proxyProject = projectsForCurrentOrganization.find(
-        (project) =>
-          project.id === proxyProjectId || project.handler === proxyProjectId
+        (project) => project.id === proxyProjectId
       );
 
       if (!currentOrganization || !proxyProject) {
@@ -758,7 +759,7 @@ export default function ProviderMapTab() {
 
                 return (
                   <ProxyCard
-                    key={proxyId ?? proxy.name}
+                    key={proxyId ?? proxy.displayName}
                     proxy={proxy}
                     deployment={proxyId ? proxyDeployments[proxyId] : undefined}
                     onClick={
@@ -835,7 +836,7 @@ export default function ProviderMapTab() {
           </Stack>
           {provider && (
             <ProviderCard
-              name={provider.name}
+              name={provider.displayName}
               template={provider.template}
               description={provider.description}
               status={provider.status}

@@ -44,11 +44,14 @@ function transformRequestToApiFormat(
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     displayName: request.displayName,
-    name: request.name,
-    vhost: request.vhost,
+    endpoints: request.endpoints,
     functionalityType: request.functionalityType,
     description: request.description,
   };
+
+  if ('id' in request && request.id) {
+    payload.id = request.id;
+  }
 
   if ('version' in request && request.version) {
     payload.version = request.version;
@@ -70,7 +73,7 @@ export async function getGateways(
   organizationId: string
 ): Promise<{ data: GatewayListResponse }> {
   const data = await getRequest<GatewayListResponse>(
-    `${GATEWAY_API_PATH}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -78,6 +81,7 @@ export async function getGateways(
   return { data };
 }
 
+// TODO: /gateways/{gatewayId}/configs does not exist in openapi.yaml — needs backend clarification
 /**
  * Get gateway configurations by gateway ID
  */
@@ -86,7 +90,7 @@ export async function getGatewayConfigs(
   organizationId: string
 ): Promise<{ data: GatewayConfigs }> {
   const data = await getRequest<GatewayConfigs>(
-    `${GATEWAY_API_PATH}/${encodeURIComponent(gatewayId)}/configs?organizationId=${encodeURIComponent(organizationId)}`,
+    `${GATEWAY_API_PATH}/${encodeURIComponent(gatewayId)}/configs`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -102,7 +106,7 @@ export async function getGatewayById(
   organizationId: string
 ): Promise<{ data: Gateway }> {
   const data = await getRequest<Gateway>(
-    `${GATEWAY_API_PATH}/${gatewayId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayId}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -120,7 +124,7 @@ export async function registerGateway(
   const apiPayload = transformRequestToApiFormat(gatewayData);
 
   const data = await post<RegisterGatewayResponse>(
-    `${GATEWAY_API_PATH}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}`,
     apiPayload,
     PLATFORM_API_BASE_URL
   );
@@ -139,7 +143,7 @@ export async function updateGateway(
   const apiPayload = transformRequestToApiFormat(gatewayData);
 
   const data = await put<Gateway>(
-    `${GATEWAY_API_PATH}/${gatewayId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayId}`,
     apiPayload,
     PLATFORM_API_BASE_URL
   );
@@ -155,7 +159,7 @@ export async function deleteGateway(
   organizationId: string
 ): Promise<{ data: void }> {
   await del<void>(
-    `${GATEWAY_API_PATH}/${gatewayId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayId}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -181,7 +185,7 @@ export async function listGatewayTokens(
   organizationId: string
 ): Promise<GatewayTokenListResponse> {
   const data = await getRequest<GatewayTokenListResponse>(
-    `${GATEWAY_API_PATH}/${gatewayId}/tokens?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayId}/tokens`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -198,7 +202,7 @@ export async function revokeGatewayToken(
   organizationId: string
 ): Promise<void> {
   await del<void>(
-    `${GATEWAY_API_PATH}/${gatewayId}/tokens/${tokenId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayId}/tokens/${tokenId}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -216,7 +220,7 @@ export async function rotateGatewayToken(
   organizationId: string
 ): Promise<string> {
   const data = await post<RotateGatewayTokenResponse>(
-    `${GATEWAY_API_PATH}/${gatewayId}/tokens?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayId}/tokens`,
     {},
     PLATFORM_API_BASE_URL
   );

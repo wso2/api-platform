@@ -16,32 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
+
 class ApplicationDTO {
-    constructor(app) {
-        this.id = app.APP_ID;
-        this.name = app.NAME;
-        this.description = app.DESCRIPTION;
-        this.type = app.TYPE;
-        if (app.DP_APP_KEY_MAPPINGs) {
-            this.appMap = app.DP_APP_KEY_MAPPINGs.map(map => new AppMappingDTO(map));
+    constructor(app, audit) {
+        this.id = app.handle;
+        this.displayName = app.display_name;
+        this.description = app.description;
+        if (app.dp_app_key_mappings) {
+            this.appKeyMappings = app.dp_app_key_mappings.map(map => new AppMappingDTO(map));
         }
-    }
-
-    setResponseData(data) {
-        this.data = data;
-    }
-
-    getResponseData() {
-        return this.data;
-    }
-}
-
-class SubscriptionDTO {
-    constructor(sub) {
-        this.id = sub.SUB_ID;
-        this.appId = sub.APP_ID;
-        this.apiId = sub.REFERENCE_ID;
-        this.planId = sub.PLAN_ID;
+        applyAudit(this, audit);
     }
 
     setResponseData(data) {
@@ -55,10 +40,9 @@ class SubscriptionDTO {
 
 class AppMappingDTO {
     constructor(map) {
-        this.appRefID = map.AS_CLIENT_ID;
-        this.kmID = map.KM_ID;
-        this.keyType = map.KEY_TYPE;
-        this.additionalProperties = map.ADDITIONAL_PROPERTIES;
+        this.asClientId = map.as_client_id;
+        this.kmId = map.km_uuid;
+        this.type = map.type;
     }
 
     setResponseData(data) {
@@ -71,6 +55,5 @@ class AppMappingDTO {
 }
 
 module.exports = {
-    ApplicationDTO,
-    SubscriptionDTO
+    ApplicationDTO
 };

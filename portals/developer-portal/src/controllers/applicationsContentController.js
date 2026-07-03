@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
+const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -29,10 +29,11 @@ const sampleApiLoader = require('../utils/sampleApiLoader');
 const kmDao = require('../dao/keyManagerDao');
 const adminService = require('../services/adminService');
 const apiKeyService = require('../services/apiKeyService');
+const { CustomError } = require('../utils/errors/customErrors');
 
 const orgIDValue = async (orgName) => {
     const organization = await orgDao.get(orgName);
-    return organization.ORG_ID;
+    return organization.uuid;
 }
 
 const templateResponseValue = async (pageName) => {
@@ -57,40 +58,40 @@ const buildProfile = (req) => {
  * Shared data loader for both application overview and manage-keys pages.
  * Keeps loadApplication / loadApplicationKeys lean and avoids drift between the two.
  */
-const loadApplicationData = async (req, orgName, applicationId, viewName) => {
-    const orgID = await orgIDValue(orgName);
+const loadApplicationData = async (req, orgName, applicationHandle, viewName) => {
+    const orgId = await orgIDValue(orgName);
 
-    const userID = req[constants.USER_ID]
-    const applicationList = await adminService.getApplicationKeyMap(orgID, applicationId, userID);
+    const userId = req[constants.USER_ID]
+    const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+    if (!appRecord) {
+        throw new CustomError(404, "Records Not Found", 'Application not found');
+    }
+    const applicationId = appRecord.uuid;
+    const applicationList = await adminService.getApplicationKeyMap(orgId, applicationId, userId);
 
     let applicationReference = "";
     let applicationKeyList;
-    if (Array.isArray(applicationList.appMap) && applicationList.appMap.length > 0) {
-        applicationReference = applicationList.appMap[0].appRefID;
+    if (Array.isArray(applicationList.appKeyMappings) && applicationList.appKeyMappings.length > 0) {
+        applicationReference = applicationList.appKeyMappings[0].asClientId;
         try {
             const { ApplicationKeyMapping } = require('../models/application');
             const localMappings = await ApplicationKeyMapping.findAll({
-                where: { APP_ID: applicationId, ORG_ID: orgID }
+                where: { app_uuid: applicationId }
             });
             const keyList = [];
             for (const mapping of localMappings) {
-                if (mapping.AS_CLIENT_ID && mapping.KM_ID) {
+                if (mapping.as_client_id && mapping.km_uuid) {
                     try {
-                        const km = await kmDao.get(mapping.KM_ID);
-                        const storedProps = mapping.ADDITIONAL_PROPERTIES || {};
+                        const km = await kmDao.get(mapping.km_uuid);
                         keyList.push({
-                            keyManager: km.NAME,
-                            consumerKey: mapping.AS_CLIENT_ID,
-                            consumerSecret: '',
-                            keyMappingId: mapping.MAPPING_ID,
-                            keyType: mapping.KEY_TYPE || constants.KEY_TYPE.PRODUCTION,
-                            supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
-                            additionalProperties: storedProps,
-                            callbackUrl: storedProps.redirect_uris?.[0] || '',
+                            keyManager: km.handle,
+                            consumerKey: mapping.as_client_id,
+                            keyMappingId: mapping.uuid,
+                            keyType: mapping.type || constants.KEY_TYPE.PRODUCTION,
                         });
                     } catch (mappingErr) {
                         logger.warn('Skipping key mapping due to error', {
-                            mappingId: mapping.MAPPING_ID, error: mappingErr.message
+                            mappingId: mapping.uuid, error: mappingErr.message
                         });
                     }
                 }
@@ -107,21 +108,13 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     let kMmetaData = [];
     try {
-        const dbKeyManagers = await kmDao.listEnabled(orgID);
+        const dbKeyManagers = await kmDao.listEnabled(orgId);
         for (const km of dbKeyManagers) {
-            const grantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
             kMmetaData.push({
-                id: km.KM_ID,
-                name: km.NAME,
-                type: km.TYPE,
+                id: km.handle,
+                type: km.type,
                 enabled: true,
-                tokenEndpoint: km.TOKEN_ENDPOINT,
-                authorizeEndpoint: km.ADDITIONAL_PROPERTIES?.authorizeEndpoint || '',
-                revokeEndpoint: km.ADDITIONAL_PROPERTIES?.revokeEndpoint || '',
-                availableGrantTypes: await mapGrants(grantTypes),
-                applicationConfiguration: await mapDefaultValues(
-                    km.ADDITIONAL_PROPERTIES?.applicationConfiguration || []
-                ),
+                tokenEndpoint: km.token_endpoint,
             });
         }
     } catch (kmError) {
@@ -132,21 +125,12 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     let sandboxKeys = [];
 
     applicationKeyList?.list?.map(key => {
-        let client_name;
-        if (key?.additionalProperties?.client_name) {
-            client_name = key.additionalProperties.client_name;
-        }
         let keyData = {
             keyManager: key.keyManager,
             consumerKey: key.consumerKey,
-            consumerSecret: key.consumerSecret,
             keyMappingId: key.keyMappingId,
             keyType: key.keyType,
-            supportedGrantTypes: key.supportedGrantTypes,
-            additionalProperties: key.additionalProperties,
-            clientName: client_name,
-            callbackUrl: key.callbackUrl,
-            appRefID: applicationReference
+            appRefId: applicationReference
         };
         if (key.keyType === constants.KEY_TYPE.PRODUCTION) {
             productionKeys.push(keyData);
@@ -158,12 +142,12 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     kMmetaData.forEach(keyManager => {
         productionKeys.forEach(productionKey => {
-            if (productionKey.keyManager === keyManager.name) {
+            if (productionKey.keyManager === keyManager.id) {
                 keyManager.productionKeys = productionKey;
             }
         });
         sandboxKeys.forEach(sandboxKey => {
-            if (sandboxKey.keyManager === keyManager.name) {
+            if (sandboxKey.keyManager === keyManager.id) {
                 keyManager.sandboxKeys = sandboxKey;
             }
         });
@@ -185,7 +169,8 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     const profile = buildProfile(req);
 
     return {
-        orgID,
+        orgId,
+        applicationId,
         applicationList,
         keyManagersMetadata: kMmetaData,
         productionKeys,
@@ -197,7 +182,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
 // ***** Load Applications *****
 
-const loadApplications = async (req, res) => {
+const loadApplications = async (req, res, next) => {
 
     const viewName = req.params.viewName;
 
@@ -213,12 +198,12 @@ const loadApplications = async (req, res) => {
 
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let html, metaData, templateContent;
     try {
         const orgName = req.params.orgName;
-        const orgID = await orgIDValue(orgName);
-        const applications = await appDao.list(orgID, req.user.sub)
+        const orgId = await orgIDValue(orgName);
+        const applications = await appDao.list(orgId, resolveActor(req))
         const metaData = applications.map(application => new ApplicationDTO(application));
         let profile = null;
         if (req.user) {
@@ -232,7 +217,7 @@ const loadApplications = async (req, res) => {
         }
 
         templateContent = {
-            orgID,
+            orgId,
             applicationsMetadata: metaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,
@@ -240,45 +225,41 @@ const loadApplications = async (req, res) => {
             isReadOnlyMode: config.readOnlyMode,
         }
         const templateResponse = await templateResponseValue('applications');
-        const layoutResponse = await loadLayoutFromAPI(orgID, viewName);
+        const layoutResponse = await loadLayoutFromAPI(orgId, viewName);
         if (layoutResponse === "") {
             html = renderTemplate('../pages/applications/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
             html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
         }
     } catch (error) {
-        const templateContent = {
-            devportalMode: devportalMode,
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        }
         logger.error("Error occurred while loading Applications", {
             orgName: orgName,
             error: error.message,
             stack: error.stack
         });
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+        error.status = 500;
+        return next(error);
     }
     res.send(html);
 }
 
 // ***** Load Application *****
 
-const loadApplication = async (req, res) => {
+const loadApplication = async (req, res, next) => {
     let html, templateContent, metaData, kMmetaData;
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
-        const applicationId = req.params.applicationId;
-        const data = await loadApplicationData(req, orgName, applicationId, viewName);
+        const applicationHandle = req.params.applicationId;
+        const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
-        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgID, applicationId);
+        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId, resolveActor(req));
 
         templateContent = {
-            orgID: data.orgID,
+            orgId: data.orgId,
             applicationMetadata: metaData,
             keyManagersMetadata: kMmetaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
@@ -303,7 +284,7 @@ const loadApplication = async (req, res) => {
             availableKeysByApi
         }
         const templateResponse = await templateResponseValue('application');
-        const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
+        const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
         if (layoutResponse === "") {
             html = renderTemplate('../pages/application/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
@@ -316,36 +297,31 @@ const loadApplication = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: devportalMode,
-            profile: req.isAuthenticated() ? req.user : null,
-        }
         if (Number(error?.statusCode) === 401) {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+            return next(err);
         } else {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = error.statusCode || error.status || 500;
+            return next(error);
         }
     }
     res.send(html);
 }
 
-const loadApplicationKeys = async (req, res) => {
+const loadApplicationKeys = async (req, res, next) => {
     let html, templateContent, metaData, kMmetaData;
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
-        const applicationId = req.params.applicationId;
-        const data = await loadApplicationData(req, orgName, applicationId, viewName);
+        const applicationHandle = req.params.applicationId;
+        const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
 
         templateContent = {
-            orgID: data.orgID,
+            orgId: data.orgId,
             applicationMetadata: metaData,
             keyManagersMetadata: kMmetaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
@@ -367,7 +343,7 @@ const loadApplicationKeys = async (req, res) => {
             isReadOnlyMode: config.readOnlyMode
         }
         const templateResponse = await templateResponseValue('manage-keys');
-        const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
+        const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
         if (layoutResponse === "") {
             html = renderTemplate('../pages/manage-keys/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
@@ -380,17 +356,12 @@ const loadApplicationKeys = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: devportalMode,
-            profile: req.isAuthenticated() ? req.user : null,
-        }
         if (Number(error?.statusCode) === 401) {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+            return next(err);
         } else {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = error.statusCode || error.status || 500;
+            return next(error);
         }
     }
     res.send(html);
@@ -402,100 +373,42 @@ const loadApplicationKeys = async (req, res) => {
  */
 function formatApiDisplayName(apiMetadata, fallbackId) {
     if (!apiMetadata) return fallbackId;
-    const namePart = [apiMetadata.API_NAME, apiMetadata.API_VERSION].filter(Boolean).join(' ');
-    return apiMetadata.API_HANDLE ? `${namePart} (${apiMetadata.API_HANDLE})` : namePart;
+    const namePart = [apiMetadata.name, apiMetadata.version].filter(Boolean).join(' ');
+    return apiMetadata.handle ? `${namePart} (${apiMetadata.handle})` : namePart;
 }
 
-async function loadApplicationApiKeysData(orgID, applicationId) {
+async function loadApplicationApiKeysData(orgId, applicationId, userId) {
     let associatedApiKeys = [];
     let availableKeysByApi = [];
     try {
-        const associated = await apiKeyService.list(orgID, { appId: applicationId });
+        const associated = await apiKeyService.list(orgId, { appId: applicationId });
         associatedApiKeys = associated.map((k) => ({
-            keyId: k.KEY_ID,
-            name: k.NAME,
-            status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-            apiId: k.API_ID,
-            apiName: formatApiDisplayName(k.DP_API_METADATA, k.API_ID)
+            keyId: k.uuid,
+            id: k.handle,
+            displayName: k.display_name,
+            status: String(k.status || 'ACTIVE').toLowerCase(),
+            apiId: k.dp_api_metadata?.handle,
+            apiName: formatApiDisplayName(k.dp_api_metadata, k.api_uuid)
         }));
 
-        // Capped — this just populates a UI picker, not a full export of the org's keys.
-        const allKeys = await apiKeyService.list(orgID, { status: 'ACTIVE', limit: 200 });
+        // Capped — this just populates a UI picker of the caller's own keys, not a full export of the org's keys.
+        const allKeys = await apiKeyService.list(orgId, { status: 'ACTIVE', createdBy: userId, limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
-            if (k.APP_ID === applicationId) return;
-            const apiId = k.API_ID;
-            const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
+            if (k.dp_api_key_app_mapping?.app_uuid === applicationId) return;
+            const apiId = k.dp_api_metadata?.handle || k.api_uuid;
+            const apiName = formatApiDisplayName(k.dp_api_metadata, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
-            byApi.get(apiId).keys.push({ keyId: k.KEY_ID, name: k.NAME });
+            byApi.get(apiId).keys.push({ keyId: k.uuid, id: k.handle, displayName: k.display_name });
         });
         availableKeysByApi = Array.from(byApi.values());
     } catch (error) {
         logger.warn('Failed to load API keys for application API keys section', {
-            orgID, applicationId, error: error.message
+            orgId, applicationId, error: error.message
         });
     }
     return { associatedApiKeys, availableKeysByApi };
 }
-
-async function mapGrants(grantTypes) {
-
-    let mappedGrantTypes = [];
-    grantTypes.map(grantType => {
-        if (grantType === 'password') {
-            mappedGrantTypes.push({
-                label: 'Password',
-                name: grantType
-            });
-        } else if (grantType === 'client_credentials') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Client Credentials',
-                    name: grantType
-                }
-            );
-        } else if (grantType === 'refresh_token') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Refresh Token',
-                    name: grantType
-                }
-            );
-        } else if (grantType === 'authorization_code') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Authorization Code',
-                    name: grantType
-                }
-            );
-        } else if (grantType === 'implicit') {
-            mappedGrantTypes.push(
-                {
-                    label: 'Implicit',
-                    name: grantType
-                }
-            );
-        }
-    });
-    return mappedGrantTypes;
-}
-
-async function mapDefaultValues(applicationConfiguration) {
-
-    let appConfigs = [];
-    let defaultConfigs = ["application_access_token_expiry_time", "user_access_token_expiry_time", "id_token_expiry_time"];
-    applicationConfiguration.map(config => {
-        if (defaultConfigs.includes(config.name) && config.default == 'N/A') {
-            config.default = 900;
-        } else if (config.name === 'refresh_token_expiry_time' && config.default == 'N/A') {
-            config.default = 86400;
-        }
-        appConfigs.push(config);
-    });
-    return appConfigs;
-}
-
-
 
 module.exports = {
     loadApplications,

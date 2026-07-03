@@ -3,7 +3,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const queryInput = document.getElementById('query');
     const applicationsContainer = document.getElementById(
-        'applicationCardsContainer'
+        'applicationsContainer'
     );
     const allCards = Array.from(applicationsContainer.children);
     queryInput.addEventListener('input', () => {
@@ -16,8 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const filteredCards = allCards.filter((card) => {
-            const appName = card.getAttribute('data-name').toLowerCase();
-            return appName.includes(query);
+            const appDisplayName = card.getAttribute('data-display-name').toLowerCase();
+            return appDisplayName.includes(query);
         });
         applicationsContainer.innerHTML = '';
         filteredCards.forEach((card) => {

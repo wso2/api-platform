@@ -235,9 +235,8 @@ export default function ViewGateway() {
   const gatewayVersionHelm = gatewayVersion.startsWith("v")
     ? gatewayVersion.slice(1)
     : gatewayVersion;
-  const gatewayBaseVersion = gatewayVersionHelm.replace(/-.*$/, "");
   const gatewayZipName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
-  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayBaseVersion}`;
+  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
   const gatewayEnvFile = `${gatewayFolderName}/configs/keys.env`;
 
   const getSetupGatewayDisplayCommand = () =>
@@ -344,7 +343,7 @@ ENVFILE`;
       try {
         const response = await getGateways(currentOrganization.uuid);
         const foundGateway = response.data?.list?.find(
-          (gw) => gw.name === gatewayName,
+          (gw) => gw.id === gatewayName,
         );
 
         if (foundGateway) {
@@ -768,7 +767,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
               <FormControl fullWidth>
                 <FormLabel>URL</FormLabel>
                 <TextField
-                  value={getDisplayUrl(gateway.vhost || "")}
+                  value={getDisplayUrl(gateway.endpoints?.[0] || gateway.vhost || "")}
                   fullWidth
                   slotProps={{ input: { readOnly: true } }}
                 />

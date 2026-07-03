@@ -68,6 +68,46 @@ type openAPIOperation struct {
 	Security []map[string][]string `yaml:"security"`
 }
 
+// Merge copies all scope entries from other into r, overwriting on key conflicts.
+// Used to merge plugin-contributed OpenAPI specs into the main registry.
+func (r *ScopeRegistry) Merge(other *ScopeRegistry) {
+	if other == nil {
+		return
+	}
+	for k, v := range other.scopes {
+		r.scopes[k] = v
+	}
+}
+
+// LoadScopeRegistryFromBytes parses an OpenAPI 3.x YAML document from in-memory
+// bytes and returns a populated ScopeRegistry. Intended for plugins that embed
+// their own OpenAPI spec via go:embed.
+func LoadScopeRegistryFromBytes(data []byte) (*ScopeRegistry, error) {
+	var doc openAPIDoc
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("openapi scope registry: parse embedded spec: %w", err)
+	}
+
+	basePath := ""
+	if len(doc.Servers) > 0 {
+		basePath = extractBasePath(doc.Servers[0].URL)
+	}
+
+	registry := &ScopeRegistry{scopes: make(map[string][]string)}
+	for oaPath, methods := range doc.Paths {
+		httpPath := basePath + oaPath
+		for method, op := range methods {
+			scopes := collectScopes(op.Security)
+			if len(scopes) == 0 {
+				continue
+			}
+			key := strings.ToUpper(method) + ":" + httpPath
+			registry.scopes[key] = scopes
+		}
+	}
+	return registry, nil
+}
+
 // LoadScopeRegistry parses the OpenAPI spec at specPath and returns a ScopeRegistry
 // populated from the standard security field on each operation. The first servers[].url
 // is used to derive the base path prefix that maps spec paths to actual net/http route

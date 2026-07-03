@@ -25,7 +25,7 @@
  *   TC-82  Re-submit form with existing placeholder → POST /secrets NOT called
  *   TC-83  POST /secrets 500 → MCP server creation aborted, no server created
  *   TC-84  Create MCP server without auth → no POST /secrets, no auth block in config
- *   TC-85  Secret handle is URL-safe slug derived from server name + "-auth" suffix
+ *   TC-85  Secret handle is a random UUID (unique per creation, not derived from name)
  */
 describe('AI Workspace — MCP server secret management', () => {
   const suffix = Date.now().toString().slice(-8);
@@ -44,7 +44,7 @@ describe('AI Workspace — MCP server secret management', () => {
     cy.login();
     cy.request({
       method: 'POST',
-      url: '/api-proxy/api/portal/v0.9/auth/login',
+      url: '/api/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -55,12 +55,13 @@ describe('AI Workspace — MCP server secret management', () => {
         expect(response.status).to.eq(200);
         authToken = response.body?.token ?? '';
         return cy.request({
-          url: '/api-proxy/api/v0.9/organizations',
+          url: '/api/proxy/api/v0.9/organizations',
           headers: { Authorization: `Bearer ${authToken}` },
         });
       })
       .then((response) => {
-        organizationId = response.body?.id ?? '';
+        const orgs = response.body?.list ?? [];
+        organizationId = orgs[0]?.id ?? '';       
       });
   });
 
@@ -68,7 +69,7 @@ describe('AI Workspace — MCP server secret management', () => {
     if (authToken && organizationId && createdServerId) {
       cy.request({
         method: 'DELETE',
-        url: `/api-proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -101,8 +102,12 @@ describe('AI Workspace — MCP server secret management', () => {
     cy.wait('@createSecret').then((interception) => {
       expect(interception.response.statusCode).to.be.oneOf([200, 201]);
       // The UI posts multipart/form-data; assert on the response body instead.
-      const handle = interception.response.body?.handle;
-      expect(handle).to.match(/-auth$/);
+      // The secret handle is returned as `id` (immutable slug used in placeholders).
+      // Handles are random UUIDs (crypto.randomUUID()) — verify the UUID shape.
+      const handle = interception.response.body?.id;
+      expect(handle).to.match(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
     });
 
     // MCP server payload must contain a placeholder, not the plaintext.
@@ -171,13 +176,13 @@ describe('AI Workspace — MCP server secret management', () => {
     const existingHandle = `${serverId}-auth`;
     cy.request({
       method: 'POST',
-      url: '/api-proxy/api/v0.9/secrets',
+      url: '/api/proxy/api/v0.9/secrets',
       headers: {
         Authorization: `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
       },
+      form: true,
       body: {
-        handle: existingHandle,
+        id: existingHandle,
         displayName: `${serverName} upstream auth`,
         value: 'Bearer tok-tc82-original',
         type: 'GENERIC',
@@ -296,11 +301,10 @@ describe('AI Workspace — MCP server secret management', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // TC-85: Secret handle is URL-safe slug derived from server name + "-auth" suffix
+  // TC-85: Secret handle is a random UUID (unique per creation, not derived from name)
   // ---------------------------------------------------------------------------
-  it('TC-85: derives a URL-safe secret handle from the server name with an "-auth" suffix', () => {
+  it('TC-85: generates a unique random UUID as the secret handle', () => {
     const mixedName = `My MCP ${suffix}`;
-    const expectedHandle = `${toSlug(mixedName)}-auth`;
 
     cy.intercept('POST', '**/secrets').as('createSecret');
     cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('createServer');
@@ -320,9 +324,13 @@ describe('AI Workspace — MCP server secret management', () => {
 
     cy.wait('@createSecret').then((interception) => {
       // The UI posts multipart/form-data; assert on the response body instead.
-      const handle = interception.response.body?.handle;
-      expect(handle).to.match(/^[a-z0-9-]+-auth$/);
-      expect(handle).to.equal(expectedHandle);
+      // The secret handle is returned as `id` (immutable slug used in placeholders).
+      // Handles are random UUIDs so re-creating a resource with the same name
+      // never collides with a prior (possibly soft-deleted) secret.
+      const handle = interception.response.body?.id;
+      expect(handle).to.match(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
     });
 
     cy.wait('@createServer').then((interception) => {
@@ -432,29 +440,29 @@ describe('AI Workspace — MCP server secret management', () => {
 function deleteProjectByName(authToken, targetName, fallbackName) {
   if (!authToken) return;
   cy.request({
-    url: '/api-proxy/api/v0.9/projects',
+    url: '/api/proxy/api/v0.9/projects',
     headers: { Authorization: `Bearer ${authToken}` },
     failOnStatusCode: false,
   }).then((response) => {
     if (response.status !== 200) return;
     const projects = response.body?.list ?? [];
-    const target = projects.find((p) => p.name === targetName);
+    const target = projects.find((p) => p.displayName === targetName);
     if (!target?.id) return;
 
     if (projects.length <= 1) {
       cy.request({
         method: 'POST',
-        url: '/api-proxy/api/v0.9/projects',
+        url: '/api/proxy/api/v0.9/projects',
         headers: {
           Authorization: `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
-        body: { name: fallbackName, description: 'Reserved for E2E cleanup' },
+        body: { displayName: fallbackName, description: 'Reserved for E2E cleanup' },
         failOnStatusCode: false,
       }).then(() => {
         cy.request({
           method: 'DELETE',
-          url: `/api-proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
+          url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
           headers: { Authorization: `Bearer ${authToken}` },
           failOnStatusCode: false,
         });
@@ -462,7 +470,7 @@ function deleteProjectByName(authToken, targetName, fallbackName) {
     } else {
       cy.request({
         method: 'DELETE',
-        url: `/api-proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
+        url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });

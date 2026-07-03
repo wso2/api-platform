@@ -68,12 +68,12 @@ func setupSecretTestEnv(t *testing.T) (http.Handler, func()) {
 		t.Fatalf("failed to apply schema: %v", err)
 	}
 
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-it-001', 'test-org', 'Test Org', 'default', datetime('now'), datetime('now'))`); err != nil {
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-it-001', 'test-org', 'Test Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`); err != nil {
 		t.Fatalf("failed to insert org: %v", err)
 	}
-	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-it-002', 'test-org-b', 'Test Org B', 'default', datetime('now'), datetime('now'))`); err != nil {
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-it-002', 'test-org-b', 'Test Org B', 'default', 'idp-ref', datetime('now'), datetime('now'))`); err != nil {
 		t.Fatalf("failed to insert org-b: %v", err)
 	}
 
@@ -83,8 +83,9 @@ func setupSecretTestEnv(t *testing.T) (http.Handler, func()) {
 	}
 
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
-	h := NewSecretHandler(svc, slog.Default())
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
+	h := NewSecretHandler(svc, identityService, slog.Default())
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -133,8 +134,8 @@ func doRequest(r http.Handler, method, path string, fields map[string]string, wi
 // createSecret is a helper that POSTs a secret via multipart/form-data.
 func createSecret(r http.Handler, handle, displayName, value string) *httptest.ResponseRecorder {
 	return doRequest(r, http.MethodPost, "/api/v1/secrets", map[string]string{
-		"handle":      handle,
-		"name":        displayName,
+		"id":          handle,
+		"displayName": displayName,
 		"value":       value,
 	}, true)
 }
@@ -156,8 +157,8 @@ func TestSecretHandler_Create_201(t *testing.T) {
 	}
 
 	resp := parseBody(w)
-	if resp["handle"] != "it-key" {
-		t.Errorf("expected handle=it-key, got %v", resp["handle"])
+	if resp["id"] != "it-key" {
+		t.Errorf("expected id=it-key, got %v", resp["id"])
 	}
 	// Subsequent GET should not have value field.
 	wGet := doRequest(r, http.MethodGet, "/api/v1/secrets/it-key", nil, true)
@@ -189,7 +190,7 @@ func TestSecretHandler_Create_401_NoOrg(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	body, ct := multipartForm(map[string]string{"handle": "no-org-key", "name": "No Org Key", "value": "val"})
+	body, ct := multipartForm(map[string]string{"id": "no-org-key", "displayName": "No Org Key", "value": "val"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
 	req.Header.Set("Content-Type", ct)
 	// Intentionally NOT setting X-Test-Org
@@ -319,8 +320,8 @@ func TestSecretHandler_Get_200(t *testing.T) {
 	}
 
 	resp := parseBody(w)
-	if resp["handle"] != "get-key" {
-		t.Errorf("expected handle=get-key, got %v", resp["handle"])
+	if resp["id"] != "get-key" {
+		t.Errorf("expected id=get-key, got %v", resp["id"])
 	}
 	if _, hasValue := resp["value"]; hasValue {
 		t.Errorf("GET by handle should NOT contain value field")
@@ -365,19 +366,20 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-react-it', 'org-react', 'Org React', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-react-it', 'org-react', 'Org React', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
 
 	mux := http.NewServeMux()
-	NewSecretHandler(svc, slog.Default()).RegisterRoutes(mux)
+	NewSecretHandler(svc, identityService, slog.Default()).RegisterRoutes(mux)
 	r := middleware.NewTestContextMiddleware(mux)
 
 	// Create then soft-delete (deprecate) the secret.
-	body, ct := multipartForm(map[string]string{"handle": "react-key", "name": "React Key", "value": "old-val"})
+	body, ct := multipartForm(map[string]string{"id": "react-key", "displayName": "React Key", "value": "old-val"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
 	req.Header.Set("Content-Type", ct)
 	req.Header.Set("X-Test-Org", "org-react-it")
@@ -464,21 +466,22 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	schema, _ := os.ReadFile(schemaPath)
 	db.Exec(string(schema))
 
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-it-001', 'test-org', 'Test Org', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-it-001', 'test-org', 'Test Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	// Insert a project (required by artifacts via rest_apis)
-	db.Exec(`INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
+	db.Exec(`INSERT INTO projects (uuid, handle, display_name, organization_uuid, created_at, updated_at)
 		VALUES ('proj-001', 'test-proj', 'Test Project', 'org-it-001', datetime('now'), datetime('now'))`)
 
 	// Insert an artifact
-	db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-001', 'my-api', 'My API', '1.0.0', 'REST', 'org-it-001', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid)
+		VALUES ('art-001', 'RestApi', 'org-it-001')`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
-	h := NewSecretHandler(svc, slog.Default())
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
+	h := NewSecretHandler(svc, identityService, slog.Default())
 
 	mux2 := http.NewServeMux()
 	h.RegisterRoutes(mux2)
@@ -526,8 +529,8 @@ func doRequestAs(r http.Handler, method, path, orgID string) *httptest.ResponseR
 // createSecretOnRouter is like createSecret but uses a provided router.
 func createSecretOnRouter(r http.Handler, handle, displayName, value string) *httptest.ResponseRecorder {
 	body, ct := multipartForm(map[string]string{
-		"handle":      handle,
-		"name":        displayName,
+		"id":          handle,
+		"displayName": displayName,
 		"value":       value,
 	})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
@@ -650,20 +653,21 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-sd-it', 'org-sd', 'Org SD', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-sd-it', 'org-sd', 'Org SD', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	svc := service.NewSecretService(repo, v, identityService)
 
 	mux3 := http.NewServeMux()
-	NewSecretHandler(svc, slog.Default()).RegisterRoutes(mux3)
+	NewSecretHandler(svc, identityService, slog.Default()).RegisterRoutes(mux3)
 	r := middleware.NewTestContextMiddleware(mux3)
 
 	// (a) Create and DELETE → 204
 	createBody, createCT := multipartForm(map[string]string{
-		"handle": "soft-del-key", "name": "Soft Del Key", "value": "plaintext",
+		"id": "soft-del-key", "displayName": "Soft Del Key", "value": "plaintext",
 	})
 	createReq, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", createBody)
 	createReq.Header.Set("Content-Type", createCT)
@@ -731,12 +735,12 @@ func TestSecretService_Decrypt_DeprecatedSecretReturnsError(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-dep-it', 'org-dep', 'Org Dep', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-dep-it', 'org-dep', 'Org Dep', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	// Create and then soft-delete a secret
 	_, err = svc.Create("org-dep-it", "alice", &dto.CreateSecretRequest{
@@ -774,12 +778,12 @@ func TestSecretRepo_CiphertextStoredNotPlaintext(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-ct-001', 'org-ct', 'Org CT', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-ct-001', 'org-ct', 'Org CT', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	_, err = svc.Create("org-ct-001", "alice", &dto.CreateSecretRequest{Handle: "ct-key", Value: "sk-abc123"})
 	if err != nil {
@@ -813,12 +817,12 @@ func TestSecretRepo_ProviderIsInBuilt(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-prov-001', 'org-prov', 'Org Prov', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-prov-001', 'org-prov', 'Org Prov', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	_, err = svc.Create("org-prov-001", "alice", &dto.CreateSecretRequest{Handle: "prov-key", Value: "somevalue"})
 	if err != nil {
@@ -849,12 +853,12 @@ func TestSecretService_DecryptReturnsOriginalPlaintext(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-dec-001', 'org-dec', 'Org Dec', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-dec-001', 'org-dec', 'Org Dec', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	_, err = svc.Create("org-dec-001", "alice", &dto.CreateSecretRequest{Handle: "dec-key", Value: "sk-original"})
 	if err != nil {
@@ -885,12 +889,12 @@ func TestSecretService_ValidateSecretRefs_DeprecatedHandleRejected(t *testing.T)
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES ('org-val-it', 'org-val', 'Org Val', 'default', datetime('now'), datetime('now'))`)
+	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES ('org-val-it', 'org-val', 'Org Val', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
 	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	repo := repository.NewSecretRepo(db)
-	svc := service.NewSecretService(repo, v)
+	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	// Create then deprecate the secret
 	_, err = svc.Create("org-val-it", "alice", &dto.CreateSecretRequest{

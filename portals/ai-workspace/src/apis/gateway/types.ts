@@ -25,7 +25,9 @@ export interface Gateway {
   name: string;
   displayName: string;
   description?: string;
-  vhost: string;
+  endpoints?: string[];
+  /** @deprecated Use `endpoints` instead. Kept for gateways created before the `endpoints` field existed. */
+  vhost?: string;
   isCritical: boolean;
   functionalityType: string;
   isActive: boolean;
@@ -61,8 +63,9 @@ export type GatewayConfigs = GatewayConfig | GatewayConfig[];
  */
 export interface RegisterGatewayRequest {
   displayName: string;
-  name: string;
-  vhost: string;
+  /** Handle (URL-friendly slug) for the gateway. Immutable after creation. If omitted, generated from displayName. */
+  id?: string;
+  endpoints?: string[];
   functionalityType: string;
   description?: string;
   version?: string;
@@ -82,8 +85,7 @@ export interface RegisterGatewayResponse extends Gateway {
  */
 export interface UpdateGatewayRequest {
   displayName: string;
-  name: string;
-  vhost: string;
+  endpoints?: string[];
   functionalityType: string;
   description?: string;
 }

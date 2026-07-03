@@ -16,15 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const { applyAudit } = require('./dtoUtils');
+
 class SubscriptionPlan {
-    constructor(subscriptionPlan) {
-        this.planID = subscriptionPlan.PLAN_ID;
-        this.planName = subscriptionPlan.PLAN_NAME;
-        this.displayName = subscriptionPlan.DISPLAY_NAME;
-        this.description = subscriptionPlan.DESCRIPTION;
-        this.requestCount = subscriptionPlan.REQUEST_COUNT;
-        this.refId = subscriptionPlan.REF_ID;
-        this.orgID = subscriptionPlan.ORG_ID;
+    constructor(subscriptionPlan, audit) {
+        this.id = subscriptionPlan.handle;
+        this.displayName = subscriptionPlan.display_name;
+        this.description = subscriptionPlan.description;
+        this.refId = subscriptionPlan.ref_id;
+        this.orgId = subscriptionPlan.org_uuid;
+        this.limits = (subscriptionPlan.limits || []).map(l => ({
+            limitType:  l.limit_type,
+            timeUnit:   l.time_unit ?? null,
+            timeAmount: l.time_amount,
+            limitCount: Number.isSafeInteger(Number(l.limit_count)) ? Number(l.limit_count) : String(l.limit_count),
+        }));
+        applyAudit(this, audit);
     }
 }
 

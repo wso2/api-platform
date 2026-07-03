@@ -21,9 +21,9 @@ const constants = require("../utils/constants");
 
 class APIDocDTO {
     constructor(doc) {
-        this.type = this.getDocType(doc.TYPE);
+        this.type = this.getDocType(doc.type);
         if (this.type !== constants.DOC_TYPES.DOCS.API_DEFINITION) {
-            this.names = doc.FILE_NAMES;
+            this.names = doc.file_names;
         }
     }
 

@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"time"
 
+	api "platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
@@ -37,62 +38,106 @@ import (
 // SubscriptionPlanHandler handles subscription plan CRUD
 type SubscriptionPlanHandler struct {
 	planService *service.SubscriptionPlanService
+	identity    *service.IdentityService
 	slogger     *slog.Logger
 }
 
 // NewSubscriptionPlanHandler creates a new subscription plan handler
-func NewSubscriptionPlanHandler(planService *service.SubscriptionPlanService, slogger *slog.Logger) *SubscriptionPlanHandler {
+func NewSubscriptionPlanHandler(planService *service.SubscriptionPlanService, identity *service.IdentityService, slogger *slog.Logger) *SubscriptionPlanHandler {
 	if slogger == nil {
 		slogger = slog.Default()
 	}
 	return &SubscriptionPlanHandler{
 		planService: planService,
+		identity:    identity,
 		slogger:     slogger,
 	}
 }
 
-// validateThrottleLimitPair ensures throttleLimitCount and throttleLimitUnit are provided together,
-// count is at least 1, and unit is one of Min, Hour, Day, Month.
-func validateThrottleLimitPair(count *int, unit *string) string {
-	if (count != nil && unit == nil) || (count == nil && unit != nil) {
-		return "throttleLimitCount and throttleLimitUnit must be provided together"
+// SubscriptionPlanLimitRequest is a single throttling limit entry within a
+// subscription plan create/update request.
+//
+// NOTE: SINGLE-LIMIT ASSUMPTION. subscription_plan_limits supports multiple limits
+// per plan, but the platform-api currently only persists and enforces the first
+// entry of the limits array on a request; any further entries are accepted but
+// silently ignored. This must be improved to write/enforce all submitted limits.
+type SubscriptionPlanLimitRequest struct {
+	LimitType        string `json:"limitType,omitempty"`
+	TimeUnit         string `json:"timeUnit"`
+	TimeAmount       int    `json:"timeAmount,omitempty"`
+	LimitCount       int    `json:"limitCount"`
+	LimitCountUnit   string `json:"limitCountUnit,omitempty"`
+	StopOnQuotaReach *bool  `json:"stopOnQuotaReach,omitempty"`
+}
+
+// normalizeAndValidateLimit fills in defaults and validates a single limit entry.
+// Returns an error message if the entry is invalid.
+func normalizeAndValidateLimit(l *SubscriptionPlanLimitRequest) string {
+	if l.LimitType == "" {
+		l.LimitType = constants.LimitTypeRequestCount
+	} else if l.LimitType != constants.LimitTypeRequestCount {
+		return "limitType: only REQUEST_COUNT is currently supported"
 	}
-	if count != nil && unit != nil {
-		if *count < 1 {
-			return "throttleLimitCount must be at least 1"
-		}
-		switch *unit {
-		case "Min", "Hour", "Day", "Month":
-		default:
-			return "throttleLimitUnit must be one of: Min, Hour, Day, Month"
-		}
+	if !constants.ValidThrottleLimitUnits[l.TimeUnit] {
+		return "timeUnit is required and must be one of: MINUTE, HOUR, DAY, MONTH"
+	}
+	if l.LimitCount < 1 {
+		return "limitCount must be at least 1"
+	}
+	if l.TimeAmount == 0 {
+		l.TimeAmount = 1
+	} else if l.TimeAmount < 0 {
+		return "timeAmount must be at least 1"
 	}
 	return ""
 }
 
-// CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans
-type CreateSubscriptionPlanRequest struct {
-	Handle             string  `json:"handle" binding:"required"`
-	Name               string  `json:"name" binding:"required"`
-	BillingPlan        string  `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
-	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
-	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
-	ExpiryTime         *string `json:"expiryTime,omitempty"`
-	Status             string  `json:"status,omitempty"`
+// apiLimitsToRequests converts generated api.SubscriptionPlanLimit entries (used by the
+// PUT update body) into the internal SubscriptionPlanLimitRequest shape.
+func apiLimitsToRequests(limits []api.SubscriptionPlanLimit) []SubscriptionPlanLimitRequest {
+	out := make([]SubscriptionPlanLimitRequest, 0, len(limits))
+	for _, l := range limits {
+		var limitType string
+		if l.LimitType != nil {
+			limitType = string(*l.LimitType)
+		}
+		var limitCountUnit string
+		if l.LimitCountUnit != nil {
+			limitCountUnit = *l.LimitCountUnit
+		}
+		var timeAmount int
+		if l.TimeAmount != nil {
+			timeAmount = *l.TimeAmount
+		}
+		out = append(out, SubscriptionPlanLimitRequest{
+			LimitType:        limitType,
+			TimeUnit:         string(l.TimeUnit),
+			TimeAmount:       timeAmount,
+			LimitCount:       l.LimitCount,
+			LimitCountUnit:   limitCountUnit,
+			StopOnQuotaReach: l.StopOnQuotaReach,
+		})
+	}
+	return out
 }
 
-// UpdateSubscriptionPlanRequest is the body for PUT /api/v0.9/subscription-plans/:planId
-// All fields use pointers for patch semantics: nil = omitted, non-nil = set (including clear-to-empty).
-type UpdateSubscriptionPlanRequest struct {
-	Handle             *string `json:"handle,omitempty"`
-	Name               *string `json:"name,omitempty"`
-	BillingPlan        *string `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
-	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
-	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
-	ExpiryTime         *string `json:"expiryTime,omitempty"`
-	Status             *string `json:"status,omitempty"`
+// firstLimit returns a pointer to the first entry of limits, or nil if empty.
+// Any entries beyond the first are ignored (see SubscriptionPlanLimitRequest).
+func firstLimit(limits []SubscriptionPlanLimitRequest) *SubscriptionPlanLimitRequest {
+	if len(limits) == 0 {
+		return nil
+	}
+	l := limits[0]
+	return &l
+}
+
+// CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans
+type CreateSubscriptionPlanRequest struct {
+	Id          string                         `json:"id" binding:"required"`
+	DisplayName string                         `json:"displayName" binding:"required"`
+	Limits      []SubscriptionPlanLimitRequest `json:"limits,omitempty"`
+	ExpiryTime  *string                        `json:"expiryTime,omitempty"`
+	Status      string                         `json:"status,omitempty"`
 }
 
 // CreateSubscriptionPlan handles POST /api/v0.9/subscription-plans
@@ -110,11 +155,6 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
-		return
-	}
-
 	if req.Status != "" {
 		switch req.Status {
 		case "ACTIVE", "INACTIVE":
@@ -124,26 +164,23 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		}
 	}
 
-	if errMsg := validateThrottleLimitPair(req.ThrottleLimitCount, req.ThrottleLimitUnit); errMsg != "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
-		return
-	}
-
-	var throttleLimitUnit string
-	if req.ThrottleLimitUnit != nil {
-		throttleLimitUnit = *req.ThrottleLimitUnit
-	}
 	plan := &model.SubscriptionPlan{
-		Handle:             req.Handle,
-		Name:               req.Name,
-		BillingPlan:        req.BillingPlan,
-		StopOnQuotaReach:   1,
-		ThrottleLimitCount: req.ThrottleLimitCount,
-		ThrottleLimitUnit:  throttleLimitUnit,
-		Status:             model.SubscriptionPlanStatus(req.Status),
+		Handle:           req.Id,
+		Name:             req.DisplayName,
+		StopOnQuotaReach: true,
+		Status:           model.SubscriptionPlanStatus(req.Status),
 	}
-	if req.StopOnQuotaReach != nil {
-		plan.StopOnQuotaReach = *req.StopOnQuotaReach
+	if limit := firstLimit(req.Limits); limit != nil {
+		if errMsg := normalizeAndValidateLimit(limit); errMsg != "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			return
+		}
+		count := limit.LimitCount
+		plan.ThrottleLimitCount = &count
+		plan.ThrottleLimitUnit = limit.TimeUnit
+		if limit.StopOnQuotaReach != nil {
+			plan.StopOnQuotaReach = *limit.StopOnQuotaReach
+		}
 	}
 	if req.ExpiryTime != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiryTime)
@@ -154,9 +191,15 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		plan.ExpiryTime = &t
 	}
 
-	actor, ok := middleware.GetUsernameFromRequest(r)
+	rawActor, ok := middleware.GetActorIdentityFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
+		return
+	}
+	actor, err := h.identity.ToInternalUUID(rawActor)
+	if err != nil {
+		h.slogger.Error("Failed to resolve user identity", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to resolve user identity"))
 		return
 	}
 	created, err := h.planService.CreatePlan(orgId, actor, plan)
@@ -169,7 +212,13 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription plan"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusCreated, toSubscriptionPlanResponse(created))
+	resp, err := h.toSubscriptionPlanResponse(created, true)
+	if err != nil {
+		h.slogger.Error("Failed to resolve subscription plan identity", "organizationId", orgId, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription plan"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // ListSubscriptionPlans handles GET /api/v0.9/subscription-plans
@@ -212,7 +261,13 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 	}
 	items := make([]map[string]any, 0, len(list))
 	for _, p := range list {
-		items = append(items, toSubscriptionPlanResponse(p))
+		item, err := h.toSubscriptionPlanResponse(p, false)
+		if err != nil {
+			h.slogger.Error("Failed to resolve subscription plan identity", "organizationId", orgId, "error", err)
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscription plans"))
+			return
+		}
+		items = append(items, item)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"subscriptionPlans": items, "count": len(items)})
 }
@@ -225,7 +280,7 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 		return
 	}
 
-	planId := r.PathValue("planId")
+	planId := r.PathValue("subscriptionPlanId")
 	if planId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
@@ -241,7 +296,13 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, toSubscriptionPlanResponse(plan))
+	resp, err := h.toSubscriptionPlanResponse(plan, true)
+	if err != nil {
+		h.slogger.Error("Failed to resolve subscription plan identity", "planId", planId, "organizationId", orgId, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // UpdateSubscriptionPlan handles PUT /api/v0.9/subscription-plans/:planId
@@ -252,44 +313,51 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	planId := r.PathValue("planId")
+	planId := r.PathValue("subscriptionPlanId")
 	if planId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
 	}
 
-	var req UpdateSubscriptionPlanRequest
+	var req api.SubscriptionPlan
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
+	if req.Id != nil && *req.Id != "" && *req.Id != planId {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"The plan id is immutable and cannot be changed"))
 		return
 	}
 
-	if errMsg := validateThrottleLimitPair(req.ThrottleLimitCount, req.ThrottleLimitUnit); errMsg != "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+	displayName := req.DisplayName
+	if displayName == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
 		return
 	}
-
 	update := &model.SubscriptionPlanUpdate{
-		StopOnQuotaReach:   req.StopOnQuotaReach,
-		ThrottleLimitCount: req.ThrottleLimitCount,
+		Name:       &displayName,
+		ExpiryTime: req.ExpiryTime,
 	}
-	if req.Handle != nil {
-		update.Handle = req.Handle
-	}
-	if req.Name != nil {
-		update.Name = req.Name
-	}
-	if req.BillingPlan != nil {
-		update.BillingPlan = req.BillingPlan
-	}
-	if req.ThrottleLimitUnit != nil {
-		update.ThrottleLimitUnit = req.ThrottleLimitUnit
+	if req.Limits != nil {
+		if limit := firstLimit(apiLimitsToRequests(*req.Limits)); limit != nil {
+			if errMsg := normalizeAndValidateLimit(limit); errMsg != "" {
+				httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+				return
+			}
+			count := limit.LimitCount
+			update.ThrottleLimitCount = &count
+			update.ThrottleLimitUnit = &limit.TimeUnit
+			stopOnQuotaReach := true
+			if limit.StopOnQuotaReach != nil {
+				stopOnQuotaReach = *limit.StopOnQuotaReach
+			}
+			update.StopOnQuotaReach = &stopOnQuotaReach
+		} else {
+			update.ClearLimit = true
+		}
 	}
 	if req.Status != nil {
 		switch model.SubscriptionPlanStatus(*req.Status) {
@@ -301,22 +369,25 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 			return
 		}
 	}
-	if req.ExpiryTime != nil {
-		t, err := time.Parse(time.RFC3339, *req.ExpiryTime)
-		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid expiryTime format; use RFC3339"))
-			return
-		}
-		update.ExpiryTime = &t
-	}
 
-	actor, ok := middleware.GetUsernameFromRequest(r)
+	rawActor, ok := middleware.GetActorIdentityFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
+		return
+	}
+	actor, err := h.identity.ToInternalUUID(rawActor)
+	if err != nil {
+		h.slogger.Error("Failed to resolve user identity", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to resolve user identity"))
 		return
 	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
+		if errors.Is(err, constants.ErrHandleImmutable) {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"The plan id is immutable and cannot be changed"))
+			return
+		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
 			return
@@ -329,7 +400,13 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, toSubscriptionPlanResponse(updated))
+	resp, err := h.toSubscriptionPlanResponse(updated, true)
+	if err != nil {
+		h.slogger.Error("Failed to resolve subscription plan identity", "planId", planId, "organizationId", orgId, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // DeleteSubscriptionPlan handles DELETE /api/v0.9/subscription-plans/:planId
@@ -340,18 +417,24 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	planId := r.PathValue("planId")
+	planId := r.PathValue("subscriptionPlanId")
 	if planId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
 	}
 
-	actor, ok := middleware.GetUsernameFromRequest(r)
+	rawActor, ok := middleware.GetActorIdentityFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
 		return
 	}
-	err := h.planService.DeletePlan(planId, orgId, actor)
+	actor, err := h.identity.ToInternalUUID(rawActor)
+	if err != nil {
+		h.slogger.Error("Failed to resolve user identity", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to resolve user identity"))
+		return
+	}
+	err = h.planService.DeletePlan(planId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
@@ -368,31 +451,51 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 func (h *SubscriptionPlanHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/subscription-plans", h.CreateSubscriptionPlan)
 	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans", h.ListSubscriptionPlans)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans/{planId}", h.GetSubscriptionPlan)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscription-plans/{planId}", h.UpdateSubscriptionPlan)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscription-plans/{planId}", h.DeleteSubscriptionPlan)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans/{subscriptionPlanId}", h.GetSubscriptionPlan)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscription-plans/{subscriptionPlanId}", h.UpdateSubscriptionPlan)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscription-plans/{subscriptionPlanId}", h.DeleteSubscriptionPlan)
 }
 
-func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) map[string]any {
+// toSubscriptionPlanResponse builds the API response for a plan.
+// updatedBy is only included when detail is true (GET/POST/PUT single-plan responses),
+// matching the platform-wide policy of omitting it from list responses.
+//
+// NOTE: SINGLE-LIMIT ASSUMPTION. The "limits" array holds at most one entry today
+// even though subscription_plan_limits supports many; see model.SubscriptionPlan.
+func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.SubscriptionPlan, detail bool) (map[string]any, error) {
+	createdBy, err := h.identity.SubForUUID(plan.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
 	resp := map[string]any{
-		"id":               plan.UUID,
-		"handle":           plan.Handle,
-		"name":             plan.Name,
-		"billingPlan":      plan.BillingPlan,
-		"stopOnQuotaReach": plan.StopOnQuotaReach,
-		"organizationId":   plan.OrganizationUUID,
-		"status":           string(plan.Status),
-		"createdAt":        plan.CreatedAt,
-		"updatedAt":        plan.UpdatedAt,
+		"id":             plan.Handle,
+		"displayName":    plan.Name,
+		"organizationId": h.planService.ResolveOrgHandle(plan.OrganizationUUID),
+		"status":         string(plan.Status),
+		"createdBy":      createdBy,
+		"createdAt":      plan.CreatedAt,
+		"updatedAt":      plan.UpdatedAt,
 	}
+	if detail {
+		updatedBy, err := h.identity.SubForUUID(plan.UpdatedBy)
+		if err != nil {
+			return nil, err
+		}
+		resp["updatedBy"] = updatedBy
+	}
+	limits := []map[string]any{}
 	if plan.ThrottleLimitCount != nil {
-		resp["throttleLimitCount"] = *plan.ThrottleLimitCount
+		limits = append(limits, map[string]any{
+			"limitType":        constants.LimitTypeRequestCount,
+			"timeUnit":         plan.ThrottleLimitUnit,
+			"timeAmount":       1,
+			"limitCount":       *plan.ThrottleLimitCount,
+			"stopOnQuotaReach": plan.StopOnQuotaReach,
+		})
 	}
-	if plan.ThrottleLimitUnit != "" {
-		resp["throttleLimitUnit"] = plan.ThrottleLimitUnit
-	}
+	resp["limits"] = limits
 	if plan.ExpiryTime != nil {
 		resp["expiryTime"] = plan.ExpiryTime
 	}
-	return resp
+	return resp, nil
 }

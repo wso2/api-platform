@@ -144,7 +144,7 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
             sanitizedParam7 +
             '" plan. Switching to "' +
             sanitizedParam5 +
-            '" will delete your existing subscription and generate a new token. Do you want to proceed?';
+            '" will update your subscription immediately. Your existing token will remain valid.';
         modalFunction.innerText = 'Confirm';
         modalFunction.onclick = function() {
             if (typeof runPendingPlanSwitch === 'function') {
@@ -173,7 +173,7 @@ async function deleteApplication() {
                 '<span style="font-size: 0.875rem;"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>&nbsp;Deleting...</span>';
             trashButton.disabled = true;
         }
-        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${applicationId}`), {
+        const response = await fetch(devportalApi.root(`/applications/${applicationId}`), {
             method: 'DELETE',
         });
         if (response.ok) {
@@ -185,21 +185,6 @@ async function deleteApplication() {
                     colElement.remove();
                 } else {
                     cardWrapper.remove();
-                }
-            }
-            const remainingCards = document.querySelectorAll('[id^="app-card-"]');
-            if (remainingCards.length === 0) {
-                const createButton = document.getElementById('createButton');
-                if (createButton) {
-                    createButton.classList.add('d-none');
-                }
-                const plusCardWrapper = document.getElementById('createApplicationCardWrapper');
-                if (plusCardWrapper) {
-                    plusCardWrapper.classList.remove('d-none');
-                }
-                const plusCard = document.getElementById('applicationCreateCard');
-                  if (plusCard) {
-                      plusCard.classList.remove('d-none');
                 }
             }
         } else {

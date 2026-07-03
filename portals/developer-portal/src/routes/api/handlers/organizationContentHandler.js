@@ -26,9 +26,7 @@ const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtecti
 const { compose } = require('./compose');
 
 module.exports = {
-    createOrgContent: compose(requireCsrfForMutatingApi, adminService.createOrgContent),
-    updateOrgContent: compose(requireCsrfForMutatingApi, adminService.updateOrgContent),
-    getOrgLayoutContent: devportalService.getOrgContent,
-    getOrgLayoutContentByFileType: devportalService.getOrgContent,
-    deleteOrgContent: compose(requireCsrfForMutatingApi, adminService.deleteOrgContent)
+    getOrgAsset: devportalService.getOrgContent,
+    applyTheme: compose(requireCsrfForMutatingApi, adminService.applyTheme),
+    resetTheme: compose(requireCsrfForMutatingApi, adminService.resetTheme),
 };

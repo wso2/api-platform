@@ -26,12 +26,14 @@ import type { ProjectBase } from '../utils/types';
 // ============================================================================
 
 export interface CreateProjectRequest {
-  name: string;
+  displayName: string;
   description?: string;
 }
 
 export interface UpdateProjectRequest {
-  name: string;
+  id: string;
+  displayName: string;
+  organizationId: string;
   description?: string;
 }
 
@@ -43,6 +45,18 @@ export interface ProjectListResponse {
 // ============================================================================
 // Project API Functions
 // ============================================================================
+export const DEFAULT_PROJECT_NAME = 'Default';
+
+/**
+ * Create the starter "Default Project" for a newly provisioned organization.
+ */
+export async function createDefaultProject(): Promise<void> {
+  try {
+    await createProject({ displayName: DEFAULT_PROJECT_NAME }, PLATFORM_API_BASE_URL);
+  } catch (error) {
+    logger.error('Failed to create default project for new organization:', error);
+  }
+}
 
 /**
  * Create a new project.
@@ -121,7 +135,9 @@ export async function getProject(
 }
 
 /**
- * Update an existing project's name / description.
+ * Update an existing project.
+ * The spec's PUT /projects/{projectId} requestBody is the full Project object,
+ * so `request` must include `id` and `organizationId` alongside the editable fields.
  */
 export async function updateProject(
   projectId: string,

@@ -39,6 +39,7 @@ type ApplicationService struct {
 	apiRepo              repository.APIRepository
 	gatewayEventsService *GatewayEventsService
 	auditRepo            repository.AuditRepository
+	identity             *IdentityService
 	slogger              *slog.Logger
 }
 
@@ -52,13 +53,12 @@ type AddApplicationAssociationsRequest struct {
 }
 
 type ApplicationAssociation struct {
-	Id        string     `json:"id"`
-	Uuid      string     `json:"uuid"`
-	Name      string     `json:"name"`
-	Version   string     `json:"version"`
-	Kind      string     `json:"kind"`
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	Id          string     `json:"id"`
+	DisplayName string     `json:"displayName"`
+	Version     string     `json:"version"`
+	Kind        string     `json:"kind"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
 }
 
 type ApplicationAssociationListResponse struct {
@@ -74,6 +74,7 @@ func NewApplicationService(
 	apiRepo repository.APIRepository,
 	gatewayEventsService *GatewayEventsService,
 	auditRepo repository.AuditRepository,
+	identity *IdentityService,
 	slogger *slog.Logger,
 ) *ApplicationService {
 	return &ApplicationService{
@@ -83,12 +84,13 @@ func NewApplicationService(
 		apiRepo:              apiRepo,
 		gatewayEventsService: gatewayEventsService,
 		auditRepo:            auditRepo,
+		identity:             identity,
 		slogger:              slogger,
 	}
 }
 
 func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID, createdBy string) (*api.Application, error) {
-	if strings.TrimSpace(req.Name) == "" {
+	if strings.TrimSpace(req.DisplayName) == "" {
 		return nil, constants.ErrInvalidApplicationName
 	}
 	appType, err := normalizeApplicationType(string(req.Type))
@@ -104,30 +106,32 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	projectID := strings.TrimSpace(utils.OpenAPIUUIDToString(req.ProjectId))
-	if projectID == "" {
-		return nil, constants.ErrProjectNotFound
-	}
+	// project_uuid is optional. When a project handle is supplied it must resolve, and name
+	// uniqueness is scoped to that project; when absent the application is created without a project.
+	projectHandle := strings.TrimSpace(req.ProjectId)
+	var projectID string
+	if projectHandle != "" {
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if project == nil {
+			return nil, constants.ErrProjectNotFound
+		}
+		projectID = project.ID
 
-	project, err := s.projectRepo.GetProjectByUUID(projectID)
-	if err != nil {
-		return nil, err
-	}
-	if project == nil || project.OrganizationID != orgID {
-		return nil, constants.ErrProjectNotFound
-	}
-
-	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.Name), projectID, orgID)
-	if err != nil {
-		return nil, err
-	}
-	if existingByName != nil {
-		return nil, constants.ErrApplicationExists
+		existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.DisplayName), projectID, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if existingByName != nil {
+			return nil, constants.ErrApplicationExists
+		}
 	}
 
 	handle := strings.TrimSpace(valueOrEmptyApplication(req.Id))
 	if handle == "" {
-		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgID))
+		handle, err = utils.GenerateHandle(req.DisplayName, s.HandleExistsCheck(orgID))
 		if err != nil {
 			return nil, err
 		}
@@ -144,10 +148,8 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		}
 	}
 
+	// createdBy is always inferred from the authenticated actor, never from the request body.
 	actor := strings.TrimSpace(createdBy)
-	if actor == "" {
-		actor = strings.TrimSpace(valueOrEmptyApplication(req.CreatedBy))
-	}
 	app := &model.Application{
 		UUID:             uuid.New().String(),
 		Handle:           handle,
@@ -155,7 +157,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		OrganizationUUID: orgID,
 		CreatedBy:        actor,
 		UpdatedBy:        actor,
-		Name:             strings.TrimSpace(req.Name),
+		Name:             strings.TrimSpace(req.DisplayName),
 		Description:      strings.TrimSpace(valueOrEmptyApplication(req.Description)),
 		Type:             appType,
 	}
@@ -165,7 +167,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 	}
 	_ = s.auditRepo.Record("CREATE", app.UUID, "application", orgID, actor)
 
-	return s.modelToApplicationResponse(app), nil
+	return s.modelToApplicationResponse(app)
 }
 
 func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*api.Application, error) {
@@ -177,10 +179,10 @@ func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*a
 		return nil, constants.ErrApplicationNotFound
 	}
 
-	return s.modelToApplicationResponse(app), nil
+	return s.modelToApplicationResponse(app)
 }
 
-func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID string, limit, offset int) (*api.ApplicationListResponse, error) {
+func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle string, limit, offset int) (*api.ApplicationListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
 		return nil, err
@@ -198,19 +200,19 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	if offset < 0 {
 		offset = 0
 	}
-	if strings.TrimSpace(projectID) == "" {
+	if strings.TrimSpace(projectHandle) == "" {
 		return nil, constants.ErrProjectNotFound
 	}
 
-	project, err := s.projectRepo.GetProjectByUUID(projectID)
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)
 	if err != nil {
 		return nil, err
 	}
-	if project == nil || project.OrganizationID != orgID {
+	if project == nil {
 		return nil, constants.ErrProjectNotFound
 	}
 
-	apps, err := s.appRepo.GetApplicationsByProjectID(projectID, orgID)
+	apps, err := s.appRepo.GetApplicationsByProjectID(project.ID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -243,8 +245,13 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	}
 
 	for _, app := range pagedApps {
-		mapped := s.modelToApplicationResponse(app)
+		mapped, err := s.modelToApplicationResponse(app)
+		if err != nil {
+			return nil, err
+		}
 		if mapped != nil {
+			// updatedBy is detail-only; omit it from list responses.
+			mapped.UpdatedBy = nil
 			response.List = append(response.List, *mapped)
 		}
 	}
@@ -252,7 +259,7 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	return response, nil
 }
 
-func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.UpdateApplicationRequest, orgID, userID string) (*api.Application, error) {
+func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Application, orgID, userID string) (*api.Application, error) {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -261,29 +268,32 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		return nil, constants.ErrApplicationNotFound
 	}
 
-	if req.Name != nil {
-		name := strings.TrimSpace(*req.Name)
-		if name == "" {
-			return nil, constants.ErrInvalidApplicationName
+	// The id (handle) is immutable: body id must be present and match the application being updated.
+	if req.Id == "" || req.Id != app.Handle {
+		return nil, constants.ErrHandleImmutable
+	}
+
+	name := strings.TrimSpace(req.DisplayName)
+	if name == "" {
+		return nil, constants.ErrInvalidApplicationName
+	}
+	if name != app.Name {
+		existing, err := s.appRepo.GetApplicationByNameInProject(name, app.ProjectUUID, orgID)
+		if err != nil {
+			return nil, err
 		}
-		if name != app.Name {
-			existing, err := s.appRepo.GetApplicationByNameInProject(name, app.ProjectUUID, orgID)
-			if err != nil {
-				return nil, err
-			}
-			if existing != nil && existing.UUID != app.UUID {
-				return nil, constants.ErrApplicationExists
-			}
-			app.Name = name
+		if existing != nil && existing.UUID != app.UUID {
+			return nil, constants.ErrApplicationExists
 		}
+		app.Name = name
 	}
 
 	if req.Description != nil {
 		app.Description = strings.TrimSpace(*req.Description)
 	}
 
-	if req.Type != nil {
-		appType, err := normalizeApplicationType(string(*req.Type))
+	if req.Type != "" {
+		appType, err := normalizeApplicationType(string(req.Type))
 		if err != nil {
 			return nil, err
 		}
@@ -306,7 +316,7 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Up
 		s.slogger.Warn("Application update succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
-	return s.modelToApplicationResponse(app), nil
+	return s.modelToApplicationResponse(app)
 }
 
 func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor string) error {
@@ -318,10 +328,36 @@ func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor strin
 		return constants.ErrApplicationNotFound
 	}
 
+	// Capture the mapped keys before deletion so we can tell the gateways to drop them. Deleting the
+	// application row cascades the application_api_key_mappings rows away in the Platform API DB, but
+	// nothing is broadcast to the gateways, so without this they keep the key→application mappings
+	// until the controller's next pull-sync.
+	mappedKeys, keysErr := s.listMappedAPIKeysForBroadcast(app.UUID)
+	if keysErr != nil && s.slogger != nil {
+		s.slogger.Warn("Failed to list mapped API keys before application delete",
+			"applicationId", app.Handle, "error", keysErr)
+	}
+
 	if err := s.appRepo.DeleteApplication(app.UUID, orgID); err != nil {
 		return err
 	}
 	_ = s.auditRepo.Record("DELETE", app.UUID, "application", orgID, actor)
+
+	// Broadcast an empty mapping set so the gateways clear every key for this application. The
+	// removed keys' artifacts are passed as hints so the correct gateways are targeted (the
+	// application is gone, so there are no remaining keys to derive targets from).
+	if len(mappedKeys) > 0 {
+		hints := make([]string, 0, len(mappedKeys))
+		for _, key := range mappedKeys {
+			if key != nil && strings.TrimSpace(key.ArtifactID) != "" {
+				hints = append(hints, key.ArtifactID)
+			}
+		}
+		if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(app, actor, nil, hints); berr != nil && s.slogger != nil {
+			s.slogger.Warn("Application delete succeeded but failed to broadcast mapping clear",
+				"applicationId", app.Handle, "error", berr)
+		}
+	}
 	return nil
 }
 
@@ -408,6 +444,106 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.Add
 	}
 
 	return keys, nil
+}
+
+// CreateApplicationFromWebhook creates an application reconciled from a Developer Portal
+// application.created/updated event. DP applications carry no project.
+func (s *ApplicationService) CreateApplicationFromWebhook(handle, name, description, appType, orgID string) (*api.Application, error) {
+	id := strings.TrimSpace(handle)
+	desc := strings.TrimSpace(description)
+	// ProjectId is intentionally left empty: webhook-reconciled applications have no project.
+	req := &api.CreateApplicationRequest{
+		DisplayName: name,
+		Id:          &id,
+		Type:        api.ApplicationType(strings.TrimSpace(appType)),
+		Description: &desc,
+	}
+	return s.CreateApplication(req, orgID, "")
+}
+
+// SetAPIKeyApplication reconciles which application an API key belongs to, from a Developer Portal
+// apikey.application_updated event. keyName + artifactRef (artifact UUID or handle) + kind identify
+// the key; kind scopes the resolution to the artifact table backing that kind, so a handle shared
+// across kinds resolves unambiguously. Because a Developer Portal key belongs to at most one
+// application, this first removes the key from any application it is currently mapped to, then —
+// when appIDOrHandle is non-empty — maps it to that application and broadcasts the change to the
+// deployed gateways. A blank appIDOrHandle dissociates the key.
+func (s *ApplicationService) SetAPIKeyApplication(keyName, artifactRef, kind, appIDOrHandle, orgID, userID string) error {
+	// Resolve artifactRef (artifact UUID or handle) to the artifact handle used by the key lookup.
+	artifactHandle := strings.TrimSpace(artifactRef)
+	if art, err := s.appRepo.GetAssociationTargetByUUID(artifactHandle, orgID); err == nil && art != nil {
+		artifactHandle = art.Handle
+	}
+
+	key, err := s.resolveAPIKey(api.APIKeyMappingSelector{
+		KeyId:            keyName,
+		AssociatedEntity: api.APIKeyMappingAssociatedEntity{Id: artifactHandle},
+	}, orgID)
+	if err != nil {
+		return err
+	}
+	if key == nil {
+		return constants.ErrAPIKeyNotFound
+	}
+	// Enforce kind scoping: the resolved key must belong to an artifact of the requested kind. A
+	// handle can collide across kinds, so a key found under a same-named handle of another kind is
+	// treated as not found for this event.
+	if kind != "" && key.ArtifactType != kind {
+		return constants.ErrAPIKeyNotFound
+	}
+
+	// Capture the applications the key currently belongs to before removing the mapping, so a
+	// dissociation can broadcast the (key-removed) mapping to the gateways that had the key.
+	priorApps, lookupErr := s.appRepo.GetApplicationsByAPIKeyID(key.ID, orgID)
+	if lookupErr != nil && s.slogger != nil {
+		s.slogger.Warn("Failed to look up applications for API key before dissociation",
+			"keyId", key.ID, "error", lookupErr)
+	}
+
+	if err := s.appRepo.RemoveAPIKeyFromAllApplications(key.ID); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(appIDOrHandle) == "" {
+		// Dissociated: the key no longer belongs to any application. Broadcast an updated mapping for
+		// each previously-owning application so the gateways drop the key. listMappedAPIKeysForBroadcast
+		// now excludes the removed key (the mapping row is already gone), and the removed key's artifact
+		// is passed as a hint so the correct gateways are targeted even when no keys remain.
+		for _, app := range priorApps {
+			if app == nil {
+				continue
+			}
+			remaining, err := s.listMappedAPIKeysForBroadcast(app.UUID)
+			if err != nil {
+				if s.slogger != nil {
+					s.slogger.Warn("Failed to list mapped API keys after dissociation",
+						"applicationId", app.Handle, "error", err)
+				}
+				continue
+			}
+			if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, remaining, []string{key.ArtifactID}); berr != nil && s.slogger != nil {
+				s.slogger.Warn("Dissociation succeeded but failed to broadcast application mapping update",
+					"applicationId", app.Handle, "error", berr)
+			}
+		}
+		return nil
+	}
+
+	app, err := s.getApplication(appIDOrHandle, orgID)
+	if err != nil {
+		return err
+	}
+	if err := s.appRepo.AddApplicationAPIKeys(app.UUID, []string{key.ID}); err != nil {
+		return err
+	}
+	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
+	if err == nil {
+		if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, broadcastKeys, []string{key.ArtifactID}); berr != nil && s.slogger != nil {
+			s.slogger.Warn("Set API key application succeeded but failed to broadcast application mapping update",
+				"applicationId", app.Handle, "error", berr)
+		}
+	}
+	return nil
 }
 
 func (s *ApplicationService) AddApplicationAssociations(appIDOrHandle string, req *AddApplicationAssociationsRequest, orgID string) (*ApplicationAssociationListResponse, error) {
@@ -693,7 +829,7 @@ func (s *ApplicationService) buildMappedAPIKeyListForAssociationPaginated(applic
 		}
 	}
 
-	return s.buildMappedAPIKeyResponse(filteredKeys, limit, offset), nil
+	return s.buildMappedAPIKeyResponse(filteredKeys, limit, offset)
 }
 
 func (s *ApplicationService) buildApplicationAssociationListPaginated(applicationUUID string, limit, offset int) (*ApplicationAssociationListResponse, error) {
@@ -747,10 +883,10 @@ func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID stri
 		return nil, err
 	}
 
-	return s.buildMappedAPIKeyResponse(keys, limit, offset), nil
+	return s.buildMappedAPIKeyResponse(keys, limit, offset)
 }
 
-func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.ApplicationAPIKey, limit, offset int) *api.MappedAPIKeyListResponse {
+func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.ApplicationAPIKey, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
 
 	if offset < 0 {
 		offset = 0
@@ -783,36 +919,60 @@ func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.Application
 	}
 
 	for _, key := range pagedKeys {
-		response.List = append(response.List, s.modelToMappedAPIKeyResponse(key))
+		item, err := s.modelToMappedAPIKeyResponse(key)
+		if err != nil {
+			return nil, err
+		}
+		response.List = append(response.List, item)
 	}
 
-	return response
+	return response, nil
 }
 
-func (s *ApplicationService) modelToApplicationResponse(app *model.Application) *api.Application {
+func (s *ApplicationService) modelToApplicationResponse(app *model.Application) (*api.Application, error) {
 	if app == nil {
-		return nil
+		return nil, nil
 	}
-	projectID := utils.ParseOpenAPIUUIDOrZero(app.ProjectUUID)
+	// project_uuid is optional: only resolve the project handle when one is set, otherwise the
+	// response carries an empty projectId.
+	projectHandle := ""
+	if strings.TrimSpace(app.ProjectUUID) != "" {
+		project, err := s.projectRepo.GetProjectByUUID(app.ProjectUUID)
+		if err != nil {
+			return nil, err
+		}
+		if project == nil {
+			return nil, constants.ErrProjectNotFound
+		}
+		projectHandle = project.Handle
+	}
 
-	return &api.Application{
+	resp := &api.Application{
 		Id:          app.Handle,
-		Name:        app.Name,
-		ProjectId:   projectID,
+		DisplayName: app.Name,
+		ProjectId:   projectHandle,
 		Type:        api.ApplicationType(app.Type),
 		Description: utils.StringPtrIfNotEmpty(app.Description),
 		CreatedBy:   utils.StringPtrIfNotEmpty(app.CreatedBy),
+		UpdatedBy:   utils.StringPtrIfNotEmpty(app.UpdatedBy),
 		CreatedAt:   utils.TimePtrIfNotZero(app.CreatedAt),
 		UpdatedAt:   utils.TimePtrIfNotZero(app.UpdatedAt),
 	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
-func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationAPIKey) api.MappedAPIKey {
+func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationAPIKey) (api.MappedAPIKey, error) {
 	if key == nil {
-		return api.MappedAPIKey{}
+		return api.MappedAPIKey{}, nil
 	}
 
-	return api.MappedAPIKey{
+	resp := api.MappedAPIKey{
 		KeyId: key.Name,
 		AssociatedEntity: api.AssociatedEntity{
 			Id:   key.ArtifactHandle,
@@ -824,6 +984,10 @@ func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationA
 		UpdatedAt: utils.TimePtrIfNotZero(key.UpdatedAt),
 		ExpiresAt: key.ExpiresAt,
 	}
+	if err := s.identity.ResolveIdentityField(&resp.UserId); err != nil {
+		return api.MappedAPIKey{}, err
+	}
+	return resp, nil
 }
 
 func (s *ApplicationService) modelToApplicationAssociation(association *model.ApplicationAssociationTarget) ApplicationAssociation {
@@ -832,12 +996,11 @@ func (s *ApplicationService) modelToApplicationAssociation(association *model.Ap
 	}
 
 	return ApplicationAssociation{
-		Id:        association.TargetHandle,
-		Uuid:      association.TargetUUID,
-		Name:      association.TargetName,
-		Version:   association.TargetVersion,
-		Kind:      association.Type,
-		CreatedAt: utils.TimePtrIfNotZero(association.CreatedAt),
+		Id:          association.TargetHandle,
+		DisplayName: association.TargetName,
+		Version:     association.TargetVersion,
+		Kind:        association.Type,
+		CreatedAt:   utils.TimePtrIfNotZero(association.CreatedAt),
 	}
 }
 
@@ -859,6 +1022,9 @@ func normalizeApplicationType(appType string) (string, error) {
 	}
 	if strings.EqualFold(trimmed, "genai") {
 		return "genai", nil
+	}
+	if strings.EqualFold(trimmed, "web") {
+		return "web", nil
 	}
 	return "", constants.ErrUnsupportedApplicationType
 }
@@ -911,7 +1077,7 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 		}
 
 		switch artifact.Type {
-		case constants.LLMProvider, constants.LLMProxy:
+		case constants.LLMProvider, constants.LLMProxy, constants.RestApi:
 			// Supported artifact types for gateway association lookups.
 		default:
 			if s.slogger != nil {

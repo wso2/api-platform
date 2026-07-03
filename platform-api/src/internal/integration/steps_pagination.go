@@ -61,10 +61,7 @@ func registerPaginationSteps(ctx *godog.ScenarioContext, w *world) {
 	ctx.Step(`^the application is found by its handle$`, w.applicationFoundByHandle)
 	ctx.Step(`^a missing application identifier returns nothing$`, w.missingApplicationReturnsNil)
 
-	// WebSub create + list.
 	ctx.Step(`^an organization and project exist$`, w.anOrgAndProjectExist)
-	ctx.Step(`^I create (\d+) WebSub APIs in the project$`, w.createWebSubAPIs)
-	ctx.Step(`^paging WebSub APIs (\d+) at a time covers all (\d+) without overlap$`, w.pageWebSubAPIs)
 }
 
 // --- Organization pagination ------------------------------------------------
@@ -151,7 +148,7 @@ func (w *world) createSubscriptionPlans(n, limit int, unit string) error {
 		slug := fmt.Sprintf("plan-%d-%s", i, id()[:6])
 		plan := &model.SubscriptionPlan{
 			UUID: id(), Handle: slug, Name: fmt.Sprintf("Plan %d", i),
-			BillingPlan: "free", StopOnQuotaReach: 1,
+			StopOnQuotaReach:   true,
 			ThrottleLimitCount: &count, ThrottleLimitUnit: unit,
 			OrganizationUUID: w.orgID, Status: model.SubscriptionPlanStatus("ACTIVE"),
 		}
@@ -185,8 +182,8 @@ func (w *world) listedPlansHaveThrottle() error {
 		if p.ThrottleLimitCount == nil || *p.ThrottleLimitCount != w.throttle {
 			return fmt.Errorf("[%s] list hydrate: ThrottleLimitCount = %v, want %d", w.it.driver, p.ThrottleLimitCount, w.throttle)
 		}
-		if p.ThrottleLimitUnit != w.throttleUnit || p.StopOnQuotaReach != 1 {
-			return fmt.Errorf("[%s] list hydrate: unit=%q stop=%d, want unit=%s stop=1", w.it.driver, p.ThrottleLimitUnit, p.StopOnQuotaReach, w.throttleUnit)
+		if p.ThrottleLimitUnit != w.throttleUnit || !p.StopOnQuotaReach {
+			return fmt.Errorf("[%s] list hydrate: unit=%q stop=%v, want unit=%s stop=true", w.it.driver, p.ThrottleLimitUnit, p.StopOnQuotaReach, w.throttleUnit)
 		}
 	}
 	return nil
@@ -212,7 +209,7 @@ func (w *world) clearFirstPlanThrottle() error {
 	}
 	got.ThrottleLimitCount = nil
 	got.ThrottleLimitUnit = ""
-	got.StopOnQuotaReach = 1
+	got.StopOnQuotaReach = true
 	if err := planRepo.Update(got); err != nil {
 		return fmt.Errorf("[%s] Update (clear throttle) failed: %w", w.it.driver, err)
 	}
@@ -312,7 +309,7 @@ func (w *world) listSubscriptionsByStatus(status string, want int) error {
 func (w *world) orgProjectApplicationExist() error {
 	orgRepo := repository.NewOrganizationRepo(w.it.db)
 	projectRepo := repository.NewProjectRepo(w.it.db)
-	appRepo := repository.NewApplicationRepo(w.it.db)
+	appRepo := repository.NewApplicationRepo(w.it.db, repository.NewArtifactTableRegistry())
 
 	org := &model.Organization{ID: id(), Handle: "ap-" + id()[:8], Name: "app org", Region: "us"}
 	if err := orgRepo.CreateOrganization(org); err != nil {
@@ -338,7 +335,7 @@ func (w *world) orgProjectApplicationExist() error {
 }
 
 func (w *world) applicationFoundByUUID() error {
-	appRepo := repository.NewApplicationRepo(w.it.db)
+	appRepo := repository.NewApplicationRepo(w.it.db, repository.NewArtifactTableRegistry())
 	byUUID, err := appRepo.GetApplicationByIDOrHandle(w.appUUID, w.orgID)
 	if err != nil {
 		return fmt.Errorf("[%s] GetApplicationByIDOrHandle(uuid) failed: %w", w.it.driver, err)
@@ -350,7 +347,7 @@ func (w *world) applicationFoundByUUID() error {
 }
 
 func (w *world) applicationFoundByHandle() error {
-	appRepo := repository.NewApplicationRepo(w.it.db)
+	appRepo := repository.NewApplicationRepo(w.it.db, repository.NewArtifactTableRegistry())
 	byHandle, err := appRepo.GetApplicationByIDOrHandle(w.appHandle, w.orgID)
 	if err != nil {
 		return fmt.Errorf("[%s] GetApplicationByIDOrHandle(handle) failed: %w", w.it.driver, err)
@@ -362,61 +359,13 @@ func (w *world) applicationFoundByHandle() error {
 }
 
 func (w *world) missingApplicationReturnsNil() error {
-	appRepo := repository.NewApplicationRepo(w.it.db)
+	appRepo := repository.NewApplicationRepo(w.it.db, repository.NewArtifactTableRegistry())
 	missing, err := appRepo.GetApplicationByIDOrHandle("does-not-exist-"+id(), w.orgID)
 	if err != nil {
 		return fmt.Errorf("[%s] GetApplicationByIDOrHandle(missing) failed: %w", w.it.driver, err)
 	}
 	if missing != nil {
 		return fmt.Errorf("[%s] lookup of missing app: want nil, got %+v", w.it.driver, missing)
-	}
-	return nil
-}
-
-// --- WebSub API create + list -----------------------------------------------
-
-func (w *world) createWebSubAPIs(n int) error {
-	websubRepo := repository.NewWebSubAPIRepo(w.it.db)
-	for i := range n {
-		api := &model.WebSubAPI{
-			Handle:           fmt.Sprintf("ws-api-%d-%s", i, id()[:6]),
-			Name:             fmt.Sprintf("ws api %d", i),
-			Version:          "v1.0",
-			OrganizationUUID: w.orgID,
-			ProjectUUID:      w.projID,
-		}
-		if err := websubRepo.Create(api); err != nil {
-			return fmt.Errorf("[%s] create websub api %d failed: %w", w.it.driver, i, err)
-		}
-	}
-	w.projN = n
-	return nil
-}
-
-func (w *world) pageWebSubAPIs(pageSize, total int) error {
-	websubRepo := repository.NewWebSubAPIRepo(w.it.db)
-	seen := map[string]bool{}
-	for offset := 0; offset < total; offset += pageSize {
-		page, err := websubRepo.List(w.orgID, "", pageSize, offset)
-		if err != nil {
-			return fmt.Errorf("[%s] List(%d,%d) failed: %w", w.it.driver, pageSize, offset, err)
-		}
-		want := pageSize
-		if rem := total - offset; rem < want {
-			want = rem
-		}
-		if len(page) != want {
-			return fmt.Errorf("[%s] List offset %d: want %d, got %d", w.it.driver, offset, want, len(page))
-		}
-		for _, a := range page {
-			if seen[a.UUID] {
-				return fmt.Errorf("[%s] pagination overlap at offset %d: UUID %s seen twice", w.it.driver, offset, a.UUID)
-			}
-			seen[a.UUID] = true
-		}
-	}
-	if len(seen) != total {
-		return fmt.Errorf("[%s] paging covered %d rows, want %d", w.it.driver, len(seen), total)
 	}
 	return nil
 }

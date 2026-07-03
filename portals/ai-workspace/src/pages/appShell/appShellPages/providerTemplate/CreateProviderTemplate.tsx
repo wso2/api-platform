@@ -230,7 +230,7 @@ export default function CreateProviderTemplate() {
 
     const payload: CreateProviderTemplateRequest = {
       id: normalizedTemplateId,
-      name: name.trim(),
+      displayName: name.trim(),
       version: INITIAL_VERSION,
       description: description.trim() || undefined,
       ...tokenFields,

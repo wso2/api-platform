@@ -33,12 +33,14 @@ import (
 
 type ProjectHandler struct {
 	projectService *service.ProjectService
+	identity       *service.IdentityService
 	slogger        *slog.Logger
 }
 
-func NewProjectHandler(projectService *service.ProjectService, slogger *slog.Logger) *ProjectHandler {
+func NewProjectHandler(projectService *service.ProjectService, identity *service.IdentityService, slogger *slog.Logger) *ProjectHandler {
 	return &ProjectHandler{
 		projectService: projectService,
+		identity:       identity,
 		slogger:        slogger,
 	}
 }
@@ -58,14 +60,16 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate required fields
-	if req.Name == "" {
+	if req.DisplayName == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project name is required"))
+			"Project displayName is required"))
 		return
 	}
 
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "create project")
+	if !ok {
+		return
+	}
 	project, err := h.projectService.CreateProject(&req, organizationID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectExists) {
@@ -80,7 +84,7 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, constants.ErrInvalidProjectName) {
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Project name is required"))
+				"Project displayName is required"))
 			return
 		}
 		h.slogger.Error("Failed to create project", "error", err)
@@ -108,7 +112,7 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.projectService.GetProjectByID(projectId, orgID)
+	project, err := h.projectService.GetProjectByHandle(projectId, orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -174,18 +178,26 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req api.UpdateProjectRequest
+	var req api.Project
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "update project")
+	if !ok {
+		return
+	}
 	project, err := h.projectService.UpdateProject(projectId, &req, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Project not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrHandleImmutable) {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Project id is immutable and cannot be changed"))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectExists) {
@@ -218,7 +230,10 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, ok := resolveActor(w, r, h.identity, h.slogger, "delete project")
+	if !ok {
+		return
+	}
 	err := h.projectService.DeleteProject(projectId, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
@@ -239,6 +254,11 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, constants.ErrProjectHasAssociatedMCPProxies) {
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Project has associated MCP proxies"))
+			return
+		}
+		if errors.Is(err, constants.ErrProjectHasAssociatedApplications) {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Project has associated applications"))
 			return
 		}
 		h.slogger.Error("Failed to delete project", "error", err)

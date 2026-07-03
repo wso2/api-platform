@@ -46,7 +46,9 @@ func TestLoadConfig_MissingSecretEncryptionKey_NonDemoMode_ReturnsError(t *testi
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
+	// Provide a JWT secret so LoadConfig passes JWT validation and reaches the
+	// encryption-key check this test is asserting on.
+	t.Setenv("AUTH_JWT_SECRET_KEY", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
 
 	_, err := LoadConfig("")
 	assert.Error(t, err, "LoadConfig must return an error when no encryption key is configured and DEMO_MODE is off")
@@ -88,6 +90,8 @@ func TestLoadConfig_ExplicitSecretEncryptionKey_UsedAsIs(t *testing.T) {
 	const stableKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", stableKey)
 	t.Setenv("APIP_DEMO_MODE", "false")
+	// Non-demo mode requires an explicit JWT secret; set one so LoadConfig succeeds.
+	t.Setenv("AUTH_JWT_SECRET_KEY", stableKey)
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
@@ -126,5 +130,47 @@ func init() {
 		"APIP_DEMO_MODE",
 	} {
 		os.Unsetenv(v)
+	}
+}
+
+// validateAuthModeExclusivity: IDP (JWKS) auth must not be enabled alongside the
+// local JWT or file-based modes — the server must fail fast so operators turn the
+// local modes off consciously and all tokens are validated against the IDP JWKS.
+func TestValidateAuthModeExclusivity(t *testing.T) {
+	tests := []struct {
+		name    string
+		auth    Auth
+		wantErr bool
+	}{
+		{
+			name:    "idp disabled — local modes allowed",
+			auth:    Auth{IDP: IDP{Enabled: false}, JWT: JWT{Enabled: true}, FileBased: FileBased{Enabled: true}},
+			wantErr: false,
+		},
+		{
+			name:    "idp only",
+			auth:    Auth{IDP: IDP{Enabled: true}, JWT: JWT{Enabled: false}, FileBased: FileBased{Enabled: false}},
+			wantErr: false,
+		},
+		{
+			name:    "idp and jwt both enabled",
+			auth:    Auth{IDP: IDP{Enabled: true}, JWT: JWT{Enabled: true}, FileBased: FileBased{Enabled: false}},
+			wantErr: true,
+		},
+		{
+			name:    "idp and file_based both enabled",
+			auth:    Auth{IDP: IDP{Enabled: true}, JWT: JWT{Enabled: false}, FileBased: FileBased{Enabled: true}},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAuthModeExclusivity(&tt.auth)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
 	}
 }

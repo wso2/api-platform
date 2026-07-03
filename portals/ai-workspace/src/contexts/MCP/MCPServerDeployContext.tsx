@@ -198,7 +198,6 @@ export function MCPServerDeployProvider({
       const deploymentPromises = gateways.map((gateway) =>
         getMCPServerDeployments(
           mcpServerId,
-          organizationId,
           PLATFORM_API_BASE_URL,
           gateway.id
         ).catch((err) => {
@@ -247,7 +246,6 @@ export function MCPServerDeployProvider({
         );
         const result = await deployMCPServer(
           mcpServerId,
-          organizationId,
           {
             name: deploymentName,
             base: 'current',
@@ -283,7 +281,6 @@ export function MCPServerDeployProvider({
         await undeployMCPServerDeployment(
           mcpServerId,
           deploymentId,
-          organizationId,
           PLATFORM_API_BASE_URL,
           gatewayId
         );
@@ -309,7 +306,6 @@ export function MCPServerDeployProvider({
         const result = await restoreMCPServerDeployment(
           mcpServerId,
           deploymentId,
-          organizationId,
           PLATFORM_API_BASE_URL,
           gatewayId
         );
@@ -346,7 +342,6 @@ export function MCPServerDeployProvider({
         await deleteMCPServerDeployment(
           mcpServerId,
           deploymentId,
-          organizationId,
           PLATFORM_API_BASE_URL
         );
 

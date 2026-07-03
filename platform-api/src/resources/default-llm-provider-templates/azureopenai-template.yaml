@@ -16,11 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1
-kind: LlmProviderTemplate
 metadata:
   name: azure-openai
 spec:
+  groupId: azure-openai
   displayName: Azure OpenAI
   managedBy: wso2
   version: v1.0

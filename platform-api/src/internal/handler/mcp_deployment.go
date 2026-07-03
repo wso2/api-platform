@@ -24,6 +24,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -32,31 +33,32 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // MCPProxyDeploymentHandler handles MCP proxy deployment endpoints
 type MCPProxyDeploymentHandler struct {
 	deploymentService *service.MCPDeploymentService
+	identity          *service.IdentityService
 	slogger           *slog.Logger
 }
 
 // NewMCPProxyDeploymentHandler creates a new MCP proxy deployment handler
-func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentService, slogger *slog.Logger) *MCPProxyDeploymentHandler {
+func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentService, identity *service.IdentityService, slogger *slog.Logger) *MCPProxyDeploymentHandler {
 	return &MCPProxyDeploymentHandler{
 		deploymentService: deploymentService,
+		identity:          identity,
 		slogger:           slogger,
 	}
 }
 
 // RegisterRoutes registers all MCP proxy deployment-related routes
 func (h *MCPProxyDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{id}/deployments", h.DeployMCPProxy)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}/undeploy", h.UndeployMCPProxyDeployment)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}/restore", h.RestoreMCPProxyDeployment)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{id}/deployments", h.GetMCPProxyDeployments)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}", h.GetMCPProxyDeployment)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{id}/deployments/{deploymentId}", h.DeleteMCPProxyDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments", h.DeployMCPProxy)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}/undeploy", h.UndeployMCPProxyDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}/restore", h.RestoreMCPProxyDeployment)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments", h.GetMCPProxyDeployments)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}", h.GetMCPProxyDeployment)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}", h.DeleteMCPProxyDeployment)
 }
 
 // DeployMCPProxy handles POST /api/v0.9/mcp-proxies/:id/deployments
@@ -68,7 +70,7 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *htt
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("mcpProxyId")
 	if proxyId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))
@@ -91,13 +93,16 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *htt
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if strings.TrimSpace(req.GatewayId) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"gatewayId is required"))
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "deploy MCP proxy")
+	if !ok {
+		return
+	}
 	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -152,7 +157,7 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(w http.ResponseWr
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("mcpProxyId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
@@ -218,7 +223,7 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(w http.ResponseWri
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("mcpProxyId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 
@@ -284,7 +289,7 @@ func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(w http.ResponseWrit
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("mcpProxyId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
@@ -332,7 +337,7 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployment(w http.ResponseWriter,
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("mcpProxyId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
@@ -377,7 +382,7 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(w http.ResponseWriter
 		return
 	}
 
-	proxyId := r.PathValue("id")
+	proxyId := r.PathValue("mcpProxyId")
 	if proxyId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"MCP proxy ID is required"))

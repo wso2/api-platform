@@ -16,11 +16,10 @@
  * under the License.
  */
 
-import { get, post } from '../clients/choreoApiClient';
+import { get, del } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
 
 import type {
-  APIKeyRevokeRequest,
   UserAPIKeyListResponse,
 } from '../utils/types';
 
@@ -29,28 +28,26 @@ import type {
 // ============================================================================
 
 /**
- * Revoke an API test token for an API
+ * Revoke an API key for a REST API
  *
- * @param apiId - The API ID
- * @param request - The API key revoke request
- * @param organizationId - The organization ID
+ * @param restApiId - The REST API handle
+ * @param apiKeyId - The unique name/identifier of the API key to revoke
  * @param baseUrl - The APIM base URL
  * @returns Promise that resolves when the key is revoked
  */
 export async function revokeAPIKey(
-  apiId: string,
-  request: APIKeyRevokeRequest,
-  organizationId: string,
+  restApiId: string,
+  apiKeyId: string,
   baseUrl: string
 ): Promise<void> {
   try {
-    await post<void>(
-      `/apis/${encodeURIComponent(apiId)}/revoke-key?organizationId=${encodeURIComponent(organizationId)}`,
-      request,
+    await del<void>(
+      `/rest-apis/${encodeURIComponent(restApiId)}/api-keys/${encodeURIComponent(apiKeyId)}`,
+      undefined,
       baseUrl
     );
   } catch (error) {
-    logger.error(`Failed to revoke API key for API ${apiId}:`, error);
+    logger.error(`Failed to revoke API key ${apiKeyId} for API ${restApiId}:`, error);
     throw error;
   }
 }

@@ -23,19 +23,13 @@ Feature: Foreign-key cascade deletes across database engines
     Then the application api key mapping is removed
     And the application artifact mapping is removed
 
-  Scenario: Deleting a project cascades to its applications
+  Scenario: Deleting a project retains its applications
     Given a seeded organization object graph
     When I delete the REST API artifact
     And I delete the project
-    Then the application is removed
+    Then the application is retained
 
   Scenario: Deleting a subscription plan cascades to its limits
     Given a seeded organization object graph
     When I delete the subscription and its plan
     Then the subscription plan limit is removed
-
-  Scenario: Deleting a WebSub API artifact cascades to its HMAC secrets
-    Given a WebSub API with 2 HMAC secrets
-    When I delete the WebSub API artifact
-    Then the HMAC secrets are removed
-    And the WebSub API row is removed

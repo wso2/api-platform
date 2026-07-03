@@ -17,13 +17,14 @@
     <div class="aov-endpoint-url-row">
       <i class="bi bi-link-45deg" style="color:#8a93a0;flex:none;"></i>
       <pre id="token_api_prod_url" class="aov-endpoint-url token-text">{{resources.serverDetails.productionURL}}</pre>
-      <button class="dp-btn-icon" aria-label="Copy URL" type="button" onclick="copyToken('api_prod_url')">
-        <i class="bi bi-copy"></i>
+      <button type="button" class="copy-btn" title="Copy URL" onclick="copyToken(this, 'api_prod_url')">
+        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
       </button>
     </div>
   </div>
   {{/unless}}
-  {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+  {{#unless (eq apiMetadata.type "Mcp")}}
   {{#unless (eq resources.serverDetails.sandboxURL "")}}
   <div class="aov-endpoint-card">
     <div class="aov-endpoint-label-row">
@@ -33,8 +34,9 @@
     <div class="aov-endpoint-url-row">
       <i class="bi bi-link-45deg" style="color:#8a93a0;flex:none;"></i>
       <pre id="token_api_dev_url" class="aov-endpoint-url token-text">{{resources.serverDetails.sandboxURL}}</pre>
-      <button class="dp-btn-icon" aria-label="Copy URL" type="button" onclick="copyToken('api_dev_url')">
-        <i class="bi bi-copy"></i>
+      <button type="button" class="copy-btn" title="Copy URL" onclick="copyToken(this, 'api_dev_url')">
+        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
       </button>
     </div>
   </div>
@@ -44,10 +46,10 @@
 </div>
 
 {{!-- Resources (REST / MCP) --}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+{{#unless (eq apiMetadata.type "WS")}}
+{{#unless (eq apiMetadata.type "WebSubApi")}}
+{{#unless (eq apiMetadata.type "GRAPHQL")}}
+{{#unless (eq apiMetadata.type "Mcp")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Resources</h2>
@@ -68,7 +70,7 @@
 {{/unless}}
 
 {{!-- Channels (WS) --}}
-{{#if (eq apiMetadata.apiInfo.apiType "WS")}}
+{{#if (eq apiMetadata.type "WS")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Channels</h2>
@@ -84,7 +86,7 @@
 {{/if}}
 
 {{!-- Channels (WEBSUB) --}}
-{{#if (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
+{{#if (eq apiMetadata.type "WebSubApi")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Channels</h2>
@@ -99,9 +101,9 @@
 {{/if}}
 
 {{!-- Scopes --}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
+{{#unless (eq apiMetadata.type "WS")}}
+{{#unless (eq apiMetadata.type "WebSubApi")}}
+{{#unless (eq apiMetadata.type "GRAPHQL")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Scopes</h2>

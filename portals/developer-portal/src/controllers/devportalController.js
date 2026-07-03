@@ -28,13 +28,14 @@ const { publish } = require('../services/webhooks/eventPublisher');
 const sequelize = require('../db/sequelizeConfig');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { Sequelize } = require("sequelize");
 const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey, trackGenerateCredentials } = require('../utils/telemetryUtil');
 const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManagerDao');
-const { getKeyManagerAdapter } = require('../adapters/keyManager');
+const { generateToken } = require('../services/oauthTokenService');
 const { CustomError } = require('../utils/errors/customErrors');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { logUserAction } = require('../middlewares/auditLogger');
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -50,56 +51,59 @@ function parseApplicationDataFromRequest(req) {
             throw new CustomError(400, "Bad Request", "Invalid application YAML: expected an object");
         }
         const spec = parsed.spec || {};
-        const name = spec.displayName || parsed.metadata?.name;
-        if (!name) {
-            throw new CustomError(400, "Bad Request", "Missing required application field: name");
-        }
-        if (!spec.description) {
-            throw new CustomError(400, "Bad Request", "Missing required application field: description");
+        const displayName = spec.displayName;
+        if (!displayName) {
+            throw new CustomError(400, "Bad Request", "Missing required application field: displayName");
         }
         return {
-            name,
+            displayName,
             description: spec.description,
-            type: "WEB"
+            handle: parsed.metadata?.name,
         };
     }
-    return req.body;
+    const { id, ...rest } = req.body;
+    return { ...rest, handle: id };
 }
 
 // ***** Save Application *****
 
 const listApplications = async (req, res) => {
-    const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
-    const userID = req.auth?.userId || req.user?.sub;
+    const orgId = req.orgId || '';
+    const userId = req.auth?.userId || req.user?.sub;
     try {
-        const applications = await appDao.list(orgID, userID);
-        return res.status(200).json(util.toPaginatedList(applications.map(a => new ApplicationDTO(a.dataValues)), req));
+        const applications = await appDao.list(orgId, userId);
+        const auditList = await userIdpReferenceDao.buildListAuditFields(applications.map(a => a.dataValues));
+        const dtos = applications.map((a, i) => new ApplicationDTO(a.dataValues, auditList[i]));
+        return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
-        logger.error('Error occurred while listing applications', { orgId: orgID, error: error.message, stack: error.stack });
+        logger.error('Error occurred while listing applications', { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
     }
 };
 
 const saveApplication = async (req, res) => {
-    const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
-    const userID = req.auth?.userId || req.user?.sub;
+    const orgId = req.orgId || '';
+    const userId = req.auth?.userId || req.user?.sub;
     try {
         const applicationData = parseApplicationDataFromRequest(req);
-        trackAppCreationStart({ orgId: orgID, appName: applicationData.name, idpId: userID }, req);
-        const application = await appDao.create(orgID, userID, applicationData);
-        trackAppCreationEnd({ orgId: orgID, appName: applicationData.name, idpId: userID }, req);
+        const idpId = req.auth?.rawSub || req.user?.sub;
+        trackAppCreationStart({ orgId: orgId, appName: applicationData.displayName, idpId }, req);
+        const application = await appDao.create(orgId, userId, applicationData);
+        trackAppCreationEnd({ orgId: orgId, appName: applicationData.displayName, idpId }, req);
         const createdApp = application.dataValues;
         try {
             await sequelize.transaction((t) => publish('application.created',
-                { application_id: createdApp.APP_ID, name: createdApp.NAME, description: createdApp.DESCRIPTION, type: createdApp.TYPE },
-                { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: createdApp.APP_ID }
+                { application_id: createdApp.uuid, display_name: createdApp.display_name, handle: createdApp.handle, description: createdApp.description, type: 'web' },
+                { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: createdApp.uuid }
             ));
         } catch (pubErr) {
-            logger.warn('Failed to publish application.created', { orgId: orgID, appId: createdApp.APP_ID, error: pubErr.message });
+            logger.warn('Failed to publish application.created', { orgId: orgId, appId: createdApp.uuid, error: pubErr.message });
         }
-        return res.status(201).json(new ApplicationDTO(createdApp));
+        logUserAction('APPLICATION_CREATED', req, { orgId, appId: createdApp.uuid, resourceUuid: createdApp.uuid, resourceType: 'application' });
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(createdApp);
+        return res.status(201).json(new ApplicationDTO(createdApp, audit));
     } catch (error) {
-        logger.error('Error occurred while creating the application', { orgId: orgID, error: error.message, stack: error.stack });
+        logger.error('Error occurred while creating the application', { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
     }
 };
@@ -107,12 +111,17 @@ const saveApplication = async (req, res) => {
 // ***** Update Application *****
 
 const updateApplication = async (req, res) => {
-    const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
-    const userID = req.auth?.userId || req.user?.sub;
+    const orgId = req.orgId || '';
+    const userId = req.auth?.userId || req.user?.sub;
     try {
-        const appID = req.params.applicationId;
+        const appHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, appHandle);
+        if (!appRecord) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        const appId = appRecord.uuid;
         const applicationData = parseApplicationDataFromRequest(req);
-        const [updatedRows, updatedApp] = await appDao.update(orgID, appID, userID, applicationData);
+        const [updatedRows, updatedApp] = await appDao.update(orgId, appId, userId, applicationData);
         if (!updatedRows) {
             throw new Sequelize.EmptyResultError("No record found to update");
         }
@@ -120,120 +129,134 @@ const updateApplication = async (req, res) => {
             const renamedApp = updatedApp[0].dataValues;
             await sequelize.transaction(async (t) => {
                 await publish('application.updated',
-                    { application_id: appID, name: renamedApp.NAME, description: renamedApp.DESCRIPTION, type: renamedApp.TYPE },
-                    { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: appID }
+                    { application_id: appId, display_name: renamedApp.display_name, handle: renamedApp.handle, description: renamedApp.description, type: 'web' },
+                    { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: appId }
                 );
-                await apiKeyService.notifyApplicationKeysChanged(orgID, appID, { id: appID, name: renamedApp.NAME }, t);
             });
         } catch (pubErr) {
-            logger.warn('Failed to publish webhook events after app update', { orgId: orgID, appId: appID, error: pubErr.message });
+            logger.warn('Failed to publish webhook events after app update', { orgId: orgId, appId: appId, error: pubErr.message });
         }
-        res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues));
+        logUserAction('APPLICATION_UPDATED', req, { orgId, appId, resourceUuid: appId, resourceType: 'application' });
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedApp[0].dataValues);
+        res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues, audit));
     } catch (error) {
-        logger.error("Error occurred while updating the application", { orgId: orgID, error: error.message, stack: error.stack });
+        logger.error("Error occurred while updating the application", { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
     }
 };
 
 // ***** Delete Application *****
 
-const revokeAppKeyMappings = async (orgID, appID) => {
+const revokeAppKeyMappings = async (orgId, appId, t) => {
     const { ApplicationKeyMapping } = require('../models/application');
     const mappings = await ApplicationKeyMapping.findAll({
-        where: { APP_ID: appID, ORG_ID: orgID },
+        where: { app_uuid: appId },
+        transaction: t,
     });
-    const succeededMappingIds = [];
-    const failedMappingIds = [];
-    for (const mapping of mappings) {
-        if (mapping.KM_ID && mapping.AS_CLIENT_ID) {
-            try {
-                const kmRecord = await kmDao.get(mapping.KM_ID);
-                const adapter = getKeyManagerAdapter(kmRecord);
-                await adapter.deleteOAuthClient(mapping.AS_CLIENT_ID);
-                succeededMappingIds.push(mapping.MAPPING_ID);
-            } catch (err) {
-                logger.warn('Failed to revoke OAuth client during application deletion', {
-                    appId: appID,
-                    clientId: mapping.AS_CLIENT_ID,
-                    kmId: mapping.KM_ID,
-                    errorMessage: err.message,
-                });
-                failedMappingIds.push(mapping.MAPPING_ID);
-            }
-        } else {
-            // No OAuth client to revoke — safe to remove the local mapping.
-            succeededMappingIds.push(mapping.MAPPING_ID);
-        }
-    }
-    await appDao.deleteMappingsByIds(orgID, succeededMappingIds);
-    if (failedMappingIds.length > 0) {
-        throw new Error(
-            `Failed to revoke OAuth clients for ${failedMappingIds.length} mapping(s) ` +
-            `(mappingIds: ${failedMappingIds.join(', ')}). Application deletion aborted.`
-        );
-    }
+    const mappingIds = mappings.map((mapping) => mapping.uuid);
+    await appDao.deleteMappingsByIds(orgId, mappingIds, t);
 };
 
 /**
  * Publishes application.deleted + a per-key apikey.application_updated(null) for each
  * previously-associated key. Must be called only after the application row (and its
- * APP_ID references) have actually been deleted — best-effort, never throws.
+ * app_uuid references) have actually been deleted — best-effort, never throws.
  */
-const publishApplicationDeletedEvents = async (orgID, applicationId, appToDelete, affectedKeyIds) => {
+const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete, affectedKeys) => {
     try {
         await sequelize.transaction(async (t) => {
             if (appToDelete) {
                 await publish('application.deleted',
-                    { application_id: applicationId, name: appToDelete.NAME },
-                    { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: applicationId }
+                    { application_id: applicationId, display_name: appToDelete.display_name, handle: appToDelete.handle },
+                    { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: applicationId }
                 );
             }
-            for (const keyId of affectedKeyIds) {
-                await apiKeyService.publishKeyApplicationUpdated(orgID, keyId, null, t);
+            for (const key of affectedKeys) {
+                const meta = key.dp_api_metadata;
+                const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
+                await apiKeyService.publishKeyApplicationUpdated(orgId, key.uuid, key.handle, key.display_name, api, null, t);
             }
         });
     } catch (pubErr) {
-        logger.warn('Failed to publish webhook events after app deletion', { orgId: orgID, appId: applicationId, error: pubErr.message });
+        logger.warn('Failed to publish webhook events after app deletion', { orgId: orgId, appId: applicationId, error: pubErr.message });
     }
 };
 
 /**
- * Snapshots the app name + currently-associated key IDs and deletes the application row,
+ * Snapshots the app name + currently-associated keys and deletes the application row,
  * all inside one transaction — so the snapshot exactly matches what's actually deleted,
  * with no race window for a concurrent associate/dissociate call to go unnoticed.
  */
-const deleteApplicationAndSnapshotKeys = async (orgID, applicationId, userID) => {
+const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) => {
     let appToDelete = null;
-    let affectedKeyIds = [];
+    let affectedKeys = [];
     await sequelize.transaction(async (t) => {
-        appToDelete = await appDao.get(orgID, applicationId, userID, t);
-        const associatedKeys = await apiKeyService.list(orgID, { appId: applicationId }, t);
-        affectedKeyIds = associatedKeys.map((k) => k.KEY_ID);
-        await appDao.delete(orgID, applicationId, userID, t);
+        appToDelete = await appDao.get(orgId, applicationId, userId, t);
+        affectedKeys = await apiKeyService.list(orgId, { appId: applicationId }, t);
+        await revokeAppKeyMappings(orgId, applicationId, t);
+        await appDao.delete(orgId, applicationId, userId, t);
     });
-    return { appToDelete, affectedKeyIds };
+    return { appToDelete, affectedKeys };
+};
+
+/**
+ * Revokes key mappings, deletes the application row, and publishes the resulting
+ * deletion events. Shared by deleteApplication's initial attempt and its
+ * already-deleted (404) retry path.
+ */
+const finalizeApplicationDeletion = async (orgId, applicationId, userId, idpId, req) => {
+    const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
+    trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
+    logUserAction('APPLICATION_DELETED', req, { orgId, appId: applicationId, resourceUuid: applicationId, resourceType: 'application' });
+    await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
+};
+
+const getApplication = async (req, res) => {
+    const orgId = req.orgId || '';
+    const userId = req.auth?.userId || req.user?.sub;
+    const applicationHandle = req.params.applicationId;
+    try {
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        const app = await appDao.get(orgId, appRecord.uuid, userId);
+        if (!app) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(app.dataValues);
+        return res.status(200).json(new ApplicationDTO(app.dataValues, audit));
+    } catch (error) {
+        logger.error('Error occurred while getting the application', { orgId, appId: applicationHandle, error: error.message });
+        util.handleError(res, error);
+    }
 };
 
 const deleteApplication = async (req, res) => {
-    const userID = req.auth?.userId || req.user?.sub;
-    const applicationId = req.params.applicationId;
-    const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
+    const userId = req.auth?.userId || req.user?.sub;
+    const applicationHandle = req.params.applicationId;
+    const orgId = req.orgId || '';
+    let applicationId;
     try {
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        applicationId = appRecord.uuid;
+        const ownedApp = await appDao.get(orgId, applicationId, userId);
+        if (!ownedApp) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
+        const idpId = req.auth?.rawSub || req.user?.sub;
         try {
-            await revokeAppKeyMappings(orgID, applicationId);
-            const { appToDelete, affectedKeyIds } = await deleteApplicationAndSnapshotKeys(orgID, applicationId, userID);
-            trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
-            await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
+            await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
             res.status(200).send("Resource Deleted Successfully");
         } catch (error) {
             if (error.statusCode === 404) {
-                await revokeAppKeyMappings(orgID, applicationId);
-                const { appToDelete, affectedKeyIds } = await deleteApplicationAndSnapshotKeys(orgID, applicationId, userID);
-                trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
-                await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
+                await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
                 return res.status(200).send("Resource Deleted Successfully");
             }
-            logger.error('Error occurred while deleting the application', { orgId: orgID, appId: applicationId, error: error.message, stack: error.stack });
+            logger.error('Error occurred while deleting the application', { orgId: orgId, appId: applicationId, error: error.message, stack: error.stack });
             util.handleError(res, error);
         }
     } catch (error) {
@@ -243,82 +266,67 @@ const deleteApplication = async (req, res) => {
 }
 
 const generateKeys = async (req, res) => {
-    let orgID, appID, userID;
+    let orgId, appId, userId;
     try {
-        orgID = req.params.orgId;
-        appID = req.params.applicationId;
-        userID = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
-        logger.info('Initiate create application key mapping...', { orgId: orgID, appId: appID });
+        orgId = req.orgId;
+        userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const appHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, appHandle);
+        if (!appRecord) {
+            return res.status(404).json({ message: 'Application not found' });
+        }
+        appId = appRecord.uuid;
+        logger.info('Initiate create application key mapping...', { orgId: orgId, appId: appId });
         const {
             keyManager: kmName,
-            keyType: rawKeyType,
-            grantTypesToBeSupported,
-            callbackUrl,
-            scopes,
-            additionalProperties: additionalProps,
+            type: rawKeyType,
+            consumerKey,
         } = req.body;
 
-        const kmRecord = await kmDao.getByName(orgID, kmName);
-        const adapter = getKeyManagerAdapter(kmRecord);
-
-        const grantTypes = grantTypesToBeSupported || ['client_credentials'];
-        const redirectUris = callbackUrl ? [callbackUrl] : [];
-        const resolvedScopes = scopes || ['default'];
-        const resolvedProps = additionalProps || {};
-
-        const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-        const keyType = (rawKeyType || 'PRODUCTION').toUpperCase();
-        const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
-
-        const oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, resolvedScopes, resolvedProps);
-
-        const responseData = {
-            consumerKey: oauthClient.clientId,
-            consumerSecret: oauthClient.clientSecret,
-            keyManager: kmName,
-            tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
-            supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
-            additionalProperties: oauthClient.additionalProperties,
-            subscriptionScopes: oauthClient.subscriptionScopes || [],
-        };
-
-        const appKeyMapping = {
-            orgID,
-            appID,
-            kmID: kmRecord.KM_ID,
-            asClientID: responseData.consumerKey,
-            keyType: rawKeyType || 'PRODUCTION',
-            additionalProperties: responseData.additionalProperties || {},
-        };
-        let keyMappingRecord;
-        try {
-            keyMappingRecord = await appDao.upsertKeyMapping(appKeyMapping);
-        } catch (dbError) {
-            if (oauthClient) {
-                await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
-                    logger.warn('Failed to roll back OAuth client after DB error', {
-                        clientId: oauthClient.clientId,
-                        errorMessage: cleanupErr.message,
-                    });
-                });
-            }
-            throw dbError;
+        if (!consumerKey) {
+            return res.status(400).json({ message: 'consumerKey is required.' });
         }
 
-        responseData.keyMappingId = keyMappingRecord?.dataValues?.MAPPING_ID;
+        const kmRecord = await kmDao.getByHandle(orgId, kmName);
+        if (!kmRecord) {
+            return res.status(404).json({ message: `Key manager '${kmName}' not found.` });
+        }
+
+        const keyType = (rawKeyType || constants.KEY_TYPE.PRODUCTION).toUpperCase();
+        if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
+            return res.status(400).json({ message: `Invalid type. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` });
+        }
+
+        const appKeyMapping = {
+            orgId,
+            appId,
+            kmId: kmRecord.uuid,
+            asClientId: consumerKey,
+            type: keyType,
+            createdBy: userId,
+        };
+        const keyMappingRecord = await appDao.upsertKeyMapping(appKeyMapping);
+
+        const responseData = {
+            consumerKey,
+            keyManager: kmName,
+            type: keyType,
+            tokenEndpoint: kmRecord.token_endpoint,
+            keyMappingId: keyMappingRecord?.dataValues?.uuid,
+        };
 
         trackGenerateCredentials({
-            orgId: orgID,
-            appName: appID,
-            idpId: req.isAuthenticated() ? userID : undefined
+            orgId: orgId,
+            appName: appId,
+            idpId: req.isAuthenticated() ? (req.auth?.rawSub || req.user?.sub) : undefined
         }, req);
         return res.status(200).json(responseData);
     } catch (error) {
         logger.error('key mapping create error failed', {
             error: error.message,
             stack: error.stack,
-            orgId: orgID,
-            appId: appID
+            orgId: orgId,
+            appId: appId
         });
         return util.handleError(res, error);
     }
@@ -326,21 +334,31 @@ const generateKeys = async (req, res) => {
 
 const generateOAuthKeys = async (req, res) => {
     try {
-        const applicationId = req.params.applicationId;
+        const orgId = req.orgId;
+        const userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const applicationHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            throw new CustomError(404, 'Application not found');
+        }
+        const applicationId = appRecord.uuid;
         const keyMappingId = req.params.keyMappingId;
 
         const { ApplicationKeyMapping } = require('../models/application');
         const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+            where: { uuid: keyMappingId, app_uuid: applicationId },
         });
-        if (!keyMapping || !keyMapping.KM_ID) {
-            return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
+        if (!keyMapping || !keyMapping.km_uuid) {
+            throw new CustomError(404, 'Key mapping not found or missing key manager reference');
         }
-        const kmRecord = await kmDao.get(keyMapping.KM_ID);
-        const adapter = getKeyManagerAdapter(kmRecord);
+        const kmRecord = await kmDao.get(keyMapping.km_uuid);
+        if (!kmRecord) {
+            throw new CustomError(404, 'Key manager not found');
+        }
         const { consumerSecret, scopes, validityPeriod } = req.body;
-        const tokenResult = await adapter.generateToken(
-            keyMapping.AS_CLIENT_ID,
+        const tokenResult = await generateToken(
+            kmRecord.token_endpoint,
+            keyMapping.as_client_id,
             consumerSecret,
             scopes || ['default'],
             validityPeriod || 3600
@@ -352,9 +370,9 @@ const generateOAuthKeys = async (req, res) => {
         };
 
         trackGenerateKey({
-            orgId: req.user[constants.ORG_ID],
+            orgId: req.user[constants.ORG_UUID],
             appId: applicationId,
-            idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+            idpId: req.isAuthenticated() ? (req.auth?.rawSub || req.user?.sub) : undefined
         }, req);
         res.status(200).json(responseData);
     } catch (error) {
@@ -369,24 +387,24 @@ const generateOAuthKeys = async (req, res) => {
 
 const revokeOAuthKeys = async (req, res) => {
     try {
-        const applicationId = req.params.applicationId;
+        const orgId = req.orgId;
+        const userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const applicationHandle = req.params.applicationId;
+        const appRecord = await appDao.getId(orgId, userId, applicationHandle);
+        if (!appRecord) {
+            throw new CustomError(404, 'Application not found');
+        }
+        const applicationId = appRecord.uuid;
         const keyMappingId = req.params.keyMappingId;
 
         const { ApplicationKeyMapping } = require('../models/application');
-        const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+        const deletedRows = await ApplicationKeyMapping.destroy({
+            where: { uuid: keyMappingId, app_uuid: applicationId },
         });
-        if (!keyMapping || !keyMapping.KM_ID) {
-            return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
+        if (!deletedRows) {
+            throw new CustomError(404, 'Key mapping not found');
         }
-        const kmRecord = await kmDao.get(keyMapping.KM_ID);
-        const adapter = getKeyManagerAdapter(kmRecord);
-        await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
-        await ApplicationKeyMapping.update(
-            { AS_CLIENT_ID: null, KM_ID: null },
-            { where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } }
-        );
-        res.status(200).json({ message: 'OAuth client revoked successfully' });
+        res.status(200).json({ message: 'Application key mapping removed successfully' });
     } catch (error) {
         logger.error("Error occurred while revoking the OAuth keys", {
             appId: req.params.applicationId,
@@ -397,153 +415,13 @@ const revokeOAuthKeys = async (req, res) => {
     }
 };
 
-const cleanUp = async (req, res) => {
-    try {
-        const applicationId = req.params.applicationId;
-        const keyMappingId = req.params.keyMappingId;
-
-        const { ApplicationKeyMapping } = require('../models/application');
-        const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
-        });
-        if (keyMapping && keyMapping.KM_ID && keyMapping.AS_CLIENT_ID) {
-            const kmRecord = await kmDao.get(keyMapping.KM_ID);
-            const adapter = getKeyManagerAdapter(kmRecord);
-            await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
-        }
-        await ApplicationKeyMapping.destroy({ where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } });
-        res.status(200).json({ message: 'OAuth client cleaned up successfully' });
-    } catch (error) {
-        logger.error("Error occurred while cleaning up the OAuth keys", {
-            appId: req.params.applicationId,
-            error: error.message,
-            stack: error.stack
-        });
-        util.handleError(res, error);
-    }
-};
-
-const updateOAuthKeys = async (req, res) => {
-    let tokenDetails = req.body;
-    try {
-        const applicationId = req.params.applicationId;
-        const keyMappingId = req.params.keyMappingId;
-
-        const { ApplicationKeyMapping } = require('../models/application');
-        const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
-        });
-        if (!keyMapping || !keyMapping.KM_ID) {
-            return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
-        }
-        const kmRecord = await kmDao.get(keyMapping.KM_ID);
-        const adapter = getKeyManagerAdapter(kmRecord);
-        const updatedGrantTypes = tokenDetails.supportedGrantTypes || tokenDetails.grantTypesToBeSupported;
-        const result = await adapter.updateOAuthClient(
-            keyMapping.AS_CLIENT_ID,
-            updatedGrantTypes,
-            tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [],
-            tokenDetails.scopes,
-            tokenDetails.additionalProperties
-        );
-
-        if (result?.additionalProperties) {
-            await ApplicationKeyMapping.update(
-                { ADDITIONAL_PROPERTIES: result.additionalProperties },
-                { where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } }
-            );
-        }
-
-        res.status(200).json({ message: 'OAuth client updated successfully' });
-    } catch (error) {
-        logger.error("Error occurred while updating the OAuth keys", {
-            appId: req.params.applicationId,
-            error: error.message,
-            stack: error.stack,
-        });
-        util.handleError(res, error);
-    }
-};
-
-const login = async (req, res) => {
-    const { username, password } = req.body;
-
-    const platformApiUrl = config.platformApi?.baseUrl;
-    if (!platformApiUrl) {
-        return res.status(503).json({ message: 'Authentication service not configured' });
-    }
-
-    let platformToken;
-    try {
-        const response = await axios.post(
-            `${platformApiUrl}/api/portal/v0.9/auth/login`,
-            new URLSearchParams({ username, password }).toString(),
-            {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
-                timeout: 10000,
-            }
-        );
-        platformToken = response.data.token;
-    } catch (error) {
-        if (error.response?.status === 401) {
-            return res.status(401).json({ message: 'Invalid credentials' });
-        }
-        logger.error('Platform API login request failed', { error: error.message });
-        return res.status(503).json({ message: 'Authentication service unavailable' });
-    }
-
-    const claims = extractPlatformJwtClaims(platformToken, null);
-    if (!claims?.org_handle) {
-        logger.error('Platform API token missing required claims', { operation: 'devportalLogin' });
-        return res.status(503).json({ message: 'Authentication service error' });
-    }
-
-    const scopes = claims.scopes;
-    const adminRole = config.identityProvider.adminRole || 'admin';
-    const subscriberRole = config.identityProvider.subscriberRole || 'Internal/subscriber';
-    const isAdmin = scopes.some(s => s.endsWith('_manage'));
-
-    const profile = {
-        firstName: claims.username || username,
-        lastName: '',
-        email: claims.email || username,
-        [constants.ROLES.ORGANIZATION_CLAIM]: claims.org_handle || '',
-        [constants.ROLES.ROLE_CLAIM]: isAdmin ? [adminRole] : [subscriberRole],
-        [constants.ROLES.GROUP_CLAIM]: [],
-        [constants.USER_ID]: claims.sub || username,
-        accessToken: platformToken,
-        refreshToken: null,
-        authorizedOrgs: [claims.org_handle || ''],
-        userOrg: claims.org_handle || '',
-        isAdmin,
-        isSuperAdmin: false,
-        isLocalAuth: true,
-    };
-
-    req.session.regenerate((err) => {
-        if (err) {
-            logger.error('Session regeneration failed', { error: err.message });
-            return util.handleError(res, err);
-        }
-        req.logIn(profile, (loginErr) => {
-            if (loginErr) {
-                logger.error('Login session error', { error: loginErr.message });
-                return util.handleError(res, loginErr);
-            }
-            req.session.save(() => res.status(200).json({ message: 'Login successful' }));
-        });
-    });
-};
 module.exports = {
     listApplications,
+    getApplication,
     saveApplication,
     updateApplication,
     deleteApplication,
     generateKeys,
     generateOAuthKeys,
     revokeOAuthKeys,
-    updateOAuthKeys,
-    cleanUp,
-    login
 };

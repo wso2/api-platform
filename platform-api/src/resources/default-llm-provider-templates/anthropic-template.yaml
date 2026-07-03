@@ -16,11 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1
-kind: LlmProviderTemplate
 metadata:
   name: anthropic
 spec:
+  groupId: anthropic
   displayName: Anthropic
   managedBy: wso2
   version: v1.0

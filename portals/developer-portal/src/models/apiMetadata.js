@@ -18,197 +18,271 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 const APIContent = require('../models/apiContent')
-const APIImages = require('./apiImage')
 const { Organization } = require('./organization')
 const Labels = require('./label');
+const Tags = require('./tag');
 
-const APIMetadata = sequelize.define('DP_API_METADATA', {
-  API_ID: {
-    type: DataTypes.UUID,
+const APIMetadata = sequelize.define('dp_api_metadata', {
+  uuid: {
+    type: DataTypes.STRING(40),
     defaultValue: Sequelize.UUIDV4,
     primaryKey: true
   },
-  REFERENCE_ID: {
+  ref_id: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  API_NAME: {
+  name: {
     type: DataTypes.STRING,
     allowNull: false
   },
-  STATUS: {
-    type: DataTypes.ENUM,
-    values: ['CREATED', 'PUBLISHED'],
+  status: {
+    type: DataTypes.STRING(20),
     allowNull: false
   },
-  API_DESCRIPTION: {
-    type: DataTypes.STRING,
+  description: {
+    type: DataTypes.STRING(1023),
     allowNull: true,
   },
-  API_VERSION: {
-    type: DataTypes.STRING,
+  version: {
+    type: DataTypes.STRING(30),
     allowNull: false,
   },
-  API_TYPE: {
-    type: DataTypes.ENUM,
-    values: ['REST', 'WS', 'GRAPHQL', 'SOAP', 'WEBSUB', 'MCP'],
+  type: {
+    type: DataTypes.STRING(20),
     allowNull: false
   },
-  VISIBILITY: {
-    type: DataTypes.ENUM,
-    values: ['PUBLIC', 'PRIVATE'],
-    allowNull: false
-  },
-  VISIBLE_GROUPS: {
+  agent_visibility: {
     type: DataTypes.STRING,
-    allowNull: true
-  },
-  AGENT_VISIBILITY: {
-    type: DataTypes.ENUM,
-    values: ['VISIBLE', 'HIDDEN'],
     allowNull: false,
     defaultValue: 'VISIBLE'
   },
-  TECHNICAL_OWNER: {
+  technical_owner: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  TECHNICAL_OWNER_EMAIL: {
+  technical_owner_email: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  BUSINESS_OWNER: {
+  business_owner: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  BUSINESS_OWNER_EMAIL: {
+  business_owner_email: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  SANDBOX_URL: {
+  sandbox_url: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  PRODUCTION_URL: {
+  production_url: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  METADATA_SEARCH: {
-    type: DataTypes.JSON,
+  metadata_search: {
+    type: DataTypes.JSONB,
     allowNull: true
   },
-  TAGS: {
+  handle: {
     type: DataTypes.STRING,
-    allowNull: true
+    allowNull: false
   },
-  API_HANDLE: {
+  org_uuid: {
+    type: DataTypes.STRING(40),
+    allowNull: true,
+    references: { model: 'dp_organizations', key: 'uuid' }
+  },
+  created_by: {
     type: DataTypes.STRING,
-    allowNull: true
+    allowNull: false
+  },
+  created_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: Sequelize.NOW
+  },
+  updated_by: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  updated_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: Sequelize.NOW
   },
 }, {
   timestamps: false,
-  tableName: 'DP_API_METADATA',
+  tableName: 'dp_api_metadata',
   returning: true,
   indexes: [
       {
-          name: 'UQ_API_METADATA_NAME_VERSION_ORG',
+          name: 'uq_api_metadata_name_version_org',
           unique: true,
-          fields: ['API_NAME', 'API_VERSION', 'ORG_ID']
+          fields: ['name', 'version', 'org_uuid']
       },
       {
-          name: 'UQ_API_METADATA_ORG_REFERENCE_ID',
+          name: 'uq_api_metadata_org_ref_id',
           unique: true,
-          fields: ['ORG_ID', 'REFERENCE_ID']
+          fields: ['org_uuid', 'ref_id']
       },
       {
-          name: 'UQ_API_METADATA_HANDLE_ORG',
+          name: 'uq_api_metadata_handle_org',
           unique: true,
-          fields: ['API_HANDLE', 'ORG_ID']
+          fields: ['handle', 'org_uuid']
+      },
+      {
+          name: 'idx_api_metadata_status',
+          fields: ['status']
       }
   ]
 });
 
-const APILabels = sequelize.define('DP_API_LABELS', {
+const APILabels = sequelize.define('dp_api_label_mapping', {
 
-  ID: {
-      type: DataTypes.UUID,
+  uuid: {
+      type: DataTypes.STRING(40),
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true
   },
-  ORG_ID: {
-      type: DataTypes.UUID,
-      allowNull: false
-  },
-  API_ID: {
-      type: DataTypes.UUID,
+  api_uuid: {
+      type: DataTypes.STRING(40),
       allowNull: false,
       references: {
           model: APIMetadata,
-          key: 'API_ID',
+          key: 'uuid',
       }
   },
-  LABEL_ID: {
-      type: DataTypes.UUID,
+  label_uuid: {
+      type: DataTypes.STRING(40),
       allowNull: false,
       references: {
           model: Labels,
-          key: 'LABEL_ID',
+          key: 'uuid',
       }
-  }
+  },
+  created_by: {
+      type: DataTypes.STRING,
+      allowNull: false
+  },
+  created_at: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: Sequelize.NOW
+  },
 }, {
   timestamps: false,
-  tableName: 'DP_API_LABELS',
+  tableName: 'dp_api_label_mappings',
   returning: true,
   indexes: [
       {
-          name: 'UQ_API_LABELS_LABEL_API_ORG',
+          name: 'uq_api_label_mappings_label_api',
           unique: true,
-          fields: ['LABEL_ID', 'API_ID', 'ORG_ID']
+          fields: ['label_uuid', 'api_uuid']
+      },
+      {
+          name: 'idx_api_label_mappings_api_uuid',
+          fields: ['api_uuid']
       }
   ]
 });
 
-APILabels.belongsTo(Organization, {
-  foreignKey: 'ORG_ID'
+const APITags = sequelize.define('dp_api_tag_mapping', {
+
+  uuid: {
+      type: DataTypes.STRING(40),
+      defaultValue: Sequelize.UUIDV4,
+      primaryKey: true
+  },
+  api_uuid: {
+      type: DataTypes.STRING(40),
+      allowNull: false,
+      references: {
+          model: APIMetadata,
+          key: 'uuid',
+      }
+  },
+  tag_uuid: {
+      type: DataTypes.STRING(40),
+      allowNull: false,
+      references: {
+          model: Tags,
+          key: 'uuid',
+      }
+  },
+  created_by: {
+      type: DataTypes.STRING,
+      allowNull: false
+  },
+  created_at: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: Sequelize.NOW
+  },
+}, {
+  timestamps: false,
+  tableName: 'dp_api_tag_mappings',
+  returning: true,
+  indexes: [
+      {
+          name: 'uq_api_tag_mappings_tag_api',
+          unique: true,
+          fields: ['tag_uuid', 'api_uuid']
+      },
+      {
+          name: 'idx_api_tag_mappings_api_uuid',
+          fields: ['api_uuid']
+      }
+  ]
 });
 
 APILabels.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID',
+  foreignKey: 'api_uuid',
+  onDelete: 'CASCADE'
+});
+
+APITags.belongsTo(APIMetadata, {
+  foreignKey: 'api_uuid',
   onDelete: 'CASCADE'
 });
 
 APIContent.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID',
-  onDelete: 'CASCADE'
-});
-APIImages.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID',
-  onDelete: 'CASCADE'
+  foreignKey: 'api_uuid',
+  onDelete: 'CASCADE',
 });
 APIMetadata.belongsTo(Organization, {
-  foreignKey: 'ORG_ID'
-});
-APIMetadata.hasMany(APIImages, {
-  foreignKey: 'API_ID',
-  onDelete: 'CASCADE'
+  foreignKey: 'org_uuid'
 });
 APIMetadata.hasMany(APIContent, {
-  foreignKey: 'API_ID',
-  onDelete: 'CASCADE'
+  foreignKey: 'api_uuid',
+  onDelete: 'CASCADE',
 });
 
-APIMetadata.belongsToMany(Labels, { 
-  through: APILabels, 
-  foreignKey: "API_ID",
-  otherKey: "LABEL_ID"
-});
-Labels.belongsToMany(APIMetadata, { 
+APIMetadata.belongsToMany(Labels, {
   through: APILabels,
-  foreignKey: "LABEL_ID",
-  otherKey: "API_ID"
+  foreignKey: "api_uuid",
+  otherKey: "label_uuid",
+});
+Labels.belongsToMany(APIMetadata, {
+  through: APILabels,
+  foreignKey: "label_uuid",
+  otherKey: "api_uuid",
  });
+
+APIMetadata.belongsToMany(Tags, {
+  through: APITags,
+  foreignKey: "api_uuid",
+  otherKey: "tag_uuid",
+});
+Tags.belongsToMany(APIMetadata, {
+  through: APITags,
+  foreignKey: "tag_uuid",
+  otherKey: "api_uuid",
+});
 
 module.exports = {
   APIMetadata,
-  APILabels
+  APILabels,
+  APITags
 };

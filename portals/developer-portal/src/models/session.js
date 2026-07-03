@@ -34,9 +34,9 @@ sequelize.define('Session', {
         allowNull: false,
     },
 }, {
-    tableName: 'session',
+    tableName: 'sessions',
     timestamps: false,
     indexes: [
-        { name: 'IDX_session_expire', fields: ['expire'] },
+        { name: 'idx_session_expire', fields: ['expire'] },
     ],
 });

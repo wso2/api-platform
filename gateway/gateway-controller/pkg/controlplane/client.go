@@ -941,19 +941,19 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	}
 }
 
+// onPremSupportedAPIKeyKinds lists the artifact kinds for which the on-prem APIM control plane
+// exposes an API-key backfill endpoint. LLM, WebSub, and WebBroker kinds are cloud-only.
+var onPremSupportedAPIKeyKinds = map[string]bool{
+	models.KindRestApi: true,
+}
+
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
 // currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
+// For on-prem control planes only KindRestApi is synced; other kinds are skipped because
+// the corresponding backfill endpoints do not exist in carbon-apimgt for now.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
-	// Skip for on-prem control planes
-	if c.isOnPrem() {
-		c.logger.Debug("Skipping API Key bulk sync: on-prem control plane detected",
-			slog.String("gateway_id", gatewayID),
-		)
-		return
-	}
-
 	if c.apiUtilsService == nil || c.store == nil || c.apiKeyStore == nil {
 		return
 	}
@@ -986,6 +986,14 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 	}
 
 	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+		// On-prem APIM only exposes backfill endpoints for RestApi keys.
+		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
+			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",
+				slog.String("kind", kind),
+				slog.String("gateway_id", gatewayID),
+			)
+			continue
+		}
 		select {
 		case <-c.ctx.Done():
 			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
@@ -1389,6 +1397,10 @@ func (c *Client) fetchAndDeployAPI(apiID, deploymentID string, deployedAt *time.
 			slog.String("yaml_hash", fmt.Sprintf("%x", yamlHash)),
 		)
 	}
+
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, correlationID)
 
 	// Create API configuration from YAML using the deployment service
 	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deploymentID, deployedAt, correlationID, c.deploymentService)
@@ -1951,6 +1963,10 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
 	// Create LLM proxy configuration from YAML using the deployment service
 	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProxyPerformedAt.IsZero() {
@@ -2054,6 +2070,11 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering. Secrets created after the last startup/reconnect
+	// sync are not yet cached, so we fetch them on demand here.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
 	// Create LLM provider configuration from YAML using the deployment service
 	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
@@ -2641,6 +2662,10 @@ func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
 	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
 		performedAt = time.Now().Truncate(time.Millisecond)
@@ -2892,6 +2917,10 @@ func (c *Client) handleWebBrokerAPIDeployedEvent(event map[string]any) {
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
 	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
@@ -3150,6 +3179,10 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
 	// Create MCP proxy configuration from YAML using the deployment service
 	mcpPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)

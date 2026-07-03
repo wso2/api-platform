@@ -349,7 +349,7 @@ Response (the server echoes back the full k8s-shaped resource with a
 server-managed `status` block):
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "RestApi",
   "metadata": { "name": "weather-api-v1.0" },
   "spec": {
@@ -643,7 +643,7 @@ components:
       properties:
         apiVersion:
           type: string
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1
         kind:
           type: string
           example: RestApi
@@ -652,7 +652,7 @@ components:
         spec:
           $ref: "#/components/schemas/APIConfigData"
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: RestApi
         metadata:
           name: petstore-api-v1.0

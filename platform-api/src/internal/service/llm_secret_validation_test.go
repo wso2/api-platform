@@ -67,8 +67,8 @@ func setupLLMSecretTestEnv(t *testing.T, orgID string) (*SecretService, func()) 
 		t.Fatalf("apply schema: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES (?, 'llm-org', 'LLM Org', 'default', datetime('now'), datetime('now'))`, orgID)
+	_, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES (?, 'llm-org', 'LLM Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`, orgID)
 	if err != nil {
 		t.Fatalf("insert org: %v", err)
 	}
@@ -79,7 +79,7 @@ func setupLLMSecretTestEnv(t *testing.T, orgID string) (*SecretService, func()) 
 	}
 
 	secretRepo := repository.NewSecretRepo(db)
-	secretSvc := NewSecretService(secretRepo, v)
+	secretSvc := NewSecretService(secretRepo, v, NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
 	cleanup := func() { sqlDB.Close() }
 	return secretSvc, cleanup

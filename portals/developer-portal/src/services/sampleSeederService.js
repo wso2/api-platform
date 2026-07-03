@@ -27,6 +27,7 @@ const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
+const { config } = require('../config/configLoader');
 const { parseApiMetadataFromYamlFile, prepareApiDefinitionForStorage } = require('./apiMetadataService');
 
 const DEFINITION_CANDIDATES = ['definition.yaml', 'definition.yml', 'definition.json', 'definition.graphql', 'definition.wsdl'];
@@ -95,9 +96,9 @@ async function seedSampleAPIs(orgId) {
         try {
             const yamlBuffer = Buffer.from(fs.readFileSync(path.join(apiDir, 'api.yaml')));
             const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
-            apiName = apiMetadata.apiInfo.apiName || entry;
+            apiName = apiMetadata.name || entry;
 
-            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.apiVersion)) {
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.version)) {
                 results.push({ name: apiName, status: 'exists' });
                 continue;
             }
@@ -122,40 +123,40 @@ async function seedSampleAPIs(orgId) {
             }
 
             await sequelize.transaction(async (t) => {
-                const created = await apiDao.create(orgId, apiMetadata, t);
-                apiId = created.dataValues.API_ID;
+                const created = await apiDao.create(orgId, apiMetadata, constants.SYSTEM_ACTOR, t);
+                apiId = created.dataValues.uuid;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
-                        if (plan) mappings.push({ apiID: apiId, planID: plan.PLAN_ID });
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.id);
+                        if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
-                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, t);
+                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }
 
                 // Label mappings
-                const labels = Array.isArray(apiMetadata.apiInfo.labels) && apiMetadata.apiInfo.labels.length
-                    ? apiMetadata.apiInfo.labels
+                const labels = Array.isArray(apiMetadata.labels) && apiMetadata.labels.length
+                    ? apiMetadata.labels
                     : ['default'];
-                await labelDao.createApiMapping(orgId, apiId, labels, t);
+                await labelDao.createApiMapping(orgId, apiId, labels, constants.SYSTEM_ACTOR, t);
 
                 // Definition file
                 if (apiDefinitionFile) {
-                    const isGraphQL = apiMetadata.apiInfo.apiType === constants.API_TYPE.GRAPHQL;
+                    const isGraphQL = apiMetadata.type === constants.API_TYPE.GRAPHQL;
                     const storedName = isGraphQL ? constants.FILE_NAME.API_DEFINITION_GRAPHQL : apiFileName;
-                    await apiFileDao.store(apiDefinitionFile, storedName, apiId, constants.DOC_TYPES.API_DEFINITION, t);
+                    await apiFileDao.store(apiDefinitionFile, storedName, apiId, constants.DOC_TYPES.API_DEFINITION, constants.SYSTEM_ACTOR, t);
                 }
 
                 // Documentation files from docs/
                 const docs = readDocFiles(path.join(apiDir, 'docs'), '');
                 if (docs.length) {
-                    await apiFileDao.storeMany(docs, apiId, t);
+                    await apiFileDao.storeMany(docs, apiId, constants.SYSTEM_ACTOR, t);
                 }
             });
 
-            results.push({ name: apiName, handle: apiMetadata.apiInfo.apiHandle, status: 'ok', apiId });
+            results.push({ name: apiName, handle: apiMetadata.handle, status: 'ok', apiId });
             logger.info('Seeded sample API', { orgId, apiName, apiId });
 
         } catch (err) {
@@ -194,9 +195,9 @@ async function seedSampleMCPs(orgId) {
         try {
             const yamlBuffer = Buffer.from(fs.readFileSync(path.join(mcpDir, 'api.yaml')));
             const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
-            apiName = apiMetadata.apiInfo.apiName || entry;
+            apiName = apiMetadata.name || entry;
 
-            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.apiVersion)) {
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.version)) {
                 results.push({ name: apiName, status: 'exists' });
                 continue;
             }
@@ -207,24 +208,24 @@ async function seedSampleMCPs(orgId) {
                 : null;
 
             await sequelize.transaction(async (t) => {
-                const created = await apiDao.create(orgId, apiMetadata, t);
-                apiId = created.dataValues.API_ID;
+                const created = await apiDao.create(orgId, apiMetadata, constants.SYSTEM_ACTOR, t);
+                apiId = created.dataValues.uuid;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
-                        if (plan) mappings.push({ apiID: apiId, planID: plan.PLAN_ID });
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.id);
+                        if (plan) mappings.push({ apiId: apiId, planId: plan.uuid });
                     }
-                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, t);
+                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }
 
                 // Label mappings
-                const labels = Array.isArray(apiMetadata.apiInfo.labels) && apiMetadata.apiInfo.labels.length
-                    ? apiMetadata.apiInfo.labels
+                const labels = Array.isArray(apiMetadata.labels) && apiMetadata.labels.length
+                    ? apiMetadata.labels
                     : ['default'];
-                await labelDao.createApiMapping(orgId, apiId, labels, t);
+                await labelDao.createApiMapping(orgId, apiId, labels, constants.SYSTEM_ACTOR, t);
 
                 // Schema definition (tools/resources/prompts)
                 if (schemaBuffer) {
@@ -233,6 +234,7 @@ async function seedSampleMCPs(orgId) {
                         constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME,
                         apiId,
                         constants.DOC_TYPES.SCHEMA_DEFINITION,
+                        constants.SYSTEM_ACTOR,
                         t
                     );
                 }
@@ -240,11 +242,11 @@ async function seedSampleMCPs(orgId) {
                 // Documentation files from docs/
                 const docs = readDocFiles(path.join(mcpDir, 'docs'), '');
                 if (docs.length) {
-                    await apiFileDao.storeMany(docs, apiId, t);
+                    await apiFileDao.storeMany(docs, apiId, constants.SYSTEM_ACTOR, t);
                 }
             });
 
-            results.push({ name: apiName, handle: apiMetadata.apiInfo.apiHandle, status: 'ok', apiId });
+            results.push({ name: apiName, handle: apiMetadata.handle, status: 'ok', apiId });
             logger.info('Seeded sample MCP', { orgId, apiName, apiId });
 
         } catch (err) {
@@ -256,4 +258,40 @@ async function seedSampleMCPs(orgId) {
     return results;
 }
 
-module.exports = { seedSampleAPIs, seedSampleMCPs };
+/**
+ * Path to the "samples seeded" marker file. Lives alongside the SQLite DB file in the
+ * persisted data volume — deliberately not a DB row, so it survives even if the DB is
+ * swapped out, and not localStorage/sessionStorage, so it's shared across browsers/admins.
+ */
+function markerPath() {
+    const dbStorage = config.db?.storage || './devportal.db';
+    return path.join(path.dirname(dbStorage), '.samples-seeded');
+}
+
+/**
+ * Whether sample APIs/MCPs have already been seeded at least once for this instance.
+ * Best-effort: any filesystem error is treated as "not seeded" rather than throwing.
+ */
+function areSamplesSeeded() {
+    try {
+        return fs.existsSync(markerPath());
+    } catch (err) {
+        logger.warn('Failed to check samples-seeded marker', { error: err.message });
+        return false;
+    }
+}
+
+/**
+ * Record that samples have been seeded. Best-effort — a failure to write the marker must
+ * not fail the seed operation itself (the seed already succeeded by this point).
+ */
+function markSamplesSeeded() {
+    try {
+        fs.mkdirSync(path.dirname(markerPath()), { recursive: true });
+        fs.writeFileSync(markerPath(), new Date().toISOString());
+    } catch (err) {
+        logger.warn('Failed to write samples-seeded marker', { error: err.message });
+    }
+}
+
+module.exports = { seedSampleAPIs, seedSampleMCPs, areSamplesSeeded, markSamplesSeeded };

@@ -86,16 +86,14 @@
     var _secretReloadOnClose = false;
     var _copyTimer = null;
 
-    function showSecretModal(value, reloadOnClose) {
+    function showSecretModal(value, reloadOnClose, keyName) {
         _secretReloadOnClose = !!reloadOnClose;
         const codeEl = document.getElementById('api-key-secret-value');
         if (codeEl) codeEl.textContent = value || '';
-        // Reset copy button to default state
+        const nameEl = document.getElementById('ak-secret-key-name');
+        if (nameEl) nameEl.textContent = keyName || '';
         const copyBtn = document.getElementById('btn-copy-api-key-secret');
-        if (copyBtn) {
-            copyBtn.className = 'ak-copy-btn';
-            copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
-        }
+        if (copyBtn) copyBtn.classList.remove('copy-btn--copied');
         akShowModal('showApiKeySecretModal');
     }
 
@@ -128,12 +126,10 @@
                     document.body.removeChild(ta);
                 }
             } catch (e) {}
-            copyBtn.className = 'ak-copy-btn ak-copy-btn--copied';
-            copyBtn.innerHTML = '<i class="bi bi-check-lg"></i> Copied';
+            copyBtn.classList.add('copy-btn--copied');
             if (_copyTimer) clearTimeout(_copyTimer);
             _copyTimer = setTimeout(function () {
-                copyBtn.className = 'ak-copy-btn';
-                copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
+                copyBtn.classList.remove('copy-btn--copied');
             }, 1600);
         });
     }
@@ -192,7 +188,7 @@
                 applications.forEach(function (app) {
                     const opt = document.createElement('option');
                     opt.value = app.appId;
-                    opt.textContent = app.name;
+                    opt.textContent = app.displayName;
                     if (app.appId === currentAppId) opt.selected = true;
                     select.appendChild(opt);
                 });
@@ -206,7 +202,7 @@
     const namePattern = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 
     async function postGenerate(body) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/generate'), {
+        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/generate'), {
             method: 'POST', credentials: 'same-origin',
             headers: jsonMutationHeaders(), body: JSON.stringify(body),
         });
@@ -216,9 +212,9 @@
     }
 
     async function postRegenerate(keyId, body) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/regenerate'), {
+        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/regenerate'), {
             method: 'POST', credentials: 'same-origin',
-            headers: jsonMutationHeaders(), body: JSON.stringify(body),
+            headers: jsonMutationHeaders(), body: JSON.stringify(Object.assign({ keyId: keyId }, body)),
         });
         const data = await response.json().catch(function () { return {}; });
         if (!response.ok) throw new Error(data.description || data.message || response.statusText || 'Request failed');
@@ -226,11 +222,9 @@
     }
 
     async function postRevoke(keyId) {
-        const url = '/o/' + encodeURIComponent(orgId) + '/devportal/v1/api-keys/' + encodeURIComponent(keyId) + '/revoke';
-        const response = await fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: jsonMutationHeaders()
+        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/revoke'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
         });
         if (!response.ok) {
             const data = await response.json().catch(function () { return {}; });
@@ -238,10 +232,10 @@
         }
     }
 
-    async function putApplication(keyId, appId) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/application'), {
-            method: 'PUT', credentials: 'same-origin',
-            headers: jsonMutationHeaders(), body: JSON.stringify({ appId: appId }),
+    async function postAssociate(keyId, appId) {
+        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/associate'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId, appId: appId }),
         });
         if (!response.ok) {
             const data = await response.json().catch(function () { return {}; });
@@ -249,10 +243,10 @@
         }
     }
 
-    async function deleteApplicationAssociation(keyId) {
-        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/application'), {
-            method: 'DELETE', credentials: 'same-origin',
-            headers: jsonMutationHeaders(),
+    async function postDissociate(keyId) {
+        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/dissociate'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
         });
         if (!response.ok) {
             const data = await response.json().catch(function () { return {}; });
@@ -273,9 +267,9 @@
             submitAppBtn.disabled = true;
             try {
                 if (appId) {
-                    await putApplication(keyId, appId);
+                    await postAssociate(keyId, appId);
                 } else {
-                    await deleteApplicationAssociation(keyId);
+                    await postDissociate(keyId);
                 }
                 closeAppModal();
                 window.location.reload();
@@ -301,7 +295,7 @@
                 if (typeof showAlert === 'function') await showAlert('Enter a valid name: start with a letter or number, then up to 128 URL-safe characters.', 'error');
                 return;
             }
-            const body = { apiId: apiId, name: name };
+            const body = { id: name };
             const iso = expInput ? expiresToIso(expInput.value) : null;
             if (iso) body.expiresAt = iso;
             submitGenBtn.dataset.loading = 'true';
@@ -319,7 +313,7 @@
                 delete submitGenBtn.dataset.loading;
             }
             if (data && data.key) {
-                showSecretModal(data.key, true);
+                showSecretModal(data.key, true, name);
             } else if (data) {
                 window.location.reload();
             }
@@ -353,11 +347,7 @@
             const nameField = document.getElementById('regenerate-api-key-name');
             const expField = document.getElementById('regenerate-api-key-expires');
             const name = (nameField && nameField.value) ? nameField.value.trim() : '';
-            if (!namePattern.test(name)) {
-                if (typeof showAlert === 'function') await showAlert('Enter a valid name for the new key.', 'error');
-                return;
-            }
-            const body = { apiId: apiId, name: name };
+            const body = {};
             const iso = expField ? expiresToIso(expField.value) : null;
             if (iso) body.expiresAt = iso;
             submitRegenBtn.dataset.loading = 'true';
@@ -373,7 +363,7 @@
                 delete submitRegenBtn.dataset.loading;
             }
             if (data && data.key) {
-                showSecretModal(data.key, true);
+                showSecretModal(data.key, true, name);
             } else if (data) {
                 window.location.reload();
             }
