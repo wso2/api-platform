@@ -139,6 +139,7 @@ type OrgInitState = 'checking' | 'provisioning' | 'done' | 'error';
 function PostSignInInit({ children }: { children: React.ReactNode }) {
   const { user } = useAppAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const initiated = useRef(false);
   const [orgState, setOrgState] = useState<OrgInitState>('checking');
 
@@ -164,7 +165,12 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
             region: DEFAULT_ORG_REGION,
           });
         }
-        navigate(`/organizations/${org.handle}/home`, { replace: true });
+        const orgBasePath = `/organizations/${org.handle}`;
+        const alreadyOnOrgPath =
+          location.pathname === orgBasePath || location.pathname.startsWith(`${orgBasePath}/`);
+        if (!alreadyOnOrgPath) {
+          navigate(`${orgBasePath}/home`, { replace: true });
+        }
         setOrgState('done');
       })
       .catch(() => {
@@ -173,7 +179,7 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
         // surface the error screen whose only action is to log out.
         setOrgState('error');
       });
-  }, [user, navigate]);
+  }, [user, navigate, location.pathname]);
 
   if (orgState === 'checking' || orgState === 'provisioning') {
     return (
