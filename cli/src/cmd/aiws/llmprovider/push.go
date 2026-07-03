@@ -33,15 +33,14 @@ import (
 const (
 	PushCmdLiteral = "push"
 	PushCmdExample = `# Push an LLM provider artifact using the active AI workspace
-ap ai-ws llm-provider push -f build/wso2-claude.json --org <org-id>
+ap ai-ws llm-provider push -f build/wso2-claude.json
 
 # Push using a specific AI workspace
-ap ai-ws llm-provider push -f build/wso2-claude.json --org <org-id> --display-name my-workspace --platform eu`
+ap ai-ws llm-provider push -f build/wso2-claude.json --display-name my-workspace --platform eu`
 )
 
 var (
 	pushFilePath string
-	pushOrgID    string
 	pushName     string
 	pushPlatform string
 	pushInsecure bool
@@ -63,21 +62,14 @@ var pushCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(pushCmd, utils.FlagFile, &pushFilePath, "", "Path to the LLM provider payload JSON file (required)")
-	utils.AddStringFlag(pushCmd, utils.FlagOrgID, &pushOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagName, &pushName, "", "AI workspace display name")
 	utils.AddStringFlag(pushCmd, utils.FlagPlatform, &pushPlatform, "", "Platform name")
 	utils.AddStringFlag(pushCmd, utils.FlagOutput, &pushOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
 	pushCmd.Flags().BoolVar(&pushInsecure, "insecure", false, "Skip TLS certificate verification")
 	_ = pushCmd.MarkFlagRequired(utils.FlagFile)
-	_ = pushCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runPushCommand() error {
-	orgID := strings.TrimSpace(pushOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	payload, err := aiworkspace.ReadJSONFile(pushFilePath)
 	if err != nil {
 		return err
@@ -101,17 +93,16 @@ func runPushCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	aiWorkspace, resolvedPlatform, err := aiworkspace.ResolveAIWorkspace(cfg, pushName, pushPlatform)
+	aiWorkspace, _, err := aiworkspace.ResolveAIWorkspace(cfg, pushName, pushPlatform)
 	if err != nil {
 		return err
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, pushInsecure)
-	resp, err := client.PostJSON(aiworkspace.ProviderPath(orgID), payload)
+	resp, err := client.PostJSON(aiworkspace.ProviderPath(), payload)
 	if err != nil {
 		return aiworkspace.WrapRequestError("push llm provider", err, pushInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, pushOutput, providerID,
-		fmt.Sprintf("LLM provider pushed to ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintApplyResult(resp, pushOutput, "LlmProvider", "applied", providerID, "")
 }

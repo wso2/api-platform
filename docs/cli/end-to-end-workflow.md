@@ -90,11 +90,12 @@ ap devportal rest-api publish -f build/devportal.zip --org <org-id>
 
 ```shell
 ap ai-ws build                                                      # → build/<workspace>.json
-ap ai-ws llm-proxy push -f build/<workspace>.json --org <org-id>
+ap ai-ws llm-proxy push -f build/<workspace>.json --project-id <project-id>
 # the same pattern applies to:  ap ai-ws llm-provider push  /  ap ai-ws mcp-proxy push
+# (the organization comes from the auth token — no --org flag)
 ```
 
-`ap ai-ws build` reads each ai-workspace entry in `.api-platform/config.yaml` and generates an LLM proxy creation payload (JSON). Pass `--use-spec` to fold the OpenAPI spec from `definition.yaml` into the payload.
+`ap ai-ws build` reads each ai-workspace entry in `.api-platform/config.yaml` and generates a creation payload (JSON), folding the OpenAPI spec from `definition.yaml` into the payload.
 
 ## Notes
 

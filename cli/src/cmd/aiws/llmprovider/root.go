@@ -25,7 +25,7 @@ import (
 const (
 	LLMProviderCmdLiteral = "llm-provider"
 	LLMProviderCmdExample = `# Push an LLM provider artifact to the AI workspace
-ap ai-ws llm-provider push -f build/wso2-claude.json --org <org-id>`
+ap ai-ws llm-provider push -f build/wso2-claude.json`
 )
 
 // LLMProviderCmd is the parent command for LLM provider operations.

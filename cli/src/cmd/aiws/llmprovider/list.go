@@ -21,7 +21,6 @@ package llmprovider
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/aiworkspace"
@@ -31,18 +30,17 @@ import (
 
 const (
 	ListCmdLiteral = "list"
-	ListCmdExample = `# List all LLM providers in an organization
-ap ai-ws llm-provider list --org <org-id>
+	ListCmdExample = `# List all LLM providers
+ap ai-ws llm-provider list
 
 # List with pagination
-ap ai-ws llm-provider list --org <org-id> --limit 50 --offset 0
+ap ai-ws llm-provider list --limit 50 --offset 0
 
 # List using a specific AI workspace
-ap ai-ws llm-provider list --org <org-id> --display-name my-workspace --platform eu`
+ap ai-ws llm-provider list --display-name my-workspace --platform eu`
 )
 
 var (
-	listOrgID    string
 	listLimit    string
 	listOffset   string
 	listName     string
@@ -64,21 +62,14 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(listCmd, utils.FlagOrgID, &listOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(listCmd, utils.FlagLimit, &listLimit, "", "Maximum number of providers to return")
 	utils.AddStringFlag(listCmd, utils.FlagOffset, &listOffset, "", "Number of providers to skip")
 	utils.AddStringFlag(listCmd, utils.FlagName, &listName, "", "AI workspace display name")
 	utils.AddStringFlag(listCmd, utils.FlagPlatform, &listPlatform, "", "Platform name")
 	listCmd.Flags().BoolVar(&listInsecure, "insecure", false, "Skip TLS certificate verification")
-	_ = listCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runListCommand() error {
-	orgID := strings.TrimSpace(listOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -90,7 +81,7 @@ func runListCommand() error {
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, listInsecure)
-	path := aiworkspace.ProviderListPath(orgID, aiworkspace.ListQuery{Limit: listLimit, Offset: listOffset})
+	path := aiworkspace.ProviderListPath(aiworkspace.ListQuery{Limit: listLimit, Offset: listOffset})
 
 	resp, err := client.Get(path)
 	if err != nil {

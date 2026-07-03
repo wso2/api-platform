@@ -33,15 +33,14 @@ import (
 const (
 	EditCmdLiteral = "edit"
 	EditCmdExample = `# Update an existing LLM provider using the active AI workspace
-ap ai-ws llm-provider edit -f build/wso2-claude.json --org <org-id>
+ap ai-ws llm-provider edit -f build/wso2-claude.json
 
 # Update using a specific AI workspace
-ap ai-ws llm-provider edit -f build/wso2-claude.json --org <org-id> --display-name my-workspace --platform eu`
+ap ai-ws llm-provider edit -f build/wso2-claude.json --display-name my-workspace --platform eu`
 )
 
 var (
 	editFilePath string
-	editOrgID    string
 	editName     string
 	editPlatform string
 	editInsecure bool
@@ -63,21 +62,14 @@ var editCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(editCmd, utils.FlagFile, &editFilePath, "", "Path to the LLM provider payload JSON file (required)")
-	utils.AddStringFlag(editCmd, utils.FlagOrgID, &editOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(editCmd, utils.FlagName, &editName, "", "AI workspace display name")
 	utils.AddStringFlag(editCmd, utils.FlagPlatform, &editPlatform, "", "Platform name")
 	utils.AddStringFlag(editCmd, utils.FlagOutput, &editOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
 	editCmd.Flags().BoolVar(&editInsecure, "insecure", false, "Skip TLS certificate verification")
 	_ = editCmd.MarkFlagRequired(utils.FlagFile)
-	_ = editCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runEditCommand() error {
-	orgID := strings.TrimSpace(editOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	payload, err := aiworkspace.ReadJSONFile(editFilePath)
 	if err != nil {
 		return err
@@ -99,17 +91,16 @@ func runEditCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	aiWorkspace, resolvedPlatform, err := aiworkspace.ResolveAIWorkspace(cfg, editName, editPlatform)
+	aiWorkspace, _, err := aiworkspace.ResolveAIWorkspace(cfg, editName, editPlatform)
 	if err != nil {
 		return err
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, editInsecure)
-	resp, err := client.PutJSON(aiworkspace.ProviderResourcePath(orgID, providerID), payload)
+	resp, err := client.PutJSON(aiworkspace.ProviderByIDPath(providerID), payload)
 	if err != nil {
 		return aiworkspace.WrapRequestError("update llm provider", err, editInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, editOutput, providerID,
-		fmt.Sprintf("LLM provider updated on ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintApplyResult(resp, editOutput, "LlmProvider", "updated", providerID, "")
 }

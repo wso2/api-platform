@@ -25,7 +25,7 @@ import (
 const (
 	LLMProxyCmdLiteral = "llm-proxy"
 	LLMProxyCmdExample = `# Push an LLM proxy artifact to the AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --org <org-id> --project-id <project-id>`
+ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id>`
 )
 
 // LLMProxyCmd is the parent command for LLM proxy operations.

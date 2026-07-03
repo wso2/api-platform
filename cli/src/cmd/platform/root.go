@@ -32,7 +32,10 @@ ap platform use --display-name dev
 ap platform current
 
 # List all platforms
-ap platform list`
+ap platform list
+
+# Remove a platform
+ap platform remove --display-name dev`
 )
 
 var PlatformCmd = &cobra.Command{
@@ -50,4 +53,5 @@ func init() {
 	PlatformCmd.AddCommand(useCmd)
 	PlatformCmd.AddCommand(currentCmd)
 	PlatformCmd.AddCommand(listCmd)
+	PlatformCmd.AddCommand(removeCmd)
 }

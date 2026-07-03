@@ -107,7 +107,7 @@ const portalConfigTemplate = `
 #     filePaths:                  # paths relative to portal root
 #       metadata: ./artifact.yaml
 #       runtime: ./runtime.yaml
-#       definition: ./definition.yaml   # only folded into the payload with --use-spec
+#       definition: ./definition.yaml   # OpenAPI spec folded into the payload
 
 # Dev portal configurations
 # devportals:

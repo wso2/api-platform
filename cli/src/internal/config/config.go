@@ -553,3 +553,18 @@ func (c *Config) RemoveAIWorkspaceFromPlatform(platformName, name string) error 
 func (c *Config) RemoveAIWorkspace(name string) error {
 	return c.RemoveAIWorkspaceFromPlatform("", name)
 }
+
+// RemovePlatform deletes a platform and all of its connections from the config.
+// If the removed platform was the current one, the current selection is reset so
+// it falls back to the default platform.
+func (c *Config) RemovePlatform(platformName string) error {
+	name := normalizePlatformName(platformName)
+	if c.Platforms == nil || c.Platforms[name] == nil {
+		return fmt.Errorf("platform '%s' not found", name)
+	}
+	delete(c.Platforms, name)
+	if normalizePlatformName(c.CurrentPlatform) == name {
+		c.CurrentPlatform = ""
+	}
+	return nil
+}

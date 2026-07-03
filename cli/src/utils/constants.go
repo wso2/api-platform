@@ -88,9 +88,9 @@ const (
 	AIWorkspaceAPIHeader   = "x-wso2-api-key"
 
 	// AI Workspace REST API Endpoints
-	AIWorkspaceLLMProvidersPath = "/api-proxy/api/v0.9/llm-providers"
-	AIWorkspaceLLMProxiesPath   = "/api-proxy/api/v0.9/llm-proxies"
-	AIWorkspaceMCPProxiesPath   = "/api-proxy/api/v0.9/mcp-proxies"
+	AIWorkspaceLLMProvidersPath = "/api/v0.9/llm-providers"
+	AIWorkspaceLLMProxiesPath   = "/api/v0.9/llm-proxies"
+	AIWorkspaceMCPProxiesPath   = "/api/v0.9/mcp-proxies"
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
@@ -101,12 +101,11 @@ const (
 	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
 
 	// Artifact Types
-	TypeREST                = "rest"
-	TypeSOAP                = "soap"
-	TypeLLMProxy            = "llm-proxy"
-	TypeLLMProvider         = "llm-provider"
-	TypeLLMProviderTemplate = "llm-provider-template"
-	TypeMCPProxy            = "mcp-proxy"
+	TypeREST        = "rest"
+	TypeSOAP        = "soap"
+	TypeLLMProxy    = "llm-proxy"
+	TypeLLMProvider = "llm-provider"
+	TypeMCPProxy    = "mcp-proxy"
 )
 
 // PolicyHub REST API defaults and paths

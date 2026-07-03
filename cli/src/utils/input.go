@@ -22,21 +22,63 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 
 	"golang.org/x/term"
 )
 
+// stdinReader is a shared buffered reader over os.Stdin. Prompts must share one
+// reader: a bufio.Reader reads ahead, so a fresh reader per prompt can discard
+// input buffered by a previous prompt (breaking successive prompts on piped
+// input).
+var stdinReader = bufio.NewReader(os.Stdin)
+
 // PromptInput prompts the user for input and returns the trimmed response
 func PromptInput(prompt string) (string, error) {
 	fmt.Print(prompt)
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
+	input, err := stdinReader.ReadString('\n')
 	if err != nil {
 		return "", fmt.Errorf("failed to read input: %w", err)
 	}
 	return strings.TrimSpace(input), nil
+}
+
+// PromptSelect presents a numbered list of options and returns the option the
+// user selects. The user may enter either the number (1-based) or the option
+// value itself (case-insensitive). It re-prompts on invalid input and returns
+// an error only when input cannot be read (e.g. EOF).
+func PromptSelect(prompt string, options []string) (string, error) {
+	fmt.Println(prompt)
+	for i, option := range options {
+		fmt.Printf("  %d) %s\n", i+1, option)
+	}
+
+	for {
+		fmt.Printf("Enter number [1-%d]: ", len(options))
+		input, err := stdinReader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("failed to read input: %w", err)
+		}
+		input = strings.TrimSpace(input)
+
+		if n, convErr := strconv.Atoi(input); convErr == nil {
+			if n >= 1 && n <= len(options) {
+				return options[n-1], nil
+			}
+			fmt.Printf("Invalid selection %q; enter a number between 1 and %d.\n", input, len(options))
+			continue
+		}
+
+		// Fall back to matching the option value itself.
+		for _, option := range options {
+			if strings.EqualFold(input, option) {
+				return option, nil
+			}
+		}
+		fmt.Printf("Invalid selection %q; enter a number between 1 and %d.\n", input, len(options))
+	}
 }
 
 // PromptPassword prompts the user for a password with masked input

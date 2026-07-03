@@ -71,7 +71,7 @@ func runInitCommand() error {
 			}
 		}
 		if strings.TrimSpace(projectType) == "" {
-			projectType, err = utils.PromptInput(fmt.Sprintf("Enter artifact type (%s): ", strings.Join(project.SupportedArtifactTypes(), ", ")))
+			projectType, err = utils.PromptSelect("Select artifact type:", project.SupportedArtifactTypes())
 			if err != nil {
 				return fmt.Errorf("Failed to read artifact type: %w", err)
 			}

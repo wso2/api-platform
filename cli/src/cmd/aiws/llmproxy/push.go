@@ -33,15 +33,14 @@ import (
 const (
 	PushCmdLiteral = "push"
 	PushCmdExample = `# Push an LLM proxy artifact using the active AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --org <org-id> --project-id <project-id>
+ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id>
 
 # Push using a specific AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --org <org-id> --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (
 	pushFilePath  string
-	pushOrgID     string
 	pushProjectID string
 	pushName      string
 	pushPlatform  string
@@ -64,22 +63,16 @@ var pushCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(pushCmd, utils.FlagFile, &pushFilePath, "", "Path to the LLM proxy payload JSON file (required)")
-	utils.AddStringFlag(pushCmd, utils.FlagOrgID, &pushOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagProjectID, &pushProjectID, "", "Project ID to set on the payload (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagName, &pushName, "", "AI workspace display name")
 	utils.AddStringFlag(pushCmd, utils.FlagPlatform, &pushPlatform, "", "Platform name")
 	utils.AddStringFlag(pushCmd, utils.FlagOutput, &pushOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
 	pushCmd.Flags().BoolVar(&pushInsecure, "insecure", false, "Skip TLS certificate verification")
 	_ = pushCmd.MarkFlagRequired(utils.FlagFile)
-	_ = pushCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = pushCmd.MarkFlagRequired(utils.FlagProjectID)
 }
 
 func runPushCommand() error {
-	orgID := strings.TrimSpace(pushOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
 	projectID := strings.TrimSpace(pushProjectID)
 	if projectID == "" {
 		return fmt.Errorf("project ID is required")
@@ -115,17 +108,16 @@ func runPushCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	aiWorkspace, resolvedPlatform, err := aiworkspace.ResolveAIWorkspace(cfg, pushName, pushPlatform)
+	aiWorkspace, _, err := aiworkspace.ResolveAIWorkspace(cfg, pushName, pushPlatform)
 	if err != nil {
 		return err
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, pushInsecure)
-	resp, err := client.PostJSON(aiworkspace.ProxyPath(orgID), body)
+	resp, err := client.PostJSON(aiworkspace.ProxyPath(), body)
 	if err != nil {
 		return aiworkspace.WrapRequestError("push llm proxy", err, pushInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, pushOutput, proxyID,
-		fmt.Sprintf("LLM proxy pushed to ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintApplyResult(resp, pushOutput, "LlmProxy", "applied", proxyID, projectID)
 }

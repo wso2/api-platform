@@ -83,7 +83,6 @@ const (
 	FlagBillingSubscriptionID  = "billing-subscription-id"
 	FlagReferenceID            = "reference-id"
 	FlagGatewayType            = "gateway-type"
-	FlagUseSpec                = "use-spec"
 	FlagProjectID              = "project-id"
 )
 

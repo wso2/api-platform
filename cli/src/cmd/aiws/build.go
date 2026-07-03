@@ -44,16 +44,12 @@ ap ai-ws build -f /path/to/project
 ap ai-ws build -o build/
 
 # Write the generated payload to a specific file
-ap ai-ws build -o build/openai.json
-
-# Build and fold the OpenAPI spec (definition.yaml) into the payload
-ap ai-ws build --use-spec`
+ap ai-ws build -o build/openai.json`
 )
 
 var (
 	buildProjectDir string
 	buildOutputDir  string
-	buildUseSpec    bool
 )
 
 var buildCmd = &cobra.Command{
@@ -61,9 +57,9 @@ var buildCmd = &cobra.Command{
 	Short: "Build the project for AI workspace",
 	Long: "Build the AI workspace artifact for the project located in the specified directory " +
 		"(or current directory if not specified). For each ai-workspace configuration in " +
-		".api-platform/config.yaml, the command reads its metadata.yaml and runtime.yaml and generates " +
-		"an llm-proxy creation payload as a JSON file. The openapi field is left empty by default; pass " +
-		"--use-spec to fold in the OpenAPI spec from definition.yaml when it exists.",
+		".api-platform/config.yaml, the command reads its metadata.yaml, runtime.yaml and " +
+		"definition.yaml and generates a creation payload as a JSON file. The OpenAPI spec from " +
+		"definition.yaml is folded into the payload's openapi field.",
 	Example: BuildCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runBuildCommand(); err != nil {
@@ -76,7 +72,6 @@ var buildCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(buildCmd, utils.FlagFile, &buildProjectDir, "", "Path to the project directory (defaults to current directory)")
 	utils.AddStringFlag(buildCmd, utils.FlagOutput, &buildOutputDir, "", "Output path: a .json file to write the payload to, or a directory (defaults to the project build directory)")
-	utils.AddBoolFlag(buildCmd, utils.FlagUseSpec, &buildUseSpec, false, "Fold the OpenAPI spec (definition.yaml) into the generated payload when it exists")
 }
 
 // failedWorkspace records an ai-workspace config that could not be built so the
@@ -158,7 +153,7 @@ func runBuildCommand() error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	outputs, failures := generateAIWorkspaceBuildArtifacts(projectRoot, outputDir, outputFile, buildUseSpec, projectConfig.AIWorkspaces)
+	outputs, failures := generateAIWorkspaceBuildArtifacts(projectRoot, outputDir, outputFile, projectConfig.AIWorkspaces)
 
 	for _, output := range outputs {
 		fmt.Printf("AI workspace payload generated at %s\n", output)
@@ -195,13 +190,13 @@ func normalizeAIWorkspaceProjectConfig(config *project.AIWorkspaceConfig) {
 	}
 }
 
-func generateAIWorkspaceBuildArtifacts(projectRoot, outputDir, outputFile string, useSpec bool, configs []project.AIWorkspaceConfig) ([]string, []failedWorkspace) {
+func generateAIWorkspaceBuildArtifacts(projectRoot, outputDir, outputFile string, configs []project.AIWorkspaceConfig) ([]string, []failedWorkspace) {
 	outputs := make([]string, 0, len(configs))
 	failures := make([]failedWorkspace, 0)
 	seen := make(map[string]string, len(configs)) // payload filename -> config name
 
 	for i := range configs {
-		outputPath, err := buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile, useSpec, seen, &configs[i])
+		outputPath, err := buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile, seen, &configs[i])
 		if err != nil {
 			failures = append(failures, failedWorkspace{name: configs[i].Name, err: err})
 			continue
@@ -213,11 +208,11 @@ func generateAIWorkspaceBuildArtifacts(projectRoot, outputDir, outputFile string
 }
 
 // buildSingleAIWorkspacePayload reads the metadata.yaml and runtime.yaml for one
-// ai-workspace config, derives the llm-proxy creation payload, optionally folds
-// in the OpenAPI spec, and writes it as JSON. When outputFile is set it is
+// ai-workspace config, derives the creation payload, folds in the OpenAPI spec
+// from definition.yaml, and writes it as JSON. When outputFile is set it is
 // written there; otherwise it lands at outputDir/<proxy-name>.json. Any existing
 // file is overwritten. Returning an error drops only this config.
-func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, useSpec bool, seen map[string]string, config *project.AIWorkspaceConfig) (string, error) {
+func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, seen map[string]string, config *project.AIWorkspaceConfig) (string, error) {
 	baseDir := resolveProjectPath(projectRoot, config.PortalRoot)
 	if err := ensureWithinProjectRoot(projectRoot, baseDir, config.Name, "portalRoot"); err != nil {
 		return "", err
@@ -271,19 +266,14 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, us
 		return "", fmt.Errorf("ai-workspace config %q: name mismatch: metadata.yaml has metadata.name %q but runtime.yaml has metadata.name %q", config.Name, resourceName, runtimeName)
 	}
 
-	// The payload shape and whether an OpenAPI spec is required are driven by the
-	// declared kind. An LlmProxy rarely needs a spec, so it stays opt-in via
-	// --use-spec; an LlmProvider always needs one, so the definition is required.
+	// The payload shape is driven by the declared kind. All kinds fold in the
+	// OpenAPI spec from definition.yaml, which is required.
 	var payload interface{}
 	switch metadataKind {
 	case kindLLMProxy:
-		openapi := ""
-		if useSpec {
-			spec, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, false)
-			if err != nil {
-				return "", err
-			}
-			openapi = spec
+		openapi, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, true)
+		if err != nil {
+			return "", err
 		}
 		payload = buildLLMProxyPayload(resourceName, metadata, runtime, openapi)
 	case kindLLMProvider:
@@ -369,21 +359,58 @@ func loadAIWorkspaceSpec(projectRoot, baseDir string, config *project.AIWorkspac
 	return string(data), nil
 }
 
+// templateModelIDs maps an LLM provider template to the model IDs it exposes.
+// When a provider's template matches a key here, the build emits a single
+// modelProviders entry (keyed by the template) carrying these models.
+var templateModelIDs = map[string][]string{
+	"meta": {
+		"us.meta.llama3-3-70b-instruct-v1:0",
+		"us.meta.llama4-maverick-17b-instruct-v1:0",
+	},
+	"openai":        {"gpt-4o-mini", "gpt-4.1-mini", "o4-mini"},
+	"anthropic":     {"claude-3.5-sonnet", "claude-3-opus"},
+	"google-vertex": {"gemini-1.5-pro", "gemini-1.5-flash"},
+	"aws-bedrock":   {"amazon.titan-text-premier", "anthropic.claude-v2"},
+	"mistralai": {
+		"mistral-large-latest",
+		"mistral-small-latest",
+		"open-mixtral-8x22b",
+	},
+}
+
+// modelProvidersForTemplate returns the modelProviders block for a provider
+// template. It returns a single model provider (keyed by the template name)
+// carrying the template's models, or nil for an unknown template so the payload
+// omits the field.
+func modelProvidersForTemplate(template string) []llmModelProvider {
+	template = strings.TrimSpace(template)
+	modelIDs, ok := templateModelIDs[template]
+	if !ok || len(modelIDs) == 0 {
+		return nil
+	}
+
+	provider := llmModelProvider{ID: template, DisplayName: template}
+	for _, modelID := range modelIDs {
+		provider.Models = append(provider.Models, llmModel{ID: modelID, DisplayName: modelID})
+	}
+	return []llmModelProvider{provider}
+}
+
 // buildLLMProviderPayload assembles the createLLMProvider request body from the
 // project's metadata.yaml (name/version) and runtime.yaml (context, template,
 // upstream, accessControl, policies). The api-key-auth policy is mapped to the
-// security block.
-//
-// NOTE: modelProviders and rateLimiting are not yet populated (see the
-// command's pending design questions) and are omitted from the payload.
+// security block, and modelProviders is derived from the template (see
+// modelProvidersForTemplate).
 func buildLLMProviderPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProviderPayload {
+	template := strings.TrimSpace(runtime.Spec.Template)
 	payload := llmProviderPayload{
 		ID:                 name,
-		Name:               name,
+		DisplayName:        strings.TrimSpace(metadata.Spec.DisplayName),
 		Version:            strings.TrimSpace(metadata.Spec.Version),
 		Context:            strings.TrimSpace(runtime.Spec.Context),
-		Template:           strings.TrimSpace(runtime.Spec.Template),
+		Template:           template,
 		OpenAPI:            openapi,
+		ModelProviders:     modelProvidersForTemplate(template),
 		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
 	}
 
@@ -442,7 +469,7 @@ func mapPolicy(policy runtimeProviderPolicy) llmPolicy {
 func buildMCPProxyPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, definition mcpDefinition) mcpProxyPayload {
 	payload := mcpProxyPayload{
 		ID:             name,
-		Name:           name,
+		DisplayName:    strings.TrimSpace(metadata.Spec.DisplayName),
 		Version:        strings.TrimSpace(metadata.Spec.Version),
 		Context:        strings.TrimSpace(runtime.Spec.Context),
 		Description:    "",
@@ -775,36 +802,84 @@ func buildSecurityFromPolicies(policies []runtimeProviderPolicy) *securityConfig
 	return nil
 }
 
+// defaultProxyDescription is used when runtime.yaml carries no spec.description.
+const defaultProxyDescription = "No description provided for this proxy."
+
 // buildLLMProxyPayload assembles the createLLMProxy request body from the
-// project's metadata.yaml (name/version) and runtime.yaml (context, provider,
-// policies). projectId is intentionally omitted and vhost is left empty for the
-// caller to fill in at publish time.
+// project's metadata.yaml (name/version/displayName) and runtime.yaml (context,
+// provider, description, policies). Policies come from runtime.yaml's split
+// globalPolicies / operationPolicies sections: the api-key-auth global policy is
+// mapped to the security block, every other global policy passes through into
+// globalPolicies, and operationPolicies pass through with their per-path params.
+// Each policy's params are policy-specific (no common schema) and are copied
+// verbatim. projectId is intentionally omitted for the caller to inject at
+// publish time.
 func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProxyPayload {
+	description := strings.TrimSpace(runtime.Spec.Description)
+	if description == "" {
+		description = defaultProxyDescription
+	}
+
 	payload := llmProxyPayload{
 		ID:                 proxyName,
-		Name:               proxyName,
+		DisplayName:        strings.TrimSpace(metadata.Spec.DisplayName),
 		Version:            strings.TrimSpace(metadata.Spec.Version),
 		Context:            strings.TrimSpace(runtime.Spec.Context),
-		Vhost:              "",
+		Description:        description,
 		OpenAPI:            openapi,
+		ReadOnly:           false,
 		Provider:           llmProxyProvider{ID: strings.TrimSpace(runtime.Spec.Provider.ID)},
-		Policies:           []llmPolicy{},
 		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
 	}
 
+	// The proxy references its provider by id; the provider owns the credential
+	// value, so only the auth type/header are carried here (never the secret).
 	if auth := runtime.Spec.Provider.Auth; auth != nil {
 		payload.Provider.Auth = &llmUpstreamAuth{
 			Type:   auth.Type,
 			Header: auth.Header,
-			Value:  auth.Value,
 		}
 	}
 
-	for _, policy := range runtime.Spec.Policies {
-		payload.Policies = append(payload.Policies, mapPolicy(policy))
+	// api-key-auth is expressed as the security block; all other global policies
+	// pass through with their policy-specific params.
+	payload.Security = buildSecurityFromGlobalPolicies(runtime.Spec.GlobalPolicies)
+	for _, policy := range runtime.Spec.GlobalPolicies {
+		if policy.Name == "api-key-auth" {
+			continue
+		}
+		payload.GlobalPolicies = append(payload.GlobalPolicies, llmGlobalPolicy{
+			Name:    policy.Name,
+			Version: policy.Version,
+			Params:  policy.Params,
+		})
+	}
+
+	for _, policy := range runtime.Spec.OperationPolicies {
+		payload.OperationPolicies = append(payload.OperationPolicies, mapPolicy(policy))
 	}
 
 	return payload
+}
+
+// buildSecurityFromGlobalPolicies maps the api-key-auth global policy (if
+// present) to the proxy's security block. Its params sit at the policy level
+// (in, key), unlike the provider's paths-based api-key-auth policy.
+func buildSecurityFromGlobalPolicies(policies []runtimeProviderPolicy) *securityConfig {
+	for _, policy := range policies {
+		if policy.Name != "api-key-auth" {
+			continue
+		}
+		apiKey := &apiKeySecurity{Enabled: true}
+		if v, ok := policy.Params["key"].(string); ok {
+			apiKey.Key = v
+		}
+		if v, ok := policy.Params["in"].(string); ok {
+			apiKey.In = v
+		}
+		return &securityConfig{Enabled: true, APIKey: apiKey}
+	}
+	return nil
 }
 
 func payloadFileName(name string) string {
@@ -859,15 +934,21 @@ type aiWorkspaceRuntime struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
 	Spec struct {
-		DisplayName   string                  `yaml:"displayName"`
-		Version       string                  `yaml:"version"`
-		Context       string                  `yaml:"context"`
-		Template      string                  `yaml:"template"`
-		SpecVersion   string                  `yaml:"specVersion"`
-		Provider      runtimeProvider         `yaml:"provider"`
-		Upstream      *runtimeUpstream        `yaml:"upstream"`
-		AccessControl *runtimeAccessControl   `yaml:"accessControl"`
-		Policies      []runtimeProviderPolicy `yaml:"policies"`
+		DisplayName   string                `yaml:"displayName"`
+		Version       string                `yaml:"version"`
+		Context       string                `yaml:"context"`
+		Description   string                `yaml:"description"`
+		Template      string                `yaml:"template"`
+		SpecVersion   string                `yaml:"specVersion"`
+		Provider      runtimeProvider       `yaml:"provider"`
+		Upstream      *runtimeUpstream      `yaml:"upstream"`
+		AccessControl *runtimeAccessControl `yaml:"accessControl"`
+		// Policies is the legacy flat list still used by the LLM provider and MCP
+		// proxy builders. LLM proxies use the split globalPolicies /
+		// operationPolicies below.
+		Policies          []runtimeProviderPolicy `yaml:"policies"`
+		GlobalPolicies    []runtimeProviderPolicy `yaml:"globalPolicies"`
+		OperationPolicies []runtimeProviderPolicy `yaml:"operationPolicies"`
 	} `yaml:"spec"`
 }
 
@@ -916,14 +997,26 @@ type runtimePolicyPath struct {
 
 type llmProxyPayload struct {
 	ID                 string              `json:"id"`
-	Name               string              `json:"name"`
+	DisplayName        string              `json:"displayName"`
 	Version            string              `json:"version"`
 	Context            string              `json:"context,omitempty"`
-	Vhost              string              `json:"vhost"`
+	Description        string              `json:"description"`
 	Provider           llmProxyProvider    `json:"provider"`
 	OpenAPI            string              `json:"openapi"`
-	Policies           []llmPolicy         `json:"policies"`
+	ReadOnly           bool                `json:"readOnly"`
+	Security           *securityConfig     `json:"security,omitempty"`
+	GlobalPolicies     []llmGlobalPolicy   `json:"globalPolicies,omitempty"`
+	OperationPolicies  []llmPolicy         `json:"operationPolicies,omitempty"`
 	AssociatedGateways []associatedGateway `json:"associatedGateways,omitempty"`
+}
+
+// llmGlobalPolicy is an api-level policy applied across all operations. Unlike
+// operation policies it has no paths; its params are policy-specific and passed
+// through verbatim.
+type llmGlobalPolicy struct {
+	Name    string                 `json:"name"`
+	Version string                 `json:"version"`
+	Params  map[string]interface{} `json:"params,omitempty"`
 }
 
 type llmProxyProvider struct {
@@ -961,7 +1054,7 @@ type mcpDefinition struct {
 
 type mcpProxyPayload struct {
 	ID                 string              `json:"id"`
-	Name               string              `json:"name"`
+	DisplayName        string              `json:"displayName"`
 	Version            string              `json:"version"`
 	Context            string              `json:"context,omitempty"`
 	Description        string              `json:"description"`
@@ -988,10 +1081,11 @@ type mcpPolicy struct {
 
 type llmProviderPayload struct {
 	ID                 string              `json:"id"`
-	Name               string              `json:"name"`
+	DisplayName        string              `json:"displayName"`
 	Version            string              `json:"version"`
 	Context            string              `json:"context,omitempty"`
 	Template           string              `json:"template"`
+	ModelProviders     []llmModelProvider  `json:"modelProviders,omitempty"`
 	Upstream           *llmUpstream        `json:"upstream,omitempty"`
 	AccessControl      *llmAccessControl   `json:"accessControl,omitempty"`
 	OpenAPI            string              `json:"openapi"`
@@ -999,6 +1093,20 @@ type llmProviderPayload struct {
 	Security           *securityConfig     `json:"security,omitempty"`
 	Policies           []llmPolicy         `json:"policies,omitempty"`
 	AssociatedGateways []associatedGateway `json:"associatedGateways,omitempty"`
+}
+
+// llmModelProvider / llmModel mirror the LLMModelProvider / LLMModel schemas
+// (openapi.yaml). The build derives them from the provider template.
+type llmModelProvider struct {
+	ID          string     `json:"id,omitempty"`
+	DisplayName string     `json:"displayName"`
+	Models      []llmModel `json:"models,omitempty"`
+}
+
+type llmModel struct {
+	ID          string `json:"id,omitempty"`
+	DisplayName string `json:"displayName"`
+	Description string `json:"description,omitempty"`
 }
 
 type llmRateLimiting struct {

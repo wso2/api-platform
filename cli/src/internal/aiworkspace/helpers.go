@@ -60,40 +60,25 @@ func ResolveAIWorkspace(cfg *config.Config, selectedName, selectedPlatform strin
 	return aiWorkspace, resolvedPlatform, nil
 }
 
-// ProviderPath builds the llm-providers resource path with the organizationId
-// query parameter.
-func ProviderPath(orgID string) string {
-	return withOrg(utils.AIWorkspaceLLMProvidersPath, orgID)
+// ProviderPath returns the llm-providers collection path used to create a
+// provider. The organization is derived from the auth token, so no
+// organizationId query parameter is added.
+func ProviderPath() string {
+	return utils.AIWorkspaceLLMProvidersPath
 }
 
-// ProxyPath builds the llm-proxies resource path with the organizationId query
-// parameter.
-func ProxyPath(orgID string) string {
-	return withOrg(utils.AIWorkspaceLLMProxiesPath, orgID)
+// ProxyPath returns the llm-proxies collection path used to create a proxy. The
+// organization is derived from the auth token, so no organizationId query
+// parameter is added.
+func ProxyPath() string {
+	return utils.AIWorkspaceLLMProxiesPath
 }
 
-// MCPProxyPath builds the mcp-proxies resource path with the organizationId
-// query parameter.
-func MCPProxyPath(orgID string) string {
-	return withOrg(utils.AIWorkspaceMCPProxiesPath, orgID)
-}
-
-// ProviderResourcePath builds the llm-providers/{id} resource path with the
-// organizationId query parameter.
-func ProviderResourcePath(orgID, id string) string {
-	return withOrg(utils.AIWorkspaceLLMProvidersPath+"/"+url.PathEscape(id), orgID)
-}
-
-// ProxyResourcePath builds the llm-proxies/{id} resource path with the
-// organizationId query parameter.
-func ProxyResourcePath(orgID, id string) string {
-	return withOrg(utils.AIWorkspaceLLMProxiesPath+"/"+url.PathEscape(id), orgID)
-}
-
-// MCPProxyResourcePath builds the mcp-proxies/{id} resource path with the
-// organizationId query parameter.
-func MCPProxyResourcePath(orgID, id string) string {
-	return withOrg(utils.AIWorkspaceMCPProxiesPath+"/"+url.PathEscape(id), orgID)
+// MCPProxyPath returns the mcp-proxies collection path used to create an MCP
+// proxy. The organization is derived from the auth token, so no organizationId
+// query parameter is added.
+func MCPProxyPath() string {
+	return utils.AIWorkspaceMCPProxiesPath
 }
 
 // ProviderByIDPath builds the llm-providers/{id} path with only the id path
@@ -114,10 +99,6 @@ func MCPProxyByIDPath(id string) string {
 	return utils.AIWorkspaceMCPProxiesPath + "/" + url.PathEscape(id)
 }
 
-func withOrg(path, orgID string) string {
-	return fmt.Sprintf("%s?organizationId=%s", path, url.QueryEscape(orgID))
-}
-
 func withProject(path, projectID string) string {
 	return fmt.Sprintf("%s?projectId=%s", path, url.QueryEscape(projectID))
 }
@@ -128,28 +109,33 @@ type ListQuery struct {
 	Offset string
 }
 
-func withListParams(basePath, orgID string, q ListQuery) string {
-	return appendPagination(withOrg(basePath, orgID), q)
-}
-
 func withProjectListParams(basePath, projectID string, q ListQuery) string {
 	return appendPagination(withProject(basePath, projectID), q)
 }
 
 func appendPagination(path string, q ListQuery) string {
-	if v := strings.TrimSpace(q.Limit); v != "" {
-		path += "&limit=" + url.QueryEscape(v)
+	// Use "?" for the first query parameter when the path has none yet
+	// (provider list), otherwise "&" (proxy/mcp list already carry ?projectId=).
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
 	}
-	if v := strings.TrimSpace(q.Offset); v != "" {
-		path += "&offset=" + url.QueryEscape(v)
+	addParam := func(key, value string) {
+		if v := strings.TrimSpace(value); v != "" {
+			path += sep + key + "=" + url.QueryEscape(v)
+			sep = "&"
+		}
 	}
+	addParam("limit", q.Limit)
+	addParam("offset", q.Offset)
 	return path
 }
 
-// ProviderListPath builds the llm-providers list path with the organizationId
-// query parameter and optional pagination.
-func ProviderListPath(orgID string, q ListQuery) string {
-	return withListParams(utils.AIWorkspaceLLMProvidersPath, orgID, q)
+// ProviderListPath builds the llm-providers list path with optional pagination.
+// The organization is derived from the auth token, so no organizationId query
+// parameter is added.
+func ProviderListPath(q ListQuery) string {
+	return appendPagination(utils.AIWorkspaceLLMProvidersPath, q)
 }
 
 // ProxyListPath builds the llm-proxies list path with the projectId query
@@ -218,16 +204,30 @@ func OutputJSON(format string) bool {
 	return strings.EqualFold(strings.TrimSpace(format), "json")
 }
 
-// PrintArtifactResult prints the result of a create/edit operation. By default
-// it prints a concise summary line that always surfaces the artifact id (the
-// value other commands need for --id), so the server-returned artifact body is
-// drained and discarded rather than cluttering the terminal. When the output
-// format is "json" the full response body is pretty-printed instead, so the
-// command stays scriptable (e.g. `... -o json | jq`).
+// PrintApplyResult prints the result of a create/edit (push/edit) operation in
+// the same structured, key-value form as `ap gateway apply`, e.g.:
 //
-// fallbackID is the id known locally (from the pushed payload); it is used when
-// the server response does not echo an id.
-func PrintArtifactResult(resp *http.Response, outputFormat, fallbackID, summary string) error {
+//	Status: success
+//	Message: LlmProvider applied successfully
+//	ID: wso2-claude-provider
+//	Organization: 019f2324-...
+//	Project: 019f2324-...
+//	Created At: 2026-07-03T06:31:22Z
+//	Updated At: 2026-07-03T06:31:22Z
+//	State: deployed
+//
+// kind is the artifact kind ("LlmProvider", "LlmProxy", "Mcp"); action is the
+// past-tense verb ("applied" for create, "updated" for edit). Organization /
+// Project / Created At / Updated At / State are printed only when known.
+// Organization comes from the response (the CLI derives it from the auth token,
+// so it only shows when the server echoes organizationId); Project comes from
+// the response or, failing that, the locally supplied fallbackProject
+// (--project-id). When the output format is "json" the full response body is
+// pretty-printed instead, so the command stays scriptable (e.g. `... -o json | jq`).
+//
+// fallbackID / fallbackProject are the values known locally (from the pushed
+// payload / --project-id); they are used when the server response omits them.
+func PrintApplyResult(resp *http.Response, outputFormat, kind, action, fallbackID, fallbackProject string) error {
 	if OutputJSON(outputFormat) {
 		return PrintJSONResponse(resp)
 	}
@@ -235,39 +235,48 @@ func PrintArtifactResult(resp *http.Response, outputFormat, fallbackID, summary 
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	id, details := summarizeArtifact(body)
-	if strings.TrimSpace(id) == "" {
+	var m map[string]interface{}
+	_ = json.Unmarshal(body, &m)
+
+	id := stringField(m, "id")
+	if id == "" {
 		id = strings.TrimSpace(fallbackID)
 	}
+	project := stringField(m, "projectId")
+	if project == "" {
+		project = strings.TrimSpace(fallbackProject)
+	}
 
-	var suffix []string
+	fmt.Println("Status: success")
+	fmt.Printf("Message: %s %s successfully\n", kind, action)
 	if id != "" {
-		suffix = append(suffix, "id: "+id)
+		fmt.Printf("ID: %s\n", id)
 	}
-	suffix = append(suffix, details...)
-	if len(suffix) > 0 {
-		summary += " (" + strings.Join(suffix, ", ") + ")"
+	if v := stringField(m, "organizationId"); v != "" {
+		fmt.Printf("Organization: %s\n", v)
 	}
-
-	fmt.Println(summary)
+	if project != "" {
+		fmt.Printf("Project: %s\n", project)
+	}
+	if v := stringField(m, "createdAt"); v != "" {
+		fmt.Printf("Created At: %s\n", v)
+	}
+	if v := stringField(m, "updatedAt"); v != "" {
+		fmt.Printf("Updated At: %s\n", v)
+	}
+	// The LLM provider/proxy and MCP proxy responses carry the deployment state
+	// in the top-level "status" field (pending/deployed/failed).
+	if v := stringField(m, "status"); v != "" {
+		fmt.Printf("State: %s\n", v)
+	}
 	return nil
 }
 
-// summarizeArtifact extracts the server-assigned id and a few additional fields
-// (version, status) worth surfacing in the summary line.
-func summarizeArtifact(body []byte) (id string, details []string) {
-	var m map[string]interface{}
-	if err := json.Unmarshal(body, &m); err != nil {
-		return "", nil
-	}
-	id, _ = m["id"].(string)
-	if v, ok := m["version"].(string); ok && strings.TrimSpace(v) != "" {
-		details = append(details, "version: "+v)
-	}
-	if s, ok := m["status"].(string); ok && strings.TrimSpace(s) != "" {
-		details = append(details, "status: "+s)
-	}
-	return strings.TrimSpace(id), details
+// stringField returns the trimmed string value of m[key], or "" when absent or
+// not a string.
+func stringField(m map[string]interface{}, key string) string {
+	v, _ := m[key].(string)
+	return strings.TrimSpace(v)
 }
 
 // PrintJSONResponse prints an HTTP response as pretty JSON when possible and

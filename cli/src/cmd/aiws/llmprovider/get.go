@@ -31,19 +31,18 @@ import (
 
 const (
 	GetCmdLiteral = "get"
-	GetCmdExample = `# List all LLM providers in an organization
-ap ai-ws llm-provider get --org <org-id>
+	GetCmdExample = `# List all LLM providers
+ap ai-ws llm-provider get
 
 # Get a single LLM provider by ID
-ap ai-ws llm-provider get --org <org-id> --id wso2-claude
+ap ai-ws llm-provider get --id wso2-claude
 
 # List using a specific AI workspace with pagination
-ap ai-ws llm-provider get --org <org-id> --limit 50 --offset 0 --display-name my-workspace --platform eu`
+ap ai-ws llm-provider get --limit 50 --offset 0 --display-name my-workspace --platform eu`
 )
 
 var (
 	getID       string
-	getOrgID    string
 	getLimit    string
 	getOffset   string
 	getName     string
@@ -66,21 +65,14 @@ var getCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(getCmd, utils.FlagID, &getID, "", "LLM provider ID (omit to list all)")
-	utils.AddStringFlag(getCmd, utils.FlagOrgID, &getOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(getCmd, utils.FlagLimit, &getLimit, "", "Maximum number of providers to return when listing")
 	utils.AddStringFlag(getCmd, utils.FlagOffset, &getOffset, "", "Number of providers to skip when listing")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getName, "", "AI workspace display name")
 	utils.AddStringFlag(getCmd, utils.FlagPlatform, &getPlatform, "", "Platform name")
 	getCmd.Flags().BoolVar(&getInsecure, "insecure", false, "Skip TLS certificate verification")
-	_ = getCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runGetCommand() error {
-	orgID := strings.TrimSpace(getOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -95,10 +87,10 @@ func runGetCommand() error {
 
 	var path, action string
 	if id := strings.TrimSpace(getID); id != "" {
-		path = aiworkspace.ProviderResourcePath(orgID, id)
+		path = aiworkspace.ProviderByIDPath(id)
 		action = "get llm provider"
 	} else {
-		path = aiworkspace.ProviderListPath(orgID, aiworkspace.ListQuery{Limit: getLimit, Offset: getOffset})
+		path = aiworkspace.ProviderListPath(aiworkspace.ListQuery{Limit: getLimit, Offset: getOffset})
 		action = "list llm providers"
 	}
 

@@ -25,7 +25,7 @@ import (
 const (
 	MCPProxyCmdLiteral = "mcp-proxy"
 	MCPProxyCmdExample = `# Push an MCP proxy artifact to the AI workspace
-ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --org <org-id> --project-id <project-id>`
+ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --project-id <project-id>`
 )
 
 // MCPProxyCmd is the parent command for MCP proxy operations.

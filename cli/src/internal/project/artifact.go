@@ -40,7 +40,6 @@ func SupportedArtifactTypes() []string {
 		utils.TypeREST,
 		utils.TypeLLMProxy,
 		utils.TypeLLMProvider,
-		utils.TypeLLMProviderTemplate,
 		utils.TypeMCPProxy,
 	}
 }
@@ -60,7 +59,7 @@ func IsValidArtifactType(artifactType string) bool {
 // management plane (REST APIs).
 func IsAIWorkspaceType(artifactType string) bool {
 	switch artifactType {
-	case utils.TypeLLMProxy, utils.TypeLLMProvider, utils.TypeLLMProviderTemplate, utils.TypeMCPProxy:
+	case utils.TypeLLMProxy, utils.TypeLLMProvider, utils.TypeMCPProxy:
 		return true
 	default:
 		return false
@@ -76,8 +75,6 @@ func ArtifactKind(artifactType string) string {
 		return "LlmProxy"
 	case utils.TypeLLMProvider:
 		return "LlmProvider"
-	case utils.TypeLLMProviderTemplate:
-		return "LlmProviderTemplate"
 	case utils.TypeMCPProxy:
 		return "Mcp"
 	default:
