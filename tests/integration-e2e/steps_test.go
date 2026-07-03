@@ -51,6 +51,11 @@ type world struct {
 	dpKeyHandle  string // the API key's handle (its `id`) in the developer portal
 	prevSubToken string // a superseded subscription token, kept for negative checks
 	plan2ID      string // a second subscription plan handle (for the plan-change check)
+
+	// LLM provider scenario state.
+	secretHandle  string // handle of the secret created for the provider
+	llmProviderID string // id of the created LLM provider
+	llmDepID      string // deploymentId returned when the provider is deployed
 }
 
 // initializeScenario is invoked by godog for each scenario; it binds a fresh
@@ -81,6 +86,12 @@ func initializeScenario(sc *godog.ScenarioContext) {
 
 	// Developer-portal webhook scenario, defined in steps_devportal_test.go.
 	w.registerDevportalSteps(sc)
+
+	// LLM provider steps (llm_provider.feature).
+	sc.Step(`^a secret containing an LLM provider API key$`, w.aSecretWithAPIKey)
+	sc.Step(`^an LLM provider that references the secret$`, w.anLLMProviderReferencingSecret)
+	sc.Step(`^I deploy the LLM provider to the gateway$`, w.deployLLMProviderToGateway)
+	sc.Step(`^the gateway has the LLM provider configured$`, w.gatewayHasLLMProviderConfigured)
 }
 
 // --- Background steps ------------------------------------------------------
