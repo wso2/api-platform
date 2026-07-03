@@ -974,6 +974,8 @@ async function parseAsyncAPI(api) {
 }
 
 function replaceEndpointParams(apiDefinition, prodEndpoint, sandboxEndpoint) {
+    prodEndpoint = prodEndpoint || '';
+    sandboxEndpoint = sandboxEndpoint || '';
 
     if (apiDefinition?.swagger?.startsWith('2.')) {
         if (prodEndpoint.trim().length !== 0) {
@@ -1000,6 +1002,8 @@ function replaceEndpointParams(apiDefinition, prodEndpoint, sandboxEndpoint) {
 
 
 function replaceEndpointParamsAsyncAPI(apiDefinition, prodEndpoint, sandboxEndpoint) {
+    prodEndpoint = prodEndpoint || '';
+    sandboxEndpoint = sandboxEndpoint || '';
     if (apiDefinition?.asyncapi && apiDefinition.asyncapi.startsWith('2.')) {
         if (prodEndpoint.trim().length !== 0) {
             apiDefinition.servers = {"production": {
