@@ -750,9 +750,6 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 	if target.ManagedBy == "wso2" {
 		return constants.ErrLLMProviderTemplateReadOnly
 	}
-	if err := ensureOriginMutable(target.Origin); err != nil {
-		return err
-	}
 	// Block deletion while any provider built from this specific version still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
 	if err != nil {
@@ -925,7 +922,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 			Policies:          mapPoliciesAPIToModel(req.Policies),
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
-		Origin: constants.OriginCP,
+		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
@@ -1302,7 +1299,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 			Policies:          mapPoliciesAPIToModel(req.Policies),
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
-		Origin: constants.OriginCP,
+		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
@@ -1546,7 +1543,6 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		m.ProviderUUID = existing.ProviderUUID
 		m.Configuration = existing.Configuration
 	}
-
 
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
