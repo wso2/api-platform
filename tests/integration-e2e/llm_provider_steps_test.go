@@ -157,7 +157,7 @@ func (w *world) gatewayHasLLMProviderConfigured() error {
 	return waitGatewayLLMProvider(w.llmProviderID)
 }
 
-// waitGatewayLLMProvider polls GET /api/management/v0.9/llm-providers/{id} on the
+// waitGatewayLLMProvider polls GET /api/management/v1/llm-providers/{id} on the
 // gateway management API until it returns 200 or the poll timeout expires.
 func waitGatewayLLMProvider(providerID string) error {
 	url := gwMgmtAPI + "/api/management/v1/llm-providers/" + providerID

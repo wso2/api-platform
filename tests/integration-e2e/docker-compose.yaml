@@ -65,7 +65,7 @@ services:
 
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["-config", "/etc/platform-api/config.toml"]
+    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
     environment:
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
