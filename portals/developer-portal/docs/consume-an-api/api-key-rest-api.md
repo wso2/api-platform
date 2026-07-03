@@ -5,7 +5,9 @@ All API key operations are scoped to a specific API. Replace the placeholders be
 | Placeholder | Description |
 |---|---|
 | `{apiId}` | The Developer Portal ID of the API |
-| `{applicationId}` | The Developer Portal ID of the application |
+| `{applicationId}` | The Developer Portal ID of the application (used in URL paths) |
+| `{appId}` | The Developer Portal ID of the application to associate the key with (used in request/response bodies) |
+| `{subscriptionId}` | The ID of the subscription to bind the key to |
 | `{keyId}` | The key's handle — the `id` you chose when generating it (not the `keyId` returned in responses) |
 | `{token}` | A valid Bearer token for the current session |
 | `{csrf}` | The `XSRF-TOKEN` cookie value (required for all mutating requests) |

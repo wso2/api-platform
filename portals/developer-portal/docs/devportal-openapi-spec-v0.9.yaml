@@ -2725,9 +2725,10 @@ components:
       required: true
       description: >-
         Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk
-        create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`.
-        Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a
-        single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.
+        create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in
+        the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or
+        `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy
+        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.
       content:
         application/json:
           schema:
@@ -4443,9 +4444,10 @@ components:
                 oneOf:
                   - type: integer
                   - type: string
+                example: 10000
                 description: >-
-                  Use -1 for unlimited. Returned as a string when the stored count exceeds the safe integer
-                  range, otherwise a number.
+                  Returned as a string when the stored count exceeds the safe integer range, otherwise a
+                  number. Unlimited plans have no limit entries — the `limits` array is empty.
               timeUnit:
                 type: string
                 enum:
@@ -4457,6 +4459,7 @@ components:
                 nullable: true
               timeAmount:
                 type: integer
+                example: 1
         refId:
           type: string
           nullable: true
@@ -4676,6 +4679,16 @@ components:
           additionalProperties: false
     SubscriptionPlanRequest:
       type: object
+      example:
+        id: Gold
+        refId: string
+        displayName: string
+        description: string
+        limits:
+          - limitType: REQUEST_COUNT
+            limitCount: 10000
+            timeUnit: MINUTE
+            timeAmount: 1
       required:
         - id
         - displayName

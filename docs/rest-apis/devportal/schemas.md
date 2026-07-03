@@ -387,9 +387,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
       "limits": [
         {
           "limitType": "REQUEST_COUNT",
-          "limitCount": 0,
+          "limitCount": 10000,
           "timeUnit": "MINUTE",
-          "timeAmount": 0
+          "timeAmount": 1
         }
       ],
       "refId": "string",
@@ -480,9 +480,9 @@ and
       "limits": [
         {
           "limitType": "REQUEST_COUNT",
-          "limitCount": 0,
+          "limitCount": 10000,
           "timeUnit": "MINUTE",
-          "timeAmount": 0
+          "timeAmount": 1
         }
       ],
       "refId": "string",
@@ -692,9 +692,9 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
   "limits": [
     {
       "limitType": "REQUEST_COUNT",
-      "limitCount": 0,
+      "limitCount": 10000,
       "timeUnit": "MINUTE",
-      "timeAmount": 0
+      "timeAmount": 1
     }
   ],
   "refId": "string",
@@ -716,7 +716,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |description|string|false|none|none|
 |limits|[object]|false|none|Rate/quota limits enforced for this plan. Empty when the plan is unlimited.|
 |» limitType|string|false|none|none|
-|» limitCount|any|false|none|Use -1 for unlimited. Returned as a string when the stored count exceeds the safe integer range, otherwise a number.|
+|» limitCount|any|false|none|Returned as a string when the stored count exceeds the safe integer range, otherwise a number. Unlimited plans have no limit entries — the `limits` array is empty.|
 
 oneOf
 
@@ -997,10 +997,7 @@ OAuth client ID mapping entry attached to an application.
       "timeUnit": "MINUTE",
       "timeAmount": 1
     }
-  ],
-  "type": "requestcount",
-  "requestCount": 0,
-  "eventCount": 0
+  ]
 }
 
 ```

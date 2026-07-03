@@ -128,7 +128,7 @@ Status Code **200**
 |»» description|string|false|none|none|
 |»» limits|[object]|false|none|Rate/quota limits enforced for this plan. Empty when the plan is unlimited.|
 |»»» limitType|string|false|none|none|
-|»»» limitCount|any|false|none|Use -1 for unlimited. Returned as a string when the stored count exceeds the safe integer range, otherwise a number.|
+|»»» limitCount|any|false|none|Returned as a string when the stored count exceeds the safe integer range, otherwise a number. Unlimited plans have no limit entries — the `limits` array is empty.|
 
 *oneOf*
 
@@ -216,10 +216,7 @@ Creates one subscription plan when the request body is an object, or multiple su
       "timeUnit": "MINUTE",
       "timeAmount": 1
     }
-  ],
-  "type": "requestcount",
-  "requestCount": 0,
-  "eventCount": 0
+  ]
 }
 ```
 
@@ -233,9 +230,6 @@ limits:
     limitCount: 10000
     timeUnit: MINUTE
     timeAmount: 1
-type: requestcount
-requestCount: 0
-eventCount: 0
 
 ```
 
@@ -250,7 +244,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
+|body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.|
 
 > Example responses
 
@@ -383,10 +377,7 @@ Upserts one subscription plan when the request body is an object, or multiple pl
       "timeUnit": "MINUTE",
       "timeAmount": 1
     }
-  ],
-  "type": "requestcount",
-  "requestCount": 0,
-  "eventCount": 0
+  ]
 }
 ```
 
@@ -400,9 +391,6 @@ limits:
     limitCount: 10000
     timeUnit: MINUTE
     timeAmount: 1
-type: requestcount
-requestCount: 0
-eventCount: 0
 
 ```
 
@@ -417,7 +405,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
+|body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.|
 
 > Example responses
 
@@ -431,9 +419,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "limits": [
     {
       "limitType": "REQUEST_COUNT",
-      "limitCount": 0,
+      "limitCount": 10000,
       "timeUnit": "MINUTE",
-      "timeAmount": 0
+      "timeAmount": 1
     }
   ],
   "refId": "string",
@@ -599,9 +587,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "limits": [
     {
       "limitType": "REQUEST_COUNT",
-      "limitCount": 0,
+      "limitCount": 10000,
       "timeUnit": "MINUTE",
-      "timeAmount": 0
+      "timeAmount": 1
     }
   ],
   "refId": "string",
