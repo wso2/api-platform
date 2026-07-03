@@ -8,14 +8,15 @@ Plans can enforce:
 
 ## Default Plans
 
-When `generateDefaultSubPlans: true` is set in `config.yaml` (the default), the portal automatically creates four standard plans for every new organization:
+When `generateDefaultSubPlans: true` is set in `config.yaml` (the default), the portal automatically creates five standard plans for every new organization:
 
 | Plan | Description |
 |---|---|
-| `Bronze` | 1,000 requests |
-| `Silver` | 2,000 requests |
-| `Gold` | 5,000 requests |
+| `Bronze` | 1,000 requests per minute |
+| `Silver` | 2,000 requests per minute |
+| `Gold` | 5,000 requests per minute |
 | `Unlimited` | Unlimited requests |
+| `AsyncUnlimited` | Unlimited events, for async APIs |
 
 You can create additional custom plans alongside these defaults.
 

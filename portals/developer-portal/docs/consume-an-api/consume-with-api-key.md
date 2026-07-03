@@ -14,16 +14,12 @@ If the API requires a subscription, [subscribe to it](subscriptions.md) first.
 
 1. Sign in to the Developer Portal.
 2. Click **APIs** from the sidebar and open the API you want to invoke.
-3. Click **Manage Keys** (or navigate to **My APIs** → select the API → **Manage Keys**).
-4. Select the **Production** or **Sandbox** tab based on your environment.
-
-   > **Note:** Sandbox keys can only be used in the sandbox environment.
-
-5. Click **Generate Key**.
-6. In the **Generate API Key** dialog, enter a name for the key (e.g. `my-prod-key`).
-7. Click **Generate** and wait for the key to be created.
-8. **Copy the API key immediately.** The key will not be visible in the UI after you close this dialog.
-9. Click **Done**.
+3. In the API's submenu, click **API Keys**.
+4. Click **Generate API key**.
+5. In the **Generate API key** dialog, enter a **Name** for the key (e.g. `my-prod-key`) and optionally set an **Expires at** date.
+6. Click **Generate** and wait for the key to be created.
+7. **Copy the API key immediately.** The key will not be visible in the UI after you close this dialog.
+8. Click **Done**.
 
 ---
 
@@ -44,7 +40,7 @@ Replace `<YOUR_API_KEY>` with the key you copied and the URL with the API's actu
 
 If a key is compromised or you want to rotate it as a security practice:
 
-1. Navigate to the API's **Manage Keys** page.
+1. Navigate to the API's **API Keys** page.
 2. Click **Regenerate** next to the key.
 3. Confirm the regeneration. The old key is immediately invalidated.
 4. Copy the new key from the dialog.
@@ -57,7 +53,7 @@ If a key is compromised or you want to rotate it as a security practice:
 
 To permanently invalidate a key:
 
-1. Navigate to the API's **Manage Keys** page.
+1. Navigate to the API's **API Keys** page.
 2. Click **Revoke** next to the key.
 3. Confirm the revocation.
 

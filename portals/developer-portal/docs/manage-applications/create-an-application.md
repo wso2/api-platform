@@ -10,8 +10,8 @@ A developer can have multiple applications with independent OAuth2 client IDs. F
 
 1. Sign in to the Developer Portal.
 2. In the sidebar, click **Applications**.
-3. Click **Create Application** (or **+ Create** if you already have applications).
-4. Enter an application name (e.g. `MyApp-Production`).
+3. Click **Create application**.
+4. Enter an **Application name** (e.g. `MyApp-Production`) and optionally a **Description**.
 5. Click **Create**.
 
 The application is created and you are taken to the application detail page.
@@ -32,14 +32,15 @@ From the application detail page you can:
 | Link an OAuth2 client ID | **Manage Keys** → paste client ID → **Add** |
 | Generate an access token for testing | **Manage Keys** → **Generate Token** tab |
 | Associate an existing API key for analytics | **API Keys** tab → **Associate existing key** |
-| Edit or delete the application | Application header menu |
+| Edit the application name or description | Application overview page → pencil icon next to name/description |
+| Delete the application | **Applications** list → trash icon on the application's card |
 
 ## Delete an Application
 
 To delete an application:
 
-1. Open the application.
-2. Click the **Delete** option from the application menu.
+1. Go to **Applications** in the sidebar.
+2. Click the trash icon on the application's card.
 3. Confirm deletion.
 
 > **Warning:** Deleting an application removes all stored client ID mappings. It does not contact the key manager — OAuth applications there must be deleted independently if no longer needed. Existing access tokens will stop working when they expire. This action is irreversible.

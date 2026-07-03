@@ -6,28 +6,27 @@ Each API in the Developer Portal can have documentation sections covering endpoi
 
 1. Click **APIs** from the sidebar.
 2. Select an API from the catalog.
-3. Click the **Documentation** tab (or click **Documentation** in the API header section).
+3. Click **Documentation** (in the API's banner, or the **Documentation** item in the API's sidebar submenu).
 
-The Documentation tab lists all documentation sections published for the API. Select a section to read its content.
+The Documentation page shows a left-hand navigation grouped by section. The **Specification** group links to the API's definition; any additional documentation sections published for the API (e.g. guides) appear as their own groups. Select an entry to read its content.
 
 ## API Specification
 
-The **API Specification** (or **Definition**) tab shows the full API definition:
+Under the **Specification** group, the **API Definition** link (**MCP Playground** for MCP servers) shows the full API definition:
 
-- **REST APIs** — OpenAPI/Swagger rendered interactively
-- **AsyncAPI** — AsyncAPI specification
-- **GraphQL** — GraphQL schema SDL
+- **REST APIs** — OpenAPI/Swagger rendered interactively (with per-operation try-it support)
+- **AsyncAPI (WS / WebSub)** — AsyncAPI specification, with a separate **Tryout** link for an interactive console
+- **GraphQL** — GraphQL schema SDL, with a separate **Tryout** link for an interactive GraphiQL console
 - **SOAP** — WSDL
 
-## Try-Out Console
+## Try It Out
 
-The **Try-Out** tab provides an interactive console where you can make real API calls directly from the portal. To use the try-out console:
+For REST APIs, the specification viewer includes an interactive try-it panel per operation — no separate tab is needed. For WebSocket, WebSub, and GraphQL APIs, click the **Tryout** link under the **Specification** group to open a dedicated interactive console:
 
-1. Open an API and go to the **Try-Out** tab.
-2. Select the operation you want to test.
-3. Provide required parameters and a request body if needed.
-4. Enter your access token or API key.
-5. Click **Execute** to send the request and see the response.
+1. Open an API's Documentation page and click **Tryout** under **Specification**.
+2. Select the environment/endpoint (e.g. Production or Sandbox) and provide required parameters.
+3. Enter your access token or API key as required by the console.
+4. Send the request and view the response.
 
 ## Machine-Readable Endpoints
 

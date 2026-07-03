@@ -129,7 +129,7 @@ Each devportal organization maps to one Asgardeo sub-organization. To enable org
 
 When a user clicks Login on a devportal org, the portal appends `org=<ORGANIZATION_IDENTIFIER>` to the Asgardeo authorization URL. Asgardeo scopes the login session to that sub-org and the issued token contains `org_id` set to the sub-org's UUID.
 
-On every authenticated request, the portal verifies that the token's `org_id` matches the org's `ORGANIZATION_IDENTIFIER`. A mismatch blocks access to protected pages with a 401 — the user must log out and re-login on the correct org.
+On every authenticated request, the portal verifies that the token's org claim matches the org's `ORGANIZATION_IDENTIFIER`. A mismatch blocks access to protected pages with a 403 — the user must log out and re-login on the correct org.
 
 ### Multi-org user flow
 
