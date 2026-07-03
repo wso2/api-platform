@@ -50,13 +50,11 @@ type Config struct {
 
 // CollectorConfig holds the data-collection ("collector") configuration. The
 // collector is the shared capture pipeline that gathers request/response headers
-// and bodies and ships them to the policy-engine over ALS. It is a prerequisite
-// for every consumer of that data — analytics and traffic logging both require
-// collector.enabled to be true.
+// and bodies and ships them to the policy-engine over ALS. It underpins every
+// consumer of that data (analytics and traffic logging) and is implicitly active
+// whenever a consumer is enabled — see Config.IsCollectorEnabled. This section
+// tunes capture and transport; it has no on/off flag of its own.
 type CollectorConfig struct {
-	// Enabled turns the collector on. When false, the ALS server is not started
-	// and no events are produced for any consumer.
-	Enabled bool `koanf:"enabled"`
 	// SendRequestBody / SendResponseBody attach captured request/response bodies
 	// onto the collected event.
 	SendRequestBody  bool `koanf:"send_request_body"`
@@ -94,7 +92,7 @@ type AnalyticsPublishersConfig struct {
 
 // TrafficLoggingConfig holds configuration for the stdout traffic-logging feature,
 // which writes each collected event to stdout as a JSON line. It is a consumer of
-// the collector and requires collector.enabled to be true.
+// the collector; enabling it implicitly activates the collector.
 type TrafficLoggingConfig struct {
 	// Enabled turns stdout JSON traffic logging on.
 	Enabled bool `koanf:"enabled"`
@@ -106,11 +104,6 @@ type TrafficLoggingConfig struct {
 	// the collector still captures the full body and other consumers (e.g. Moesif)
 	// are unaffected.
 	MaxPayloadSize int `koanf:"max_payload_size"`
-	// IgnoredPathPrefixes suppresses stdout traffic-log lines for requests whose
-	// original path starts with any of these prefixes (e.g. health/readiness
-	// probes). Only the traffic-logging publisher is affected; other consumers
-	// still receive the event.
-	IgnoredPathPrefixes []string `koanf:"ignored_path_prefixes"`
 }
 
 // MoesifPublisherConfig holds Moesif-specific configuration
@@ -410,16 +403,14 @@ func defaultConfig() *Config {
 			TracingServiceName: "policy-engine",
 		},
 		Collector: CollectorConfig{
-			Enabled:              false,
 			SendRequestBody:      false,
 			SendResponseBody:     false,
 			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
 		},
 		TrafficLogging: TrafficLoggingConfig{
-			Enabled:             false,
-			MaskedHeaders:       []string{},
-			MaxPayloadSize:      0,
-			IgnoredPathPrefixes: []string{},
+			Enabled:        false,
+			MaskedHeaders:  []string{},
+			MaxPayloadSize: 0,
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
@@ -608,26 +599,26 @@ func (c *Config) validateXDSConfig() error {
 
 // validateCollectorConfig migrates deprecated analytics capture aliases onto the
 // collector and enforces the collector prerequisite: a consumer (analytics or
-// traffic logging) requires the collector that feeds it. For backward compatibility
-// this is a soft prerequisite — if a consumer is enabled without the collector, the
-// collector is auto-enabled with a warning rather than failing.
+// traffic logging) requires the collector that feeds it. The collector has no
+// on/off flag of its own: it is implicitly active whenever a consumer is enabled
+// (see IsCollectorEnabled), so its transport is validated only in that case.
 func (c *Config) validateCollectorConfig() error {
 	c.migrateDeprecatedAnalyticsCapture()
 	c.migrateDeprecatedAnalyticsTransport()
 
-	// Backward-compat bridge: a consumer cannot run without the collector that feeds
-	// it, but rather than fail an existing config that only set analytics.enabled
-	// (valid before the collector split), auto-enable the collector with a warning.
-	if (c.Analytics.Enabled || c.TrafficLogging.Enabled) && !c.Collector.Enabled {
-		slog.Warn("a consumer (analytics.enabled or traffic_logging.enabled) requires the collector; enabling collector.enabled automatically for backward compatibility. Set collector.enabled = true explicitly to silence this warning.")
-		c.Collector.Enabled = true
-	}
-	if c.Collector.Enabled {
+	if c.IsCollectorEnabled() {
 		if err := validateAccessLogsServiceConfig(c.Collector.AccessLogsServiceCfg); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// IsCollectorEnabled reports whether the collector should run. The collector is
+// implicit: it is active whenever any consumer of the collected data is enabled
+// (analytics or stdout traffic logging), and off otherwise.
+func (c *Config) IsCollectorEnabled() bool {
+	return c.Analytics.Enabled || c.TrafficLogging.Enabled
 }
 
 // migrateDeprecatedAnalyticsTransport maps a deprecated [analytics].access_logs_service

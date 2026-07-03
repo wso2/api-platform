@@ -211,7 +211,6 @@ func TestStreamAccessLogs_MultipleMessages(t *testing.T) {
 func TestStartAccessLogServiceServer_TCP(t *testing.T) {
 	cfg := &config.Config{
 		Collector: config.CollectorConfig{
-			Enabled: true,
 			AccessLogsServiceCfg: config.AccessLogsServiceConfig{
 				Mode:                  "tcp",
 				ServerPort:            19001, // Use non-standard port to avoid conflicts

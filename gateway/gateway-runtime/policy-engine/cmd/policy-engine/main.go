@@ -273,7 +273,7 @@ func main() {
 	// consumers (analytics, traffic logging).
 	var alsServer *grpc.Server
 	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.AccessLogsServiceCfg)
-	if cfg.Collector.Enabled {
+	if cfg.IsCollectorEnabled() {
 		// Start the access log service server
 		slog.Info("Starting the ALS gRPC server...")
 		alsServer = utils.StartAccessLogServiceServer(cfg)

@@ -63,9 +63,7 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 		},
 		Analytics: analytics,
 	}
-	cfg.Analytics.Enabled = true
-	// Analytics is a consumer; the collector must be enabled for it to validate.
-	cfg.Collector.Enabled = true
+	cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
 	cfg.Collector.AccessLogsServiceCfg = config.AccessLogsServiceConfig{
 		Mode:                  "uds",
 		ShutdownTimeout:       600 * time.Second,

@@ -561,9 +561,9 @@ func (t *Translator) TranslateConfigs(
 	policyEngineCluster := t.createPolicyEngineCluster()
 	clusters = append(clusters, policyEngineCluster)
 
-	// Add ALS cluster if the collector is enabled (it ships access logs over gRPC)
+	// Add ALS cluster if the collector is active (it ships access logs over gRPC)
 	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.GRPCEventServerCfg))
-	if t.config.Collector.Enabled {
+	if t.config.IsCollectorEnabled() {
 		log.Info("collector is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
@@ -2785,8 +2785,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		},
 	})
 
-	// If the collector is enabled, create the gRPC access log config and append to existing access logs
-	if t.config.Collector.Enabled {
+	// If the collector is active, create the gRPC access log config and append to existing access logs
+	if t.config.IsCollectorEnabled() {
 		t.logger.Info("Creating gRPC access log configuration")
 		grpcAccessLog, err := t.createGRPCAccessLog()
 		if err != nil {

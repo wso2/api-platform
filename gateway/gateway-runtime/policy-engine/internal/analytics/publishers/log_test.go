@@ -107,6 +107,66 @@ func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
 	assert.Equal(t, float64(100), latencies["responseLatency"])
 }
 
+// Custom properties from the directive are emitted under properties.custom.
+func TestLog_Publish_CustomPropertiesUnderCustom(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Request: &dto.TrafficLogFlow{Headers: true},
+		Properties: map[string]interface{}{
+			"who":        "alice",
+			"authType":   "jwt",
+			"retryCount": float64(3),
+		},
+	}
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+
+	l.Publish(event)
+
+	_, props := decodeLine(t, read())
+	custom, ok := props["custom"].(map[string]interface{})
+	require.True(t, ok, "expected properties.custom object, got %v", props["custom"])
+	assert.Equal(t, "alice", custom["who"])
+	assert.Equal(t, "jwt", custom["authType"])
+	assert.Equal(t, float64(3), custom["retryCount"])
+	// Reserved keys are untouched by the custom namespace.
+	assert.Equal(t, `{"x-foo":"bar"}`, props["requestHeaders"])
+}
+
+// A directive with no Properties emits no custom key.
+func TestLog_Publish_NoCustomWhenAbsent(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.TrafficLog = bothFlows()
+
+	l.Publish(event)
+
+	_, props := decodeLine(t, read())
+	_, present := props["custom"]
+	assert.False(t, present, "no custom key expected when directive has no Properties")
+}
+
+// The fields projection can select properties.custom like any other property path.
+func TestLog_Publish_CustomProjectableViaFields(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Properties: map[string]interface{}{"who": "alice"},
+		Fields:     &dto.TrafficLogFields{Mode: "include", Names: []string{"properties.custom"}},
+	}
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+
+	l.Publish(event)
+
+	_, props := decodeLine(t, read())
+	custom, ok := props["custom"].(map[string]interface{})
+	require.True(t, ok, "expected properties.custom retained by include projection")
+	assert.Equal(t, "alice", custom["who"])
+	// Non-selected property dropped by the include projection.
+	_, hasHeaders := props["requestHeaders"]
+	assert.False(t, hasHeaders, "requestHeaders should be dropped by include projection")
+}
+
 func TestLog_Publish_MasksHeaders(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"Authorization"}})
 	event := createBaseEvent()
@@ -271,29 +331,6 @@ func TestLog_Publish_FieldsIncludeWholeProperties(t *testing.T) {
 	require.NotNil(t, props)
 	assert.Contains(t, props, "requestHeaders")
 	assert.Contains(t, props, "responseHeaders")
-}
-
-// Per-consumer path ignore: the publisher skips ignored prefixes (matched on the
-// event's original path in Operation.APIResourceTemplate); other consumers are
-// unaffected.
-func TestLog_Publish_IgnoredPathSkipped(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{IgnoredPathPrefixes: []string{"/health", "/ready"}})
-	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
-	event.Operation.APIResourceTemplate = "/health/live"
-
-	l.Publish(event)
-	assert.Empty(t, read(), "ignored path must not be logged")
-}
-
-func TestLog_Publish_NonIgnoredPathLogged(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{IgnoredPathPrefixes: []string{"/health"}})
-	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
-	event.Operation.APIResourceTemplate = "/api/v1/orders"
-
-	l.Publish(event)
-	assert.NotEmpty(t, read(), "non-ignored path must be logged")
 }
 
 // Output-side payload truncation (0 = no limit).

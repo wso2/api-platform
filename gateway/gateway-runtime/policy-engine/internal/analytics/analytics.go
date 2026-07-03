@@ -153,9 +153,6 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 		return
 	}
 
-	// Path-based suppression is a per-consumer presentation concern: it is applied
-	// by the stdout traffic-logging publisher (traffic_logging.ignored_path_prefixes),
-	// not here, so other consumers still receive every event.
 	analyticEvent := c.prepareAnalyticEvent(event)
 	for _, publisher := range c.publishers {
 		publisher.Publish(analyticEvent)

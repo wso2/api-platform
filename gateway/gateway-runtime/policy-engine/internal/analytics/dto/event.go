@@ -52,6 +52,10 @@ type TrafficLogDirective struct {
 	Request  *TrafficLogFlow   `json:"request,omitempty"`
 	Response *TrafficLogFlow   `json:"response,omitempty"`
 	Fields   *TrafficLogFields `json:"fields,omitempty"`
+	// Properties holds the policy's resolved customProperties (context references
+	// already expanded at request time). The Log publisher emits them under
+	// properties.custom on the log line.
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 // TrafficLogFlow is the per-flow (request or response) presentation config.

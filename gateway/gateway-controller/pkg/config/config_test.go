@@ -1302,10 +1302,9 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
+			// Analytics is a consumer; enabling it makes the collector implicitly
+			// active so these tests exercise the collector transport validation.
 			cfg.Analytics.Enabled = tt.enabled
-			// Analytics is a consumer; enable the collector it depends on so these
-			// tests exercise analytics validation rather than the prerequisite check.
-			cfg.Collector.Enabled = tt.enabled
 			if tt.setupConfig != nil {
 				tt.setupConfig(cfg)
 			}
@@ -1320,34 +1319,34 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 	}
 }
 
-func TestConfig_CollectorPrerequisite(t *testing.T) {
-	t.Run("analytics enabled without collector auto-enables the collector", func(t *testing.T) {
+// TestConfig_IsCollectorEnabled covers the implicit collector: it is active iff a
+// consumer (analytics or traffic logging) is enabled, and off otherwise.
+func TestConfig_IsCollectorEnabled(t *testing.T) {
+	t.Run("no consumers -> off", func(t *testing.T) {
 		cfg := validConfig()
-		cfg.Collector.Enabled = false
+		assert.False(t, cfg.IsCollectorEnabled())
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("analytics on -> collector on", func(t *testing.T) {
+		cfg := validConfig()
 		cfg.Analytics.Enabled = true
 		cfg.Analytics.EnabledPublishers = []string{}
-		// Deprecated transport alias with valid values migrates onto the auto-enabled collector.
-		cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
-		cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
-		cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
-		cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-		cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+		assert.True(t, cfg.IsCollectorEnabled())
 		require.NoError(t, cfg.Validate())
-		assert.True(t, cfg.Collector.Enabled, "collector should be auto-enabled for backward compatibility")
 	})
 
-	t.Run("collector enabled with no consumers is valid", func(t *testing.T) {
+	t.Run("traffic logging on -> collector on", func(t *testing.T) {
 		cfg := validConfig()
-		cfg.Collector.Enabled = true
+		cfg.TrafficLogging.Enabled = true
+		assert.True(t, cfg.IsCollectorEnabled())
 		require.NoError(t, cfg.Validate())
 	})
-
 }
 
 func TestConfig_ValidateAnalyticsPayloadMigration(t *testing.T) {
 	setValidAnalyticsGRPC := func(cfg *Config) {
-		cfg.Analytics.Enabled = true
-		cfg.Collector.Enabled = true // analytics is a consumer; the collector must be on
+		cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
 		cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
 		cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
 		cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384

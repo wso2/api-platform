@@ -43,10 +43,6 @@ type Log struct {
 	// maskedHeaders holds lower-cased header names whose values are redacted in
 	// the requestHeaders/responseHeaders properties before logging.
 	maskedHeaders map[string]bool
-	// ignoredPathPrefixes: skip emitting a line when the event's original request
-	// path starts with any of these (per-consumer — other publishers are
-	// unaffected). Trimmed of blanks at construction.
-	ignoredPathPrefixes []string
 	// maxPayloadSize caps the number of request/response payload bytes written to
 	// the log line (0 = no limit). Truncation is output-side only.
 	maxPayloadSize int
@@ -70,18 +66,10 @@ func NewLog(logCfg *config.TrafficLoggingConfig) *Log {
 		}
 	}
 
-	prefixes := make([]string, 0, len(logCfg.IgnoredPathPrefixes))
-	for _, p := range logCfg.IgnoredPathPrefixes {
-		if p = strings.TrimSpace(p); p != "" {
-			prefixes = append(prefixes, p)
-		}
-	}
-
 	return &Log{
-		maskedHeaders:       masked,
-		ignoredPathPrefixes: prefixes,
-		maxPayloadSize:      logCfg.MaxPayloadSize,
-		out:                 os.Stdout,
+		maskedHeaders:  masked,
+		maxPayloadSize: logCfg.MaxPayloadSize,
+		out:            os.Stdout,
 	}
 }
 
@@ -90,9 +78,6 @@ func NewLog(logCfg *config.TrafficLoggingConfig) *Log {
 // access-log mode on APIs that opted in) are emitted; all others are skipped.
 func (l *Log) Publish(event *dto.Event) {
 	if event == nil || event.TrafficLog == nil {
-		return
-	}
-	if l.isPathIgnored(event) {
 		return
 	}
 
@@ -129,14 +114,15 @@ func (l *Log) Publish(event *dto.Event) {
 // redacts globally masked headers. ALS-derived fields (latencies, status, timing)
 // are always retained.
 func (l *Log) shapeEvent(event *dto.Event) *dto.Event {
-	if event.Properties == nil {
+	dir := event.TrafficLog
+	hasCustom := dir != nil && len(dir.Properties) > 0
+	if event.Properties == nil && !hasCustom {
 		return event
 	}
 
-	props := make(map[string]interface{}, len(event.Properties))
+	props := make(map[string]interface{}, len(event.Properties)+1)
 	maps.Copy(props, event.Properties)
 
-	dir := event.TrafficLog
 	// When an explicit field selection is set it is authoritative over presence, so
 	// the per-flow headers/payload booleans are not used for gating here; only header
 	// masking + per-flow excludeHeaders are applied, and the projection (in Publish)
@@ -144,6 +130,12 @@ func (l *Log) shapeEvent(event *dto.Event) *dto.Event {
 	gate := dir.Fields == nil || len(dir.Fields.Names) == 0
 	l.applyFlow(props, dir.Request, "requestHeaders", "request_payload", gate)
 	l.applyFlow(props, dir.Response, "responseHeaders", "response_payload", gate)
+
+	// Attach the policy's resolved custom properties under a dedicated namespace, so
+	// they never collide with reserved keys and are projectable as "properties.custom".
+	if hasCustom {
+		props["custom"] = dir.Properties
+	}
 
 	cp := *event
 	cp.Properties = props
@@ -174,25 +166,6 @@ func (l *Log) applyFlow(props map[string]interface{}, flow *dto.TrafficLogFlow, 
 			delete(props, payloadKey)
 		}
 	}
-}
-
-// isPathIgnored reports whether the event's original request path starts with any
-// configured ignored prefix. It reads Operation.APIResourceTemplate, which carries
-// the original (pre-rewrite) path.
-func (l *Log) isPathIgnored(event *dto.Event) bool {
-	if len(l.ignoredPathPrefixes) == 0 || event.Operation == nil {
-		return false
-	}
-	path := event.Operation.APIResourceTemplate
-	if path == "" {
-		return false
-	}
-	for _, prefix := range l.ignoredPathPrefixes {
-		if strings.HasPrefix(path, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // truncatePayload returns up to maxPayloadSize bytes of the payload (0 = no

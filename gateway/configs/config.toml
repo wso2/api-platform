@@ -1,17 +1,17 @@
 
-# The collector is the shared data-capture pipeline. It must be enabled before any
-# consumer (analytics, traffic_logging) can receive data.
+# The collector is the shared data-capture pipeline. It has no on/off switch of its
+# own: it turns on automatically whenever a consumer (analytics or traffic_logging)
+# is enabled, and stays off otherwise. This section only tunes what is captured.
 [collector]
-enabled = true
 # Capture request/response payloads (bodies) into the collected event (full bodies;
 # per-consumer size caps are applied on output).
-send_request_body = true
-send_response_body = true
+send_request_body = false
+send_response_body = false
 # Capture ALL request/response headers (redacted on output by per-consumer masking).
 send_request_headers = true
 send_response_headers = true
 
-# Analytics consumer (e.g. Moesif). Requires [collector].enabled = true.
+# Analytics consumer (e.g. Moesif). Enabling it activates the collector automatically.
 [analytics]
 enabled = false
 enabled_publishers = ["moesif"]
@@ -20,15 +20,13 @@ enabled_publishers = ["moesif"]
 # application_id = "<MOESIF_APPLICATION_ID>"
 
 # Traffic-logging consumer: writes each collected event to stdout as a JSON line
-# (no external service needed). Requires [collector].enabled = true.
+# (no external service needed). Enabling it activates the collector automatically.
 [traffic_logging]
 enabled = true
 # Header names (case-insensitive) whose values are redacted as "****".
 masked_headers = ["authorization"]
 # Max bytes of request/response payload written to each log line (0 = no limit).
 max_payload_size = 2048
-# Skip traffic-log lines for these path prefixes (e.g. health probes).
-ignored_path_prefixes = ["/health", "/ready"]
 
 [router]
 gateway_host = "*"

@@ -50,6 +50,7 @@ type Config struct {
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
 	Collector            CollectorConfig        `koanf:"collector"`
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
+	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 	APIKey               APIKeyConfig           `koanf:"api_key"`
 	// Subscriptions controls application-level subscription behaviour for APIs.
@@ -61,12 +62,11 @@ type Config struct {
 // CollectorConfig holds the data-collection ("collector") configuration. The
 // collector is the shared capture pipeline (the analytics system policy plus the
 // Envoy→policy-engine ALS transport) that gathers request/response headers and
-// bodies. It is a prerequisite for every consumer of that data — analytics and
-// traffic logging both require collector.enabled to be true.
+// bodies. It underpins every consumer of that data (analytics and traffic logging)
+// and is implicitly active whenever a consumer is enabled — see
+// Config.IsCollectorEnabled. This section tunes capture and transport; it has no
+// on/off flag of its own.
 type CollectorConfig struct {
-	// Enabled turns the collector on. When false, the analytics system policy is
-	// not injected and Envoy ships no access logs to the policy-engine.
-	Enabled bool `koanf:"enabled"`
 	// SendRequestBody / SendResponseBody capture request/response bodies into the
 	// collected event.
 	SendRequestBody  bool `koanf:"send_request_body"`
@@ -100,6 +100,17 @@ type AnalyticsConfig struct {
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
+}
+
+// TrafficLoggingConfig mirrors the policy-engine's stdout traffic-logging consumer.
+// The controller only needs to know whether it is enabled, so that the collector
+// (system policy + ALS sink) is activated when traffic logging is on even if
+// analytics is off. Presentation keys (masked_headers, max_payload_size) are
+// policy-engine-only and intentionally not bound here.
+type TrafficLoggingConfig struct {
+	// Enabled turns stdout JSON traffic logging on. Enabling it implicitly activates
+	// the collector (see Config.IsCollectorEnabled).
+	Enabled bool `koanf:"enabled"`
 }
 
 // SubscriptionsConfig holds configuration for application-level subscriptions.
@@ -963,11 +974,10 @@ func defaultConfig() *Config {
 			SendResponseBody:   false,
 		},
 		Collector: CollectorConfig{
-			Enabled:             false,
 			SendRequestBody:     false,
 			SendResponseBody:    false,
-			SendRequestHeaders:  false,
-			SendResponseHeaders: false,
+			SendRequestHeaders:  true,
+			SendResponseHeaders: true,
 			GRPCEventServerCfg:  defaultGRPCEventServerConfig(),
 		},
 		TracingConfig: TracingConfig{
@@ -1742,28 +1752,27 @@ func validateDomains(field string, domains []string) error {
 }
 
 // validateCollectorConfig migrates deprecated analytics aliases onto the collector
-// and enforces the collector prerequisite: analytics (a consumer) requires the
-// collector that feeds it. For backward compatibility this is a soft prerequisite —
-// if a consumer is enabled without the collector, the collector is auto-enabled with
-// a warning rather than failing. It also validates the ALS transport tuning when the
-// collector is enabled.
+// and validates the ALS transport tuning when the collector is active. The collector
+// has no on/off flag of its own: it is implicitly active whenever a consumer is
+// enabled (analytics or traffic logging) — see IsCollectorEnabled.
 func (c *Config) validateCollectorConfig() error {
 	c.migrateDeprecatedAnalyticsCapture()
 	c.migrateDeprecatedAnalyticsTransport()
 
-	// Backward-compat bridge: a consumer cannot run without the collector that feeds
-	// it, but rather than fail an existing config that only set analytics.enabled
-	// (valid before the collector split), auto-enable the collector with a warning.
-	if c.Analytics.Enabled && !c.Collector.Enabled {
-		slog.Warn("analytics.enabled requires the collector; enabling collector.enabled automatically for backward compatibility. Set collector.enabled = true explicitly to silence this warning.")
-		c.Collector.Enabled = true
-	}
-	if c.Collector.Enabled {
+	if c.IsCollectorEnabled() {
 		if err := validateGRPCEventServerConfig(c.Collector.GRPCEventServerCfg); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// IsCollectorEnabled reports whether the collector should run. The collector is
+// implicit: it is active whenever any consumer of the collected data is enabled
+// (analytics or stdout traffic logging), and off otherwise. When active, the
+// controller injects the analytics system policy and configures Envoy's ALS sink.
+func (c *Config) IsCollectorEnabled() bool {
+	return c.Analytics.Enabled || c.TrafficLogging.Enabled
 }
 
 // migrateDeprecatedAnalyticsTransport maps a deprecated [analytics].grpc_event_server

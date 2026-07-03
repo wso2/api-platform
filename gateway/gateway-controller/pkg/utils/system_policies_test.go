@@ -125,11 +125,8 @@ func TestInjectSystemPolicies_NilConfig(t *testing.T) {
 }
 
 func TestInjectSystemPolicies_CollectorDisabled(t *testing.T) {
-	cfg := &config.Config{
-		Collector: config.CollectorConfig{
-			Enabled: false,
-		},
-	}
+	// No consumer enabled -> collector implicitly off -> no system policy injected.
+	cfg := &config.Config{}
 	policies := []policyenginev1.PolicyInstance{
 		{Name: "existing", Version: "v1.0.0"},
 	}
@@ -140,10 +137,9 @@ func TestInjectSystemPolicies_CollectorDisabled(t *testing.T) {
 }
 
 func TestInjectSystemPolicies_CollectorEnabled(t *testing.T) {
+	// A consumer enabled -> collector implicitly on -> system policy injected.
 	cfg := &config.Config{
-		Collector: config.CollectorConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	policies := []policyenginev1.PolicyInstance{
 		{Name: "existing", Version: "v1.0.0"},
@@ -161,8 +157,8 @@ func TestInjectSystemPolicies_CollectorEnabled(t *testing.T) {
 
 func TestInjectSystemPolicies_BodyFlagsPropagated(t *testing.T) {
 	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{Enabled: true},
 		Collector: config.CollectorConfig{
-			Enabled:          true,
 			SendRequestBody:  true,
 			SendResponseBody: true,
 		},
@@ -177,8 +173,8 @@ func TestInjectSystemPolicies_BodyFlagsPropagated(t *testing.T) {
 
 func TestInjectSystemPolicies_BodyFlagsDefaultFalse(t *testing.T) {
 	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{Enabled: true},
 		Collector: config.CollectorConfig{
-			Enabled:          true,
 			SendRequestBody:  false,
 			SendResponseBody: false,
 		},
@@ -192,8 +188,8 @@ func TestInjectSystemPolicies_BodyFlagsDefaultFalse(t *testing.T) {
 
 func TestInjectSystemPolicies_HeaderFlagsPropagated(t *testing.T) {
 	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{Enabled: true},
 		Collector: config.CollectorConfig{
-			Enabled:             true,
 			SendRequestHeaders:  true,
 			SendResponseHeaders: true,
 		},
@@ -207,8 +203,10 @@ func TestInjectSystemPolicies_HeaderFlagsPropagated(t *testing.T) {
 }
 
 func TestInjectSystemPolicies_HeaderFlagsDefaultFalse(t *testing.T) {
+	// Zero-value collector (headers unset) with a consumer on: propagation passes the
+	// struct's false through. (Production defaults these true; see defaultConfig.)
 	cfg := &config.Config{
-		Collector: config.CollectorConfig{Enabled: true},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
@@ -217,12 +215,9 @@ func TestInjectSystemPolicies_HeaderFlagsDefaultFalse(t *testing.T) {
 	assert.Equal(t, false, result[0].Parameters["send_response_headers"])
 }
 
-
 func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {
 	cfg := &config.Config{
-		Collector: config.CollectorConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	additionalProps := map[string]any{
 		constants.ANALYTICS_SYSTEM_POLICY_NAME: map[string]interface{}{
@@ -237,9 +232,7 @@ func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {
 
 func TestInjectSystemPolicies_WithSharedParams(t *testing.T) {
 	cfg := &config.Config{
-		Collector: config.CollectorConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	additionalProps := map[string]any{
 		SharedParamsKey: map[string]interface{}{
@@ -254,9 +247,7 @@ func TestInjectSystemPolicies_WithSharedParams(t *testing.T) {
 
 func TestInjectSystemPolicies_EmptyPolicies(t *testing.T) {
 	cfg := &config.Config{
-		Collector: config.CollectorConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 
 	result := InjectSystemPolicies([]policyenginev1.PolicyInstance{}, cfg, nil)
@@ -266,9 +257,7 @@ func TestInjectSystemPolicies_EmptyPolicies(t *testing.T) {
 
 func TestInjectSystemPolicies_PreservesExistingPolicies(t *testing.T) {
 	cfg := &config.Config{
-		Collector: config.CollectorConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	policies := []policyenginev1.PolicyInstance{
 		{Name: "policy1", Version: "v1.0.0"},

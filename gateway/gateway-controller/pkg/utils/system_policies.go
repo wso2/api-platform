@@ -85,10 +85,10 @@ var defaultSystemPolicies = []systemPolicyConfig{
 				return false
 			}
 			// The analytics system policy is the collector: it is injected whenever
-			// the collector is enabled, regardless of which consumer (analytics,
-			// traffic logging) ultimately reads the collected data.
-			slog.Debug("Collector state -> ", "state", cfg.Collector.Enabled)
-			return cfg.Collector.Enabled
+			// the collector is active — i.e. whenever any consumer (analytics or
+			// traffic logging) is enabled.
+			slog.Debug("Collector state -> ", "state", cfg.IsCollectorEnabled())
+			return cfg.IsCollectorEnabled()
 		},
 		// Default parameters (can be overridden via additionalProps)
 		Parameters: map[string]interface{}{

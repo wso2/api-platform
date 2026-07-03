@@ -69,12 +69,10 @@ func validConfig() *Config {
 				Timeout: 30 * time.Second,
 			},
 		},
-		// Collector enabled by default so tests that turn on a consumer
-		// (analytics / traffic logging) satisfy the collector prerequisite.
-		// ALS receiver defaults mirror production so transport validation passes
-		// and the deprecated alias stays neutral (no spurious migration).
+		// The collector is implicit (active whenever a consumer is enabled). ALS
+		// receiver defaults mirror production so transport validation passes and the
+		// deprecated alias stays neutral (no spurious migration).
 		Collector: CollectorConfig{
-			Enabled:              true,
 			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
 		},
 		Analytics: AnalyticsConfig{
@@ -1108,8 +1106,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 
 func TestValidate_AnalyticsPayloadMigration(t *testing.T) {
 	setValidAnalyticsALS := func(cfg *Config) {
-		cfg.Analytics.Enabled = true
-		cfg.Collector.Enabled = true // analytics is a consumer; the collector must be on
+		cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
 		cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 			Mode:                  "uds",
 			ShutdownTimeout:       600 * time.Second,
@@ -1180,49 +1177,34 @@ func TestValidate_AnalyticsPayloadMigration(t *testing.T) {
 // TestValidate_CollectorPrerequisite verifies that enabling a consumer (analytics,
 // traffic logging) without the collector auto-enables the collector (a
 // backward-compat soft prerequisite) rather than failing.
-func TestValidate_CollectorPrerequisite(t *testing.T) {
-	validALS := AccessLogsServiceConfig{
-		Mode:                  "uds",
-		ShutdownTimeout:       600 * time.Second,
-		ExtProcMaxMessageSize: 1000000,
-		ExtProcMaxHeaderLimit: 8192,
-	}
-
-	t.Run("analytics enabled without collector auto-enables the collector", func(t *testing.T) {
+// TestIsCollectorEnabled covers the implicit collector: it is active iff a consumer
+// (analytics or traffic logging) is enabled, and off otherwise.
+func TestIsCollectorEnabled(t *testing.T) {
+	t.Run("no consumers -> off", func(t *testing.T) {
 		cfg := validConfig()
-		cfg.Collector.Enabled = false
+		cfg.Analytics.Enabled = false
+		cfg.TrafficLogging.Enabled = false
+		assert.False(t, cfg.IsCollectorEnabled())
+	})
+
+	t.Run("analytics on -> collector on", func(t *testing.T) {
+		cfg := validConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Collector.AccessLogsServiceCfg = validALS
 		cfg.Analytics.EnabledPublishers = []string{}
+		assert.True(t, cfg.IsCollectorEnabled())
 		require.NoError(t, cfg.Validate())
-		assert.True(t, cfg.Collector.Enabled, "collector should be auto-enabled for backward compatibility")
 	})
 
-	t.Run("traffic logging enabled without collector auto-enables the collector", func(t *testing.T) {
+	t.Run("traffic logging on -> collector on", func(t *testing.T) {
 		cfg := validConfig()
-		cfg.Collector.Enabled = false
 		cfg.TrafficLogging.Enabled = true
-		require.NoError(t, cfg.Validate())
-		assert.True(t, cfg.Collector.Enabled, "collector should be auto-enabled for backward compatibility")
-	})
-
-	t.Run("traffic logging enabled with collector is valid", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.Collector.Enabled = true
-		cfg.TrafficLogging.Enabled = true
-		require.NoError(t, cfg.Validate())
-	})
-
-	t.Run("collector enabled with no consumers is valid", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.Collector.Enabled = true
+		assert.True(t, cfg.IsCollectorEnabled())
 		require.NoError(t, cfg.Validate())
 	})
 }
 
 func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
 	cfg := validConfig()
-	cfg.Collector.Enabled = true
 	cfg.TrafficLogging.Enabled = true
 	cfg.TrafficLogging.MaxPayloadSize = -1
 	err := cfg.Validate()

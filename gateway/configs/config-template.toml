@@ -285,11 +285,11 @@ host = "localhost"
 # =============================================================================
 # The collector is the shared data-capture pipeline: it injects the analytics
 # system policy and ships request/response headers and bodies to the policy-engine
-# over ALS. It is a PREREQUISITE for every consumer below — analytics and
-# traffic_logging both require collector.enabled = true (enabling a consumer with
-# the collector off is a startup error).
+# over ALS. It has NO on/off switch of its own — it is implicit, turning on
+# automatically whenever a consumer below is enabled ([analytics] or
+# [traffic_logging]) and staying off otherwise. This section only tunes what the
+# collector captures.
 [collector]
-enabled = false
 # Capture request/response payloads (bodies) into the collected event. Bodies are
 # captured in full; per-consumer size caps are applied on output (see
 # traffic_logging.max_payload_size).
@@ -298,9 +298,9 @@ send_response_body = false
 # Capture ALL request/response headers into the collected event (request_headers/
 # response_headers). Applies to every API via the collector system policy, so no
 # per-API header policy is needed. Sensitive values are redacted on output by each
-# consumer (e.g. traffic_logging.masked_headers).
-send_request_headers = false
-send_response_headers = false
+# consumer (e.g. traffic_logging.masked_headers). On by default.
+send_request_headers = true
+send_response_headers = true
 
 # ALS transport tuning (advanced; defaults are sensible). One section read by BOTH
 # ends of the Envoy → policy-engine access-log stream:
@@ -323,7 +323,7 @@ max_message_size = 1000000000
 max_header_limit = 8192
 
 # =============================================================================
-# ANALYTICS CONFIGURATION (consumer — requires [collector].enabled = true)
+# ANALYTICS CONFIGURATION (consumer — enabling it activates the collector)
 # =============================================================================
 [analytics]
 enabled = false
@@ -347,7 +347,7 @@ batch_size = 50
 timer_wakeup_seconds = 3
 
 # =============================================================================
-# TRAFFIC LOGGING (consumer — requires [collector].enabled = true)
+# TRAFFIC LOGGING (consumer — enabling it activates the collector)
 # =============================================================================
 # Writes collected events (rich API/application/AI/latency metadata, plus
 # request/response headers and — when the collector's send_*_body is enabled —
@@ -355,27 +355,23 @@ timer_wakeup_seconds = 3
 # Fluent Bit/Loki/ELK; no external SaaS needed.
 #
 # Per-API (opt-in): a line is emitted only for APIs that attach the `log-message`
-# policy with `destination = access-log` — enabling this section alone does NOT
-# log every API. So an API is logged only when all three hold: [collector]
-# .enabled = true, [traffic_logging].enabled = true, and the `log-message` policy
-# (access-log destination) is attached to that API. The policy's request/response
-# parameters (per-flow payload/headers toggles and excludeHeaders) shape each
-# API's line; they filter/mask what the collector captured (they cannot enable
-# capture the collector was not configured to perform).
+# policy with `enableTrafficLogging: true` — enabling this section alone does NOT
+# log every API. So an API is logged only when both hold: [traffic_logging].enabled
+# = true, and the `log-message` policy (enableTrafficLogging: true) is attached to
+# that API. The policy's request/response parameters (per-flow payload/headers
+# toggles and excludeHeaders) shape each API's line; they filter/mask what the
+# collector captured (they cannot enable capture the collector was not configured
+# to perform).
 [traffic_logging]
 enabled = false
 # Header names (case-insensitive) whose values are redacted as "****" in the
 # logged requestHeaders/responseHeaders. Applies globally; the `log-message`
-# policy's (access-log mode) per-API excludeHeaders drop additional headers entirely.
+# policy's per-API excludeHeaders drop additional headers entirely.
 masked_headers = ["authorization"]
 # Max bytes of request/response payload written to each log line (0 = no limit).
 # Applied output-side, so the collector still captures full bodies and other
 # consumers (e.g. Moesif) are unaffected.
 max_payload_size = 0
-# Suppress traffic-log lines for requests whose original (pre-rewrite) path starts
-# with any of these prefixes (e.g. health/readiness probes). Only affects this
-# stdout publisher — other consumers still receive the event.
-ignored_path_prefixes = []
 
 # =============================================================================
 # POLICY CONFIGURATIONS
