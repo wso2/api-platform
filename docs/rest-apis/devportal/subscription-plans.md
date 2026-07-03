@@ -43,7 +43,14 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "string",
       "displayName": "string",
       "description": "string",
-      "requestCount": "string",
+      "limits": [
+        {
+          "limitType": "REQUEST_COUNT",
+          "limitCount": 10000,
+          "timeUnit": "MONTH",
+          "timeAmount": 1
+        }
+      ],
       "refId": "string",
       "orgId": "string",
       "createdBy": "alice@example.com",
@@ -119,7 +126,28 @@ Status Code **200**
 |»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
-|»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
+|»» limits|[object]|false|none|Rate/quota limits enforced for this plan. Empty when the plan is unlimited.|
+|»»» limitType|string|false|none|none|
+|»»» limitCount|any|false|none|Use -1 for unlimited. Returned as a string when the stored count exceeds the safe integer range, otherwise a number.|
+
+*oneOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»» *anonymous*|integer|false|none|none|
+
+*xor*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»» *anonymous*|string|false|none|none|
+
+*continued*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»» timeUnit|string¦null|false|none|none|
+|»»» timeAmount|integer|false|none|none|
 |»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
 |»» orgId|string|false|none|none|
 |»» createdBy|string|false|none|Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
@@ -130,6 +158,20 @@ Status Code **200**
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
 
 #### Enumerated Values
 
@@ -167,6 +209,14 @@ Creates one subscription plan when the request body is an object, or multiple su
   "refId": "string",
   "displayName": "string",
   "description": "string",
+  "limits": [
+    {
+      "limitType": "REQUEST_COUNT",
+      "limitCount": 10000,
+      "timeUnit": "MINUTE",
+      "timeAmount": 1
+    }
+  ],
   "type": "requestcount",
   "requestCount": 0,
   "eventCount": 0
@@ -178,6 +228,11 @@ id: Gold
 refId: string
 displayName: string
 description: string
+limits:
+  - limitType: REQUEST_COUNT
+    limitCount: 10000
+    timeUnit: MINUTE
+    timeAmount: 1
 type: requestcount
 requestCount: 0
 eventCount: 0
@@ -275,6 +330,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
 |status|error|
 |status|error|
 
@@ -307,6 +376,14 @@ Upserts one subscription plan when the request body is an object, or multiple pl
   "refId": "string",
   "displayName": "string",
   "description": "string",
+  "limits": [
+    {
+      "limitType": "REQUEST_COUNT",
+      "limitCount": 10000,
+      "timeUnit": "MINUTE",
+      "timeAmount": 1
+    }
+  ],
   "type": "requestcount",
   "requestCount": 0,
   "eventCount": 0
@@ -318,6 +395,11 @@ id: Gold
 refId: string
 displayName: string
 description: string
+limits:
+  - limitType: REQUEST_COUNT
+    limitCount: 10000
+    timeUnit: MINUTE
+    timeAmount: 1
 type: requestcount
 requestCount: 0
 eventCount: 0
@@ -346,7 +428,14 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "string",
   "displayName": "string",
   "description": "string",
-  "requestCount": "string",
+  "limits": [
+    {
+      "limitType": "REQUEST_COUNT",
+      "limitCount": 0,
+      "timeUnit": "MINUTE",
+      "timeAmount": 0
+    }
+  ],
   "refId": "string",
   "orgId": "string",
   "createdBy": "alice@example.com",
@@ -435,6 +524,34 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
 |status|error|
 |status|error|
 
@@ -479,7 +596,14 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "string",
   "displayName": "string",
   "description": "string",
-  "requestCount": "string",
+  "limits": [
+    {
+      "limitType": "REQUEST_COUNT",
+      "limitCount": 0,
+      "timeUnit": "MINUTE",
+      "timeAmount": 0
+    }
+  ],
   "refId": "string",
   "orgId": "string",
   "createdBy": "alice@example.com",
