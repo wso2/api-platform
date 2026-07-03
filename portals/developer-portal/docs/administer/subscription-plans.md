@@ -8,14 +8,15 @@ Plans can enforce:
 
 ## Default Plans
 
-When `generateDefaultSubPlans: true` is set in `config.yaml` (the default), the portal automatically creates four standard plans for every new organization:
+When `generateDefaultSubPlans: true` is set in `config.yaml` (the default), the portal automatically creates five standard plans for every new organization:
 
 | Plan | Description |
 |---|---|
-| `Bronze` | 1,000 requests |
-| `Silver` | 2,000 requests |
-| `Gold` | 5,000 requests |
+| `Bronze` | 1,000 requests per minute |
+| `Silver` | 2,000 requests per minute |
+| `Gold` | 5,000 requests per minute |
 | `Unlimited` | Unlimited requests |
+| `AsyncUnlimited` | Unlimited events, for async APIs |
 
 You can create additional custom plans alongside these defaults.
 
@@ -45,7 +46,7 @@ spec:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/api/v0.9/subscription-plans \
+curl -k -X POST https://localhost:3000/api/v0.9/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPlan=@plan.yaml"
 ```
@@ -88,7 +89,7 @@ items:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/api/v0.9/subscription-plans \
+curl -k -X POST https://localhost:3000/api/v0.9/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPlan=@plans.yaml"
 ```
@@ -96,13 +97,13 @@ curl -X POST http://localhost:3000/api/v0.9/subscription-plans \
 ## List Subscription Plans
 
 ```bash
-curl http://localhost:3000/api/v0.9/subscription-plans -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3000/api/v0.9/subscription-plans -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Subscription Plan
 
 ```bash
-curl http://localhost:3000/api/v0.9/subscription-plans/{planId} \
+curl -k https://localhost:3000/api/v0.9/subscription-plans/{planId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -124,7 +125,7 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/api/v0.9/subscription-plans \
+curl -k -X PUT https://localhost:3000/api/v0.9/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPlan=@plan-update.yaml"
 ```
@@ -132,7 +133,7 @@ curl -X PUT http://localhost:3000/api/v0.9/subscription-plans \
 ## Delete a Subscription Plan
 
 ```bash
-curl -X DELETE "http://localhost:3000/api/v0.9/subscription-plans/{planId}" \
+curl -k -X DELETE "https://localhost:3000/api/v0.9/subscription-plans/{planId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

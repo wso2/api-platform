@@ -16,13 +16,12 @@ You will also need an OAuth application already created in the key manager your 
 
 1. Sign in to the Developer Portal.
 2. In the sidebar, click **Applications**.
-3. Click on your application.
-4. In the application banner, click **Manage Keys**. This opens the **Manage Keys** page.
-5. Select the **Production** or **Sandbox** tab based on your environment.
+3. Click on your application. Its detail page includes a **Manage Keys** section.
+4. Select the **Production** or **Sandbox** tab based on your environment.
 
    > **Note:** Sandbox keys can only be used in the sandbox environment.
 
-6. For the key manager you want to use, paste the **client ID** of the OAuth application you created there, then click **Add**.
+5. For the key manager you want to use, paste the **client ID** of the OAuth application you created there, then click **Add**.
 
 The client ID is now visible on the Manage Keys page. The portal does not ask for or store a client secret at this step.
 
