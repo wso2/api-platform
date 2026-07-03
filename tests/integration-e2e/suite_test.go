@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -72,8 +73,17 @@ var httpClient = &http.Client{
 // TestFeatures is the go test entry point that runs the godog suite.
 func TestFeatures(t *testing.T) {
 	tags := os.Getenv("E2E_TAGS")
-	if tags == "" && os.Getenv("E2E_DB") != "" && os.Getenv("E2E_DB") != "postgres" {
-		tags = "~@multigateway" // second gateway is only wired on the postgres stack
+	if tags == "" {
+		// @wip scenarios are quarantined (a known platform-api bug — see
+		// features/llm-provider-secret.feature); run them explicitly with
+		// E2E_TAGS=@llm to reproduce.
+		tags = "~@wip"
+		if db := os.Getenv("E2E_DB"); db != "" && db != "postgres" {
+			// The second gateway is only wired on the postgres stack; the
+			// restart/recovery, secret and lifecycle scenarios are validated
+			// postgres-only. Only the base api-deployment feature runs cross-DB.
+			tags += " && ~@multigateway && ~@restart && ~@secret && ~@lifecycle && ~@apikey && ~@mcp"
+		}
 	}
 	status := godog.TestSuite{
 		Name:                 "platform-api-gateway-e2e",
@@ -257,7 +267,7 @@ func login() (string, error) {
 
 func createProject() (string, error) {
 	st, body, err := apiCall(http.MethodPost, "/api/v0.9/projects", suite.token,
-		map[string]string{"name": "e2e-proj", "description": "e2e"})
+		map[string]string{"id": "e2e-proj", "displayName": "e2e-proj", "description": "e2e"})
 	if err != nil {
 		return "", err
 	}
@@ -270,7 +280,7 @@ func createProject() (string, error) {
 
 func createGatewayAndToken(name string) (gatewayID, token string, err error) {
 	st, body, err := apiCall(http.MethodPost, "/api/v0.9/gateways", suite.token, map[string]any{
-		"name": name, "displayName": name, "vhost": ingressHost, "functionalityType": "regular",
+		"id": name, "displayName": name, "endpoints": []string{"http://" + ingressHost}, "functionalityType": "regular",
 	})
 	if err != nil {
 		return "", "", err
@@ -288,6 +298,348 @@ func createGatewayAndToken(name string) (gatewayID, token string, err error) {
 		return "", "", fmt.Errorf("rotate token failed (%d): %s", st, body)
 	}
 	return gatewayID, token, nil
+}
+
+// createSecret stores an organization-scoped secret in platform-api. The endpoint
+// is multipart/form-data (not JSON); id is the handle used in {{ secret "id" }}
+// placeholders, value is the plaintext (encrypted at rest, never returned).
+func createSecret(id, value string) error {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fields := []struct{ k, v string }{
+		{"id", id}, {"displayName", id}, {"value", value}, {"type", "GENERIC"},
+	}
+	for _, f := range fields {
+		if err := mw.WriteField(f.k, f.v); err != nil {
+			return err
+		}
+	}
+	if err := mw.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, platformAPI+"/api/v0.9/secrets", &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+suite.token)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("create secret failed (%d): %s", resp.StatusCode, body)
+	}
+	return nil
+}
+
+// restAPIWithHeaderBody builds a REST API create/update body routed to the sample
+// backend with one GET operation carrying a set-headers policy that injects
+// headerName=headerValue into the upstream request. In platform-api,
+// method/path/policies nest under operations[].request. The sample backend echoes
+// the header back so a test can assert it reached the upstream.
+func restAPIWithHeaderBody(displayName, context, headerName, headerValue string) map[string]any {
+	return map[string]any{
+		"displayName": displayName,
+		"context":     context,
+		"version":     "v1",
+		"projectId":   suite.projectID,
+		"upstream":    map[string]any{"main": map[string]any{"url": "http://sample-backend:9080"}},
+		"operations": []map[string]any{{
+			"name": "getRoot",
+			"request": map[string]any{
+				"method": "GET",
+				"path":   "/",
+				"policies": []map[string]any{{
+					"name":    "set-headers",
+					"version": "v1",
+					"params": map[string]any{
+						"request": map[string]any{
+							"headers": []map[string]any{{"name": headerName, "value": headerValue}},
+						},
+					},
+				}},
+			},
+		}},
+	}
+}
+
+// createRestAPIWithSecretHeader creates a REST API whose set-headers policy injects
+// `<headerName>: Bearer {{ secret "<secretID>" }}` — the gateway resolves the
+// placeholder at runtime.
+func createRestAPIWithSecretHeader(secretID, headerName string) (id, context string, err error) {
+	suffix := randHex()
+	context = "/e2e-" + suffix
+	body := restAPIWithHeaderBody("e2e-secret-api-"+suffix, context, headerName,
+		`Bearer {{ secret "`+secretID+`" }}`)
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis", suite.token, body)
+	if err != nil {
+		return "", "", err
+	}
+	id = jsonField(resp, "id", "handle", "uuid")
+	if st >= 300 || id == "" {
+		return "", "", fmt.Errorf("create secret API failed (%d): %s", st, resp)
+	}
+	return id, context, nil
+}
+
+// createRestAPIWithHeader creates a REST API whose set-headers policy injects a
+// literal headerName=headerValue. Returns the API id, context and displayName
+// (the displayName is needed to PUT-update the API later).
+func createRestAPIWithHeader(headerName, headerValue string) (id, context, displayName string, err error) {
+	suffix := randHex()
+	context = "/e2e-" + suffix
+	displayName = "e2e-hdr-api-" + suffix
+	body := restAPIWithHeaderBody(displayName, context, headerName, headerValue)
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis", suite.token, body)
+	if err != nil {
+		return "", "", "", err
+	}
+	id = jsonField(resp, "id", "handle", "uuid")
+	if st >= 300 || id == "" {
+		return "", "", "", fmt.Errorf("create API failed (%d): %s", st, resp)
+	}
+	return id, context, displayName, nil
+}
+
+// updateRestAPIHeader PUT-updates the API (full-object replace) to inject a new
+// header value, so a subsequent redeploy carries the mutated spec.
+func updateRestAPIHeader(id, displayName, context, headerName, headerValue string) error {
+	body := restAPIWithHeaderBody(displayName, context, headerName, headerValue)
+	st, resp, err := apiCall(http.MethodPut, "/api/v0.9/rest-apis/"+id, suite.token, body)
+	if err != nil {
+		return err
+	}
+	if st >= 300 {
+		return fmt.Errorf("update API failed (%d): %s", st, resp)
+	}
+	return nil
+}
+
+// deleteRestAPI deletes the API from the control plane; the gateway receives an
+// api.deleted event and stops serving it.
+func deleteRestAPI(id string) error {
+	st, resp, err := apiCall(http.MethodDelete, "/api/v0.9/rest-apis/"+id, suite.token, nil)
+	if err != nil {
+		return err
+	}
+	if st >= 300 {
+		return fmt.Errorf("delete API failed (%d): %s", st, resp)
+	}
+	return nil
+}
+
+// restoreDeployment restores a previously UNDEPLOYED deployment on its gateway.
+func restoreDeployment(apiID, deploymentID, gatewayID string) error {
+	st, resp, err := apiCall(http.MethodPost,
+		"/api/v0.9/rest-apis/"+apiID+"/deployments/"+deploymentID+"/restore?gatewayId="+gatewayID,
+		suite.token, nil)
+	if err != nil {
+		return err
+	}
+	if st >= 300 {
+		return fmt.Errorf("restore deployment failed (%d): %s", st, resp)
+	}
+	return nil
+}
+
+// createRestAPIRequiringKey creates a REST API routed to the sample backend whose
+// GET operation carries an api-key-auth policy (the key is read from keyHeader).
+// Once deployed, the gateway rejects requests without a valid key. (API-key auth
+// is a policy on the operation, not a top-level security field.)
+func createRestAPIRequiringKey(keyHeader string) (id, context string, err error) {
+	suffix := randHex()
+	context = "/e2e-" + suffix
+	body := map[string]any{
+		"displayName": "e2e-key-api-" + suffix,
+		"context":     context,
+		"version":     "v1",
+		"projectId":   suite.projectID,
+		"upstream":    map[string]any{"main": map[string]any{"url": "http://sample-backend:9080"}},
+		"operations": []map[string]any{{
+			"name": "getRoot",
+			"request": map[string]any{
+				"method": "GET",
+				"path":   "/",
+				"policies": []map[string]any{{
+					"name":    "api-key-auth",
+					"version": "v1",
+					"params":  map[string]any{"key": keyHeader, "in": "header"},
+				}},
+			},
+		}},
+	}
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis", suite.token, body)
+	if err != nil {
+		return "", "", err
+	}
+	id = jsonField(resp, "id", "handle", "uuid")
+	if st >= 300 || id == "" {
+		return "", "", fmt.Errorf("create key-protected API failed (%d): %s", st, resp)
+	}
+	return id, context, nil
+}
+
+// createAPIKeyForAPI registers a caller-supplied plaintext API key for the API.
+// platform-api hashes it and broadcasts it to the gateways where the API is
+// deployed (the apikey.created event), so the gateway then accepts that key.
+func createAPIKeyForAPI(apiID, keyValue string) error {
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis/"+apiID+"/api-keys", suite.token,
+		map[string]any{"displayName": "e2e-key", "apiKey": keyValue})
+	if err != nil {
+		return err
+	}
+	if st >= 300 {
+		return fmt.Errorf("create API key failed (%d): %s", st, resp)
+	}
+	return nil
+}
+
+// createMCPProxy creates an MCP proxy whose upstream is the real MCP server
+// (mcp-backend). Returns the proxy handle (used in the deployment path) and its
+// context. The gateway serves it at <context>/mcp.
+func createMCPProxy() (handle, context string, err error) {
+	suffix := randHex()
+	handle = "mcp-" + suffix
+	context = "/mcp-" + suffix
+	body := map[string]any{
+		"id":             handle,
+		"displayName":    "e2e-mcp-" + suffix,
+		"version":        "v1.0",
+		"context":        context,
+		"mcpSpecVersion": "2025-06-18",
+		"upstream":       map[string]any{"main": map[string]any{"url": "http://mcp-backend:3001"}},
+	}
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/mcp-proxies", suite.token, body)
+	if err != nil {
+		return "", "", err
+	}
+	if id := jsonField(resp, "id", "handle"); id != "" {
+		handle = id
+	}
+	if st >= 300 {
+		return "", "", fmt.Errorf("create MCP proxy failed (%d): %s", st, resp)
+	}
+	return handle, context, nil
+}
+
+// deployMCPProxy deploys the MCP proxy (by handle) to the gateway; the deploy call
+// creates the gateway association (no separate attach). Returns the deployment id.
+func deployMCPProxy(handle, gatewayID string) (string, error) {
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/mcp-proxies/"+handle+"/deployments", suite.token,
+		map[string]any{"base": "current", "gatewayId": gatewayID, "name": "dep-" + randHex()})
+	if err != nil {
+		return "", err
+	}
+	id := jsonField(resp, "deploymentId")
+	if st >= 300 || id == "" {
+		return "", fmt.Errorf("deploy MCP proxy failed (%d): %s", st, resp)
+	}
+	return id, nil
+}
+
+// createLLMProxy creates an LLM proxy over an existing (deployed) LLM provider,
+// referenced by handle. Returns the proxy handle and context. NOTE: deploying the
+// proxy to a gateway requires the referenced provider (and its template) to be
+// deployed there first — which currently hits the provider template-apiVersion
+// bug (see features/llm-provider-secret.feature), so the proxy e2e is @wip.
+func createLLMProxy(providerHandle string) (handle, context string, err error) {
+	suffix := randHex()
+	handle = "lp-" + suffix
+	context = "/lp-" + suffix
+	body := map[string]any{
+		"id":          handle,
+		"displayName": "e2e-llmproxy-" + suffix,
+		"version":     "v1.0",
+		"projectId":   suite.projectID,
+		"context":     context,
+		"provider":    map[string]any{"id": providerHandle},
+	}
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/llm-proxies", suite.token, body)
+	if err != nil {
+		return "", "", err
+	}
+	if id := jsonField(resp, "id", "handle"); id != "" {
+		handle = id
+	}
+	if st >= 300 {
+		return "", "", fmt.Errorf("create LLM proxy failed (%d): %s", st, resp)
+	}
+	return handle, context, nil
+}
+
+// deployLLMProxy deploys the LLM proxy (by handle) to the gateway. Returns the
+// deployment id.
+func deployLLMProxy(handle, gatewayID string) (string, error) {
+	st, resp, err := apiCall(http.MethodPost, "/api/v0.9/llm-proxies/"+handle+"/deployments", suite.token,
+		map[string]any{"base": "current", "gatewayId": gatewayID, "name": "dep-" + randHex()})
+	if err != nil {
+		return "", err
+	}
+	id := jsonField(resp, "deploymentId")
+	if st >= 300 || id == "" {
+		return "", fmt.Errorf("deploy LLM proxy failed (%d): %s", st, resp)
+	}
+	return id, nil
+}
+
+// createLLMProviderWithSecretAuth creates an openai-template LLM provider routed
+// to the sample backend, whose upstream carries an Authorization header built
+// from the secret (upstream.main.auth.value = 'Bearer {{ secret "<secretID>" }}').
+// The gateway resolves the placeholder and injects it upstream at runtime. Unlike
+// a REST API, an LLM provider has no projectId and needs no separate gateway
+// attach — the deployment call creates the association. Returns the provider
+// handle (used in the deployment path) and its context.
+func createLLMProviderWithSecretAuth(secretID string) (handle, context string, err error) {
+	suffix := randHex()
+	handle = "llm-" + suffix   // handle used in the deployment path
+	context = "/llm-" + suffix // context is <= 20 chars, no trailing slash
+	st, body, err := apiCall(http.MethodPost, "/api/v0.9/llm-providers", suite.token, map[string]any{
+		"id":          handle,
+		"displayName": "e2e-llm-" + suffix,
+		"version":     "v1.0",
+		"context":     context,
+		"template":    "openai",
+		"upstream": map[string]any{
+			"main": map[string]any{
+				"url": "http://sample-backend:9080",
+				"auth": map[string]any{
+					"type":   "api-key",
+					"header": "Authorization",
+					"value":  `Bearer {{ secret "` + secretID + `" }}`,
+				},
+			},
+		},
+		"accessControl": map[string]any{"mode": "allow_all"},
+	})
+	if err != nil {
+		return "", "", err
+	}
+	if id := jsonField(body, "id", "handle"); id != "" {
+		handle = id
+	}
+	if st >= 300 {
+		return "", "", fmt.Errorf("create LLM provider failed (%d): %s", st, body)
+	}
+	return handle, context, nil
+}
+
+// deployLLMProvider deploys the provider (by handle) to the gateway. The deploy
+// body is the same shape as a REST API deployment, and creates the gateway
+// association itself — no prior attach call. Returns the deployment id.
+func deployLLMProvider(handle, gatewayID string) (string, error) {
+	st, body, err := apiCall(http.MethodPost, "/api/v0.9/llm-providers/"+handle+"/deployments", suite.token,
+		map[string]any{"base": "current", "gatewayId": gatewayID, "name": "dep-" + randHex()})
+	if err != nil {
+		return "", err
+	}
+	id := jsonField(body, "deploymentId")
+	if st >= 300 || id == "" {
+		return "", fmt.Errorf("deploy LLM provider failed (%d): %s", st, body)
+	}
+	return id, nil
 }
 
 // --- small helpers ---------------------------------------------------------

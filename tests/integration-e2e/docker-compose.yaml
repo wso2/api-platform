@@ -51,12 +51,18 @@ services:
       - DATABASE_PASSWORD=apip
       - DATABASE_SSL_MODE=disable
       - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+      # Stable secret-encryption key (64 hex = 32 bytes). Without this, demo mode
+      # (the default) mints a NEW ephemeral key on every restart, so secrets
+      # encrypted before a platform-api restart become undecryptable. Setting it
+      # keeps secrets valid across a control-plane restart (see the @cp-restart
+      # secret scenario in features/secret.feature).
+      - PLATFORM_SECRET_ENCRYPTION_KEY=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90
       # Force file-based auth + a stable org so the scenario can log in and the
       # org is seeded (env overrides the mounted config file).
       - AUTH_FILE_BASED_ENABLED=true
-      - AUTH_FILE_BASED_ORGANIZATION_ID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - AUTH_FILE_BASED_ORGANIZATION_HANDLE=ap-org
-      - AUTH_FILE_BASED_ORGANIZATION_NAME=AP Organization
+      - AUTH_FILE_BASED_ORGANIZATION_ID=default
+      - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
       - AUTH_FILE_BASED_ORGANIZATION_REGION=us
       - AUTH_JWT_SECRET_KEY=e2e-integration-secret-key-0123456789
     volumes:
@@ -123,6 +129,16 @@ services:
     command: ["-addr", ":9080", "-pretty"]
     ports:
       - "9080:9080"
+    networks: [e2e]
+
+  # Real MCP (JSON-RPC streamable-HTTP) server for the MCP-proxy scenario — the
+  # echo sample-backend can't satisfy the MCP initialize handshake. Started on
+  # demand by the godog suite (not in the default phase-1/2 bring-up).
+  mcp-backend:
+    image: rakhitharr/mcp-everything:v3
+    pull_policy: missing
+    ports:
+      - "3001:3001"
     networks: [e2e]
 
   # Second gateway (own controller + runtime + DB) for the multi-gateway

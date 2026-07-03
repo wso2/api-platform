@@ -53,10 +53,13 @@ services:
       - DATABASE_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
       - DATABASE_SSL_MODE=disable
       - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+      # Stable secret key (else demo mode mints an ephemeral one each restart —
+      # secrets would be undecryptable after a platform-api restart).
+      - PLATFORM_SECRET_ENCRYPTION_KEY=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90
       - AUTH_FILE_BASED_ENABLED=true
-      - AUTH_FILE_BASED_ORGANIZATION_ID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - AUTH_FILE_BASED_ORGANIZATION_HANDLE=ap-org
-      - AUTH_FILE_BASED_ORGANIZATION_NAME=AP Organization
+      - AUTH_FILE_BASED_ORGANIZATION_ID=default
+      - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
       - AUTH_FILE_BASED_ORGANIZATION_REGION=us
       - AUTH_JWT_SECRET_KEY=e2e-integration-secret-key-0123456789
     volumes:
