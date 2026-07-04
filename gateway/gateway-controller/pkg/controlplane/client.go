@@ -1676,8 +1676,14 @@ func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
 // artifacts, but a bottom-up (DP->CP) synced artifact keeps its locally-generated
 // UUID and records the control-plane UUID as cp_artifact_id.
 func (c *Client) resolveLocalArtifactID(id string) string {
-	if existing, err := c.findAPIConfig(id); err == nil && existing != nil {
+	existing, err := c.findAPIConfig(id)
+	switch {
+	case err == nil && existing != nil:
 		return existing.UUID
+	case err != nil && !storage.IsNotFoundError(err):
+		c.logger.Error("Failed to resolve local artifact ID; falling back to control-plane UUID",
+			slog.String("artifact_id", id),
+			slog.Any("error", err))
 	}
 	return id
 }
