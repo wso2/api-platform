@@ -18,7 +18,10 @@
 
 package constants
 
-import "regexp"
+import (
+	"regexp"
+	"time"
+)
 
 // SecretPlaceholderRe matches {{ secret "handle" }} placeholders embedded in YAML
 // or JSON content. The quotes may be JSON-escaped (\") so both forms are matched.
@@ -172,6 +175,16 @@ const (
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
 	ANALYTICS_SYSTEM_POLICY_VERSION = "v1"
+)
+
+// DP->CP artifact push timing. The bottom-up (DP->CP) push waits for the local deployment
+// to be reflected in the in-memory store before pushing to the control plane.
+const (
+	// CPPushDeploymentTimeout is the maximum time to wait for a gateway-originated artifact
+	// to finish deploying before abandoning the DP->CP push.
+	CPPushDeploymentTimeout = 60 * time.Second
+	// CPPushPollInterval is how often the in-memory store is re-checked while waiting.
+	CPPushPollInterval = 500 * time.Millisecond
 )
 
 var WILDCARD_HTTP_METHODS = []string{

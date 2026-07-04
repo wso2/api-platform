@@ -2562,14 +2562,17 @@ func TestPopulatePropsForSystemPolicies(t *testing.T) {
 	// Props should remain empty as no action is taken
 }
 
-// TestWaitForDeploymentAndNotifyTimeout tests the timeout scenario
+// TestWaitForDeploymentAndPush_PushesWhenDeploymentCompletes verifies the waiter pushes and
+// returns promptly once the artifact's deployment completes in the store (DeployedAt set),
+// rather than blocking until constants.CPPushDeploymentTimeout.
 // Note: This test involves deliberate concurrent access patterns that trigger
-// race detector warnings but represent valid production behavior with proper locking
-func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
+// race detector warnings but represent valid production behavior with proper locking.
+func TestWaitForDeploymentAndPush_PushesWhenDeploymentCompletes(t *testing.T) {
 	server := createTestAPIServer()
-	server.controlPlaneClient = &MockControlPlaneClient{connected: true}
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
 
-	// Add config that starts pending and will be updated to deployed
+	// Config present but not yet deployed (DeployedAt nil).
 	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	cfg.DesiredState = models.StateDeployed
 	_ = server.store.Add(cfg)
@@ -2586,22 +2589,29 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 		}()
 
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		server.waitForDeploymentAndPush("0000-test-id-0000-000000000000", "test-correlation", logger)
+		server.waitForDeploymentAndPush("0000-test-id-0000-000000000000", "test-correlation", nil, logger)
 	}()
+
+	// The waiter must not push while the artifact is still undeployed.
+	time.Sleep(1 * time.Second)
+	require.Equal(t, 0, mockCP.PushCount(), "must not push before deployment completes")
+
+	// Deployment completes: publish a fresh snapshot with DeployedAt set (a new object,
+	// not a mutation of the stored pointer, to avoid racing the waiter's reads). The
+	// next poll should push and the waiter should return.
+	deployed := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
+	deployed.DesiredState = models.StateDeployed
+	now := time.Now()
+	deployed.DeployedAt = &now
+	require.NoError(t, server.store.Update(deployed))
 
 	select {
 	case err := <-done:
 		require.NoError(t, err)
-
-	case <-time.After(2 * time.Second):
-		// Trigger graceful exit by updating status to deployed
-		server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
-		require.NoError(t, <-done)
-
-		retrievedCfg, err := server.store.Get("0000-test-id-0000-000000000000")
-		require.NoError(t, err)
-		assert.Equal(t, models.StateDeployed, retrievedCfg.DesiredState)
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForDeploymentAndPush did not return after deployment completed")
 	}
+	require.Equal(t, 1, mockCP.PushCount())
 }
 
 func TestWaitForDeploymentAndPush_RetriesUntilConfigAppears(t *testing.T) {
@@ -2612,7 +2622,7 @@ func TestWaitForDeploymentAndPush_RetriesUntilConfigAppears(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		server.waitForDeploymentAndPush("0000-delayed-id-0000-000000000000", "test-correlation", logger)
+		server.waitForDeploymentAndPush("0000-delayed-id-0000-000000000000", "test-correlation", nil, logger)
 		close(done)
 	}()
 
@@ -2630,6 +2640,54 @@ func TestWaitForDeploymentAndPush_RetriesUntilConfigAppears(t *testing.T) {
 		t.Fatal("waitForDeploymentAndPush did not complete after config appeared")
 	}
 
+	require.Equal(t, 1, mockCP.PushCount())
+}
+
+// TestWaitForDeploymentAndPush_WaitsForFreshDeploymentWatermark verifies that on an
+// update the push does not send the stale (pre-update) store snapshot: it waits until
+// the store's DeployedAt has advanced to the deployment it was triggered for. Without
+// this, the DP->CP push races the async (SQL-eventhub) store refresh and pushes the old
+// spec + old watermark, which the control plane drops as not-newer.
+func TestWaitForDeploymentAndPush_WaitsForFreshDeploymentWatermark(t *testing.T) {
+	server := createTestAPIServer()
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
+
+	// The store still holds the pre-update snapshot, deployed at t1.
+	cfg := createTestStoredConfig("0000-stale-id-0000-000000000000", "stale-api", "v1.0.0", "/stale")
+	t1 := time.Now()
+	cfg.DeployedAt = &t1
+	require.NoError(t, server.store.Add(cfg))
+
+	// This push was triggered for a newer deployment at t2 > t1.
+	t2 := t1.Add(2 * time.Second)
+
+	done := make(chan struct{})
+	go func() {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		server.waitForDeploymentAndPush("0000-stale-id-0000-000000000000", "test-correlation", &t2, logger)
+		close(done)
+	}()
+
+	// While the store lags at t1, the stale snapshot must NOT be pushed.
+	time.Sleep(1200 * time.Millisecond)
+	require.Equal(t, 0, mockCP.PushCount(), "must not push the pre-update snapshot")
+	select {
+	case <-done:
+		t.Fatal("waitForDeploymentAndPush returned before the store caught up")
+	default:
+	}
+
+	// The EventListener refreshes the store to the t2 deployment.
+	fresh := createTestStoredConfig("0000-stale-id-0000-000000000000", "stale-api", "v1.0.0", "/stale")
+	fresh.DeployedAt = &t2
+	require.NoError(t, server.store.Update(fresh))
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("waitForDeploymentAndPush did not push after the store reached the deployment watermark")
+	}
 	require.Equal(t, 1, mockCP.PushCount())
 }
 
