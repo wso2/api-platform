@@ -1,8 +1,11 @@
 package analytics
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 func TestDeriveMCPCapability(t *testing.T) {
@@ -24,6 +27,41 @@ func TestDeriveMCPCapability(t *testing.T) {
 		if got := deriveMCPCapability(c.method); got != c.want {
 			t.Errorf("deriveMCPCapability(%q) = %q, want %q", c.method, got, c.want)
 		}
+	}
+}
+
+// OnResponseHeaders must capture the response content type for every API kind (not just
+// MCP), since the Envoy access log carries no response headers. It reads it from the live
+// response headers and emits it as response_content_type analytics metadata.
+func TestOnResponseHeaders_CapturesContentTypeForAllKinds(t *testing.T) {
+	cases := []struct {
+		name    string
+		apiKind policy.APIKind
+	}{
+		{"rest", policy.APIKindRestApi},
+		{"llm provider", policy.APIKindLlmProvider},
+		{"mcp", policy.APIKindMCP},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			respCtx := &policy.ResponseHeaderContext{
+				SharedContext: &policy.SharedContext{APIKind: c.apiKind},
+				ResponseHeaders: policy.NewHeaders(map[string][]string{
+					"content-type": {"application/json"},
+				}),
+				ResponseStatus: 200,
+			}
+
+			action := (&AnalyticsPolicy{}).OnResponseHeaders(context.Background(), respCtx, nil)
+
+			mods, ok := action.(policy.DownstreamResponseHeaderModifications)
+			if !ok {
+				t.Fatalf("expected DownstreamResponseHeaderModifications, got %T", action)
+			}
+			if got := mods.AnalyticsMetadata["response_content_type"]; got != "application/json" {
+				t.Errorf("response_content_type = %v, want application/json", got)
+			}
+		})
 	}
 }
 

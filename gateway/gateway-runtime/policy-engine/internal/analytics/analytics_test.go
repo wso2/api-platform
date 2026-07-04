@@ -796,6 +796,40 @@ func TestPrepareAnalyticEvent_WithResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", event.Properties["responseContentType"])
 }
 
+// The analytics system policy captures response_content_type into metadata for all API
+// kinds (the Envoy access log carries no response headers). Verify a non-MCP (REST) API
+// sources responseContentType from that metadata rather than falling back to Unknown.
+func TestPrepareAnalyticEvent_ResponseContentTypeFromMetadataNonMCP(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:              "Rest",
+		"response_content_type": "application/json",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, "application/json", event.Properties["responseContentType"])
+}
+
+// When neither metadata nor the access-log header carries a content type, the value
+// falls back to Unknown.
+func TestPrepareAnalyticEvent_ResponseContentTypeFallbackUnknown(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey: "Rest",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, Unknown, event.Properties["responseContentType"])
+}
+
 func TestPrepareAnalyticEvent_WithCorrelationID(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)

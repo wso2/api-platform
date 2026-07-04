@@ -192,12 +192,18 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 		}
 	}
 
+	// Capture the response content type for all API kinds. The Envoy access log does
+	// not carry response headers (no additional_response_headers_to_log is configured,
+	// to avoid an uncontrolled header source)
+	if respCtx.ResponseHeaders != nil {
+		if contentTypes := respCtx.ResponseHeaders.Get("content-type"); len(contentTypes) > 0 {
+			analyticsMetadata["response_content_type"] = contentTypes[0]
+		}
+	}
+
 	if respCtx.SharedContext.APIKind == policy.APIKindMCP && respCtx.ResponseHeaders != nil {
 		if sessionIDs := respCtx.ResponseHeaders.Get("mcp-session-id"); len(sessionIDs) > 0 {
 			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
-		}
-		if contentTypes := respCtx.ResponseHeaders.Get("content-type"); len(contentTypes) > 0 {
-			analyticsMetadata["response_content_type"] = contentTypes[0]
 		}
 	}
 
