@@ -334,6 +334,33 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("Template push carries UpdatedAt as the deployedAt watermark", func(t *testing.T) {
+		// Templates have no deployment lifecycle so DeployedAt is nil; the push must
+		// still send a non-nil deployedAt (= UpdatedAt), otherwise the CP treats
+		// every template UPDATE as stale (IsNewerDeployment(nil, …) == false) and
+		// silently skips it.
+		var got ImportArtifactRequest
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reqs := readPushedArtifacts(t, r)
+			require.Len(t, reqs, 1)
+			got = reqs[0]
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"total":1,"success":1,"failed":0,"artifacts":{"0000-test-api-0000-000000000000":{"id":"cp-tmpl-1","origin":"gateway_api","status":"deployed"}}}`))
+		}))
+		defer server.Close()
+
+		cfg := createTestStoredConfig(models.KindLlmProviderTemplate)
+		cfg.DeployedAt = nil // templates never set DeployedAt
+
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		_, err := svc.PushArtifact(cfg.UUID, cfg, "")
+		require.NoError(t, err)
+
+		require.NotNil(t, got.DeployedAt, "template push must carry a deployedAt watermark")
+		assert.True(t, got.DeployedAt.Equal(cfg.UpdatedAt.UTC()),
+			"template deployedAt should equal UpdatedAt; got %v want %v", got.DeployedAt, cfg.UpdatedAt.UTC())
+	})
+
 	t.Run("HTTP error response", func(t *testing.T) {
 		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)

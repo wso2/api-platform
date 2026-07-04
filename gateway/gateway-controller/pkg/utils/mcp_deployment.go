@@ -536,7 +536,7 @@ func (s *MCPDeploymentService) pushDeployableArtifact(result *APIDeploymentResul
 		return
 	}
 	if result.StoredConfig.Origin == models.OriginGatewayAPI && s.canPushToControlPlane() {
-		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, log)
+		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, result.StoredConfig.DeployedAt, log)
 	}
 }
 

@@ -111,37 +111,37 @@ type secretSyncer interface {
 
 // Client manages the WebSocket connection to the control plane
 type Client struct {
-	config                      config.ControlPlaneConfig
-	logger                      *slog.Logger
-	state                       *ConnectionState
-	ctx                         context.Context
-	cancel                      context.CancelFunc
-	stopChan                    chan struct{}
-	wg                          sync.WaitGroup
-	writeMu                     sync.Mutex // serializes writes to the WebSocket connection
-	store                       *storage.ConfigStore
-	db                          storage.Storage
-	snapshotManager             *xds.SnapshotManager
-	parser                      *config.Parser
-	validator                   config.Validator
-	deploymentService           *utils.APIDeploymentService
-	apiUtilsService             *utils.APIUtilsService
-	apiKeyService               *utils.APIKeyService
-	llmDeploymentService        *utils.LLMDeploymentService
-	mcpDeploymentService        *utils.MCPDeploymentService
-	apiKeyXDSManager            utils.XDSManager
-	apiKeyStore                 *storage.APIKeyStore
-	routerConfig                *config.RouterConfig
-	policyManager               *policyxds.PolicyManager
-	systemConfig                *config.Config
-	policyDefinitions           map[string]models.PolicyDefinition
-	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
-	subscriptionResourceService *utils.SubscriptionResourceService
-	eventHub                    eventhub.EventHub
-	gatewayID                   string
-	gatewayPath                 string      // cached gateway path from well-known discovery
-	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
-	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+	config                       config.ControlPlaneConfig
+	logger                       *slog.Logger
+	state                        *ConnectionState
+	ctx                          context.Context
+	cancel                       context.CancelFunc
+	stopChan                     chan struct{}
+	wg                           sync.WaitGroup
+	writeMu                      sync.Mutex // serializes writes to the WebSocket connection
+	store                        *storage.ConfigStore
+	db                           storage.Storage
+	snapshotManager              *xds.SnapshotManager
+	parser                       *config.Parser
+	validator                    config.Validator
+	deploymentService            *utils.APIDeploymentService
+	apiUtilsService              *utils.APIUtilsService
+	apiKeyService                *utils.APIKeyService
+	llmDeploymentService         *utils.LLMDeploymentService
+	mcpDeploymentService         *utils.MCPDeploymentService
+	apiKeyXDSManager             utils.XDSManager
+	apiKeyStore                  *storage.APIKeyStore
+	routerConfig                 *config.RouterConfig
+	policyManager                *policyxds.PolicyManager
+	systemConfig                 *config.Config
+	policyDefinitions            map[string]models.PolicyDefinition
+	subscriptionSnapshotUpdater  utils.SubscriptionSnapshotUpdater
+	subscriptionResourceService  *utils.SubscriptionResourceService
+	eventHub                     eventhub.EventHub
+	gatewayID                    string
+	gatewayPath                  string      // cached gateway path from well-known discovery
+	syncOnce                     sync.Once   // ensures deployment sync runs only on first connect
+	isFirstConnect               atomic.Bool // true on first connect, flipped to false after
 	webhookSecretStore           *webhooksecret.WebhookSecretStore
 	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
 	secretSyncer                 secretSyncer
@@ -1402,8 +1402,11 @@ func (c *Client) fetchAndDeployAPI(apiID, deploymentID string, deployedAt *time.
 	// storage before rendering.
 	c.syncSecretRefsFromYAML(yamlData, correlationID)
 
-	// Create API configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deploymentID, deployedAt, correlationID, c.deploymentService)
+	// Create API configuration from YAML using the deployment service. Reuse the
+	// existing local UUID for a bottom-up (DP->CP) synced API so the control-plane
+	// deploy is an in-place update; the fetch above still addresses the definition
+	// by the control-plane UUID (apiID).
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deploymentID, deployedAt, correlationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create API from YAML",
 			slog.String("api_id", apiID),
@@ -1642,15 +1645,47 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 }
 
 // findAPIConfig checks if an API exists in the database.
+//
+// The incoming apiID is a control-plane UUID. For control-plane-originated
+// artifacts it matches the local UUID directly. For bottom-up (DP->CP) synced
+// artifacts — Fall back to that CP UUID and the gateway UUID mapping so events
+// addressed by the control-plane UUID resolve to the local row. Mirrors
+// APIKeyService.getArtifactConfigByID.
 func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
 	config, err := c.db.GetConfig(apiID)
+	if err == nil {
+		return config, nil
+	}
+	if !storage.IsNotFoundError(err) {
+		return nil, fmt.Errorf("database error while fetching config: %w", err)
+	}
+	// Fallback: incoming UUID may be the control-plane UUID for a bottom-up
+	// synced artifact. Look it up by cp_artifact_id.
+	config, err = c.db.GetConfigByCPArtifactID(apiID)
 	if err == nil {
 		return config, nil
 	}
 	if storage.IsNotFoundError(err) {
 		return nil, storage.ErrNotFound
 	}
-	return nil, fmt.Errorf("database error while fetching config: %w", err)
+	return nil, fmt.Errorf("database error while fetching config by cp id: %w", err)
+}
+
+// resolveLocalArtifactID maps a control-plane artifact UUID to the local UUID the
+// gateway stores it under. They are identical for control-plane-originated
+// artifacts, but a bottom-up (DP->CP) synced artifact keeps its locally-generated
+// UUID and records the control-plane UUID as cp_artifact_id.
+func (c *Client) resolveLocalArtifactID(id string) string {
+	existing, err := c.findAPIConfig(id)
+	switch {
+	case err == nil && existing != nil:
+		return existing.UUID
+	case err != nil && !storage.IsNotFoundError(err):
+		c.logger.Error("Failed to resolve local artifact ID; falling back to control-plane UUID",
+			slog.String("artifact_id", id),
+			slog.Any("error", err))
+	}
+	return id
 }
 
 // removePolicyConfiguration removes runtime config from the policy engine.
@@ -1967,12 +2002,16 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 	// storage before rendering.
 	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced proxy so the
+	// control-plane deploy is an in-place update
+	deployProxyID := c.resolveLocalArtifactID(proxyID)
+
 	// Create LLM proxy configuration from YAML using the deployment service
 	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProxyPerformedAt.IsZero() {
 		llmProxyPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
+	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, deployProxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM proxy from YAML",
 			slog.String("proxy_id", proxyID),
@@ -2076,12 +2115,16 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	// sync are not yet cached, so we fetch them on demand here.
 	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced provider so
+	// the control-plane deploy is an in-place update
+	deployProviderID := c.resolveLocalArtifactID(providerID)
+
 	// Create LLM provider configuration from YAML using the deployment service
 	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProviderPerformedAt.IsZero() {
 		llmProviderPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
+	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, deployProviderID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM provider from YAML",
 			slog.String("provider_id", providerID),
@@ -2670,7 +2713,9 @@ func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 	if performedAt.IsZero() {
 		performedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced API so the
+	// control-plane deploy is an in-place update
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create WebSub API from YAML",
 			slog.String("api_id", apiID),
@@ -2926,7 +2971,9 @@ func (c *Client) handleWebBrokerAPIDeployedEvent(event map[string]any) {
 	if performedAt.IsZero() {
 		performedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced API so the
+	// control-plane deploy is an in-place update
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create WebBroker API from YAML",
 			slog.String("api_id", apiID),
@@ -3184,12 +3231,16 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 	// storage before rendering.
 	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced proxy so the
+	// control-plane deploy is an in-place update
+	deployProxyID := c.resolveLocalArtifactID(proxyID)
+
 	// Create MCP proxy configuration from YAML using the deployment service
 	mcpPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if mcpPerformedAt.IsZero() {
 		mcpPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
+	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, deployProxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create MCP proxy from YAML",
 			slog.String("proxy_id", proxyID),

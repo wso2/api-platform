@@ -27,13 +27,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/go-httpkit/httputil"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // CreateWebSubAPI implements ServerInterface.CreateWebSubAPI
@@ -90,7 +90,7 @@ func (s *APIServer) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
+		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, cfg.DeployedAt, log)
 	}
 }
 

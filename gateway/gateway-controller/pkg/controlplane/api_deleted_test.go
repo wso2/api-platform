@@ -1005,6 +1005,36 @@ func TestClient_findAPIConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("Falls back to cp_artifact_id for bottom-up synced artifact", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+		store := storage.NewConfigStore()
+		db := newMockStorageForDeletion()
+
+		// A gateway-originated (bottom-up / DP->CP synced) artifact keeps its
+		// locally-generated UUID and records the control-plane UUID as
+		// cp_artifact_id. The control plane refers to it by that CP UUID.
+		localUUID := "local-dp-uuid"
+		cpUUID := "019f2628-c926-7f0d-9822-c22c0563be73"
+		cfg := createTestAPIConfigForDeletion(localUUID)
+		cfg.CPArtifactID = cpUUID
+		db.SaveConfig(cfg)
+
+		client := &Client{
+			logger: logger,
+			store:  store,
+			db:     db,
+		}
+
+		// Looking up by the CP UUID must resolve to the local row, not miss.
+		got, err := client.findAPIConfig(cpUUID)
+		if err != nil {
+			t.Fatalf("expected cp_artifact_id fallback to resolve, got error: %v", err)
+		}
+		if got.UUID != localUUID {
+			t.Errorf("expected local UUID %s, got %s", localUUID, got.UUID)
+		}
+	})
+
 	t.Run("Returns database errors without falling back", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 		store := storage.NewConfigStore()
