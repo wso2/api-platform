@@ -152,7 +152,7 @@ func mapLLMProviderSpecToConfig(spec dto.LLMProviderDeploymentSpec) model.LLMPro
 	liftInput := mapGlobalPoliciesAPIToLLMPolicies(&spec.GlobalPolicies)
 	liftInput = append(liftInput, mapOperationPoliciesAPIToLLMPolicies(&spec.OperationPolicies)...)
 	liftInput = append(liftInput, mapPoliciesAPIToModel(&spec.Policies)...)
-	cfg.Security, cfg.RateLimiting, cfg.Policies = liftLLMPolicies(liftInput)
+	cfg.Security, cfg.RateLimiting, cfg.Policies = liftLLMPolicies(liftInput, true)
 	return cfg
 }
 
