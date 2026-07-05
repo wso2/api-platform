@@ -81,7 +81,11 @@ data:
     {{- if $gc.auth.idp.role_mapping }}
     [controller.auth.idp.role_mapping]
     {{- range $key, $value := $gc.auth.idp.role_mapping }}
+    {{- if kindIs "slice" $value }}
+    {{ $key }} = [{{- range $i, $v := $value }}{{- if gt $i 0 }}, {{ end }}{{ $v | quote }}{{- end }}]
+    {{- else }}
     {{ $key }} = {{ $value | quote }}
+    {{- end }}
     {{- end }}
     {{- end }}
     {{- end }}
