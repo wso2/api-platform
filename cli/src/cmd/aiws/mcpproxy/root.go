@@ -42,6 +42,7 @@ var MCPProxyCmd = &cobra.Command{
 func init() {
 	MCPProxyCmd.AddCommand(pushCmd)
 	MCPProxyCmd.AddCommand(editCmd)
+	MCPProxyCmd.AddCommand(listCmd)
 	MCPProxyCmd.AddCommand(getCmd)
 	MCPProxyCmd.AddCommand(deleteCmd)
 }

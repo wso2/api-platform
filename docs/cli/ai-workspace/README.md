@@ -336,6 +336,14 @@ ap ai-ws llm-provider get [--limit <n>] [--offset <n>] [--display-name <name>] [
 ap ai-ws llm-provider get --id <provider-id>
 ```
 
+### `ap ai-ws llm-proxy list`
+
+Lists all LLM proxies in a project (`GET /llm-proxies?projectId={project}`, operationId `listLLMProxies`). `--project-id` is required.
+
+```shell
+ap ai-ws llm-proxy list --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+```
+
 ### `ap ai-ws llm-proxy get`
 
 ```shell
@@ -344,6 +352,14 @@ ap ai-ws llm-proxy get --project-id <project-id> [--limit <n>] [--offset <n>] [-
 
 # Get a single LLM proxy (GET /llm-proxies/{id})
 ap ai-ws llm-proxy get --id <proxy-id>
+```
+
+### `ap ai-ws mcp-proxy list`
+
+Lists all MCP proxies in a project (`GET /mcp-proxies?projectId={project}`, operationId `listMCPProxies`). `--project-id` is required.
+
+```shell
+ap ai-ws mcp-proxy list --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
 ### `ap ai-ws mcp-proxy get`
@@ -359,6 +375,7 @@ ap ai-ws mcp-proxy get --id <proxy-id>
 Notes:
 
 - `llm-provider list` and `llm-provider get` both list providers when no `--id` is given; `list` is the dedicated list-all command, while `get` additionally fetches a single provider with `--id`. Neither needs `--org` (the organization is derived from the auth token).
+- `llm-proxy`/`mcp-proxy` each have a dedicated `list` command (project-scoped, `--project-id` required) alongside `get`, which lists when no `--id` is given and fetches a single proxy with `--id`.
 - For `llm-proxy`/`mcp-proxy get`, `--project-id` is required only when listing; fetching a single proxy needs just `--id`.
 - `--limit` and `--offset` apply only when listing.
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
