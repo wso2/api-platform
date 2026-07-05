@@ -138,16 +138,23 @@ func (d *DPToCPSteps) shouldReceiveWithStatus(kind, handle, status string) error
 }
 
 func (d *DPToCPSteps) shouldNotReceive(kind, handle string) error {
-	// Wait a grace period so an in-flight push has a fair chance to arrive, then
-	// assert the artifact is still absent.
-	deadline := time.Now().Add(cpNoPushGrace)
-	for time.Now().Before(deadline) {
-		if _, ok, err := d.findArtifact(kind, handle); err != nil {
-			return err
-		} else if ok {
-			return fmt.Errorf("control plane unexpectedly received %s %q", kind, handle)
+	// Poll for a grace period so an in-flight push has a fair chance to arrive. Stop
+	// early if the artifact is received (or a query errors); if the grace elapses with
+	// neither, conclude it was genuinely not pushed.
+	var queryErr error
+	received := pollUntil(cpNoPushGrace, func() bool {
+		_, ok, err := d.findArtifact(kind, handle)
+		if err != nil {
+			queryErr = err
+			return true // stop early; the query error is surfaced below
 		}
-		time.Sleep(cpPushPollInterval)
+		return ok
+	})
+	if queryErr != nil {
+		return queryErr
+	}
+	if received {
+		return fmt.Errorf("control plane unexpectedly received %s %q", kind, handle)
 	}
 	return nil
 }
@@ -228,29 +235,26 @@ func (d *DPToCPSteps) shouldBeUndeployed(kind, handle string) error {
 // --- gateway DB bookkeeping assertions --------------------------------------
 
 func (d *DPToCPSteps) shouldRecordSyncStatus(status, kind, handle string) error {
-	deadline := time.Now().Add(cpPushAssertTimeout)
 	var last string
-	for time.Now().Before(deadline) {
+	if pollUntil(cpPushAssertTimeout, func() bool {
 		got, err := d.queryArtifactColumn("cp_sync_status", kind, handle)
-		if err == nil {
-			last = got
-			if strings.EqualFold(got, status) {
-				return nil
-			}
+		if err != nil {
+			return false
 		}
-		time.Sleep(cpPushPollInterval)
+		last = got
+		return strings.EqualFold(got, status)
+	}) {
+		return nil
 	}
 	return fmt.Errorf("gateway did not record cp_sync_status %q for %s %q (last seen: %q)", status, kind, handle, last)
 }
 
 func (d *DPToCPSteps) shouldRecordCPArtifactID(kind, handle string) error {
-	deadline := time.Now().Add(cpPushAssertTimeout)
-	for time.Now().Before(deadline) {
+	if pollUntil(cpPushAssertTimeout, func() bool {
 		got, err := d.queryArtifactColumn("cp_artifact_id", kind, handle)
-		if err == nil && got != "" {
-			return nil
-		}
-		time.Sleep(cpPushPollInterval)
+		return err == nil && got != ""
+	}) {
+		return nil
 	}
 	return fmt.Errorf("gateway did not record a cp_artifact_id for %s %q", kind, handle)
 }
@@ -288,24 +292,43 @@ func (d *DPToCPSteps) findArtifact(kind, handle string) (cpRecordedArtifact, boo
 	return cpRecordedArtifact{}, false, nil
 }
 
+// pollUntil calls check every cpPushPollInterval until it returns true or the timeout
+// elapses, reporting whether check succeeded within the deadline. It centralizes the
+// deadline/poll loop shared by the DP->CP assertions; each caller keeps only its own
+// result-specific success/error handling (typically via variables the closure captures).
+func pollUntil(timeout time.Duration, check func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if check() {
+			return true
+		}
+		time.Sleep(cpPushPollInterval)
+	}
+	return false
+}
+
 // waitForArtifact polls the recorder until an artifact matching kind/handle
 // satisfies pred, or the timeout elapses.
 func (d *DPToCPSteps) waitForArtifact(kind, handle string, pred func(cpRecordedArtifact) bool, timeout time.Duration) (cpRecordedArtifact, error) {
-	deadline := time.Now().Add(timeout)
 	var lastErr error
 	found := false
-	var last cpRecordedArtifact
-	for time.Now().Before(deadline) {
+	var last, matched cpRecordedArtifact
+	if pollUntil(timeout, func() bool {
 		a, ok, err := d.findArtifact(kind, handle)
 		if err != nil {
 			lastErr = err
-		} else if ok {
+			return false
+		}
+		if ok {
 			found, last = true, a
 			if pred(a) {
-				return a, nil
+				matched = a
+				return true
 			}
 		}
-		time.Sleep(cpPushPollInterval)
+		return false
+	}) {
+		return matched, nil
 	}
 	if lastErr != nil {
 		return cpRecordedArtifact{}, fmt.Errorf("timed out after %s (last query error: %w)", timeout, lastErr)

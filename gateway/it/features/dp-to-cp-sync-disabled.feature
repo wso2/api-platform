@@ -88,6 +88,7 @@ Feature: DP -> CP push is suppressed when deployment sync is disabled
     And the control plane should not receive the "LlmProvider" artifact "nosync-prov"
     And the control plane should not receive the "LlmProxy" artifact "nosync-proxy"
     And the gateway should record cp_sync_status "pending" for the "LlmProvider" artifact "nosync-prov"
+    And the gateway should record cp_sync_status "pending" for the "LlmProxy" artifact "nosync-proxy"
 
   Scenario: An MCP proxy is not pushed when sync is disabled
     When I deploy this MCP configuration:

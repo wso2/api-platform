@@ -378,16 +378,8 @@ func getComposeFilePaths() []string {
 		}
 	}
 
-	// Default: the base compose file, resolved relative to the package directory.
-	for _, candidate := range []string{
-		"docker-compose.test.yaml",
-		filepath.Join(".", "docker-compose.test.yaml"),
-	} {
-		if _, err := os.Stat(candidate); err == nil {
-			return []string{candidate}
-		}
-	}
-
+	// Default: the base compose file. NewComposeManager resolves it to an absolute
+	// path (relative to the package working directory) and validates that it exists.
 	return []string{"docker-compose.test.yaml"}
 }
 

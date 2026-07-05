@@ -107,8 +107,8 @@ func NewComposeManager(composeFiles ...string) (*ComposeManager, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve compose file path %q: %w", f, err)
 		}
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			return nil, fmt.Errorf("compose file not found: %s", absPath)
+		if _, err := os.Stat(absPath); err != nil {
+			return nil, fmt.Errorf("compose file %q is not accessible: %w", absPath, err)
 		}
 		absPaths = append(absPaths, absPath)
 	}
