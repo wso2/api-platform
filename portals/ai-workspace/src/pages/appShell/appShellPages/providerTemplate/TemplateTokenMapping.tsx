@@ -84,9 +84,11 @@ function extractResources(spec: Record<string, unknown> | null): DiscoveredResou
 function TokenFieldsEditor({
   tokens,
   onChange,
+  disabled = false,
 }: {
   tokens: TokenConfig;
   onChange: (field: TokenFieldKey, key: 'identifier' | 'location', value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <Box
@@ -104,11 +106,13 @@ function TokenFieldsEditor({
               fullWidth
               size="small"
               value={tokens[key].identifier}
+              disabled={disabled}
               onChange={(e) => onChange(key, 'identifier', e.target.value)}
             />
             <Select
               size="small"
               value={tokens[key].location}
+              disabled={disabled}
               onChange={(e) => onChange(key, 'location', e.target.value as string)}
               sx={{ minWidth: 130, flexShrink: 0 }}
             >
@@ -136,6 +140,10 @@ interface TemplateTokenMappingProps {
   onChangeResourceMappings: (next: ResourceMapping[]) => void;
   spec: Record<string, unknown> | null;
   hidePerResource?: boolean;
+  // readOnly keeps the mapping fully viewable (scope toggle, search and
+  // expand still work) but disables the editable controls (token identifier/
+  // location fields and the per-resource Override switch).
+  readOnly?: boolean;
 }
 
 export default function TemplateTokenMapping({
@@ -145,6 +153,7 @@ export default function TemplateTokenMapping({
   onChangeResourceMappings,
   spec,
   hidePerResource = false,
+  readOnly = false,
 }: TemplateTokenMappingProps) {
   const [scope, setScope] = useState<'default' | 'resource'>('default');
   const [search, setSearch] = useState('');
@@ -223,7 +232,11 @@ export default function TemplateTokenMapping({
               Applies to all resources unless overridden per resource.
             </Typography>
           </Stack>
-          <TokenFieldsEditor tokens={defaultTokens} onChange={onChangeDefaultToken} />
+          <TokenFieldsEditor
+            tokens={defaultTokens}
+            onChange={onChangeDefaultToken}
+            disabled={readOnly}
+          />
         </>
       ) : (
         <Stack spacing={1.5}>
@@ -270,6 +283,7 @@ export default function TemplateTokenMapping({
                               <Switch
                                 size="small"
                                 checked={overridden}
+                                disabled={readOnly}
                                 onChange={(e) =>
                                   toggleOverride(r.path, key, e.target.checked)
                                 }
@@ -306,6 +320,7 @@ export default function TemplateTokenMapping({
                             onChange={(field, k, value) =>
                               updateResourceToken(r.path, field, k, value)
                             }
+                            disabled={readOnly}
                           />
                         ) : (
                           <Typography variant="body2" color="text.secondary">

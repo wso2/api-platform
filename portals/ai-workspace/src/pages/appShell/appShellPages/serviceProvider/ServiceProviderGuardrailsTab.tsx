@@ -693,13 +693,10 @@ export default function ServiceProviderGuardrailsTab() {
               <GuardrailPill
                 key={g.id}
                 label={`${g.displayName} (${g.version})`}
-                onClick={
-                  isReadOnlyProvider
-                    ? undefined
-                    : () =>
-                      handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
-                        scope: 'global',
-                      }, g.source)
+                onClick={() =>
+                  handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
+                    scope: 'global',
+                  }, g.source)
                 }
                 onRemove={
                   isReadOnlyProvider
@@ -985,20 +982,17 @@ export default function ServiceProviderGuardrailsTab() {
                                           /^v/,
                                           ''
                                         )})`}
-                                        onClick={
-                                          isReadOnlyProvider
-                                            ? undefined
-                                            : () =>
-                                              handleEditGuardrailPill(
-                                                guardrail.policyIndex,
-                                                guardrail.pathIndex,
-                                                {
-                                                  scope: 'resource',
-                                                  method,
-                                                  path: resource.path,
-                                                },
-                                                guardrail.source
-                                              )
+                                        onClick={() =>
+                                          handleEditGuardrailPill(
+                                            guardrail.policyIndex,
+                                            guardrail.pathIndex,
+                                            {
+                                              scope: 'resource',
+                                              method,
+                                              path: resource.path,
+                                            },
+                                            guardrail.source
+                                          )
                                         }
                                         onRemove={
                                           isReadOnlyProvider
@@ -1254,6 +1248,7 @@ export default function ServiceProviderGuardrailsTab() {
                               existingValues={editingTarget ? guardrailSettings : undefined}
                               onCancel={() => setIsDetailView(false)}
                               onSubmit={handlePolicySubmit}
+                              readOnly={isReadOnlyProvider}
                             />
                           ) : (
                             <Typography variant="body2" color="text.secondary">

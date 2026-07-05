@@ -655,13 +655,10 @@ export default function LLMProxyGuardrailsTab() {
               <GuardrailPill
                 key={g.id}
                 label={`${g.displayName} (${g.version.replace(/^v/, '')})`}
-                onClick={
-                  isReadOnlyProxy
-                    ? undefined
-                    : () =>
-                        handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
-                            scope: 'global',
-                        }, g.source)
+                onClick={() =>
+                  handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
+                    scope: 'global',
+                  }, g.source)
                 }
                 onRemove={
                   isReadOnlyProxy
@@ -972,20 +969,17 @@ export default function LLMProxyGuardrailsTab() {
                                           label={`${
                                             g.displayName
                                           } (${g.version.replace(/^v/, '')})`}
-                                          onClick={
-                                            isReadOnlyProxy
-                                              ? undefined
-                                              : () =>
-                                                handleEditGuardrailPill(
-                                                  g.policyIndex,
-                                                  g.pathIndex,
-                                                  {
-                                                    scope: 'resource',
-                                                    method,
-                                                    path: resource.path,
-                                                  },
-                                                  g.source
-                                                )
+                                          onClick={() =>
+                                            handleEditGuardrailPill(
+                                              g.policyIndex,
+                                              g.pathIndex,
+                                              {
+                                                scope: 'resource',
+                                                method,
+                                                path: resource.path,
+                                              },
+                                              g.source
+                                            )
                                           }
                                           onRemove={
                                             isReadOnlyProxy
@@ -1253,6 +1247,7 @@ export default function LLMProxyGuardrailsTab() {
                               existingValues={editingTarget ? guardrailSettings : undefined}
                               onCancel={() => setIsDetailView(false)}
                               onSubmit={handlePolicySubmit}
+                              readOnly={isReadOnlyProxy}
                             />
                           ) : (
                             <Typography variant="body2" color="text.secondary">
