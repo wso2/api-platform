@@ -265,12 +265,17 @@ func buildSingleDevPortalArchive(projectRoot, buildDir string, portalConfig *pro
 		return "", err
 	}
 
-	if err := applyManifestOverrides(projectRoot, portalConfig); err != nil {
+	stagingDir, err := createDevPortalArchiveStagingDir(projectRoot, buildDir, portalConfig)
+	if err != nil {
 		return "", err
 	}
 
-	stagingDir, err := createDevPortalArchiveStagingDir(projectRoot, buildDir, portalConfig)
-	if err != nil {
+	// Stamp any --reference-id / --gateway-type overrides into the *staged*
+	// manifest, never the project's source manifest, so build flags do not leak
+	// back into the workspace.
+	stagedManifest := filepath.Join(stagingDir, archiveMetadataFileName)
+	if err := applyManifestOverrides(stagedManifest, portalConfig.Name); err != nil {
+		_ = os.RemoveAll(stagingDir)
 		return "", err
 	}
 
@@ -287,31 +292,28 @@ func buildSingleDevPortalArchive(projectRoot, buildDir string, portalConfig *pro
 }
 
 // applyManifestOverrides stamps the build-time --reference-id / --gateway-type
-// flags into the devportal manifest under spec.referenceID / spec.gatewayType.
-// The manifest itself carries no reference ID by default; supplying one at
+// flags into the staged devportal manifest at manifestPath, under
+// spec.referenceID / spec.gatewayType. It operates on the archive's staged copy,
+// never the project's source manifest, so the flags do not leak back into the
+// workspace. The manifest carries no reference ID by default; supplying one at
 // build time lets the same artifact be published to different devportals (each
 // wired to a different gateway). Existing manifest fields and ordering are
 // preserved.
-func applyManifestOverrides(projectRoot string, portalConfig *project.PortalConfig) error {
+func applyManifestOverrides(manifestPath, portalName string) error {
 	referenceID := strings.TrimSpace(buildReferenceID)
 	gatewayType := strings.TrimSpace(buildGatewayType)
 	if referenceID == "" && gatewayType == "" {
 		return nil
 	}
 
-	manifestPath := resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.MetadataFile)
-	if err := ensureWithinProjectRoot(projectRoot, manifestPath, portalConfig.Name, "metadataFile"); err != nil {
-		return err
-	}
-
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		return fmt.Errorf("failed to read devportal manifest for config %q: %w", portalConfig.Name, err)
+		return fmt.Errorf("failed to read devportal manifest for config %q: %w", portalName, err)
 	}
 
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("failed to parse devportal manifest for config %q: %w", portalConfig.Name, err)
+		return fmt.Errorf("failed to parse devportal manifest for config %q: %w", portalName, err)
 	}
 
 	root := &doc
@@ -319,7 +321,7 @@ func applyManifestOverrides(projectRoot string, portalConfig *project.PortalConf
 		root = root.Content[0]
 	}
 	if root.Kind != yaml.MappingNode {
-		return fmt.Errorf("devportal manifest for config %q is not a mapping", portalConfig.Name)
+		return fmt.Errorf("devportal manifest for config %q is not a mapping", portalName)
 	}
 
 	spec := mappingValueNode(root, "spec")
@@ -336,10 +338,10 @@ func applyManifestOverrides(projectRoot string, portalConfig *project.PortalConf
 
 	out, err := marshalNode(&doc)
 	if err != nil {
-		return fmt.Errorf("failed to marshal devportal manifest for config %q: %w", portalConfig.Name, err)
+		return fmt.Errorf("failed to marshal devportal manifest for config %q: %w", portalName, err)
 	}
 	if err := os.WriteFile(manifestPath, out, 0644); err != nil {
-		return fmt.Errorf("failed to write devportal manifest for config %q: %w", portalConfig.Name, err)
+		return fmt.Errorf("failed to write devportal manifest for config %q: %w", portalName, err)
 	}
 
 	return nil

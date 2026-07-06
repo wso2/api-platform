@@ -18,6 +18,8 @@
 package devportal
 
 import (
+	"archive/zip"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,8 +72,8 @@ func TestEnsureWithinProjectRoot_AllowsContainedPaths(t *testing.T) {
 	projectRoot := t.TempDir()
 
 	cases := []string{
-		projectRoot,                                              // the root itself
-		filepath.Join(projectRoot, "devportal"),                 // nested dir
+		projectRoot,                             // the root itself
+		filepath.Join(projectRoot, "devportal"), // nested dir
 		filepath.Join(projectRoot, "devportal", "metadata.yaml"), // nested file
 	}
 	for _, path := range cases {
@@ -177,7 +179,7 @@ func TestRunBuildCommand_RegistersExistingFolderAndArchives(t *testing.T) {
 	}
 }
 
-func TestRunBuildCommand_StampsReferenceIDAndGatewayType(t *testing.T) {
+func TestRunBuildCommand_StampsReferenceIDAndGatewayTypeIntoArchiveOnly(t *testing.T) {
 	projectRoot := createProjectFixture(t)
 	createDevPortalFolderFixture(t, projectRoot, "devportal")
 	buildProjectDir = projectRoot
@@ -193,18 +195,59 @@ func TestRunBuildCommand_StampsReferenceIDAndGatewayType(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	manifestData, readErr := os.ReadFile(filepath.Join(projectRoot, "devportal", "devportal.yaml"))
+	// The project's source manifest must be left untouched — the build flags
+	// must not leak back into the workspace.
+	sourceData, readErr := os.ReadFile(filepath.Join(projectRoot, "devportal", "devportal.yaml"))
 	if readErr != nil {
-		t.Fatalf("failed to read manifest: %v", readErr)
+		t.Fatalf("failed to read source manifest: %v", readErr)
 	}
+	for _, unwanted := range []string{"referenceID", "gatewayType"} {
+		if strings.Contains(string(sourceData), unwanted) {
+			t.Fatalf("source manifest should not be mutated by build, but contains %q: %s", unwanted, sourceData)
+		}
+	}
+
+	// The stamped values must be present in the archived (staged) manifest.
+	archived := readFileFromZip(t, filepath.Join(projectRoot, "build", "devportal.zip"), archiveMetadataFileName)
 	for _, want := range []string{
 		"referenceID: 1ba42a09-45c0-40f8-a1bf-e4aa7cde1575",
 		"gatewayType: wso2/api-platform",
 	} {
-		if !strings.Contains(string(manifestData), want) {
-			t.Fatalf("expected stamped manifest to contain %q, got %q", want, string(manifestData))
+		if !strings.Contains(archived, want) {
+			t.Fatalf("expected archived manifest to contain %q, got %q", want, archived)
 		}
 	}
+}
+
+// readFileFromZip returns the contents of the named entry inside the zip at
+// zipPath, failing the test if the archive or entry cannot be read.
+func readFileFromZip(t *testing.T, zipPath, entryName string) string {
+	t.Helper()
+
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("failed to open archive %s: %v", zipPath, err)
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if file.Name != entryName {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatalf("failed to open %s in archive: %v", entryName, err)
+		}
+		defer rc.Close()
+		data, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("failed to read %s from archive: %v", entryName, err)
+		}
+		return string(data)
+	}
+
+	t.Fatalf("entry %q not found in archive %s", entryName, zipPath)
+	return ""
 }
 
 func TestRunBuildCommand_BuildsMultipleConfiguredDevPortalsAndCleansBuildDir(t *testing.T) {

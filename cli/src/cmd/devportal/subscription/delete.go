@@ -104,4 +104,3 @@ func runDeleteCommand() error {
 	fmt.Printf("Platform subscription deleted from devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
 }
-

@@ -338,4 +338,3 @@ func TestRestAPIImports(t *testing.T) {
 	_ = multipart.ErrMessageTooLarge
 	_ = os.ErrNotExist
 }
-

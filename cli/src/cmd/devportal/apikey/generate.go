@@ -69,8 +69,8 @@ type apiKeyRequest struct {
 }
 
 var generateCmd = &cobra.Command{
-	Use:     GenerateCmdLiteral,
-	Short:   "Generate a DevPortal API key",
+	Use:   GenerateCmdLiteral,
+	Short: "Generate a DevPortal API key",
 	Long: "Generates an API key for an API in the selected DevPortal. The plaintext secret is " +
 		"returned once in the response and never persisted. Run without the required flags to be " +
 		"prompted interactively.",

@@ -79,7 +79,7 @@ func runBuildCommand() error {
 		return fmt.Errorf("AI workspace validation failed for %q: %w", wsConfig.Name, err)
 	}
 
-	fmt.Printf("AI workspace artifact %q (kind: %s) validated successfully\n", artifact.ResourceName, artifact.BaseKind)
+	fmt.Printf("AI workspace artifact %q (kind: %s) built successfully\n", artifact.ResourceName, artifact.BaseKind)
 	return nil
 }
 

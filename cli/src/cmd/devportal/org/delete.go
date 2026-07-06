@@ -93,4 +93,3 @@ func runDeleteCommand() error {
 	fmt.Printf("Organization deleted from devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
 }
-

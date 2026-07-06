@@ -79,7 +79,6 @@ func runInitCommand() error {
 	}
 
 	displayName = strings.TrimSpace(displayName)
-	projectType = strings.ToLower(strings.TrimSpace(projectType))
 
 	if displayName == "" {
 		return fmt.Errorf("display name is required")

@@ -110,4 +110,3 @@ func runGetCommand() error {
 	}
 	return internaldevportal.PrintJSONResponse(resp)
 }
-

@@ -105,12 +105,10 @@ func runGenCommand() error {
 		return err
 	}
 
-	if err := os.MkdirAll(portalRoot, 0755); err != nil {
-		return fmt.Errorf("failed to create devportal directory: %w", err)
-	}
-
-	// definition.yaml is copied from the project's home definition so the
-	// devportal artifact carries the same API definition.
+	// Verify all inputs before creating anything on disk, so a missing
+	// definition never leaves an empty devportal directory behind. definition.yaml
+	// is copied from the project's home definition so the devportal artifact
+	// carries the same API definition.
 	definitionSource := resolveProjectPath(projectRoot, projectConfig.FilePaths.Definition)
 	if _, err := os.Stat(definitionSource); err != nil {
 		if os.IsNotExist(err) {
@@ -118,6 +116,19 @@ func runGenCommand() error {
 		}
 		return fmt.Errorf("failed to inspect project definition file: %w", err)
 	}
+
+	if err := os.MkdirAll(portalRoot, 0755); err != nil {
+		return fmt.Errorf("failed to create devportal directory: %w", err)
+	}
+	// Any failure after the directory is created must not leave a partial
+	// artifact behind; remove it on error until the artifact is fully written.
+	cleanupOnError := true
+	defer func() {
+		if cleanupOnError {
+			_ = os.RemoveAll(portalRoot)
+		}
+	}()
+
 	if err := copyFile(definitionSource, filepath.Join(portalRoot, "definition.yaml")); err != nil {
 		return err
 	}
@@ -131,6 +142,10 @@ func runGenCommand() error {
 	if err := os.WriteFile(filepath.Join(portalRoot, "devportal.yaml"), []byte(manifest), 0644); err != nil {
 		return fmt.Errorf("failed to write devportal manifest: %w", err)
 	}
+
+	// The artifact is now complete on disk; a later config-registration failure
+	// should not delete the user's generated files.
+	cleanupOnError = false
 
 	// Register the generated artifact in the project config so `ap devportal
 	// build` archives it from the config instead of having to re-detect the
@@ -253,5 +268,25 @@ spec:
 `
 
 func renderGeneratedDevPortalManifest(kind, name, displayName, version string) string {
-	return fmt.Sprintf(generatedDevPortalTemplate, kind, name, displayName, version)
+	return fmt.Sprintf(
+		generatedDevPortalTemplate,
+		yamlScalar(kind),
+		yamlScalar(name),
+		yamlScalar(displayName),
+		yamlScalar(version),
+	)
+}
+
+// yamlScalar encodes v as a single-line YAML scalar, quoting or escaping it as
+// needed so values containing special characters (":", "#", leading indicators
+// like "*"/"&", newlines, etc.) cannot break the generated manifest. The result
+// is safe to interpolate inline after a "key: " in the template. Marshalling a
+// string never fails and never produces a block scalar, so it always stays on a
+// single line; only the trailing newline needs trimming.
+func yamlScalar(v string) string {
+	encoded, err := yaml.Marshal(v)
+	if err != nil {
+		return v
+	}
+	return strings.TrimRight(string(encoded), "\n")
 }

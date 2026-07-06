@@ -240,7 +240,7 @@ For **list/get/delete/update**, copy `cli/src/cmd/devportal/subplan/list.go`, `s
 
 ## 3b. AI-workspace family (`internal/aiworkspace`)
 
-Consumes the **LLM/MCP subset** of `platform-api/src/resources/openapi.yaml` — `/llm-providers`, `/llm-proxies`, `/mcp-proxies` (and `llm-provider-templates`) — reached under the `/api-proxy/api/v0.9/` prefix. Command literal is `ap ai-ws`. Existing groups: `llmprovider` (`llm-provider`), `llmproxy` (`llm-proxy`), `mcpproxy` (`mcp-proxy`). Its verb vocabulary differs from gateway/devportal: **`push`** (create-or-update from a `--file` JSON artifact), **`edit`**, `get`, `list`, `delete`.
+Consumes the **LLM/MCP subset** of `platform-api/src/resources/openapi.yaml` — `/llm-providers`, `/llm-proxies`, `/mcp-proxies` (and `llm-provider-templates`) — reached under the `/api-proxy/api/v0.9/` prefix. Command literal is `ap ai-workspace`. Existing groups: `llmprovider` (`llm-provider`), `llmproxy` (`llm-proxy`), `mcpproxy` (`mcp-proxy`). Its verb vocabulary differs from gateway/devportal: **`push`** (create-or-update from a `--file` JSON artifact), **`edit`**, `get`, `list`, `delete`.
 
 **Key helpers**
 - `config.LoadConfig()` → `aiworkspace.ResolveAIWorkspace(cfg, name, platform)` → `(*config.AIWorkspace, resolvedPlatform, error)`.
@@ -255,7 +255,7 @@ Consumes the **LLM/MCP subset** of `platform-api/src/resources/openapi.yaml` —
 - Auth is handled by the client from workspace config or env vars (`WSO2AP_AIWORKSPACE_USERNAME`/`_PASSWORD`/`_TOKEN`/`_API_KEY`, header `x-wso2-api-key`).
 - Standard flags: `--org` (`FlagOrgID`), `--file` (`FlagFile`), `--display-name` (`FlagName`), `--platform` (`FlagPlatform`), `--insecure` (`FlagInsecure`).
 
-### Template — ai-ws push (create-or-update from `--file`)
+### Template — ai-workspace push (create-or-update from `--file`)
 
 Copy the closest sibling — `cli/src/cmd/aiws/llmprovider/push.go` (create/update), `get.go`, `list.go`, `delete.go`, `edit.go`. The shape:
 

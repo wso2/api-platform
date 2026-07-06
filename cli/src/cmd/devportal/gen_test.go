@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestRunGenCommand_RequiresProjectDirectory(t *testing.T) {
@@ -99,5 +101,64 @@ func TestRunGenCommand_StopsWhenDevPortalExists(t *testing.T) {
 	err := runGenCommand()
 	if err == nil || !strings.Contains(err.Error(), "devportal directory already exists") {
 		t.Fatalf("expected already-exists error, got %v", err)
+	}
+}
+
+func TestRenderGeneratedDevPortalManifest_EscapesSpecialCharacters(t *testing.T) {
+	// Values with YAML-significant characters must not break the generated
+	// manifest: it must stay valid YAML and round-trip to the same values.
+	kind := "RestApi"
+	name := "foo: bar #1"
+	displayName := "*My \"API\": v2"
+	version := "1.0"
+
+	manifest := renderGeneratedDevPortalManifest(kind, name, displayName, version)
+
+	var parsed struct {
+		Kind     string `yaml:"kind"`
+		Metadata struct {
+			Name string `yaml:"name"`
+		} `yaml:"metadata"`
+		Spec struct {
+			DisplayName string `yaml:"displayName"`
+			Version     string `yaml:"version"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal([]byte(manifest), &parsed); err != nil {
+		t.Fatalf("generated manifest is not valid YAML: %v\n%s", err, manifest)
+	}
+
+	if parsed.Kind != kind {
+		t.Errorf("kind: got %q, want %q", parsed.Kind, kind)
+	}
+	if parsed.Metadata.Name != name {
+		t.Errorf("metadata.name: got %q, want %q", parsed.Metadata.Name, name)
+	}
+	if parsed.Spec.DisplayName != displayName {
+		t.Errorf("spec.displayName: got %q, want %q", parsed.Spec.DisplayName, displayName)
+	}
+	if parsed.Spec.Version != version {
+		t.Errorf("spec.version: got %q, want %q", parsed.Spec.Version, version)
+	}
+}
+
+func TestRunGenCommand_LeavesNoPartialDirWhenDefinitionMissing(t *testing.T) {
+	projectRoot := createProjectFixture(t)
+	// Remove the project's home definition so generation fails after inputs are
+	// verified but before (previously) the directory would have been created.
+	if err := os.Remove(filepath.Join(projectRoot, "definition.yaml")); err != nil {
+		t.Fatalf("failed to remove project definition: %v", err)
+	}
+	genProjectDir = projectRoot
+
+	err := runGenCommand()
+	if err == nil || !strings.Contains(err.Error(), "unable to find project definition file") {
+		t.Fatalf("expected missing-definition error, got %v", err)
+	}
+
+	// The failed run must not leave a devportal directory behind (which would
+	// otherwise trip the already-exists guard on the next run).
+	if _, statErr := os.Stat(filepath.Join(projectRoot, "devportal")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no devportal directory after a failed gen, got err=%v", statErr)
 	}
 }
