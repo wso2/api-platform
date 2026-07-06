@@ -43,6 +43,7 @@ ap ai-workspace edit -f /path/to/project --project-id <project-id> --display-nam
 var (
 	editProjectDir string
 	editProjectID  string
+	editEnvFile    string
 	editName       string
 	editPlatform   string
 	editInsecure   bool
@@ -68,6 +69,7 @@ var editCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(editCmd, utils.FlagFile, &editProjectDir, "", "Path to the project directory (defaults to current directory)")
 	utils.AddStringFlag(editCmd, utils.FlagProjectID, &editProjectID, "", "Project ID (required for LlmProxy and Mcp kinds)")
+	utils.AddStringFlag(editCmd, utils.FlagEnvFile, &editEnvFile, "", "Path to an env file resolving ENV_CLI_* placeholders (defaults to .env in the project root)")
 	utils.AddStringFlag(editCmd, utils.FlagName, &editName, "", "AI workspace display name")
 	utils.AddStringFlag(editCmd, utils.FlagPlatform, &editPlatform, "", "Platform name")
 	utils.AddStringFlag(editCmd, utils.FlagOutput, &editOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
@@ -86,6 +88,13 @@ func runEditCommand() error {
 	}
 
 	body, projectID, err := marshalAIWorkspacePayload(artifact, editProjectID)
+	if err != nil {
+		return err
+	}
+
+	// Resolve ENV_CLI_* placeholders carried from metadata.yaml/runtime.yaml
+	// into the generated payload before it is sent.
+	body, err = resolveEnvPlaceholders(body, projectRoot, editEnvFile)
 	if err != nil {
 		return err
 	}

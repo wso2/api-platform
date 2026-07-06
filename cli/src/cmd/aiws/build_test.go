@@ -18,7 +18,13 @@
 
 package aiws
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func newProxyRuntime() aiWorkspaceRuntime {
 	var rt aiWorkspaceRuntime
@@ -180,5 +186,150 @@ func TestBuildLLMProviderPayload_OmitsModelProvidersForUnknownTemplate(t *testin
 	payload := buildLLMProviderPayload("p", metadata, runtime, "")
 	if payload.ModelProviders != nil {
 		t.Fatalf("expected no modelProviders for unknown template, got %#v", payload.ModelProviders)
+	}
+}
+
+func writeTestEnvFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write env file: %v", err)
+	}
+	return path
+}
+
+func TestResolveEnvPlaceholders_AllFormsFromProjectDotEnv(t *testing.T) {
+	root := t.TempDir()
+	writeTestEnvFile(t, root, ".env", "ENV_CLI_A=alpha\nENV_CLI_B=beta\nENV_CLI_C=gamma\n")
+
+	body := []byte(`{"a":"${ENV_CLI_A}","b":"$ENV_CLI_B","c":"ENV_CLI_C"}`)
+	got, err := resolveEnvPlaceholders(body, root, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `{"a":"alpha","b":"beta","c":"gamma"}`
+	if string(got) != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
+
+func TestResolveEnvPlaceholders_ExplicitFileWinsProcessEnvFillsGaps(t *testing.T) {
+	root := t.TempDir()
+	// A .env in the project root must be ignored when --env-file is given.
+	writeTestEnvFile(t, root, ".env", "ENV_CLI_KEY=from-dotenv\n")
+	explicit := writeTestEnvFile(t, root, "custom.env", "ENV_CLI_KEY=from-file\n")
+
+	t.Setenv("ENV_CLI_KEY", "from-process")
+	t.Setenv("ENV_CLI_ONLY_PROCESS", "process-value")
+
+	body := []byte(`{"k":"${ENV_CLI_KEY}","p":"${ENV_CLI_ONLY_PROCESS}"}`)
+	got, err := resolveEnvPlaceholders(body, root, explicit)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `{"k":"from-file","p":"process-value"}`
+	if string(got) != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
+
+func TestResolveEnvPlaceholders_MissingVariablesError(t *testing.T) {
+	root := t.TempDir()
+	body := []byte(`{"a":"${ENV_CLI_MISSING_ONE}","b":"$ENV_CLI_MISSING_TWO"}`)
+	_, err := resolveEnvPlaceholders(body, root, "")
+	if err == nil {
+		t.Fatal("expected an error for unresolved placeholders")
+	}
+	for _, name := range []string{"ENV_CLI_MISSING_ONE", "ENV_CLI_MISSING_TWO"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Fatalf("error should name %s: %v", name, err)
+		}
+	}
+}
+
+func TestResolveEnvPlaceholders_NoPlaceholdersUnchangedAndNoEnvNeeded(t *testing.T) {
+	root := t.TempDir()
+	body := []byte(`{"a":"plain"}`)
+	got, err := resolveEnvPlaceholders(body, root, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got) != string(body) {
+		t.Fatalf("body changed: %s", got)
+	}
+}
+
+func TestResolveEnvPlaceholders_JSONEscapesValues(t *testing.T) {
+	root := t.TempDir()
+	writeTestEnvFile(t, root, ".env", `ENV_CLI_SECRET=va"l\ue`+"\n")
+
+	body := []byte(`{"s":"${ENV_CLI_SECRET}"}`)
+	got, err := resolveEnvPlaceholders(body, root, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var decoded map[string]string
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatalf("resolved payload is not valid JSON: %v (%s)", err, got)
+	}
+	if decoded["s"] != `va"l\ue` {
+		t.Fatalf("got %q, want %q", decoded["s"], `va"l\ue`)
+	}
+}
+
+func TestResolveEnvPlaceholders_ExplicitEnvFileMissingIsError(t *testing.T) {
+	root := t.TempDir()
+	body := []byte(`{"a":"${ENV_CLI_A}"}`)
+	if _, err := resolveEnvPlaceholders(body, root, filepath.Join(root, "nope.env")); err == nil {
+		t.Fatal("expected an error for a missing --env-file")
+	}
+}
+
+func TestParseEnvFile_CommentsExportAndQuotes(t *testing.T) {
+	root := t.TempDir()
+	path := writeTestEnvFile(t, root, "vals.env", strings.Join([]string{
+		"# comment",
+		"",
+		"export ENV_CLI_EXPORTED=one",
+		`ENV_CLI_DOUBLE="two words"`,
+		"ENV_CLI_SINGLE='three'",
+		"ENV_CLI_EQ=a=b",
+		"not-a-pair",
+	}, "\n"))
+
+	values, err := parseEnvFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]string{
+		"ENV_CLI_EXPORTED": "one",
+		"ENV_CLI_DOUBLE":   "two words",
+		"ENV_CLI_SINGLE":   "three",
+		"ENV_CLI_EQ":       "a=b",
+	}
+	for k, v := range want {
+		if values[k] != v {
+			t.Fatalf("%s: got %q, want %q", k, values[k], v)
+		}
+	}
+	if len(values) != len(want) {
+		t.Fatalf("unexpected extra entries: %#v", values)
+	}
+}
+
+func TestResolveEnvPlaceholders_BareFormRequiresWordBoundary(t *testing.T) {
+	root := t.TempDir()
+	writeTestEnvFile(t, root, ".env", "ENV_CLI_FOO=resolved\n")
+
+	// A bare placeholder at a boundary resolves; the same token embedded in a
+	// larger identifier (MY_ENV_CLI_FOO) must be left untouched.
+	body := []byte(`{"a":"ENV_CLI_FOO","b":"MY_ENV_CLI_FOO"}`)
+	got, err := resolveEnvPlaceholders(body, root, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `{"a":"resolved","b":"MY_ENV_CLI_FOO"}`
+	if string(got) != want {
+		t.Fatalf("got %s, want %s", got, want)
 	}
 }

@@ -84,6 +84,7 @@ const (
 	FlagReferenceID            = "reference-id"
 	FlagGatewayType            = "gateway-type"
 	FlagProjectID              = "project-id"
+	FlagEnvFile                = "env-file"
 )
 
 var shortFlags = map[string]string{

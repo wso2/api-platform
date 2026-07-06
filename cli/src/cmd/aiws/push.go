@@ -36,6 +36,9 @@ ap ai-workspace push
 # Push a proxy or MCP artifact (--project-id is required for those kinds)
 ap ai-workspace push --project-id <project-id>
 
+# Resolve ENV_CLI_* placeholders from a specific env file (defaults to .env in the project root)
+ap ai-workspace push --env-file ./secrets.env
+
 # Push from a specific project directory using a specific AI workspace
 ap ai-workspace push -f /path/to/project --project-id <project-id> --display-name my-workspace --platform eu`
 )
@@ -43,6 +46,7 @@ ap ai-workspace push -f /path/to/project --project-id <project-id> --display-nam
 var (
 	pushProjectDir string
 	pushProjectID  string
+	pushEnvFile    string
 	pushName       string
 	pushPlatform   string
 	pushInsecure   bool
@@ -68,6 +72,7 @@ var pushCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(pushCmd, utils.FlagFile, &pushProjectDir, "", "Path to the project directory (defaults to current directory)")
 	utils.AddStringFlag(pushCmd, utils.FlagProjectID, &pushProjectID, "", "Project ID (required for LlmProxy and Mcp kinds)")
+	utils.AddStringFlag(pushCmd, utils.FlagEnvFile, &pushEnvFile, "", "Path to an env file resolving ENV_CLI_* placeholders (defaults to .env in the project root)")
 	utils.AddStringFlag(pushCmd, utils.FlagName, &pushName, "", "AI workspace display name")
 	utils.AddStringFlag(pushCmd, utils.FlagPlatform, &pushPlatform, "", "Platform name")
 	utils.AddStringFlag(pushCmd, utils.FlagOutput, &pushOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
@@ -86,6 +91,13 @@ func runPushCommand() error {
 	}
 
 	body, projectID, err := marshalAIWorkspacePayload(artifact, pushProjectID)
+	if err != nil {
+		return err
+	}
+
+	// Resolve ENV_CLI_* placeholders carried from metadata.yaml/runtime.yaml
+	// into the generated payload before it is sent.
+	body, err = resolveEnvPlaceholders(body, projectRoot, pushEnvFile)
 	if err != nil {
 		return err
 	}

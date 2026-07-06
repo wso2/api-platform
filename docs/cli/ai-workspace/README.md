@@ -212,8 +212,8 @@ These commands run the same validation as `build`, then **generate** the creatio
 | `Mcp` | `POST /mcp-proxies` | `PUT /mcp-proxies/{id}` |
 
 ```shell
-ap ai-workspace push [-f <project-directory>] [--project-id <id>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
-ap ai-workspace edit [-f <project-directory>] [--project-id <id>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
+ap ai-workspace push [-f <project-directory>] [--project-id <id>] [--env-file <path>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
+ap ai-workspace edit [-f <project-directory>] [--project-id <id>] [--env-file <path>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
 ```
 
 Examples:
@@ -226,6 +226,9 @@ ap ai-workspace edit
 # Create/update a proxy or MCP proxy (project-scoped)
 ap ai-workspace push --project-id <project-id>
 ap ai-workspace edit --project-id <project-id>
+
+# Resolve ENV_CLI_* placeholders from a specific env file
+ap ai-workspace push --env-file ./secrets.env
 ```
 
 Notes:
@@ -235,6 +238,29 @@ Notes:
 - The organization is derived from the auth token, so there is **no `--org` flag**. The AI workspace connection and credentials resolve like the other commands (`--display-name`/`--platform` or the active workspace; see [Authentication](#authentication)).
 - By default a structured result is printed (like `ap gateway apply`): `Status`, `Message`, `ID`, and — when known — `Organization`, `Project`, `Created At`, `Updated At`, and `State`. `Project` shows the `--project-id` you supplied (proxies/MCP); `Organization` is derived from the auth token so it only appears when the server echoes `organizationId`. Pass `--output json` (or `-o json`) to print the full server response instead (useful for piping to `jq`).
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
+
+### Environment variable placeholders (`ENV_CLI_*`)
+
+`metadata.yaml` and `runtime.yaml` may reference **environment variables** for specific field values using the `ENV_CLI_` prefix. This lets you keep values that change between environments — upstream URLs, hosts, project IDs, model names, etc. — out of the project files and supply them at push time. Supported forms: `${ENV_CLI_NAME}`, `$ENV_CLI_NAME`, or a bare `ENV_CLI_NAME` token.
+
+> **This is for environment-specific configuration values, not secrets.** The resolved value is substituted into the artifact and sent to the server (it travels in the request body and is stored in the created artifact). Do **not** use it for API keys, tokens, or other secrets. Secrets should be managed server-side and referenced with the platform's `{{ secret "name" }}` placeholders (resolved by the server from its encrypted secret store), which the CLI leaves untouched.
+
+```yaml
+# runtime.yaml — a per-environment upstream URL supplied at push time
+spec:
+  upstream:
+    url: ${ENV_CLI_UPSTREAM_URL}
+```
+
+`push`/`edit` resolve the placeholders in the **generated payload** just before it is sent, looking up each variable in this order:
+
+1. **`--env-file <path>`** — when given, values come from that env file (a missing file is an error).
+2. **`.env` in the project root** — used by default when `--env-file` is not given.
+3. **Process environment** — fills any names the selected file does not define (and is the sole source when neither file exists).
+
+The env file format is one `KEY=VALUE` per line; blank lines and `#` comments are ignored, an `export ` prefix is allowed, and single/double quotes around the value are stripped.
+
+**Push/edit fail if a referenced variable has no value** at push time — the command errors and names every unresolved variable, and nothing is sent to the server. Define the missing variables in an env file (`--env-file` or the project's `.env`) or in the environment and retry. `build` does not resolve placeholders — it only validates the project files.
 
 ### Generated payload
 

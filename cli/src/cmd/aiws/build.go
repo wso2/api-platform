@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -311,6 +313,133 @@ func marshalAIWorkspacePayload(artifact *aiWorkspaceArtifact, projectIDFlag stri
 		return nil, "", fmt.Errorf("failed to encode payload: %w", err)
 	}
 	return body, projectID, nil
+}
+
+// cliEnvPlaceholderPattern matches ENV_CLI_* placeholders carried from
+// metadata.yaml/runtime.yaml into the generated payload. Both `${ENV_CLI_X}`
+// and `$ENV_CLI_X` forms are supported, as well as a bare `ENV_CLI_X` token.
+// The bare form requires a leading word boundary so a placeholder embedded in a
+// larger identifier (e.g. MY_ENV_CLI_X) is not partially substituted.
+var cliEnvPlaceholderPattern = regexp.MustCompile(`\$\{ENV_CLI_[A-Za-z0-9_]+\}|\$ENV_CLI_[A-Za-z0-9_]+|\bENV_CLI_[A-Za-z0-9_]+`)
+
+// cliEnvPlaceholderName strips the `${...}`/`$` wrapping from a matched
+// placeholder, returning the bare variable name (ENV_CLI_X).
+func cliEnvPlaceholderName(placeholder string) string {
+	name := strings.TrimPrefix(placeholder, "${")
+	name = strings.TrimSuffix(name, "}")
+	return strings.TrimPrefix(name, "$")
+}
+
+// resolveEnvPlaceholders substitutes ENV_CLI_* placeholders in the generated
+// payload before it is sent to the AI workspace. Values are looked up in an
+// env file first — the file given via --env-file when provided (it must
+// exist), otherwise the project root's .env when present — falling back to the
+// process environment for names the file does not define. When the payload has
+// no placeholders it is returned unchanged. Any placeholder that cannot be
+// resolved fails the command with the full list of missing variables.
+func resolveEnvPlaceholders(body []byte, projectRoot, envFileFlag string) ([]byte, error) {
+	content := string(body)
+	matches := cliEnvPlaceholderPattern.FindAllString(content, -1)
+	if len(matches) == 0 {
+		return body, nil
+	}
+
+	fileValues, err := loadEnvValues(projectRoot, envFileFlag)
+	if err != nil {
+		return nil, err
+	}
+
+	missing := map[string]bool{}
+	resolved := cliEnvPlaceholderPattern.ReplaceAllStringFunc(content, func(placeholder string) string {
+		name := cliEnvPlaceholderName(placeholder)
+		value, ok := fileValues[name]
+		if !ok {
+			value, ok = os.LookupEnv(name)
+		}
+		if !ok {
+			missing[name] = true
+			return placeholder
+		}
+		// The replacement happens inside JSON string values, so the value must be
+		// JSON-escaped (sans the surrounding quotes json.Marshal adds).
+		escaped, _ := json.Marshal(value)
+		return string(escaped[1 : len(escaped)-1])
+	})
+
+	if len(missing) > 0 {
+		names := make([]string, 0, len(missing))
+		for name := range missing {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		return nil, fmt.Errorf("unresolved environment variable(s) in the generated artifact: %s (define them in an env file passed via --%s, a .env file in the project root, or the environment)",
+			strings.Join(names, ", "), utils.FlagEnvFile)
+	}
+
+	return []byte(resolved), nil
+}
+
+// loadEnvValues returns the KEY=VALUE pairs from the env file selected for
+// placeholder resolution: the --env-file path when given (missing file is an
+// error), else the project root's .env when it exists, else an empty map (the
+// process environment is consulted by the caller as the fallback).
+func loadEnvValues(projectRoot, envFileFlag string) (map[string]string, error) {
+	if path := strings.TrimSpace(envFileFlag); path != "" {
+		values, err := parseEnvFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read env file %q: %w", path, err)
+		}
+		return values, nil
+	}
+
+	defaultPath := filepath.Join(projectRoot, ".env")
+	if _, err := os.Stat(defaultPath); err != nil {
+		if os.IsNotExist(err) {
+			return map[string]string{}, nil
+		}
+		return nil, fmt.Errorf("failed to inspect .env file: %w", err)
+	}
+	values, err := parseEnvFile(defaultPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read .env file %q: %w", defaultPath, err)
+	}
+	return values, nil
+}
+
+// parseEnvFile reads a dotenv-style file: one KEY=VALUE per line, blank lines
+// and #-comments ignored, an optional `export ` prefix allowed, and single or
+// double quotes around the value stripped.
+func parseEnvFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 {
+			if (strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)) ||
+				(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
+				value = value[1 : len(value)-1]
+			}
+		}
+		values[key] = value
+	}
+	return values, nil
 }
 
 // aiWorkspaceCreatePath returns the collection endpoint to POST to for the kind.
