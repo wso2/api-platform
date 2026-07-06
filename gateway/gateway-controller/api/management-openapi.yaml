@@ -5573,18 +5573,21 @@ components:
             template. Multiple versions with the same groupId but different
             handles are surfaced as versions of one template. Defaults to
             metadata.name when omitted.
+          maxLength: 40
           example: openai
         managedBy:
           type: string
           description: |
             Origin of the template. Built-in templates use 'wso2'; custom
             templates default to 'customer' and may be set to any value.
+          maxLength: 255
           example: wso2
         version:
           type: string
           description: |
             Template content version (e.g. v1.0). Multiple versions of the same
             groupId can coexist; defaults to v1.0 when omitted.
+          maxLength: 30
           example: v1.0
         promptTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
