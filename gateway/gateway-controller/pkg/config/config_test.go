@@ -1574,6 +1574,35 @@ func TestConfig_ValidateHTTPListenerConfig(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidateHTTPListenerConfig_BufferLimit(t *testing.T) {
+	tests := []struct {
+		name               string
+		bufferLimitBytes   uint32
+		wantErr            bool
+		errContains        string
+		expectedAfterValid uint32
+	}{
+		{name: "Unset defaults to 1 MiB", bufferLimitBytes: 0, wantErr: false, expectedAfterValid: 1048576},
+		{name: "Valid custom value", bufferLimitBytes: 2097152, wantErr: false, expectedAfterValid: 2097152},
+		{name: "Exceeds max reasonable value", bufferLimitBytes: constants.MaxReasonableBufferLimitBytes + 1, wantErr: true, errContains: "per_connection_buffer_limit_bytes must not exceed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.HTTPListener.PerConnectionBufferLimitBytes = tt.bufferLimitBytes
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedAfterValid, cfg.Router.HTTPListener.PerConnectionBufferLimitBytes)
+			}
+		})
+	}
+}
+
 func TestConfig_HelperMethods(t *testing.T) {
 	t.Run("IsAccessLogsEnabled", func(t *testing.T) {
 		cfg := validConfig()

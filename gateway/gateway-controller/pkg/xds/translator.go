@@ -1328,6 +1328,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			},
 		},
 		FilterChains: []*listener.FilterChain{filterChain},
+		PerConnectionBufferLimitBytes: wrapperspb.UInt32(t.routerConfig.HTTPListener.PerConnectionBufferLimitBytes),
 	}, routeConfig, nil
 }
 
