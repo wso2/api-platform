@@ -202,9 +202,8 @@ services:
   # Developer Portal — the consumer-facing plane. Credentials (subscriptions,
   # API keys) generated here are fired as signed webhooks to platform-api's
   # receiver (…/api/internal/v0.9/webhook/events), which persists them and
-  # propagates to the gateway data plane over its existing WebSocket sync. Uses
-  # its own self-contained SQLite store (auto-migrated on boot) so it needs no
-  # database wiring. Started on demand by the godog suite (postgres stack only).
+  # propagates to the gateway data plane over its existing WebSocket sync. 
+  # Started on demand by the godog suite (postgres stack only).
   devportal:
     image: ${DEVPORTAL_IMAGE:-developer-portal:it-e2e}
     depends_on:
