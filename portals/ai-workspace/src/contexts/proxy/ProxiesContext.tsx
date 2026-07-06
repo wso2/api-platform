@@ -31,6 +31,13 @@ import type {
   ProxiesResponse,
 } from '../../utils/types';
 import * as proxyApis from '../../apis/proxyApis';
+import {
+  createSecret,
+  deleteSecret,
+  buildSecretPlaceholder,
+  generateSecretHandle,
+  extractSecretHandle,
+} from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
 import { logger } from '../../utils/logger';
@@ -168,12 +175,57 @@ export function ProxiesProvider({ children }: ProxiesProviderProps) {
         throw new Error('Organization ID is missing');
       }
       try {
+        // If the provider auth value is a new plain-text credential (not already
+        // a placeholder), create a new secret and substitute the placeholder.
+        // After a successful proxy update the old secret is deleted best-effort.
+        let updatesPayload = updates;
+        const providerAuth = typeof updates.provider === 'object' ? updates.provider?.auth : undefined;
+        const authValue = providerAuth?.value;
+        const isAlreadyPlaceholder =
+          typeof authValue === 'string' && authValue.includes('{{ secret ');
+
+        if (authValue && !isAlreadyPlaceholder) {
+          const secretHandle = generateSecretHandle();
+          const secretResponse = await createSecret({
+            id: secretHandle,
+            displayName: `${proxyId} provider API Key`,
+            description: `Auto-generated secret for LLM proxy ${proxyId}`,
+            value: authValue,
+            type: 'GENERIC',
+          });
+          logger.info('Created new secret for LLM proxy update', { secretHandle, proxyId });
+
+          updatesPayload = {
+            ...updates,
+            provider: {
+              ...(typeof updates.provider === 'object' ? updates.provider : { id: updates.provider ?? '' }),
+              auth: {
+                ...providerAuth,
+                value: buildSecretPlaceholder(secretResponse.id),
+              },
+            },
+          };
+        }
+
         const updatedProxy = await proxyApis.updateProxy(
           proxyId,
-          updates,
+          updatesPayload,
           organizationId,
           apimBaseUrl
         );
+
+        // Best-effort: delete the old secret after the proxy update succeeds.
+        if (authValue && !isAlreadyPlaceholder) {
+          const currentProxy = proxiesResponse.list.find((p) => p.id === proxyId);
+          const existingAuth = typeof currentProxy?.provider === 'object' ? currentProxy?.provider?.auth : undefined;
+          const oldHandle = existingAuth?.value ? extractSecretHandle(existingAuth.value) : null;
+          if (oldHandle) {
+            deleteSecret(oldHandle).catch((err) => {
+              logger.warn('Could not delete old secret after proxy update', { oldHandle, err });
+            });
+          }
+        }
+
         setProxiesResponse((prev) => ({
           ...prev,
           list: prev.list.map((proxy) =>
@@ -190,7 +242,7 @@ export function ProxiesProvider({ children }: ProxiesProviderProps) {
         throw err;
       }
     },
-    [organizationId, apimBaseUrl]
+    [organizationId, apimBaseUrl, proxiesResponse.list]
   );
 
   const deleteProxy = useCallback(
