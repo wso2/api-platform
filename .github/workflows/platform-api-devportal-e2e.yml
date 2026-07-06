@@ -1,0 +1,71 @@
+name: Platform API + Gateway + Developer Portal E2E
+
+# Full three-plane end-to-end test: a subscription and API key created in the real
+# developer portal are pushed to the real platform-api control plane over the signed
+# webhook, propagated to the real gateway data plane, and used to invoke a secured
+# API through the ingress. Also drives the credential lifecycle (revoke, expiry,
+# plan change, pause/resume, token regen, remove) and verifies each at the gateway
+# or via platform-api.
+#
+# The developer-portal scenarios are postgres-only (they need the shared postgres
+# server for the devportal store + webhook round-trip), so this runs a single
+# postgres job. It builds the developer-portal image on top of the platform-api,
+# gateway and sample-service images, so it is heavier than the combined e2e and is
+# intentionally kept off the per-PR critical path — it runs on demand and when the
+# e2e itself changes.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  devportal-e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.2'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build platform-api image
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-e2e
+
+      - name: Build gateway images (controller + runtime)
+        run: make build VERSION=it-e2e
+        working-directory: gateway
+
+      - name: Build sample-service image
+        run: make build
+        working-directory: samples/sample-service
+
+      - name: Build developer-portal image
+        run: make build VERSION=it-e2e
+        working-directory: portals/developer-portal
+
+      - name: Run developer-portal e2e (postgres)
+        # make build above tags the devportal image under the default registry, so
+        # point the compose at it. E2E_TAGS=@devportal runs both the happy-path and
+        # the credential-lifecycle scenario (the latter is tagged @devportal @lifecycle).
+        env:
+          E2E_DB: postgres
+          E2E_TAGS: '@devportal'
+          DEVPORTAL_IMAGE: ghcr.io/wso2/api-platform/developer-portal:it-e2e
+        run: go test -run TestFeatures -count=1 -v -timeout 25m ./...
+        working-directory: tests/integration-e2e

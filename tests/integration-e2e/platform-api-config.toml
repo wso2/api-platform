@@ -19,4 +19,8 @@ region       = "us"
 [[auth.file_based.users]]
 username      = "admin"
 password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
+# NOTE: platform-api ignores file-based users from a mounted config (defaultConfig's
+# admin wins in koanf's slice merge), so scopes here are not authoritative. The
+# @devportal stack instead injects the admin (with dp:* scopes) via the
+# AUTH_FILE_BASED_USERS env var, which does override the default. See suite_test.go.
 scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
