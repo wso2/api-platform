@@ -2,12 +2,12 @@
 
 ## Entry Points
 
-- `platform-api/src/internal/handler/api.go` – implements `/api/v0.9/rest-apis` CRUD (list is filtered via the `projectId` query parameter), `/api/v0.9/rest-apis/{restApiId}/deployments` for API deployment (in `internal/handler/api_deployment.go`), and `/api/v0.9/rest-apis/{restApiId}/gateways` for retrieving deployment status
-- `platform-api/src/internal/service/api.go` – validates names, contexts, versions, orchestrates default values and generates deployment YAML and deploys APIs in the Gateway plus repository calls. Also handles gateway deployment queries.
-- `platform-api/src/internal/repository/api.go` – persists APIs, security, CORS, backend services, rate limiting, and operations using transactions.
-- `platform-api/src/internal/repository/gateway.go` – handles gateway operations including querying which gateways have specific APIs deployed.
-- `platform-api/src/internal/database/schema.sql` – contains tables for APIs, security configs, backend services, rate limits, operations, and API deployments tracking.
-- `platform-api/src/resources/openapi.yaml` – provides the published API lifecycle contract for client integrations.
+- `platform-api/internal/handler/api.go` – implements `/api/v0.9/rest-apis` CRUD, `/api/v0.9/projects/:projectId/apis` listing routes, `/api/v0.9/rest-apis/:apiId/deployments` for API deployment, and `/api/v0.9/rest-apis/:apiId/gateways` for retrieving deployment status
+- `platform-api/internal/service/api.go` – validates names, contexts, versions, orchestrates default values and generates deployment YAML and deploys APIs in the Gateway plus repository calls. Also handles gateway deployment queries.
+- `platform-api/internal/repository/api.go` – persists APIs, security, CORS, backend services, rate limiting, and operations using transactions.
+- `platform-api/internal/repository/gateway.go` – handles gateway operations including querying which gateways have specific APIs deployed.
+- `platform-api/internal/database/schema.sql` – contains tables for APIs, security configs, backend services, rate limits, operations, and API deployments tracking.
+- `platform-api/resources/openapi.yaml` – provides the published API lifecycle contract for client integrations.
 
 ## Behaviour
 

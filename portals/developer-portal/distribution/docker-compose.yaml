@@ -59,7 +59,7 @@
 services:
   # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.11.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
@@ -102,7 +102,7 @@ services:
   #     - devportal-network
 
   devportal:
-    image: ghcr.io/wso2/api-platform/developer-portal:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha-SNAPSHOT
     depends_on:
       platform-api:
         condition: service_healthy

@@ -211,7 +211,7 @@ type WebSocket struct {
 
 ```bash
 # Build platform API with WebSocket support
-cd platform-api/src
+cd platform-api
 go build -o ../bin/platform-api ./cmd/main.go
 
 # Run with default configuration

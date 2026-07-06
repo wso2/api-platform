@@ -1205,6 +1205,10 @@ func (s *APIUtilsService) buildImportArtifactRequest(artifact *models.StoredConf
 	if artifact.DeployedAt != nil {
 		utc := artifact.DeployedAt.UTC()
 		deployedAt = &utc
+	} else if artifact.Kind == models.KindLlmProviderTemplate {
+		// UpdatedAt is the template's effective deployment time
+		utc := artifact.UpdatedAt.UTC()
+		deployedAt = &utc
 	}
 	return ImportArtifactRequest{
 		DPID:          artifact.UUID,

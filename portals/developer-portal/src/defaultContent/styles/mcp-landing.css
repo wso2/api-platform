@@ -435,6 +435,7 @@
 
 .mc-manage-action-btn {
   flex: 1;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -447,12 +448,14 @@
   transition: background 0.15s, opacity 0.15s;
   background: #fff;
 }
-.mc-manage-action-btn--suspend { border: 1px solid #f3d2a8; color: #e65100; }
-.mc-manage-action-btn--resume  { border: 1px solid #bfe3c6; color: #2e7d32; }
-.mc-manage-action-btn--suspend:hover { background: #fff8f3; }
-.mc-manage-action-btn--resume:hover  { background: #f3fbf4; }
-.mc-manage-action-btn--unsub   { border: 1px solid #f0c5c5; color: #c62828; }
-.mc-manage-action-btn--unsub:hover   { background: #fdf3f3; }
+.mc-manage-action-btn.mc-manage-action-btn--regenerate { border: 1px solid #a9c1e6; color: #1f6feb; }
+.mc-manage-action-btn.mc-manage-action-btn--regenerate:hover { background: #f2f7fd; }
+.mc-manage-action-btn.mc-manage-action-btn--suspend { border: 1px solid #f3d2a8; color: #e65100; }
+.mc-manage-action-btn.mc-manage-action-btn--resume  { border: 1px solid #bfe3c6; color: #2e7d32; }
+.mc-manage-action-btn.mc-manage-action-btn--suspend:hover { background: #fff8f3; }
+.mc-manage-action-btn.mc-manage-action-btn--resume:hover  { background: #f3fbf4; }
+.mc-manage-action-btn.mc-manage-action-btn--unsub   { border: 1px solid #f0c5c5; color: #c62828; }
+.mc-manage-action-btn.mc-manage-action-btn--unsub:hover   { background: #fdf3f3; }
 
 /* ── Unsubscribe warning dialog ──────────────────────────────── */
 .mc-unsub-dialog {

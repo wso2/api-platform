@@ -106,7 +106,7 @@ Each catalog entry's description is **`<action> <the most specific entity the sc
 
 ## Path placement in the OpenAPI spec
 
-When adding a new path to `platform-api/src/resources/openapi.yaml`, insert it in the **canonical resource-group order** below and keep all sub-resources of a parent immediately beneath it.
+When adding a new path to `platform-api/resources/openapi.yaml`, insert it in the **canonical resource-group order** below and keep all sub-resources of a parent immediately beneath it.
 
 ### Canonical group order
 

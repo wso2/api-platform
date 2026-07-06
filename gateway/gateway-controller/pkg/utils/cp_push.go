@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -35,11 +36,6 @@ type ArtifactPusher interface {
 	IsConnected() bool
 	PushArtifact(artifactID string, artifact *models.StoredConfig, deploymentID string) error
 }
-
-const (
-	cpPushDeploymentTimeout = 30 * time.Second
-	cpPushPollInterval      = 500 * time.Millisecond
-)
 
 // cpSyncStatusForOrigin returns the initial cp_sync_status for a newly created/updated
 // artifact row in the gateway DB: "pending" for gateway-originated artifacts (those created
@@ -55,11 +51,11 @@ func cpSyncStatusForOrigin(origin models.Origin) models.CPSyncStatus {
 }
 
 // waitForDeploymentAndPush waits for the artifact identified by configID to finish deploying
-// (its DeployedAt is set in the store) and then pushes it to the control plane (DP->CP). It is
-// the gateway-create counterpart of the control plane's deployment callback and mirrors the
-// REST API push path; it is meant to be run in a goroutine. The caller is responsible for
-// gating on connectivity/push-enabled and gateway origin before invoking it.
-func waitForDeploymentAndPush(store *storage.ConfigStore, pusher ArtifactPusher, configID, correlationID string, log *slog.Logger) {
+// and then pushes it to the control plane (DP->CP). This is meant to be run in a goroutine.
+// The caller is responsible for gating on connectivity/push-enabled and gateway origin before invoking it.
+//
+// minDeployedAt is the DeployedAt of the deployment this push was triggered for.
+func waitForDeploymentAndPush(store *storage.ConfigStore, pusher ArtifactPusher, configID, correlationID string, minDeployedAt *time.Time, log *slog.Logger) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -67,8 +63,8 @@ func waitForDeploymentAndPush(store *storage.ConfigStore, pusher ArtifactPusher,
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	timeout := time.NewTimer(cpPushDeploymentTimeout)
-	ticker := time.NewTicker(cpPushPollInterval)
+	timeout := time.NewTimer(constants.CPPushDeploymentTimeout)
+	ticker := time.NewTicker(constants.CPPushPollInterval)
 	defer timeout.Stop()
 	defer ticker.Stop()
 
@@ -87,21 +83,25 @@ func waitForDeploymentAndPush(store *storage.ConfigStore, pusher ArtifactPusher,
 				continue
 			}
 
-			if cfg.DeployedAt != nil {
-				log.Info("Artifact deployed successfully, pushing to control plane",
-					slog.String("config_id", configID),
-					slog.String("displayName", cfg.DisplayName))
-
-				if err := pusher.PushArtifact(configID, cfg, cfg.DeploymentID); err != nil {
-					log.Error("Failed to push deployment to control plane",
-						slog.String("artifact_id", configID),
-						slog.Any("error", err))
-				} else {
-					log.Info("Successfully pushed deployment to control plane",
-						slog.String("artifact_id", configID))
-				}
-				return
+			// Not deployed yet, or the store still holds a snapshot older than the
+			// deployment we were triggered for — keep waiting.
+			if cfg.DeployedAt == nil || (minDeployedAt != nil && cfg.DeployedAt.Before(*minDeployedAt)) {
+				continue
 			}
+
+			log.Info("Artifact deployed successfully, pushing to control plane",
+				slog.String("config_id", configID),
+				slog.String("displayName", cfg.DisplayName))
+
+			if err := pusher.PushArtifact(configID, cfg, cfg.DeploymentID); err != nil {
+				log.Error("Failed to push deployment to control plane",
+					slog.String("artifact_id", configID),
+					slog.Any("error", err))
+			} else {
+				log.Info("Successfully pushed deployment to control plane",
+					slog.String("artifact_id", configID))
+			}
+			return
 		}
 	}
 }

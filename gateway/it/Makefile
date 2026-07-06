@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
+.PHONY: all test test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -75,6 +75,14 @@ test-vhosts-single:
 # Run vhost integration tests with multi-domain gateway vhost config
 test-vhosts-multi:
 	COMPOSE_FILE=docker-compose.test.vhosts-multi.yaml IT_FEATURE_PATHS=features/vhost-routing-multi.feature $(MAKE) test
+
+# Run the DP->CP push tests with control-plane sync DISABLED. Layers a tiny override on the
+# base compose (deployment_sync_enabled=false via COMPOSE_FILE=base:override) and asserts
+# gateway-originated artifacts are NOT pushed. Not part of the default suite (which runs with
+# sync enabled). Verifies dp-to-cp-testing.md items 1-2.
+test-dp-to-cp-nosync:
+	COMPOSE_FILE=docker-compose.test.yaml:docker-compose.test.dp-nosync.override.yaml \
+	IT_FEATURE_PATHS=features/health.feature,features/dp-to-cp-sync-disabled.feature $(MAKE) test
 
 # Run tests with verbose output
 test-verbose: ensure-test-tags

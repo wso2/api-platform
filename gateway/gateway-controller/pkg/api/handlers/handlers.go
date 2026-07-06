@@ -31,7 +31,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"gopkg.in/yaml.v3"
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
@@ -41,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -51,6 +51,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"github.com/wso2/go-httpkit/httputil"
+	"gopkg.in/yaml.v3"
 )
 
 // APIServer implements the generated ServerInterface
@@ -361,16 +362,18 @@ func (s *APIServer) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Log
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
-// This is only called for APIs created directly via gateway endpoint (not from platform API)
-func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID string, log *slog.Logger) {
+// This is only called for APIs created directly via gateway endpoint (not from platform API).
+//
+// minDeployedAt is the DeployedAt of the deployment this push was triggered for.
+func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID string, minDeployedAt *time.Time, log *slog.Logger) {
 	// Create a logger with correlation ID if provided
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
 	// Poll for deployment status with timeout
-	timeout := time.NewTimer(30 * time.Second)       // 30 second timeout
-	ticker := time.NewTicker(500 * time.Millisecond) // Check every 500ms
+	timeout := time.NewTimer(constants.CPPushDeploymentTimeout)
+	ticker := time.NewTicker(constants.CPPushPollInterval)
 	defer timeout.Stop()
 	defer ticker.Stop()
 
@@ -389,24 +392,28 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 				continue
 			}
 
-			if cfg.DeployedAt != nil {
-				log.Info("API deployed successfully, pushing to control plane",
-					slog.String("config_id", configID),
-					slog.String("displayName", cfg.DisplayName))
-
-				apiID := configID
-				deploymentID := cfg.DeploymentID
-
-				if err := s.controlPlaneClient.PushArtifact(apiID, cfg, deploymentID); err != nil {
-					log.Error("Failed to push deployment to control plane",
-						slog.String("api_id", apiID),
-						slog.Any("error", err))
-				} else {
-					log.Info("Successfully pushed deployment to control plane",
-						slog.String("api_id", apiID))
-				}
-				return
+			// Not deployed yet, or the store still holds a snapshot older than the
+			// deployment we were triggered for — keep waiting.
+			if cfg.DeployedAt == nil || (minDeployedAt != nil && cfg.DeployedAt.Before(*minDeployedAt)) {
+				continue
 			}
+
+			log.Info("API deployed successfully, pushing to control plane",
+				slog.String("config_id", configID),
+				slog.String("displayName", cfg.DisplayName))
+
+			apiID := configID
+			deploymentID := cfg.DeploymentID
+
+			if err := s.controlPlaneClient.PushArtifact(apiID, cfg, deploymentID); err != nil {
+				log.Error("Failed to push deployment to control plane",
+					slog.String("api_id", apiID),
+					slog.Any("error", err))
+			} else {
+				log.Info("Successfully pushed deployment to control plane",
+					slog.String("api_id", apiID))
+			}
+			return
 		}
 	}
 }

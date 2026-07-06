@@ -32,6 +32,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -187,7 +188,7 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 
 		// Push to control plane asynchronously if connected
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
+			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, result.StoredConfig.DeployedAt, log)
 		}
 	}
 
@@ -328,15 +329,14 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	// Update stored configuration
 	now := time.Now()
+	truncatedNow := now.Truncate(time.Millisecond)
 	existing.DisplayName = renderedConfig.Spec.DisplayName
 	existing.Version = renderedConfig.Spec.Version
 	existing.DesiredState = desiredState
 	existing.UpdatedAt = now
+	existing.DeployedAt = &truncatedNow
 
 	if desiredState == models.StateUndeployed {
-		// Undeployment: update DeployedAt to mark when this state change happened
-		truncatedNow := now.Truncate(time.Millisecond)
-		existing.DeployedAt = &truncatedNow
 		log.Info("Undeploying API configuration",
 			slog.String("id", existing.UUID),
 			slog.String("handle", params.Handle))
@@ -367,7 +367,7 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	// Push to control plane asynchronously if connected
 	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil &&
 		s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-		go s.waitForDeploymentAndPush(existing.UUID, params.CorrelationID, log)
+		go s.waitForDeploymentAndPush(existing.UUID, params.CorrelationID, existing.DeployedAt, log)
 	}
 
 	log.Info("API configuration updated",
@@ -481,13 +481,15 @@ func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, log *sl
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane.
-func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID string, log *slog.Logger) {
+//
+// minDeployedAt is the DeployedAt of the deployment this push was triggered for.
+func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID string, minDeployedAt *time.Time, log *slog.Logger) {
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	timeout := time.NewTimer(30 * time.Second)
-	ticker := time.NewTicker(500 * time.Millisecond)
+	timeout := time.NewTimer(constants.CPPushDeploymentTimeout)
+	ticker := time.NewTicker(constants.CPPushPollInterval)
 	defer timeout.Stop()
 	defer ticker.Stop()
 
@@ -506,24 +508,28 @@ func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID
 				continue
 			}
 
-			if cfg.DeployedAt != nil {
-				log.Info("API deployed successfully, pushing to control plane",
-					slog.String("config_id", configID),
-					slog.String("displayName", cfg.DisplayName))
-
-				apiID := configID
-				deploymentID := cfg.DeploymentID
-
-				if err := s.controlPlaneClient.PushArtifact(apiID, cfg, deploymentID); err != nil {
-					log.Error("Failed to push deployment to control plane",
-						slog.String("api_id", apiID),
-						slog.Any("error", err))
-				} else {
-					log.Info("Successfully pushed deployment to control plane",
-						slog.String("api_id", apiID))
-				}
-				return
+			// Not deployed yet, or the store still holds a snapshot older than the
+			// deployment we were triggered for — keep waiting.
+			if cfg.DeployedAt == nil || (minDeployedAt != nil && cfg.DeployedAt.Before(*minDeployedAt)) {
+				continue
 			}
+
+			log.Info("API deployed successfully, pushing to control plane",
+				slog.String("config_id", configID),
+				slog.String("displayName", cfg.DisplayName))
+
+			apiID := configID
+			deploymentID := cfg.DeploymentID
+
+			if err := s.controlPlaneClient.PushArtifact(apiID, cfg, deploymentID); err != nil {
+				log.Error("Failed to push deployment to control plane",
+					slog.String("api_id", apiID),
+					slog.Any("error", err))
+			} else {
+				log.Info("Successfully pushed deployment to control plane",
+					slog.String("api_id", apiID))
+			}
+			return
 		}
 	}
 }

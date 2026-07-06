@@ -13,7 +13,6 @@
           <th>Plan</th>
           <th>Application</th>
           <th>Status</th>
-          <th>Subscription token</th>
           <th style="text-align:right;">Actions</th>
         </tr>
       </thead>
@@ -29,7 +28,7 @@
           </td>
           <td>{{this.apiVersion}}</td>
           <td>
-            <span class="sub-type-pill">{{#if this.type}}{{this.type}}{{else}}Token-based{{/if}}</span>
+            <span class="sub-type-pill">Token-based</span>
           </td>
           <td>{{this.planName}}</td>
           <td style="color:#8a98a6;">{{#if this.applicationName}}{{this.applicationName}}{{else}}-{{/if}}</td>
@@ -38,9 +37,6 @@
               <span class="sub-status-dot"></span>
               {{this.status}}
             </span>
-          </td>
-          <td>
-            <span class="sub-token-code">****</span>
           </td>
           <td>
             <div class="sub-actions">
@@ -107,7 +103,7 @@
       <hr class="mc-manage-divider">
       <div class="mc-manage-actions">
         <button id="subManageRegenerateBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--regenerate">
-          <i class="bi bi-arrow-clockwise"></i> Regenerate Token
+          <i class="bi bi-arrow-clockwise"></i> Regenerate
         </button>
         <button id="subManageSuspendBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--suspend">
           <i class="bi bi-pause-circle"></i>

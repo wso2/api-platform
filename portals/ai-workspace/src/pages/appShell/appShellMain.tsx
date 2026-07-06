@@ -359,7 +359,6 @@ export default function AppLayout(): JSX.Element {
           navigate={navigate}
           userName={userName ?? undefined}
           userEmail={userEmail ?? undefined}
-          unreadCount={unreadCount}
           currentOrganization={
             currentOrganization
               ? {

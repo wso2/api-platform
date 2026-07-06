@@ -24,7 +24,7 @@ services:
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
       # platform-api no longer auto-provisions its schema on external databases,
       # so init-db.sql applies it from here (mounted from the source tree).
-      - ../../platform-api/src/internal/database/schema.postgres.sql:/schema/schema.postgres.sql:ro
+      - ../../platform-api/internal/database/schema.postgres.sql:/schema/schema.postgres.sql:ro
     ports:
       - "55433:5432"
     healthcheck:

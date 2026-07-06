@@ -1,6 +1,6 @@
 ---
 name: api-platform-rest-api-design-rules
-description: WSO2 API Platform-specific REST API design rules, layered on top of the generic api-design skill. Use when assessing, validating, reviewing, or fixing a WSO2 API Platform OpenAPI spec (e.g. platform-api/src/resources/openapi.yaml) and you want the standard api-design checks PLUS api-platform house rules — consistent camelCase parameter names (flagging PascalCase like ProjectID/GatewayID), consistent collection response envelopes ({ list, pagination }), and ap: OAuth2 scope naming. Trigger when the user says "validate/assess/check this spec against the api-platform rules", "apply the api-platform design rules", or names this skill directly. Extends api-platform:api-design.
+description: WSO2 API Platform-specific REST API design rules, layered on top of the generic api-design skill. Use when assessing, validating, reviewing, or fixing a WSO2 API Platform OpenAPI spec (e.g. platform-api/resources/openapi.yaml) and you want the standard api-design checks PLUS api-platform house rules — consistent camelCase parameter names (flagging PascalCase like ProjectID/GatewayID), consistent collection response envelopes ({ list, pagination }), and ap: OAuth2 scope naming. Trigger when the user says "validate/assess/check this spec against the api-platform rules", "apply the api-platform design rules", or names this skill directly. Extends api-platform:api-design.
 allowed-tools: Bash, Read, Edit, Grep, Glob, Write, Skill
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, Edit, Grep, Glob, Write, Skill
 
 This skill is an **extension of the generic `api-platform:api-design` skill**. It does not replace it — it adds a layer of WSO2 API Platform house rules that the generic assessor does not check.
 
-Use it on WSO2 API Platform OpenAPI specs (for example `platform-api/src/resources/openapi.yaml`). The generic skill handles AI Agent Readiness, Security Readiness, and WSO2 REST Design Guidelines. This skill adds platform-specific conventions that the platform's own APIs are expected to follow consistently.
+Use it on WSO2 API Platform OpenAPI specs (for example `platform-api/resources/openapi.yaml`). The generic skill handles AI Agent Readiness, Security Readiness, and WSO2 REST Design Guidelines. This skill adds platform-specific conventions that the platform's own APIs are expected to follow consistently.
 
 ## Usage
 

@@ -193,7 +193,7 @@ generateDefaultSubPlans: true
 
 features:
   apiWorkflows:
-    enabled: false   # Show the "API Workflows" page in the portal sidebar
+    enabled: true   # Show the "API Workflows" page in the portal sidebar
 
 # ─── Design Mode ───────────────────────────────────────────────────────────────
 # Enables local design/preview mode: APIs and layouts are loaded from the

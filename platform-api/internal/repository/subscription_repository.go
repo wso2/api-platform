@@ -1,0 +1,400 @@
+/*
+ *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package repository
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
+
+	"github.com/google/uuid"
+)
+
+// HashSubscriptionToken computes a SHA-256 hash of the token for secure storage.
+// The same token always produces the same hash for deterministic lookups.
+// Exported for use when propagating to gateways (events, internal API).
+func HashSubscriptionToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
+func hashSubscriptionToken(token string) string {
+	return HashSubscriptionToken(token)
+}
+
+// getSubscriptionTokenEncryptionKey returns the 32-byte key for subscription token encryption.
+// Precedence: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → AUTH_JWT_SECRET_KEY.
+func getSubscriptionTokenEncryptionKey() ([]byte, error) {
+	cfg := config.GetConfig()
+	keyStr := cfg.Database.SubscriptionTokenEncryptionKey
+	if keyStr == "" {
+		keyStr = cfg.Database.EncryptionKey
+	}
+	if keyStr == "" {
+		keyStr = cfg.Auth.JWT.SecretKey
+	}
+	if keyStr == "" {
+		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY, DATABASE_ENCRYPTION_KEY, or AUTH_JWT_SECRET_KEY")
+	}
+	return utils.DeriveEncryptionKey(keyStr)
+}
+
+// SubscriptionRepo implements SubscriptionRepository
+type SubscriptionRepo struct {
+	db *database.DB
+}
+
+// NewSubscriptionRepo creates a new subscription repository
+func NewSubscriptionRepo(db *database.DB) SubscriptionRepository {
+	return &SubscriptionRepo{db: db}
+}
+
+// generateSubscriptionToken creates a cryptographically random opaque token
+func generateSubscriptionToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate subscription token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// Create inserts a new subscription.
+// The token is encrypted for storage and hashed for uniqueness; sub.SubscriptionToken retains the raw value for the create response.
+func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
+	if sub.UUID == "" {
+		sub.UUID = uuid.New().String()
+	}
+	if sub.SubscriptionToken == "" {
+		token, err := generateSubscriptionToken()
+		if err != nil {
+			return err
+		}
+		sub.SubscriptionToken = token
+	}
+	hashedToken := hashSubscriptionToken(sub.SubscriptionToken)
+
+	key, err := getSubscriptionTokenEncryptionKey()
+	if err != nil {
+		return fmt.Errorf("subscription token encryption: %w", err)
+	}
+	encryptedToken, err := utils.EncryptSubscriptionToken(key, sub.SubscriptionToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt subscription token: %w", err)
+	}
+
+	now := time.Now()
+	sub.CreatedAt = now
+	sub.UpdatedAt = now
+
+	query := `
+		INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_token_hash, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = r.db.Exec(r.db.Rebind(query),
+		sub.UUID, sub.ArtifactUUID, sub.SubscriberID, sub.ApplicationID, encryptedToken, hashedToken,
+		sub.SubscriptionPlanID, sub.OrganizationUUID, string(sub.Status),
+		sub.CreatedBy, sub.UpdatedBy,
+		sub.CreatedAt, sub.UpdatedAt,
+	)
+	if err != nil {
+		if isSubscriptionUniqueViolation(err) {
+			return constants.ErrSubscriptionAlreadyExists
+		}
+		return fmt.Errorf("failed to insert subscription: %w", err)
+	}
+	return nil
+}
+
+// isSubscriptionUniqueViolation detects DB unique-constraint violations on subscriptions.
+func isSubscriptionUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	// SQLite: UNIQUE constraint failed on subscriptions (e.g. duplicate (artifact_uuid, subscriber_id, organization_uuid)
+	// or (artifact_uuid, subscription_token_hash); see schema.sqlite.sql / schema.postgres.sql).
+	if strings.Contains(s, "UNIQUE constraint failed") && strings.Contains(s, "subscriptions") {
+		return true
+	}
+	// PostgreSQL: duplicate key value violates unique constraint (code 23505)
+	if strings.Contains(s, "duplicate key value violates unique constraint") ||
+		strings.Contains(s, "23505") {
+		return true
+	}
+	// MySQL: Error 1062 (23000): Duplicate entry
+	if strings.Contains(s, "Duplicate entry") || strings.Contains(s, "1062") {
+		return true
+	}
+	return false
+}
+
+// GetByID retrieves a subscription by ID and organization.
+// Decrypts subscription_token for API response.
+func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subscription, error) {
+	query := `
+		SELECT uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at
+		FROM subscriptions
+		WHERE uuid = ? AND organization_uuid = ?
+	`
+	sub := &model.Subscription{}
+	var storedToken string
+	var createdBy, updatedBy sql.NullString
+	err := r.db.QueryRow(r.db.Rebind(query), subscriptionID, orgUUID).Scan(
+		&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
+		&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
+		&createdBy, &updatedBy,
+		&sub.CreatedAt, &sub.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrSubscriptionNotFound
+		}
+		return nil, err
+	}
+	sub.CreatedBy = createdBy.String
+	sub.UpdatedBy = updatedBy.String
+	sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
+	return sub, nil
+}
+
+// ListByFilters returns subscriptions filtered by API/subscriber and/or application for an organization.
+// Decrypts subscription_token for each row.
+func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, error) {
+	query := `
+		SELECT uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at
+		FROM subscriptions
+		WHERE organization_uuid = ?
+	`
+	args := []interface{}{orgUUID}
+	if apiUUID != nil && *apiUUID != "" {
+		query += ` AND artifact_uuid = ?`
+		args = append(args, *apiUUID)
+	}
+	if subscriberID != nil && *subscriberID != "" {
+		query += ` AND subscriber_id = ?`
+		args = append(args, *subscriberID)
+	}
+	if applicationID != nil && *applicationID != "" {
+		query += ` AND application_id = ?`
+		args = append(args, *applicationID)
+	}
+	if status != nil && *status != "" {
+		query += ` AND status = ?`
+		args = append(args, *status)
+	}
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query += ` ORDER BY created_at DESC ` + pageClause
+	args = append(args, pageArgs...)
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var list []*model.Subscription
+	for rows.Next() {
+		sub := &model.Subscription{}
+		var storedToken string
+		var createdBy, updatedBy sql.NullString
+		if err := rows.Scan(
+			&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
+			&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
+			&createdBy, &updatedBy, &sub.CreatedAt, &sub.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		sub.CreatedBy = createdBy.String
+		sub.UpdatedBy = updatedBy.String
+		sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
+		list = append(list, sub)
+	}
+	return list, rows.Err()
+}
+
+// decryptionKeyCandidates returns all derived keys to try during decryption, in precedence order.
+// Tokens may have been encrypted with any of the three key sources across different deployments,
+// so decryption must attempt all of them: SubscriptionTokenEncryptionKey → EncryptionKey → SecretKey.
+func decryptionKeyCandidates() [][]byte {
+	cfg := config.GetConfig()
+	sources := []string{
+		cfg.Database.SubscriptionTokenEncryptionKey,
+		cfg.Database.EncryptionKey,
+		cfg.Auth.JWT.SecretKey,
+	}
+	seen := map[string]bool{}
+	var keys [][]byte
+	for _, s := range sources {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		if k, err := utils.DeriveEncryptionKey(s); err == nil {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+// decryptSubscriptionToken decrypts stored token for API response.
+// Tries all key candidates in precedence order to handle tokens encrypted under a previous key source.
+func (r *SubscriptionRepo) decryptSubscriptionToken(stored string) string {
+	if stored == "" {
+		return ""
+	}
+	for _, key := range decryptionKeyCandidates() {
+		if plain, err := utils.DecryptSubscriptionToken(key, stored); err == nil {
+			return plain
+		}
+	}
+	return ""
+}
+
+// CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
+func (r *SubscriptionRepo) CountByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string) (int, error) {
+	query := `SELECT COUNT(*) FROM subscriptions WHERE organization_uuid = ?`
+	args := []interface{}{orgUUID}
+	if apiUUID != nil && *apiUUID != "" {
+		query += ` AND artifact_uuid = ?`
+		args = append(args, *apiUUID)
+	}
+	if subscriberID != nil && *subscriberID != "" {
+		query += ` AND subscriber_id = ?`
+		args = append(args, *subscriberID)
+	}
+	if applicationID != nil && *applicationID != "" {
+		query += ` AND application_id = ?`
+		args = append(args, *applicationID)
+	}
+	if status != nil && *status != "" {
+		query += ` AND status = ?`
+		args = append(args, *status)
+	}
+	var count int
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count subscriptions: %w", err)
+	}
+	return count, nil
+}
+
+// Update updates an existing subscription with all mutable fields.
+func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
+	sub.UpdatedAt = time.Now()
+	query := `
+		UPDATE subscriptions
+		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_by = ?, updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ?
+	`
+	result, err := r.db.Exec(r.db.Rebind(query),
+		sub.SubscriptionPlanID, sub.ApplicationID, string(sub.Status), sub.UpdatedBy, sub.UpdatedAt,
+		sub.UUID, sub.OrganizationUUID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return constants.ErrSubscriptionNotFound
+	}
+	return nil
+}
+
+// UpdateToken rotates a subscription's token: the new value is hashed (for the uniqueness/lookup
+// column) and encrypted (for at-rest storage), mirroring Create. Returns ErrSubscriptionNotFound
+// when no row matches.
+func (r *SubscriptionRepo) UpdateToken(subscriptionID, orgUUID, newToken string) error {
+	if newToken == "" {
+		return fmt.Errorf("subscription token cannot be empty")
+	}
+	hashedToken := hashSubscriptionToken(newToken)
+
+	key, err := getSubscriptionTokenEncryptionKey()
+	if err != nil {
+		return fmt.Errorf("subscription token encryption: %w", err)
+	}
+	encryptedToken, err := utils.EncryptSubscriptionToken(key, newToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt subscription token: %w", err)
+	}
+
+	query := `
+		UPDATE subscriptions
+		SET subscription_token = ?, subscription_token_hash = ?, updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ?
+	`
+	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now(), subscriptionID, orgUUID)
+	if err != nil {
+		if isSubscriptionUniqueViolation(err) {
+			return constants.ErrSubscriptionAlreadyExists
+		}
+		return fmt.Errorf("failed to update subscription token: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return constants.ErrSubscriptionNotFound
+	}
+	return nil
+}
+
+// Delete removes a subscription by ID and organization
+func (r *SubscriptionRepo) Delete(subscriptionID, orgUUID string) error {
+	query := `DELETE FROM subscriptions WHERE uuid = ? AND organization_uuid = ?`
+	result, err := r.db.Exec(r.db.Rebind(query), subscriptionID, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to delete subscription: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return constants.ErrSubscriptionNotFound
+	}
+	return nil
+}
+
+// ExistsByAPIAndSubscriber returns true if a subscription exists for the given API and subscriber.
+func (r *SubscriptionRepo) ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID string) (bool, error) {
+	query := `
+		SELECT 1 FROM subscriptions
+		WHERE artifact_uuid = ? AND organization_uuid = ?
+		  AND subscriber_id = ?
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
+	var exists int
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID, subscriberID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
+}

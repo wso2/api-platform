@@ -2,11 +2,11 @@
 
 ## Entry Points
 
-- `platform-api/src/internal/handler/organization.go` – exposes `/api/v0.9/organizations` routes.
-- `platform-api/src/internal/service/organization.go` – validates handles, coordinates repository calls, and provisions default projects.
-- `platform-api/src/internal/repository/organization.go` – performs SQL CRUD operations.
-- `platform-api/src/internal/database/schema.sql` – defines `organizations` table and related indexes.
-- `platform-api/src/resources/openapi.yaml` – documents the organization endpoints for reference consumers.
+- `platform-api/internal/handler/organization.go` – exposes `/api/v0.9/organizations` routes.
+- `platform-api/internal/service/organization.go` – validates handles, coordinates repository calls, and provisions default projects.
+- `platform-api/internal/repository/organization.go` – performs SQL CRUD operations.
+- `platform-api/internal/database/schema.sql` – defines `organizations` table and related indexes.
+- `platform-api/resources/openapi.yaml` – documents the organization endpoints for reference consumers.
 
 ## Behaviour
 
