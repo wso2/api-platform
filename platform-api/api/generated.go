@@ -1453,6 +1453,9 @@ type LLMProviderTemplateResourceMappings struct {
 
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
+	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.
+	AdditionalProviders *[]LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" yaml:"additionalProviders,omitempty"`
+
 	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
@@ -1517,6 +1520,15 @@ type LLMProxyAPIKeyListResponse struct {
 
 	// Items List of API keys
 	Items []APIKeyItem `binding:"required" json:"items" yaml:"items"`
+}
+
+// LLMProxyAdditionalProvider Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`).
+type LLMProxyAdditionalProvider struct {
+	// As Logical upstream name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
+	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `binding:"required" json:"id" yaml:"id"`
 }
 
 // LLMProxyListItem defines model for LLMProxyListItem.

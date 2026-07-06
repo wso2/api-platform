@@ -1,0 +1,62 @@
+# --------------------------------------------------------------------
+# Anthropic LLM Provider Configuration
+#
+# Uses the built-in `anthropic` template and points to the public
+# Anthropic API endpoint. Replace the placeholder with a real Anthropic
+# API key (sk-ant-...) before deploying.
+#
+# The openai-to-anthropic policy on the proxy layer translates
+# OpenAI-format requests into Anthropic's Messages API wire format
+# (path /v1/messages, anthropic-version header, body rewrite).
+#
+# Auth: upstream.auth is the gateway -> Anthropic vendor auth. Proxies in
+# front of this provider inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: anthropic-provider
+spec:
+  displayName: Anthropic Provider
+  version: v1.0
+  template: anthropic
+  upstream:
+    url: https://api.anthropic.com
+    auth:
+      type: api-key
+      header: x-api-key
+      # Anthropic's header is x-api-key with the raw key (NO "Bearer" prefix).
+      value: sk-ant-REPLACE_WITH_ANTHROPIC_KEY
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /v1/messages
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /v1/messages
+        methods: [POST]
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: ApiKey
+metadata:
+  name: anthropic-provider-loopback-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: anthropic-provider
+  displayName: Anthropic provider loopback key
+  apiKey:
+    value: anthropic_provider_loopback_key_1234567890abcdef
+    # anthropic_provider_loopback_key_1234567890abcdef
+  maskedApiKey: anthropic_provider_loopback_key_1234********cdef
+  expiresIn:
+    duration: 30
+    unit: days

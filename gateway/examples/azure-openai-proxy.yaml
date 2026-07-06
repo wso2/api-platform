@@ -1,0 +1,41 @@
+# --------------------------------------------------------------------
+# OpenAI -> Azure OpenAI LLM Proxy (single-provider)
+#
+# Exposes an OpenAI-shaped /chat/completions endpoint that the
+# `openai-to-azure-openai` policy translates into Azure OpenAI's
+# /openai/deployments/{deployment}/chat/completions?api-version=...
+# format and forwards to the `azure-openai-provider` upstream.
+#
+# Single-provider mode: the policy omits the "provider" parameter, so
+# it runs on every request without needing a setter policy.
+#
+# Replace before deploying:
+#   - apiVersion param: a valid Azure OpenAI api-version
+#     (e.g. 2024-02-15-preview)
+#   - model param (optional): pin the deployment id here, otherwise
+#     the request body's "model" field is used as the deployment.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+  name: openai-to-azure-openai
+spec:
+  displayName: OpenAI to Azure OpenAI Proxy
+  version: v1.0
+  context: /azure-openai
+  provider:
+    id: azure-openai-provider
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: azure_openai_provider_loopback_key_1234567890abcdef
+  policies:
+    - name: openai-to-azure-openai
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            apiVersion: "2024-02-15-preview"
+            model: gpt-4o

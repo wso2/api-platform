@@ -42,3 +42,23 @@ func flattenUpstreamAuthCredentialValue(specMap map[string]interface{}, parentKe
 	auth["value"] = plaintext
 	return nil
 }
+
+func flattenAdditionalProviderAuthCredentialValue(specMap map[string]interface{}, index int, plaintext string) error {
+	additionalProviders, ok := specMap["additionalProviders"].([]interface{})
+	if !ok {
+		return fmt.Errorf("spec.additionalProviders must be an array")
+	}
+	if index < 0 || index >= len(additionalProviders) {
+		return fmt.Errorf("spec.additionalProviders[%d] is out of range", index)
+	}
+	parent, ok := additionalProviders[index].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("spec.additionalProviders[%d] must be an object", index)
+	}
+	auth, ok := parent["auth"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("spec.additionalProviders[%d].auth must be an object", index)
+	}
+	auth["value"] = plaintext
+	return nil
+}

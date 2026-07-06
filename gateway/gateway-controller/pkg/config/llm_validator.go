@@ -590,10 +590,106 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 			Message: "spec.provider.id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
 		})
 	}
+	if spec.Provider.Auth != nil {
+		errors = append(errors, v.validateLLMUpstreamAuth("spec.provider.auth", spec.Provider.Auth)...)
+	}
+
+	if spec.AdditionalProviders != nil {
+		seen := map[string]bool{spec.Provider.Id: true}
+		for i, provider := range *spec.AdditionalProviders {
+			fieldPrefix := fmt.Sprintf("spec.additionalProviders[%d]", i)
+			if provider.Id == "" {
+				errors = append(errors, ValidationError{
+					Field:   fieldPrefix + ".id",
+					Message: "Provider is required",
+				})
+			} else if !v.metadataNameRegex.MatchString(provider.Id) {
+				errors = append(errors, ValidationError{
+					Field:   fieldPrefix + ".id",
+					Message: fieldPrefix + ".id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+				})
+			}
+
+			upstreamName := provider.Id
+			if provider.As != nil && *provider.As != "" {
+				upstreamName = *provider.As
+				if !regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`).MatchString(upstreamName) {
+					errors = append(errors, ValidationError{
+						Field:   fieldPrefix + ".as",
+						Message: fieldPrefix + ".as must contain only letters, numbers, hyphens, or underscores",
+					})
+				}
+			}
+			if upstreamName != "" {
+				if seen[upstreamName] {
+					errors = append(errors, ValidationError{
+						Field:   fieldPrefix,
+						Message: fmt.Sprintf("duplicate upstream name '%s' in additionalProviders", upstreamName),
+					})
+				}
+				seen[upstreamName] = true
+			}
+
+			if provider.Auth != nil {
+				errors = append(errors, v.validateLLMUpstreamAuth(fieldPrefix+".auth", provider.Auth)...)
+			}
+
+			if provider.Transformer != nil {
+				errors = append(errors, v.validateLLMProxyTransformer(fieldPrefix+".transformer", provider.Transformer)...)
+			}
+		}
+	}
 
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
 
+	return errors
+}
+
+func (v *LLMValidator) validateLLMProxyTransformer(fieldPrefix string, transformer *api.LLMProxyTransformer) []ValidationError {
+	var errors []ValidationError
+	if transformer.Type == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Transformer type is required",
+		})
+	}
+	if transformer.Version == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".version",
+			Message: "Transformer version is required",
+		})
+	}
+	return errors
+}
+
+func (v *LLMValidator) validateLLMUpstreamAuth(fieldPrefix string, auth *api.LLMUpstreamAuth) []ValidationError {
+	var errors []ValidationError
+	if auth.Type == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Auth type is required",
+		})
+	} else if auth.Type != api.LLMUpstreamAuthTypeApiKey {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Auth type must be 'api-key'",
+		})
+	}
+	if auth.Type == api.LLMUpstreamAuthTypeApiKey {
+		if auth.Header == nil || *auth.Header == "" {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".header",
+				Message: "Auth header is required when api-key auth type is set",
+			})
+		}
+		if auth.Value == nil || *auth.Value == "" {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".value",
+				Message: "Auth value is required when api-key auth type is set",
+			})
+		}
+	}
 	return errors
 }
 

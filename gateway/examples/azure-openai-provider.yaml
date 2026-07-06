@@ -1,0 +1,82 @@
+# --------------------------------------------------------------------
+# Azure OpenAI LLM Provider Configuration
+#
+# Uses the built-in 'azure-openai' template and points to your Azure
+# OpenAI endpoint. The openai-to-azure-openai policy on the proxy layer
+# translates OpenAI-format requests into the Azure OpenAI wire format
+# (path rewriting, api-version query param).
+#
+# Replace before deploying:
+#   - url:   your Azure OpenAI endpoint, e.g. https://my-resource.openai.azure.com
+#   - value: your Azure OpenAI API key
+#
+# Auth: upstream.auth is the gateway -> Azure vendor auth (header: api-key).
+# Proxies in front of this provider inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: azure-openai-provider
+spec:
+  displayName: Azure OpenAI Provider
+  version: v1.0
+  template: azure-openai
+  upstream:
+    url: https://REPLACE_WITH_AZURE_OPENAI_ENDPOINT
+    auth:
+      type: api-key
+      header: api-key
+      value: REPLACE_WITH_AZURE_OPENAI_API_KEY
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /openai/deployments/{deployment}/chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /openai/deployments/{deployment}/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /openai/deployments/{deployment}/embeddings
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /openai/models
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /openai/deployments/{deployment}/chat/completions
+        methods: [POST]
+      - path: /openai/deployments/{deployment}/completions
+        methods: [POST]
+      - path: /openai/deployments/{deployment}/embeddings
+        methods: [POST]
+      - path: /openai/models
+        methods: [GET]
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: ApiKey
+metadata:
+  name: azure-openai-provider-loopback-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: azure-openai-provider
+  displayName: Azure OpenAI provider loopback key
+  apiKey:
+    value: azure_openai_provider_loopback_key_1234567890abcdef
+  maskedApiKey: azure_openai_provider_loopback_key_1234********cdef
+  expiresIn:
+    duration: 30
+    unit: days

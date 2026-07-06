@@ -1884,6 +1884,19 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		proxyDeployment.Spec.Provider.Auth = mapModelUpstreamAuthToAPI(proxy.Configuration.UpstreamAuth)
 	}
 
+	// Carry additional providers (multi-provider proxies) into the deployment
+	// artifact so the gateway-controller can expose each as a selectable upstream.
+	if len(proxy.Configuration.AdditionalProviders) > 0 {
+		additional := make([]dto.LLMProxyDeploymentAdditionalProvider, 0, len(proxy.Configuration.AdditionalProviders))
+		for _, ap := range proxy.Configuration.AdditionalProviders {
+			additional = append(additional, dto.LLMProxyDeploymentAdditionalProvider{
+				ID: ap.ID,
+				As: ap.As,
+			})
+		}
+		proxyDeployment.Spec.AdditionalProviders = additional
+	}
+
 	// Promote any legacy policies assembled by the generator into operationPolicies.
 	for _, p := range proxyDeployment.Spec.Policies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
