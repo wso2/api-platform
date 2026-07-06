@@ -90,8 +90,9 @@ type AIWorkspaceFilePaths struct {
 	Definition string `yaml:"definition,omitempty"`
 }
 
-// AIWorkspaceConfig is one ai-workspace portal configuration in the project
-// config.
+// AIWorkspaceConfig is the ai-workspace portal configuration in the project
+// config. A project can have at most one ai-workspace configuration (unlike
+// devportals, which are a list).
 type AIWorkspaceConfig struct {
 	Name       string               `yaml:"name,omitempty"`
 	PortalRoot string               `yaml:"portalRoot,omitempty"`
@@ -105,7 +106,9 @@ type Config struct {
 	GovernanceRulesets []string               `yaml:"governanceRulesets"`
 	AutoSync           map[string]interface{} `yaml:"autoSync,omitempty"`
 	DevPortals         []PortalConfig         `yaml:"devportals,omitempty"`
-	AIWorkspaces       []AIWorkspaceConfig    `yaml:"ai-workspaces,omitempty"`
+	// AIWorkspace is a single configuration (an object, not a list): a project
+	// can have at most one ai-workspace configuration.
+	AIWorkspace *AIWorkspaceConfig `yaml:"ai-workspace,omitempty"`
 }
 
 // DefaultFilePaths returns the project-level file paths used when scaffolding a

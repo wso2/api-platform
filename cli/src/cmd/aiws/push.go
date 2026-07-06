@@ -16,13 +16,11 @@
  * under the License.
  */
 
-package llmprovider
+package aiws
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/aiworkspace"
@@ -32,25 +30,32 @@ import (
 
 const (
 	PushCmdLiteral = "push"
-	PushCmdExample = `# Push an LLM provider artifact using the active AI workspace
-ap ai-workspace llm-provider push -f build/wso2-claude.json
+	PushCmdExample = `# Generate and push the AI workspace artifact from the current project
+ap ai-workspace push
 
-# Push using a specific AI workspace
-ap ai-workspace llm-provider push -f build/wso2-claude.json --display-name my-workspace --platform eu`
+# Push a proxy or MCP artifact (--project-id is required for those kinds)
+ap ai-workspace push --project-id <project-id>
+
+# Push from a specific project directory using a specific AI workspace
+ap ai-workspace push -f /path/to/project --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (
-	pushFilePath string
-	pushName     string
-	pushPlatform string
-	pushInsecure bool
-	pushOutput   string
+	pushProjectDir string
+	pushProjectID  string
+	pushName       string
+	pushPlatform   string
+	pushInsecure   bool
+	pushOutput     string
 )
 
 var pushCmd = &cobra.Command{
-	Use:     PushCmdLiteral,
-	Short:   "Push an LLM provider artifact to the AI workspace",
-	Long:    "Push a generated LLM provider creation payload (JSON) to the WSO2 API Platform AI workspace.",
+	Use:   PushCmdLiteral,
+	Short: "Generate and push an AI workspace artifact",
+	Long: "Generate the creation payload from the project's metadata.yaml, runtime.yaml and definition.yaml, " +
+		"then create the artifact on the WSO2 API Platform AI workspace. The target endpoint is selected by the " +
+		"artifact kind declared in the project (LlmProvider, LlmProxy, Mcp). For the LlmProxy and Mcp kinds " +
+		"--project-id is required.",
 	Example: PushCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runPushCommand(); err != nil {
@@ -61,31 +66,28 @@ var pushCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(pushCmd, utils.FlagFile, &pushFilePath, "", "Path to the LLM provider payload JSON file (required)")
+	utils.AddStringFlag(pushCmd, utils.FlagFile, &pushProjectDir, "", "Path to the project directory (defaults to current directory)")
+	utils.AddStringFlag(pushCmd, utils.FlagProjectID, &pushProjectID, "", "Project ID (required for LlmProxy and Mcp kinds)")
 	utils.AddStringFlag(pushCmd, utils.FlagName, &pushName, "", "AI workspace display name")
 	utils.AddStringFlag(pushCmd, utils.FlagPlatform, &pushPlatform, "", "Platform name")
 	utils.AddStringFlag(pushCmd, utils.FlagOutput, &pushOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
 	pushCmd.Flags().BoolVar(&pushInsecure, "insecure", false, "Skip TLS certificate verification")
-	_ = pushCmd.MarkFlagRequired(utils.FlagFile)
 }
 
 func runPushCommand() error {
-	payload, err := aiworkspace.ReadJSONFile(pushFilePath)
+	projectRoot, wsConfig, err := resolveProjectAIWorkspace(pushProjectDir)
 	if err != nil {
 		return err
 	}
 
-	var meta struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
+	artifact, err := loadAIWorkspaceArtifact(projectRoot, wsConfig)
+	if err != nil {
+		return fmt.Errorf("AI workspace validation failed for %q: %w", wsConfig.Name, err)
 	}
-	if err := json.Unmarshal(payload, &meta); err != nil {
-		return fmt.Errorf("failed to parse payload: %w", err)
-	}
-	providerID := strings.TrimSpace(meta.ID)
-	if providerID == "" {
-		providerName := strings.TrimSpace(meta.Name)
-		providerID = aiworkspace.ResourceID(providerName, "llm-provider")
+
+	body, projectID, err := marshalAIWorkspacePayload(artifact, pushProjectID)
+	if err != nil {
+		return err
 	}
 
 	cfg, err := config.LoadConfig()
@@ -99,10 +101,10 @@ func runPushCommand() error {
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, pushInsecure)
-	resp, err := client.PostJSON(aiworkspace.ProviderPath(), payload)
+	resp, err := client.PostJSON(aiWorkspaceCreatePath(artifact.BaseKind), body)
 	if err != nil {
-		return aiworkspace.WrapRequestError("push llm provider", err, pushInsecure)
+		return aiworkspace.WrapRequestError(fmt.Sprintf("push %s", artifact.BaseKind), err, pushInsecure)
 	}
 
-	return aiworkspace.PrintApplyResult(resp, pushOutput, "LlmProvider", "applied", providerID, "")
+	return aiworkspace.PrintApplyResult(resp, pushOutput, artifact.BaseKind, "applied", artifact.ResourceName, projectID)
 }

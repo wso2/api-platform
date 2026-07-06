@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/internal/aiworkspace"
 	"github.com/wso2/api-platform/cli/internal/project"
 	"github.com/wso2/api-platform/cli/utils"
 	"gopkg.in/yaml.v3"
@@ -34,32 +35,24 @@ import (
 
 const (
 	BuildCmdLiteral = "build"
-	BuildCmdExample = `# Build the AI workspace artifact in the current directory
+	BuildCmdExample = `# Validate the AI workspace artifact in the current directory
 ap ai-workspace build
 
-# Build from a specific project directory
-ap ai-workspace build -f /path/to/project
-
-# Write the generated payload to a specific directory
-ap ai-workspace build -o build/
-
-# Write the generated payload to a specific file
-ap ai-workspace build -o build/openai.json`
+# Validate from a specific project directory
+ap ai-workspace build -f /path/to/project`
 )
 
-var (
-	buildProjectDir string
-	buildOutputDir  string
-)
+var buildProjectDir string
 
 var buildCmd = &cobra.Command{
 	Use:   BuildCmdLiteral,
-	Short: "Build the project for AI workspace",
-	Long: "Build the AI workspace artifact for the project located in the specified directory " +
-		"(or current directory if not specified). For each ai-workspace configuration in " +
-		".api-platform/config.yaml, the command reads its metadata.yaml, runtime.yaml and " +
-		"definition.yaml and generates a creation payload as a JSON file. The OpenAPI spec from " +
-		"definition.yaml is folded into the payload's openapi field.",
+	Short: "Validate the project's AI workspace artifact",
+	Long: "Validate the AI workspace artifact for the project located in the specified directory " +
+		"(or the current directory if not specified). The command reads the ai-workspace " +
+		"configuration in .api-platform/config.yaml and checks that its metadata.yaml, runtime.yaml " +
+		"and definition.yaml are present, that the metadata and runtime kinds align, and that the " +
+		"resource name matches. It does not generate or send any artifact — use `ap ai-workspace push` " +
+		"to generate the creation payload and create the artifact.",
 	Example: BuildCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runBuildCommand(); err != nil {
@@ -71,104 +64,20 @@ var buildCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(buildCmd, utils.FlagFile, &buildProjectDir, "", "Path to the project directory (defaults to current directory)")
-	utils.AddStringFlag(buildCmd, utils.FlagOutput, &buildOutputDir, "", "Output path: a .json file to write the payload to, or a directory (defaults to the project build directory)")
-}
-
-// failedWorkspace records an ai-workspace config that could not be built so the
-// others can still be generated and the failures reported together.
-type failedWorkspace struct {
-	name string
-	err  error
 }
 
 func runBuildCommand() error {
-	if buildProjectDir == "" {
-		buildProjectDir = "."
-	}
-
-	projectRoot, err := filepath.Abs(buildProjectDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve project directory: %w", err)
-	}
-
-	projectConfigDir := filepath.Join(projectRoot, ".api-platform")
-	if _, err := os.Stat(projectConfigDir); os.IsNotExist(err) {
-		return fmt.Errorf("unable to find project directory, please execute this command inside a project")
-	} else if err != nil {
-		return fmt.Errorf("failed to inspect project directory: %w", err)
-	}
-
-	projectConfigPath := filepath.Join(projectConfigDir, "config.yaml")
-	if _, err := os.Stat(projectConfigPath); os.IsNotExist(err) {
-		return fmt.Errorf("unable to find project directory, please execute this command inside a project")
-	} else if err != nil {
-		return fmt.Errorf("failed to inspect project config: %w", err)
-	}
-
-	projectConfig, err := project.Load(projectConfigPath)
+	projectRoot, wsConfig, err := resolveProjectAIWorkspace(buildProjectDir)
 	if err != nil {
 		return err
 	}
 
-	// Create a default ai-workspace config if none exists and persist it so the
-	// project records the configuration that was built.
-	if len(projectConfig.AIWorkspaces) == 0 {
-		projectConfig.AIWorkspaces = append(projectConfig.AIWorkspaces, project.AIWorkspaceConfig{
-			Name:       "default",
-			PortalRoot: ".",
-		})
-		if err := project.Save(projectConfigPath, projectConfig); err != nil {
-			return err
-		}
+	artifact, err := loadAIWorkspaceArtifact(projectRoot, wsConfig)
+	if err != nil {
+		return fmt.Errorf("AI workspace validation failed for %q: %w", wsConfig.Name, err)
 	}
 
-	for i := range projectConfig.AIWorkspaces {
-		normalizeAIWorkspaceProjectConfig(&projectConfig.AIWorkspaces[i])
-	}
-
-	// Resolve -o into either an explicit output file (when it ends in .json) or
-	// an output directory. With no -o, payloads land in the project build dir.
-	outputDir := filepath.Join(projectRoot, "build")
-	outputFile := ""
-	if trimmed := strings.TrimSpace(buildOutputDir); trimmed != "" {
-		resolved, err := filepath.Abs(trimmed)
-		if err != nil {
-			return fmt.Errorf("failed to resolve output path: %w", err)
-		}
-		if strings.EqualFold(filepath.Ext(resolved), ".json") {
-			outputFile = resolved
-			outputDir = filepath.Dir(resolved)
-		} else {
-			outputDir = resolved
-		}
-	}
-
-	// An explicit output file can only hold a single payload.
-	if outputFile != "" && len(projectConfig.AIWorkspaces) > 1 {
-		return fmt.Errorf("output path %q is a file, but %d ai-workspace configurations are defined; use a directory instead",
-			buildOutputDir, len(projectConfig.AIWorkspaces))
-	}
-
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	outputs, failures := generateAIWorkspaceBuildArtifacts(projectRoot, outputDir, outputFile, projectConfig.AIWorkspaces)
-
-	for _, output := range outputs {
-		fmt.Printf("AI workspace payload generated at %s\n", output)
-	}
-
-	if len(failures) > 0 {
-		messages := make([]string, 0, len(failures))
-		for _, failure := range failures {
-			fmt.Fprintf(os.Stderr, "AI workspace build failed for %q: %v\n", failure.name, failure.err)
-			messages = append(messages, failure.err.Error())
-		}
-		return fmt.Errorf("failed to build %d of %d ai-workspace configuration(s): %s",
-			len(failures), len(projectConfig.AIWorkspaces), strings.Join(messages, "; "))
-	}
-
+	fmt.Printf("AI workspace artifact %q (kind: %s) validated successfully\n", artifact.ResourceName, artifact.BaseKind)
 	return nil
 }
 
@@ -190,35 +99,83 @@ func normalizeAIWorkspaceProjectConfig(config *project.AIWorkspaceConfig) {
 	}
 }
 
-func generateAIWorkspaceBuildArtifacts(projectRoot, outputDir, outputFile string, configs []project.AIWorkspaceConfig) ([]string, []failedWorkspace) {
-	outputs := make([]string, 0, len(configs))
-	failures := make([]failedWorkspace, 0)
-	seen := make(map[string]string, len(configs)) // payload filename -> config name
-
-	for i := range configs {
-		outputPath, err := buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile, seen, &configs[i])
-		if err != nil {
-			failures = append(failures, failedWorkspace{name: configs[i].Name, err: err})
-			continue
-		}
-		outputs = append(outputs, outputPath)
-	}
-
-	return outputs, failures
+// aiWorkspaceArtifact holds the validated inputs for the project's ai-workspace
+// artifact, loaded from metadata.yaml, runtime.yaml and definition.yaml. It is
+// produced by loadAIWorkspaceArtifact (which validates but does not generate a
+// payload) and consumed by buildPayload (which generates the creation payload).
+// The split lets `build` validate only, while `push`/`edit` validate then
+// generate and send.
+type aiWorkspaceArtifact struct {
+	ConfigName   string
+	BaseKind     string // LlmProvider / LlmProxy / Mcp ("Metadata" suffix stripped)
+	ResourceName string // metadata.name; becomes the payload id
+	metadata     aiWorkspaceMetadata
+	runtime      aiWorkspaceRuntime
+	openapi      string        // definition.yaml content (folded into provider/proxy payloads)
+	mcpDef       mcpDefinition // parsed definition, populated for the Mcp kind
 }
 
-// buildSingleAIWorkspacePayload reads the metadata.yaml and runtime.yaml for one
-// ai-workspace config, derives the creation payload, folds in the OpenAPI spec
-// from definition.yaml, and writes it as JSON. When outputFile is set it is
-// written there; otherwise it lands at outputDir/<proxy-name>.json. Any existing
-// file is overwritten. Returning an error drops only this config.
-func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, seen map[string]string, config *project.AIWorkspaceConfig) (string, error) {
+// resolveProjectAIWorkspace resolves the project root from projectDir, loads the
+// project config, ensures a single ai-workspace configuration exists (creating a
+// default and persisting it when absent), normalizes it, and returns the project
+// root and the ai-workspace config entry. Shared by build, push and edit.
+func resolveProjectAIWorkspace(projectDir string) (string, *project.AIWorkspaceConfig, error) {
+	if strings.TrimSpace(projectDir) == "" {
+		projectDir = "."
+	}
+	projectRoot, err := filepath.Abs(projectDir)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to resolve project directory: %w", err)
+	}
+
+	projectConfigDir := filepath.Join(projectRoot, ".api-platform")
+	if _, err := os.Stat(projectConfigDir); os.IsNotExist(err) {
+		return "", nil, fmt.Errorf("unable to find project directory, please execute this command inside a project")
+	} else if err != nil {
+		return "", nil, fmt.Errorf("failed to inspect project directory: %w", err)
+	}
+
+	projectConfigPath := filepath.Join(projectConfigDir, "config.yaml")
+	if _, err := os.Stat(projectConfigPath); os.IsNotExist(err) {
+		return "", nil, fmt.Errorf("unable to find project directory, please execute this command inside a project")
+	} else if err != nil {
+		return "", nil, fmt.Errorf("failed to inspect project config: %w", err)
+	}
+
+	projectConfig, err := project.Load(projectConfigPath)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// A project has at most one ai-workspace config. Create a default one if it
+	// is absent and persist it so the project records the configuration used.
+	if projectConfig.AIWorkspace == nil {
+		projectConfig.AIWorkspace = &project.AIWorkspaceConfig{
+			Name:       "default",
+			PortalRoot: ".",
+		}
+		if err := project.Save(projectConfigPath, projectConfig); err != nil {
+			return "", nil, err
+		}
+	}
+
+	normalizeAIWorkspaceProjectConfig(projectConfig.AIWorkspace)
+	return projectRoot, projectConfig.AIWorkspace, nil
+}
+
+// loadAIWorkspaceArtifact reads and validates the ai-workspace artifact for the
+// given config: it checks that metadata.yaml, runtime.yaml and definition.yaml
+// are present and within the project, that the metadata/runtime kinds align
+// (after stripping the metadata "Metadata" suffix), that metadata.name is set
+// and matches between the two files, and (for the Mcp kind) that the definition
+// parses. It does NOT generate the creation payload — call buildPayload for that.
+func loadAIWorkspaceArtifact(projectRoot string, config *project.AIWorkspaceConfig) (*aiWorkspaceArtifact, error) {
 	baseDir := resolveProjectPath(projectRoot, config.PortalRoot)
 	if err := ensureWithinProjectRoot(projectRoot, baseDir, config.Name, "portalRoot"); err != nil {
-		return "", err
+		return nil, err
 	}
 	if err := ensurePathExists(baseDir, true, config.Name, "portalRoot"); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	metadataPath := resolveProjectPath(baseDir, config.FilePaths.Metadata)
@@ -233,20 +190,20 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, se
 		{label: "runtime", path: runtimePath},
 	} {
 		if err := ensureWithinProjectRoot(projectRoot, required.path, config.Name, required.label); err != nil {
-			return "", err
+			return nil, err
 		}
 		if err := ensurePathExists(required.path, false, config.Name, required.label); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
 	var metadata aiWorkspaceMetadata
 	if err := readYAMLFile(metadataPath, &metadata); err != nil {
-		return "", fmt.Errorf("ai-workspace config %q: failed to read metadata: %w", config.Name, err)
+		return nil, fmt.Errorf("ai-workspace config %q: failed to read metadata: %w", config.Name, err)
 	}
 	var runtime aiWorkspaceRuntime
 	if err := readYAMLFile(runtimePath, &runtime); err != nil {
-		return "", fmt.Errorf("ai-workspace config %q: failed to read runtime: %w", config.Name, err)
+		return nil, fmt.Errorf("ai-workspace config %q: failed to read runtime: %w", config.Name, err)
 	}
 
 	// The kind declared in metadata.yaml carries a "Metadata" suffix
@@ -257,72 +214,131 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, se
 	metadataKind := strings.TrimSuffix(rawMetadataKind, metadataKindSuffix)
 	runtimeKind := strings.TrimSuffix(rawRuntimeKind, metadataKindSuffix)
 	if metadataKind != runtimeKind {
-		return "", fmt.Errorf("ai-workspace config %q: kind mismatch: metadata.yaml has kind %q but runtime.yaml has kind %q", config.Name, rawMetadataKind, rawRuntimeKind)
+		return nil, fmt.Errorf("ai-workspace config %q: kind mismatch: metadata.yaml has kind %q but runtime.yaml has kind %q", config.Name, rawMetadataKind, rawRuntimeKind)
 	}
 
 	resourceName := strings.TrimSpace(metadata.Metadata.Name)
 	if resourceName == "" {
-		return "", fmt.Errorf("ai-workspace config %q is invalid: metadata.metadata.name is required", config.Name)
+		return nil, fmt.Errorf("ai-workspace config %q is invalid: metadata.metadata.name is required", config.Name)
 	}
-
-	// metadata.name must match between metadata.yaml and runtime.yaml.
 	if runtimeName := strings.TrimSpace(runtime.Metadata.Name); runtimeName != resourceName {
-		return "", fmt.Errorf("ai-workspace config %q: name mismatch: metadata.yaml has metadata.name %q but runtime.yaml has metadata.name %q", config.Name, resourceName, runtimeName)
+		return nil, fmt.Errorf("ai-workspace config %q: name mismatch: metadata.yaml has metadata.name %q but runtime.yaml has metadata.name %q", config.Name, resourceName, runtimeName)
 	}
 
-	// The payload shape is driven by the declared kind. All kinds fold in the
-	// OpenAPI spec from definition.yaml, which is required.
-	var payload interface{}
+	artifact := &aiWorkspaceArtifact{
+		ConfigName:   config.Name,
+		BaseKind:     metadataKind,
+		ResourceName: resourceName,
+		metadata:     metadata,
+		runtime:      runtime,
+	}
+
+	// The OpenAPI spec (definition.yaml) is required for every kind.
+	spec, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, true)
+	if err != nil {
+		return nil, err
+	}
+	artifact.openapi = spec
+
 	switch metadataKind {
-	case kindLLMProxy:
-		openapi, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, true)
-		if err != nil {
-			return "", err
-		}
-		payload = buildLLMProxyPayload(resourceName, metadata, runtime, openapi)
-	case kindLLMProvider:
-		openapi, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, true)
-		if err != nil {
-			return "", err
-		}
-		payload = buildLLMProviderPayload(resourceName, metadata, runtime, openapi)
+	case kindLLMProxy, kindLLMProvider:
+		// Folded into the payload verbatim; no further parsing at build/validate.
 	case kindMCP:
-		// An MCP proxy always needs the definition (its capabilities live there).
-		spec, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, true)
-		if err != nil {
-			return "", err
-		}
+		// An MCP proxy's capabilities live in the definition, so it must parse.
 		var definition mcpDefinition
 		if err := yaml.Unmarshal([]byte(spec), &definition); err != nil {
-			return "", fmt.Errorf("ai-workspace config %q: failed to parse definition: %w", config.Name, err)
+			return nil, fmt.Errorf("ai-workspace config %q: failed to parse definition: %w", config.Name, err)
 		}
-		payload = buildMCPProxyPayload(resourceName, metadata, runtime, definition)
+		artifact.mcpDef = definition
 	default:
-		return "", fmt.Errorf("ai-workspace config %q: unsupported kind %q (supported: %s, %s, %s)", config.Name, metadataKind, kindLLMProxy, kindLLMProvider, kindMCP)
+		return nil, fmt.Errorf("ai-workspace config %q: unsupported kind %q (supported: %s, %s, %s)", config.Name, metadataKind, kindLLMProxy, kindLLMProvider, kindMCP)
 	}
 
-	// An explicit -o file path wins; otherwise the artifact is named after the
-	// ai-workspace config name (not metadata.name) under the output directory,
-	// guarding against collisions.
-	outputPath := outputFile
-	if outputPath == "" {
-		fileName := payloadFileName(config.Name)
-		if existing, ok := seen[fileName]; ok {
-			return "", fmt.Errorf("payload file %q is already produced by config %q; rename one of the ai-workspace configurations to avoid overwriting the artifact", fileName, existing)
-		}
-		seen[fileName] = config.Name
-		outputPath = filepath.Join(outputDir, fileName)
+	return artifact, nil
+}
+
+// buildPayload generates the creation payload for the validated artifact. The
+// payload shape is driven by the artifact kind. Returns nil for an unsupported
+// kind (loadAIWorkspaceArtifact already rejects those, so callers can treat nil
+// as a programming error).
+func (a *aiWorkspaceArtifact) buildPayload() interface{} {
+	switch a.BaseKind {
+	case kindLLMProxy:
+		return buildLLMProxyPayload(a.ResourceName, a.metadata, a.runtime, a.openapi)
+	case kindLLMProvider:
+		return buildLLMProviderPayload(a.ResourceName, a.metadata, a.runtime, a.openapi)
+	case kindMCP:
+		return buildMCPProxyPayload(a.ResourceName, a.metadata, a.runtime, a.mcpDef)
+	default:
+		return nil
+	}
+}
+
+// marshalAIWorkspacePayload generates the creation payload from the validated
+// artifact and returns it as JSON. LlmProxy and Mcp artifacts are project-scoped
+// and require a projectId (from --project-id) injected into the body; providers
+// are not project-scoped. Returns the JSON body and the projectId used (empty
+// for providers).
+func marshalAIWorkspacePayload(artifact *aiWorkspaceArtifact, projectIDFlag string) ([]byte, string, error) {
+	payload := artifact.buildPayload()
+	if payload == nil {
+		return nil, "", fmt.Errorf("unsupported kind %q", artifact.BaseKind)
 	}
 
-	data, err := json.MarshalIndent(payload, "", "  ")
+	raw, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("ai-workspace config %q: failed to marshal payload: %w", config.Name, err)
-	}
-	if err := os.WriteFile(outputPath, append(data, '\n'), 0644); err != nil {
-		return "", fmt.Errorf("ai-workspace config %q: failed to write payload: %w", config.Name, err)
+		return nil, "", fmt.Errorf("failed to encode payload: %w", err)
 	}
 
-	return outputPath, nil
+	// Providers are not project-scoped; send the payload as generated.
+	if artifact.BaseKind == kindLLMProvider {
+		return raw, "", nil
+	}
+
+	// Proxies and MCP proxies require a projectId. Inject it without dropping any
+	// generated fields.
+	projectID := strings.TrimSpace(projectIDFlag)
+	if projectID == "" {
+		return nil, "", fmt.Errorf("project ID is required for %s artifacts (use --project-id)", artifact.BaseKind)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, "", fmt.Errorf("failed to encode payload: %w", err)
+	}
+	m["projectId"] = projectID
+	body, err := json.Marshal(m)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to encode payload: %w", err)
+	}
+	return body, projectID, nil
+}
+
+// aiWorkspaceCreatePath returns the collection endpoint to POST to for the kind.
+func aiWorkspaceCreatePath(baseKind string) string {
+	switch baseKind {
+	case kindLLMProvider:
+		return aiworkspace.ProviderPath()
+	case kindLLMProxy:
+		return aiworkspace.ProxyPath()
+	case kindMCP:
+		return aiworkspace.MCPProxyPath()
+	default:
+		return ""
+	}
+}
+
+// aiWorkspaceUpdatePath returns the by-id endpoint to PUT to for the kind.
+func aiWorkspaceUpdatePath(baseKind, id string) string {
+	switch baseKind {
+	case kindLLMProvider:
+		return aiworkspace.ProviderByIDPath(id)
+	case kindLLMProxy:
+		return aiworkspace.ProxyByIDPath(id)
+	case kindMCP:
+		return aiworkspace.MCPProxyByIDPath(id)
+	default:
+		return ""
+	}
 }
 
 // Supported artifact kinds. These match the `kind` declared in metadata.yaml
@@ -888,17 +904,6 @@ func buildSecurityFromGlobalPolicies(policies []runtimeProviderPolicy) *security
 		return &securityConfig{Enabled: true, APIKey: apiKey}
 	}
 	return nil
-}
-
-func payloadFileName(name string) string {
-	sanitized := strings.TrimSpace(name)
-	sanitized = strings.ReplaceAll(sanitized, string(os.PathSeparator), "-")
-	sanitized = strings.ReplaceAll(sanitized, "/", "-")
-	sanitized = strings.ReplaceAll(sanitized, "\\", "-")
-	if sanitized == "" {
-		sanitized = "ai-workspace"
-	}
-	return sanitized + ".json"
 }
 
 func readYAMLFile(path string, out interface{}) error {

@@ -24,7 +24,7 @@ flowchart LR
 
     subgraph AW["AI Workspace"]
         direction LR
-        I["<b>3b · Build</b><br/>ap ai-workspace build"] --> J["<b>4b · Push</b><br/>ap ai-workspace app-llm-proxy push"]
+        I["<b>3b · Validate</b><br/>ap ai-workspace build"] --> J["<b>4b · Push</b><br/>ap ai-workspace push"]
     end
 
     E -->|REST API| F
@@ -89,18 +89,19 @@ ap devportal rest-api publish -f build/devportal.zip --org <org-id>
 #### AI Workspace
 
 ```shell
-ap ai-workspace build                                                      # → build/<workspace>.json
-ap ai-workspace app-llm-proxy push -f build/<workspace>.json --project-id <project-id>
-# the same pattern applies to:  ap ai-workspace llm-provider push  /  ap ai-workspace mcp-proxy push
-# (the organization comes from the auth token — no --org flag)
+ap ai-workspace build                                    # validate the project's artifact
+ap ai-workspace push --project-id <project-id>           # generate the payload and create the artifact
+# (--project-id is required for LlmProxy/Mcp kinds, not for LlmProvider)
+# to update an existing artifact instead of creating:  ap ai-workspace edit --project-id <project-id>
+# the endpoint is chosen by the artifact kind; the organization comes from the auth token — no --org flag
 ```
 
-`ap ai-workspace build` reads each ai-workspace entry in `.api-platform/config.yaml` and generates a creation payload (JSON), folding the OpenAPI spec from `definition.yaml` into the payload.
+`ap ai-workspace build` reads the ai-workspace entry in `.api-platform/config.yaml` and **validates** the artifact (files present, metadata/runtime kinds align, name matches). `ap ai-workspace push`/`edit` run the same validation, then generate the creation payload (folding the OpenAPI spec from `definition.yaml` into it) and create/update the artifact on the server.
 
 ## Notes
 
-- `ap devportal gen`, `ap devportal build`, and `ap ai-workspace build` all operate on an API project (they require `.api-platform/config.yaml`).
-- Developer Portal is two stages: `gen` **generates** the editable artifact source under `./devportal`, then `build` **packages** it into `build/devportal.zip`. AI Workspace's `build` generates the JSON payload directly (no separate `gen`).
-- Both `build` commands write into the project's `build/` directory, one artifact per configured portal entry.
+- `ap devportal gen`, `ap devportal build`, and `ap ai-workspace build`/`push`/`edit` all operate on an API project (they require `.api-platform/config.yaml`).
+- Developer Portal is two stages: `gen` **generates** the editable artifact source under `./devportal`, then `build` **packages** it into `build/devportal.zip`.
+- AI Workspace's `build` only **validates** — it writes nothing. The creation payload is generated in-memory by `push`/`edit` at publish time (no build artifact is written to `build/`).
 - `--org` on the publish/push commands is the target organization in the Developer Portal / AI Workspace.
 - Add `--insecure` to any portal/gateway command when talking to a local or self-signed HTTPS endpoint.

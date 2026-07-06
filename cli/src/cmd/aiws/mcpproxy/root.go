@@ -24,8 +24,12 @@ import (
 
 const (
 	MCPProxyCmdLiteral = "mcp-proxy"
-	MCPProxyCmdExample = `# Push an MCP proxy artifact to the AI workspace
-ap ai-workspace mcp-proxy push -f build/bijira-mcp-everything.json --project-id <project-id>`
+	MCPProxyCmdExample = `# List MCP proxies in a project on the AI workspace
+ap ai-workspace mcp-proxy list --project-id <project-id>
+
+# Create or update an MCP proxy from a project with:
+#   ap ai-workspace push --project-id <project-id>
+#   ap ai-workspace edit --project-id <project-id>`
 )
 
 // MCPProxyCmd is the parent command for MCP proxy operations.
@@ -40,8 +44,6 @@ var MCPProxyCmd = &cobra.Command{
 }
 
 func init() {
-	MCPProxyCmd.AddCommand(pushCmd)
-	MCPProxyCmd.AddCommand(editCmd)
 	MCPProxyCmd.AddCommand(listCmd)
 	MCPProxyCmd.AddCommand(getCmd)
 	MCPProxyCmd.AddCommand(deleteCmd)

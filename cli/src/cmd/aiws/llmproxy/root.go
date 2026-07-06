@@ -24,8 +24,12 @@ import (
 
 const (
 	LLMProxyCmdLiteral = "app-llm-proxy"
-	LLMProxyCmdExample = `# Push an LLM proxy artifact to the AI workspace
-ap ai-workspace app-llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id>`
+	LLMProxyCmdExample = `# List LLM proxies in a project on the AI workspace
+ap ai-workspace app-llm-proxy list --project-id <project-id>
+
+# Create or update a proxy from a project with:
+#   ap ai-workspace push --project-id <project-id>
+#   ap ai-workspace edit --project-id <project-id>`
 )
 
 // LLMProxyCmd is the parent command for LLM proxy operations.
@@ -40,8 +44,6 @@ var LLMProxyCmd = &cobra.Command{
 }
 
 func init() {
-	LLMProxyCmd.AddCommand(pushCmd)
-	LLMProxyCmd.AddCommand(editCmd)
 	LLMProxyCmd.AddCommand(listCmd)
 	LLMProxyCmd.AddCommand(getCmd)
 	LLMProxyCmd.AddCommand(deleteCmd)

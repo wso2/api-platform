@@ -100,14 +100,14 @@ type runtimeOperation struct {
 // ai-workspace and devportal publishing targets. Uncomment and adjust to add a
 // portal; the keys match the structs the build commands parse.
 const portalConfigTemplate = `
-# AI-Workspace portal configurations
-# ai-workspaces:
-#   - name: dev
-#     portalRoot: ./ai-workspace
-#     filePaths:                  # paths relative to portal root
-#       metadata: ./artifact.yaml
-#       runtime: ./runtime.yaml
-#       definition: ./definition.yaml   # OpenAPI spec folded into the payload
+# AI-Workspace portal configuration (a single object; a project has at most one)
+# ai-workspace:
+#   name: dev
+#   portalRoot: ./ai-workspace
+#   filePaths:                  # paths relative to portal root
+#     metadata: ./artifact.yaml
+#     runtime: ./runtime.yaml
+#     definition: ./definition.yaml   # OpenAPI spec folded into the payload
 
 # Dev portal configurations
 # devportals:

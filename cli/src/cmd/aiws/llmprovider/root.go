@@ -24,8 +24,11 @@ import (
 
 const (
 	LLMProviderCmdLiteral = "llm-provider"
-	LLMProviderCmdExample = `# Push an LLM provider artifact to the AI workspace
-ap ai-workspace llm-provider push -f build/wso2-claude.json`
+	LLMProviderCmdExample = `# List LLM providers on the AI workspace
+ap ai-workspace llm-provider list
+
+# Create or update a provider from a project with:
+#   ap ai-workspace push   /   ap ai-workspace edit`
 )
 
 // LLMProviderCmd is the parent command for LLM provider operations.
@@ -40,8 +43,6 @@ var LLMProviderCmd = &cobra.Command{
 }
 
 func init() {
-	LLMProviderCmd.AddCommand(pushCmd)
-	LLMProviderCmd.AddCommand(editCmd)
 	LLMProviderCmd.AddCommand(listCmd)
 	LLMProviderCmd.AddCommand(getCmd)
 	LLMProviderCmd.AddCommand(deleteCmd)

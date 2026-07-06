@@ -6,7 +6,7 @@ Available command group:
 
 - `ap ai-workspace`
 
-The `add`, `list`, `remove`, `use`, and `current` commands manage AI-Workspace **server connections** stored in the CLI config file (the same per-platform config used by `ap gateway` and `ap devportal`). The `build` command is different: it works inside an **API project** and generates an LLM proxy creation payload from the project's artifacts.
+The `add`, `list`, `remove`, `use`, and `current` commands manage AI-Workspace **server connections** stored in the CLI config file (the same per-platform config used by `ap gateway` and `ap devportal`). The `build`, `push`, and `edit` commands are different: they work inside an **API project**. `build` **validates** the project's artifact; `push`/`edit` **generate** the creation payload from the project's artifacts and create/update the artifact on the server (the endpoint is chosen by the artifact kind).
 
 ## Prerequisites
 
@@ -132,62 +132,58 @@ ap ai-workspace current
 
 ## `ap ai-workspace build`
 
-Generates an **LLM proxy**, **LLM provider**, or **MCP proxy** creation payload (JSON) from an API project's artifacts. The payload shape is selected by the `kind` declared in `metadata.yaml`/`runtime.yaml`. In `metadata.yaml` the kind carries a `Metadata` suffix (the ai-workspace metadata kind); `runtime.yaml` uses the bare kind:
+**Validates** the project's AI workspace artifact. Validation confirms that the configured files are present, that the metadata and runtime **kinds align**, and that the resource **name matches** between them.
 
-- `kind: LlmProxyMetadata` (metadata.yaml) / `LlmProxy` (runtime.yaml) → matches the `POST /llm-proxies` request body (`LLMProxy` schema).
-- `kind: LlmProviderMetadata` (metadata.yaml) / `LlmProvider` (runtime.yaml) → matches the `POST /llm-providers` request body (`LLMProvider` schema).
-- `kind: McpMetadata` (metadata.yaml) / `Mcp` (runtime.yaml) → MCP proxy creation payload (capabilities + policies).
+The kind is declared in `metadata.yaml`/`runtime.yaml`. In `metadata.yaml` the kind carries a `Metadata` suffix (the ai-workspace metadata kind); `runtime.yaml` uses the bare kind:
+
+- `kind: LlmProxyMetadata` (metadata.yaml) / `LlmProxy` (runtime.yaml)
+- `kind: LlmProviderMetadata` (metadata.yaml) / `LlmProvider` (runtime.yaml)
+- `kind: McpMetadata` (metadata.yaml) / `Mcp` (runtime.yaml)
 
 Any other kind is rejected. The `Metadata` suffix is stripped before the metadata and runtime kinds are matched, so the two files still refer to the same artifact (e.g. `LlmProxyMetadata` in metadata.yaml matches `LlmProxy` in runtime.yaml).
 
 ```shell
-ap ai-workspace build [-f <project-directory>] [-o <file.json | directory>]
+ap ai-workspace build [-f <project-directory>]
 ```
 
 Examples:
 
 ```shell
-# Build using the current directory as the project root
+# Validate using the current directory as the project root
 ap ai-workspace build
 
-# Build from a specific project directory
+# Validate a specific project directory
 ap ai-workspace build -f /path/to/project
-
-# Write the payload to a specific directory
-ap ai-workspace build -o build/
-
-# Write the payload to a specific file
-ap ai-workspace build -o build/openai.json
 ```
 
 ### What it reads
 
-The command expects an API project containing `.api-platform/config.yaml`, and reads the `ai-workspaces` section of that file:
+The command expects an API project containing `.api-platform/config.yaml`, and reads the `ai-workspace` section of that file. Unlike `devportals` (a list), a project has **at most one** `ai-workspace` configuration, as one project can have only one AI-Workspace:
 
 ```yaml
-ai-workspaces:
-  - name: dev
-    portalRoot: .
-    filePaths:                  # paths relative to portalRoot
-      metadata: ./metadata.yaml
-      runtime: ./runtime.yaml
-      definition: ./definition.yaml   # OpenAPI spec, required for all kinds
+ai-workspace:
+  name: dev
+  portalRoot: .
+  filePaths:                  # paths relative to portalRoot
+    metadata: ./metadata.yaml
+    runtime: ./runtime.yaml
+    definition: ./definition.yaml   # OpenAPI spec, required for all kinds
 ```
 
-For each configured entry, the build:
+Validation (the same checks `push` and `edit` run before sending):
 
-- Resolves `metadata`, `runtime`, and `definition` relative to that entry's `portalRoot` (defaults: `./metadata.yaml`, `./runtime.yaml`, `./definition.yaml`; `portalRoot` defaults to `.`, the project root).
+- Resolves `metadata`, `runtime`, and `definition` relative to the entry's `portalRoot` (defaults: `./metadata.yaml`, `./runtime.yaml`, `./definition.yaml`; `portalRoot` defaults to `.`, the project root).
 - Requires `metadata.yaml` and `runtime.yaml` to exist.
-- Requires the `kind` declared in `metadata.yaml` and `runtime.yaml` to match once the metadata's `Metadata` suffix is stripped (e.g. `LlmProxyMetadata` vs `LlmProxy`); otherwise the build fails with a kind-mismatch error.
-- Requires `metadata.name` to match between `metadata.yaml` and `runtime.yaml`; otherwise the build fails with a name-mismatch error.
+- Requires the `kind` declared in `metadata.yaml` and `runtime.yaml` to match once the metadata's `Metadata` suffix is stripped (e.g. `LlmProxyMetadata` vs `LlmProxy`); otherwise validation fails with a kind-mismatch error.
+- Requires `metadata.name` to match between `metadata.yaml` and `runtime.yaml`; otherwise validation fails with a name-mismatch error.
 - Requires `definition.yaml` (the OpenAPI spec) for every kind — see [The OpenAPI spec](#the-openapi-spec) below.
-- If no `ai-workspaces` section exists, a single `default` entry (`portalRoot: .`) is created in the project config and used.
+- If no `ai-workspace` section exists, a single `default` entry (`portalRoot: .`) is created in the project config and used.
 
-All resolved paths are constrained to the project directory; a path that escapes the project root fails the build for that entry.
+All resolved paths are constrained to the project directory; a path that escapes the project root fails validation.
 
 #### Associating gateways (`metadata.yaml`)
 
-Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in an `associatedGateways` section **under `spec`** in `metadata.yaml`. This applies to all artifact kinds (`LlmProxyMetadata`, `LlmProviderMetadata`, `McpMetadata`). Each entry is keyed by the gateway `id`. The build extracts this list from `spec.associatedGateways` and copies it into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
+Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in an `associatedGateways` section **under `spec`** in `metadata.yaml`. This applies to all artifact kinds (`LlmProxyMetadata`, `LlmProviderMetadata`, `McpMetadata`). Each entry is keyed by the gateway `id`. `push`/`edit` extract this list from `spec.associatedGateways` and copy it into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
 
 ```yaml
 # metadata.yaml
@@ -205,9 +201,44 @@ spec:
 
 `configurations` is a free-form object — the supported keys depend on the artifact type.
 
-### What it generates
+## `ap ai-workspace push` / `ap ai-workspace edit`
 
-One JSON file per configured AI-Workspace entry, written to the build output.
+These commands run the same validation as `build`, then **generate** the creation payload from the project artifacts and send it to the AI workspace. `push` **creates** the artifact (`POST`); `edit` **updates** an existing one (`PUT /{resource}/{id}`, where `id` is `metadata.name`). Both live at the root of `ap ai-workspace` (not under a per-kind group) and select the endpoint from the artifact **kind**:
+
+| Kind | `push` endpoint | `edit` endpoint |
+| --- | --- | --- |
+| `LlmProvider` | `POST /llm-providers` | `PUT /llm-providers/{id}` |
+| `LlmProxy` | `POST /llm-proxies` | `PUT /llm-proxies/{id}` |
+| `Mcp` | `POST /mcp-proxies` | `PUT /mcp-proxies/{id}` |
+
+```shell
+ap ai-workspace push [-f <project-directory>] [--project-id <id>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
+ap ai-workspace edit [-f <project-directory>] [--project-id <id>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
+```
+
+Examples:
+
+```shell
+# Create/update a provider (no project scoping)
+ap ai-workspace push
+ap ai-workspace edit
+
+# Create/update a proxy or MCP proxy (project-scoped)
+ap ai-workspace push --project-id <project-id>
+ap ai-workspace edit --project-id <project-id>
+```
+
+Notes:
+
+- `-f` is the **project directory** (defaults to the current directory), not a payload file — the payload is generated in-memory and never written to disk.
+- `--project-id` is **required** for the `LlmProxy` and `Mcp` kinds (they are project-scoped) and is injected into the payload; providers are not project-scoped and ignore it.
+- The organization is derived from the auth token, so there is **no `--org` flag**. The AI workspace connection and credentials resolve like the other commands (`--display-name`/`--platform` or the active workspace; see [Authentication](#authentication)).
+- By default a structured result is printed (like `ap gateway apply`): `Status`, `Message`, `ID`, and — when known — `Organization`, `Project`, `Created At`, `Updated At`, and `State`. `Project` shows the `--project-id` you supplied (proxies/MCP); `Organization` is derived from the auth token so it only appears when the server echoes `organizationId`. Pass `--output json` (or `-o json`) to print the full server response instead (useful for piping to `jq`).
+- `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
+
+### Generated payload
+
+The payload shape is selected by kind.
 
 #### `LlmProxy`
 
@@ -287,25 +318,11 @@ A limit whose path is `/*` is applied as a `global` limit for its scope; a limit
 
 ### The OpenAPI spec
 
-`definition.yaml` is **required for every kind** — the build errors if it is missing:
+`definition.yaml` is **required for every kind** — validation errors if it is missing:
 
 - **`LlmProvider`** — folded into `openapi`.
 - **`LlmProxy`** — folded into `openapi`.
 - **`Mcp`** — its `prompts`/`resources`/`tools` populate `capabilities`.
-
-### Output location and artifact names (`-o`)
-
-The artifact file name is taken from the **ai-workspace config `name`** in `.api-platform/config.yaml` (not from `metadata.name`).
-
-- **No `-o`** — payloads are written to the project `build/` directory as `build/<config-name>.json`.
-- **`-o <directory>`** (a path without a `.json` extension, e.g. `-o build/`) — payloads are written to that directory as `<directory>/<config-name>.json`. Missing directories are created.
-- **`-o <file.json>`** (a path ending in `.json`) — the single payload is written to exactly that file. Missing parent directories are created.
-
-Behavior notes:
-
-- An existing output file is overwritten.
-- A `.json` file target can only hold one payload, so `-o <file.json>` with **multiple** `ai-workspaces` configurations is an error — use a directory instead.
-- With a directory target and multiple configurations, one file per config is produced (`<config-name>.json`).
 
 ## Get Commands
 
@@ -405,94 +422,6 @@ ap ai-workspace mcp-proxy delete --id <proxy-id> [--display-name <name>] [--plat
 Notes:
 
 - `--id` is required for all delete commands.
-- `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
-
-## Push Commands
-
-These commands push a payload JSON (produced by `ap ai-workspace build`) to the AI workspace server resolved from the CLI config (`--display-name`/`--platform`, or the active AI workspace). The organization is derived from the auth token, so **no `--org` flag is needed**. Credentials come from the configured auth type (see [Authentication](#authentication)).
-
-### `ap ai-workspace llm-provider push`
-
-Creates an LLM provider with `POST /api/v0.9/llm-providers` (operationId `createLLMProvider`). The JSON file is sent as the request body unchanged.
-
-```shell
-ap ai-workspace llm-provider push -f <payload.json> [--display-name <name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap ai-workspace llm-provider push -f build/wso2-claude.json
-ap ai-workspace llm-provider push -f build/wso2-claude.json --display-name my-workspace --platform eu
-```
-
-### `ap ai-workspace app-llm-proxy push`
-
-Creates an LLM proxy with `POST /api/v0.9/llm-proxies` (operationId `createLLMProxy`). The supplied `--project-id` is injected into the payload as `projectId` before it is sent.
-
-```shell
-ap ai-workspace app-llm-proxy push -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap ai-workspace app-llm-proxy push -f build/wso2-openai-proxy.json --project-id 550e8400-e29b-41d4-a716-446655440000
-```
-
-### `ap ai-workspace mcp-proxy push`
-
-Creates an MCP proxy with `POST /api/v0.9/mcp-proxies` (operationId `createMCPProxy`). Like the LLM proxy, the supplied `--project-id` is injected into the payload as `projectId` before it is sent.
-
-```shell
-ap ai-workspace mcp-proxy push -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap ai-workspace mcp-proxy push -f build/bijira-mcp-everything.json --project-id 019ecf0e-8237-7153-96d5-bb3934e2c313
-```
-
-Notes:
-
-- `--file` is required for all push commands; `--project-id` is also required for LLM proxies and MCP proxies. The organization is derived from the auth token, so no `--org` flag is needed.
-- By default a structured result is printed (like `ap gateway apply`): `Status`, `Message`, `ID`, and — when known — `Organization`, `Project`, `Created At`, `Updated At`, and `State`. `Project` shows the `--project-id` you supplied (proxies/MCP); `Organization` is derived from the auth token so it only appears when the server echoes `organizationId`. Pass `--output json` (or `-o json`) to print the full server response instead (useful for piping to `jq`).
-- `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
-
-## Edit Commands
-
-These commands update an existing artifact on the AI workspace by sending its payload JSON with a `PUT` request to the id-scoped resource path (`/{resource}/{id}`). The resource `id` is taken from the payload's `id` field, the organization is derived from the auth token (**no `--org` flag**), and the AI workspace and credentials are resolved exactly like the push commands.
-
-### `ap ai-workspace llm-provider edit`
-
-Updates an existing LLM provider with `PUT /api/v0.9/llm-providers/{id}` (operationId `updateLLMProvider`). The JSON file is sent as the request body unchanged.
-
-```shell
-ap ai-workspace llm-provider edit -f <payload.json> [--display-name <name>] [--platform <platform>] [--insecure]
-```
-
-### `ap ai-workspace app-llm-proxy edit`
-
-Updates an existing LLM proxy with `PUT /api/v0.9/llm-proxies/{id}` (operationId `updateLLMProxy`). The supplied `--project-id` is injected into the payload as `projectId` before it is sent.
-
-```shell
-ap ai-workspace app-llm-proxy edit -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
-```
-
-### `ap ai-workspace mcp-proxy edit`
-
-Updates an existing MCP proxy with `PUT /api/v0.9/mcp-proxies/{id}` (operationId `updateMCPProxy`). Like the LLM proxy, the supplied `--project-id` is injected into the payload as `projectId` before it is sent.
-
-```shell
-ap ai-workspace mcp-proxy edit -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
-```
-
-Notes:
-
-- `--file` is required for all edit commands; `--project-id` is also required for LLM proxies and MCP proxies. The organization is derived from the auth token, so no `--org` flag is needed.
-- The payload must contain the `id` of the artifact to update; it identifies the resource in the request URL.
-- By default a structured result is printed (like `ap gateway apply`): `Status`, `Message`, `ID`, and — when known — `Organization`, `Project`, `Created At`, `Updated At`, and `State`. `Project` shows the `--project-id` you supplied (proxies/MCP); `Organization` is derived from the auth token so it only appears when the server echoes `organizationId`. Pass `--output json` (or `-o json`) to print the full server response instead (useful for piping to `jq`).
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
 
 ## Related Commands
