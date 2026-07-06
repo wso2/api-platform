@@ -41,14 +41,6 @@ parameters:
         When true, the analytics system policy captures ALL response headers
         into analytics metadata as response_headers, which is forwarded through
         the analytics pipeline (including the stdout/log and Moesif publishers).
-    max_payload_size:
-      type: integer
-      default: 0
-      description: >
-        Maximum number of bytes captured per request/response body when
-        send_request_body / send_response_body is enabled. 0 (default) means no
-        limit; a positive value truncates each body to that many bytes (silent,
-        byte-boundary truncation).
     allow_payloads:
       type: boolean
       default: false

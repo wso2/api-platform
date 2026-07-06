@@ -90,13 +90,9 @@ var defaultSystemPolicies = []systemPolicyConfig{
 			slog.Debug("Collector state -> ", "state", cfg.IsCollectorEnabled())
 			return cfg.IsCollectorEnabled()
 		},
-		// Default parameters (can be overridden via additionalProps)
-		Parameters: map[string]interface{}{
-			"send_request_body":     false,
-			"send_response_body":    false,
-			"send_request_headers":  false,
-			"send_response_headers": false,
-		},
+		// No static defaults — all four capture flags are set at injection time
+		// from cfg.Collector (see InjectSystemPolicies below).
+		Parameters: nil,
 		ExecutionCondition: nil,
 	},
 }

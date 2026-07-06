@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"maps"
 	"strconv"
+	"sync"
 	"time"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
@@ -59,8 +60,6 @@ const (
 	DefaultAnalyticsPublisher = "default"
 	// MoesifAnalyticsPublisher represents the Moesif analytics publisher.
 	MoesifAnalyticsPublisher = "moesif"
-	// LogAnalyticsPublisher represents the stdout/log analytics publisher.
-	LogAnalyticsPublisher = "log"
 
 	// HeaderKeys represents the header keys.
 	RequestHeadersKey  = "request_headers"
@@ -96,6 +95,10 @@ type Analytics struct {
 	cfg *config.Config
 	// publishers represents the publishers.
 	publishers []analytics_publisher.Publisher
+	// directiveCache caches parsed TrafficLogDirectives keyed by raw JSON string.
+	// The directive is static per API deployment, so this eliminates per-request
+	// allocations after the first parse.
+	directiveCache sync.Map
 }
 
 // NewAnalytics creates a new instance of Analytics. Publishers are assembled from
@@ -115,8 +118,6 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 					publishers = append(publishers, publisher)
 					slog.Info("Moesif publisher added")
 				}
-			case LogAnalyticsPublisher:
-				slog.Warn("\"log\" in analytics.enabled_publishers is no longer supported; enable stdout traffic logging via [traffic_logging] instead")
 			default:
 				slog.Warn("Unknown publisher type", "type", publisherName)
 			}
@@ -225,13 +226,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// publishers (e.g. Moesif). A malformed marker still opts the API in with
 	// default (empty) presentation, since attachment alone signals intent.
 	if raw, exists := keyValuePairsFromMetadata[TrafficLogMetadataKey]; exists {
-		dir := &dto.TrafficLogDirective{}
-		if raw != "" {
-			if err := json.Unmarshal([]byte(raw), dir); err != nil {
-				slog.Warn("Failed to parse traffic_log directive; opting in with defaults", "error", err)
-			}
-		}
-		event.TrafficLog = dir
+		event.TrafficLog = c.parseTrafficLogDirective(raw)
 	}
 	// Prepare extended API
 	extendedAPI := dto.ExtendedAPI{}
@@ -478,22 +473,22 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	//Adding request and response headers for the analytics event
 	if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
-		event.Properties["requestHeaders"] = requestHeaders
+		event.Properties[dto.PropKeyRequestHeaders] = requestHeaders
 	}
 	if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
-		event.Properties["responseHeaders"] = responseHeaders
+		event.Properties[dto.PropKeyResponseHeaders] = responseHeaders
 	}
 
 	// Optionally attach request and response payloads when enabled via the collector.
 	if c.cfg.Collector.SendRequestBody {
-		if requestPayload, ok := keyValuePairsFromMetadata["request_payload"]; ok && requestPayload != "" {
-			event.Properties["request_payload"] = requestPayload
+		if requestPayload, ok := keyValuePairsFromMetadata[dto.PropKeyRequestPayload]; ok && requestPayload != "" {
+			event.Properties[dto.PropKeyRequestPayload] = requestPayload
 			slog.Debug("Analytics request payload captured", "size_bytes", len(requestPayload))
 		}
 	}
 	if c.cfg.Collector.SendResponseBody {
-		if responsePayload, ok := keyValuePairsFromMetadata["response_payload"]; ok && responsePayload != "" {
-			event.Properties["response_payload"] = responsePayload
+		if responsePayload, ok := keyValuePairsFromMetadata[dto.PropKeyResponsePayload]; ok && responsePayload != "" {
+			event.Properties[dto.PropKeyResponsePayload] = responsePayload
 			slog.Debug("Analytics response payload captured", "size_bytes", len(responsePayload))
 		}
 	}
@@ -542,6 +537,24 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	return event
+}
+
+// parseTrafficLogDirective returns the parsed TrafficLogDirective for the given
+// raw JSON string, using a cache to avoid re-parsing the same static per-API
+// directive on every request. Two concurrent first-parses of the same string are
+// benign — the winner's value is stored and both callers get an equivalent result.
+func (c *Analytics) parseTrafficLogDirective(raw string) *dto.TrafficLogDirective {
+	if cached, ok := c.directiveCache.Load(raw); ok {
+		return cached.(*dto.TrafficLogDirective)
+	}
+	dir := &dto.TrafficLogDirective{}
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), dir); err != nil {
+			slog.Warn("Failed to parse traffic_log directive; opting in with defaults", "error", err)
+		}
+	}
+	c.directiveCache.Store(raw, dir)
+	return dir
 }
 
 func (c *Analytics) getAnonymousApp() *dto.Application {

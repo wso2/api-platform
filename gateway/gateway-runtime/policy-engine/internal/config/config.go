@@ -705,8 +705,6 @@ func (c *Config) validateAnalyticsConfig() error {
 						return fmt.Errorf("analytics.publishers.moesif.moesif_base_url must be a valid URL (e.g. https://api.moesif.net), got %q", moesifCfg.BaseURL)
 					}
 				}
-			case "log":
-				// The stdout/log publisher has no required configuration.
 			default:
 				return fmt.Errorf("unknown publisher type in enabled_publishers: %s", publisherName)
 			}

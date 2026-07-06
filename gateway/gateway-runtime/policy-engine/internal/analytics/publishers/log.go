@@ -128,8 +128,8 @@ func (l *Log) shapeEvent(event *dto.Event) *dto.Event {
 	// masking + per-flow excludeHeaders are applied, and the projection (in Publish)
 	// decides which fields survive.
 	gate := dir.Fields == nil || len(dir.Fields.Names) == 0
-	l.applyFlow(props, dir.Request, "requestHeaders", "request_payload", gate)
-	l.applyFlow(props, dir.Response, "responseHeaders", "response_payload", gate)
+	l.applyFlow(props, dir.Request, dto.PropKeyRequestHeaders, dto.PropKeyRequestPayload, gate)
+	l.applyFlow(props, dir.Response, dto.PropKeyResponseHeaders, dto.PropKeyResponsePayload, gate)
 
 	// Attach the policy's resolved custom properties under a dedicated namespace, so
 	// they never collide with reserved keys and are projectable as "properties.custom".

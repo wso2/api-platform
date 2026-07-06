@@ -367,7 +367,7 @@ enabled = false
 # Header names (case-insensitive) whose values are redacted as "****" in the
 # logged requestHeaders/responseHeaders. Applies globally; the `log-message`
 # policy's per-API excludeHeaders drop additional headers entirely.
-masked_headers = ["authorization"]
+masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
 # Max bytes of request/response payload written to each log line (0 = no limit).
 # Applied output-side, so the collector still captures full bodies and other
 # consumers (e.g. Moesif) are unaffected.

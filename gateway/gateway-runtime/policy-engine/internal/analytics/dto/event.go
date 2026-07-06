@@ -19,6 +19,16 @@ package dto
 
 import "time"
 
+// Property keys written into Event.Properties by the analytics pipeline and read
+// back by publishers (e.g. the Log publisher's masking and field-projection paths).
+// Both sides must use these constants so a rename stays in one place.
+const (
+	PropKeyRequestHeaders  = "requestHeaders"
+	PropKeyResponseHeaders = "responseHeaders"
+	PropKeyRequestPayload  = "request_payload"
+	PropKeyResponsePayload = "response_payload"
+)
+
 // Event represents analytics event data.
 type Event struct {
 	API               *ExtendedAPI                   `json:"api,omitempty" bson:"api"`

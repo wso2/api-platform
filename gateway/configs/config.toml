@@ -24,7 +24,7 @@ enabled_publishers = ["moesif"]
 [traffic_logging]
 enabled = true
 # Header names (case-insensitive) whose values are redacted as "****".
-masked_headers = ["authorization"]
+masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
 # Max bytes of request/response payload written to each log line (0 = no limit).
 max_payload_size = 2048
 
