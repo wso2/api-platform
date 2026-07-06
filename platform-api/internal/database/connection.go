@@ -1,0 +1,639 @@
+/*
+ *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package database
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/wso2/api-platform/platform-api/config"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver (pgx stdlib)
+	sqlite3 "github.com/mattn/go-sqlite3"
+	mssql "github.com/microsoft/go-mssqldb"
+)
+
+const (
+	// DriverSQLite is the driver name for SQLite3
+	DriverSQLite = "sqlite3"
+	// DriverPostgres is the canonical driver name for PostgreSQL
+	DriverPostgres = "postgres"
+	// DriverPGX is the canonical driver name for PostgreSQL
+	DriverPGX = "pgx"
+	// DriverPostgreSQL is an alternate name for PostgreSQL (accepted in config)
+	DriverPostgreSQL = "postgresql"
+	// DriverSQLServer is the canonical driver name for SQL Server
+	DriverSQLServer = "sqlserver"
+	// DriverMSSQL is an alternate SQL Server driver name (accepted in config)
+	DriverMSSQL = "mssql"
+)
+
+// DB holds the database connection
+type DB struct {
+	*sql.DB
+	driver string // Database driver name (sqlite3, postgres, etc.)
+}
+
+// isPostgresDriver returns true if the driver is PostgreSQL.
+func isPostgresDriver(driver string) bool {
+	return driver == DriverPostgres
+}
+
+// isSQLServerDriver returns true if the driver is SQL Server.
+func isSQLServerDriver(driver string) bool {
+	return driver == DriverSQLServer
+}
+
+// Driver returns the underlying database driver name (e.g., sqlite3, postgres).
+func (db *DB) Driver() string {
+	return db.driver
+}
+
+// NewConnection creates a new database connection using configuration
+func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
+	var db *sql.DB
+	var err error
+
+	switch strings.ToLower(cfg.Driver) {
+	case DriverSQLite:
+		// Ensure the directory exists for SQLite
+		dir := filepath.Dir(cfg.Path)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create database directory: %w", err)
+		}
+
+		// Open SQLite connection to the api_platform.db file
+		db, err = sql.Open(DriverSQLite, cfg.Path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open database: %w", err)
+		}
+
+		// Enable foreign key constraints for SQLite
+		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+			return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+		}
+		slogger.Info("Successfully opened SQLite database connection", "path", cfg.Path)
+	case DriverPostgres, DriverPostgreSQL, DriverPGX:
+		// Build PostgreSQL DSN from config
+		dsn := fmt.Sprintf(
+			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
+		)
+
+		// Use pgx stdlib driver for PostgreSQL
+		db, err = sql.Open(DriverPGX, dsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open postgres database: %w", err)
+		}
+		slogger.Info("Successfully opened PostgreSQL database connection", "host", cfg.Host, "port", cfg.Port, "dbname", cfg.Name)
+	case DriverSQLServer, DriverMSSQL:
+		dsn := buildSQLServerDSN(cfg)
+
+		db, err = sql.Open(DriverSQLServer, dsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open sqlserver database: %w", err)
+		}
+		slogger.Info("Successfully opened SQL Server database connection", "host", cfg.Host, "port", cfg.Port, "dbname", cfg.Name)
+	default:
+		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
+	}
+
+	// Set connection pool settings. SQLite serializes writes, so cap at 1 connection
+	// to avoid contention regardless of what the config requests.
+	maxOpen := cfg.MaxOpenConns
+	maxIdle := cfg.MaxIdleConns
+	if strings.ToLower(cfg.Driver) == DriverSQLite {
+		maxOpen = 1
+		maxIdle = 1
+	}
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(time.Duration(cfg.ConnMaxLifetime) * time.Second)
+
+	// Test the connection
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Normalize driver name so that all PostgreSQL aliases are treated the same
+	normalizedDriver := strings.ToLower(cfg.Driver)
+	if normalizedDriver == DriverPGX || normalizedDriver == DriverPostgreSQL {
+		normalizedDriver = DriverPostgres
+	}
+	if normalizedDriver == DriverMSSQL {
+		normalizedDriver = DriverSQLServer
+	}
+
+	return &DB{DB: db, driver: normalizedDriver}, nil
+}
+
+// InitSchema initializes the database schema
+// Automatically selects the appropriate schema file based on the database driver.
+// If dbSchemaPath is provided (e.g., "./internal/database/schema.sql"), it will
+// be used to derive the directory and then select schema.{driver}.sql
+func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
+	slogger.Info("Initializing database schema", "driver", db.driver)
+	var schemaPath string
+
+	// Determine schema file path based on driver
+	// Replace "schema.sql" with "schema.{driver}.sql" in the path
+	if dbSchemaPath != "" {
+		// Extract directory from provided path
+		dir := filepath.Dir(dbSchemaPath)
+
+		// Determine driver-specific schema filename
+		var schemaFile string
+		switch db.driver {
+		case DriverSQLite:
+			schemaFile = "schema.sqlite.sql"
+		case DriverPostgres, DriverPostgreSQL:
+			schemaFile = "schema.postgres.sql"
+		case DriverSQLServer, DriverMSSQL:
+			schemaFile = "schema.sqlserver.sql"
+		default:
+			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
+		}
+
+		schemaPath = filepath.Join(dir, schemaFile)
+	} else {
+		// Fallback: construct path from driver
+		switch db.driver {
+		case DriverSQLite:
+			schemaPath = "./internal/database/schema.sqlite.sql"
+		case DriverPostgres, DriverPostgreSQL:
+			schemaPath = "./internal/database/schema.postgres.sql"
+		case DriverSQLServer, DriverMSSQL:
+			schemaPath = "./internal/database/schema.sqlserver.sql"
+		default:
+			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
+		}
+	}
+
+	// Read the schema SQL from the external file
+	schemaSQL, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read schema file %s: %w", schemaPath, err)
+	}
+
+	// PostgreSQL and SQL Server drivers are more reliable when schema statements
+	// are executed one-by-one inside a transaction.
+	if isPostgresDriver(db.driver) || isSQLServerDriver(db.driver) {
+		return db.initSchemaTransactional(string(schemaSQL))
+	}
+
+	// For SQLite, execute as a single statement (it handles multi-statement well)
+	_, err = db.Exec(string(schemaSQL))
+	if err != nil {
+		return fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	return nil
+}
+
+// InitSchemaSQL applies the given SQL DDL string against the database using the
+// same strategy as InitSchema. It is used by compile-time plugins to apply their
+// own schema fragments without requiring an external schema file.
+func (db *DB) InitSchemaSQL(ddl string, slogger *slog.Logger) error {
+	slogger.Info("Applying plugin schema DDL", "driver", db.driver)
+	if isPostgresDriver(db.driver) || isSQLServerDriver(db.driver) {
+		return db.initSchemaTransactional(ddl)
+	}
+	_, err := db.Exec(ddl)
+	if err != nil {
+		return fmt.Errorf("failed to apply plugin schema: %w", err)
+	}
+	return nil
+}
+
+// initSchemaTransactional splits SQL statements and executes them individually within a transaction
+// This ensures all tables are created before foreign key constraints are validated
+func (db *DB) initSchemaTransactional(schemaSQL string) error {
+	// Split SQL statements by semicolon, but be careful with semicolons in strings/comments
+	statements := splitSQLStatements(schemaSQL)
+
+	// Start a transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Execute each statement individually within the transaction
+	executedCount := 0
+	for i, stmt := range statements {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		// Skip pure comment statements (but keep statements that contain comments)
+		// A pure comment statement would start with -- and have no actual SQL
+		if strings.HasPrefix(stmt, "--") && !strings.Contains(strings.ToUpper(stmt), "CREATE") && !strings.Contains(strings.ToUpper(stmt), "ALTER") && !strings.Contains(strings.ToUpper(stmt), "DROP") && !strings.Contains(strings.ToUpper(stmt), "INSERT") && !strings.Contains(strings.ToUpper(stmt), "UPDATE") && !strings.Contains(strings.ToUpper(stmt), "DELETE") && !strings.Contains(strings.ToUpper(stmt), "SELECT") {
+			continue
+		}
+		if strings.HasPrefix(stmt, "/*") {
+			continue
+		}
+
+		executedCount++
+		_, err := tx.Exec(stmt)
+		if err != nil {
+			// Show more context about what we're executing
+			firstLine := stmt
+			if idx := strings.Index(stmt, "\n"); idx > 0 {
+				firstLine = stmt[:idx]
+			}
+			return fmt.Errorf("failed to execute schema statement %d (executed %d/%d): %w\nFirst line: %s\nStatement preview: %s", i+1, executedCount, len(statements), err, firstLine, stmt[:min(len(stmt), 300)])
+		}
+	}
+
+	// Commit the transaction - this is when foreign keys are validated
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit schema transaction: %w", err)
+	}
+
+	return nil
+}
+
+// splitSQLStatements splits SQL by semicolons, handling comments and strings
+// Properly handles multi-line statements like CREATE TABLE
+func splitSQLStatements(sql string) []string {
+	// Remove block comments /* ... */ (multiline, non-greedy)
+	blockCommentRe := regexp.MustCompile(`(?s)/\*.*?\*/`)
+	sql = blockCommentRe.ReplaceAllString(sql, "\n")
+
+	var statements []string
+	current := strings.Builder{}
+	inString := false
+	inLineComment := false
+	escapeNext := false
+	var prevRune rune
+
+	runes := []rune(sql)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+
+		switch {
+		// A pending escape: copy the escaped rune verbatim.
+		case escapeNext:
+			current.WriteRune(r)
+			escapeNext = false
+
+		// Inside a line comment: copy verbatim until the newline ends it.
+		case inLineComment:
+			current.WriteRune(r)
+			if r == '\n' {
+				inLineComment = false
+			}
+
+		// Handle escape sequences
+		case r == '\\':
+			escapeNext = true
+			current.WriteRune(r)
+
+		// Track string literals - everything inside single quotes is literal
+		case r == '\'':
+			inString = !inString
+			current.WriteRune(r)
+
+		// Start of a "--" line comment (outside string literals)
+		case !inString && r == '-' && prevRune == '-':
+			inLineComment = true
+			current.WriteRune(r)
+
+		// Only split on semicolons that are outside of string literals and comments
+		case !inString && r == ';':
+			stmt := strings.TrimSpace(current.String())
+			// Only add non-empty statements that aren't pure comments
+			if stmt != "" {
+				// Remove leading line comments but keep the statement
+				stmt = removeLeadingComments(stmt)
+				if stmt != "" {
+					statements = append(statements, stmt)
+				}
+			}
+			current.Reset()
+
+		default:
+			current.WriteRune(r)
+		}
+		prevRune = r
+	}
+
+	// Handle remaining statement (if any)
+	if remaining := strings.TrimSpace(current.String()); remaining != "" {
+		remaining = removeLeadingComments(remaining)
+		if remaining != "" {
+			statements = append(statements, remaining)
+		}
+	}
+
+	return statements
+}
+
+// removeLeadingComments removes leading comment lines from a statement
+// but preserves inline comments within the statement
+func removeLeadingComments(stmt string) string {
+	lines := strings.Split(stmt, "\n")
+	var cleanedLines []string
+	inStatement := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Skip pure comment lines
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			// Only skip if we haven't started the actual statement yet
+			if !inStatement {
+				continue
+			}
+			// If we're in a statement, preserve the line (it might be part of multi-line formatting)
+			cleanedLines = append(cleanedLines, line)
+			continue
+		}
+
+		// We've found non-comment content
+		inStatement = true
+
+		// Handle inline comments within the line
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			beforeComment := line[:idx]
+			// Only remove comment if it's not inside a string
+			if strings.Count(beforeComment, "'")%2 == 0 {
+				trimmedBefore := strings.TrimRight(beforeComment, " \t")
+				if trimmedBefore != "" {
+					cleanedLines = append(cleanedLines, trimmedBefore)
+				}
+				continue
+			}
+		}
+
+		cleanedLines = append(cleanedLines, line)
+	}
+
+	result := strings.Join(cleanedLines, "\n")
+	return strings.TrimSpace(result)
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// Rebind converts a SQL query with `?` placeholders to the appropriate format
+// for the current database driver. For PostgreSQL, converts `?` to `$1, $2, ...`.
+// For SQLite, leaves `?` as-is.
+func (db *DB) Rebind(query string) string {
+	if isPostgresDriver(db.driver) {
+		// Convert ? placeholders to $1, $2, $3, etc.
+		parts := strings.Split(query, "?")
+		if len(parts) == 1 {
+			return query // No placeholders
+		}
+
+		var result strings.Builder
+		for i, part := range parts {
+			if i > 0 {
+				result.WriteString(fmt.Sprintf("$%d", i))
+			}
+			result.WriteString(part)
+		}
+		return result.String()
+	}
+	if isSQLServerDriver(db.driver) {
+		// Convert ? placeholders to @p1, @p2, @p3, etc.
+		parts := strings.Split(query, "?")
+		if len(parts) == 1 {
+			return query // No placeholders
+		}
+
+		var result strings.Builder
+		for i, part := range parts {
+			if i > 0 {
+				result.WriteString(fmt.Sprintf("@p%d", i))
+			}
+			result.WriteString(part)
+		}
+		return result.String()
+	}
+	// For SQLite and other drivers, return as-is
+	return query
+}
+
+// PaginationClause returns a dialect-appropriate row-limiting clause to append
+// after an ORDER BY, together with its bind arguments in the order the clause
+// expects them. SQL Server has no LIMIT keyword and instead uses ANSI
+// OFFSET/FETCH, which (a) requires an ORDER BY in the statement and (b) lists
+// OFFSET before the row count — the reverse of "LIMIT ? OFFSET ?". The returned
+// clause uses ? placeholders; pass the assembled query through Rebind as usual.
+func (db *DB) PaginationClause(limit, offset int) (string, []any) {
+	if isSQLServerDriver(db.driver) {
+		return "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY", []any{offset, limit}
+	}
+	return "LIMIT ? OFFSET ?", []any{limit, offset}
+}
+
+// FetchFirstClause returns a row-limiting clause for a fixed number of rows,
+// safe to embed directly into a query string (n is an integer constant, not
+// user input). As with PaginationClause, SQL Server requires the statement to
+// carry an ORDER BY; add "ORDER BY (SELECT NULL)" when ordering is irrelevant.
+func (db *DB) FetchFirstClause(n int) string {
+	if isSQLServerDriver(db.driver) {
+		return fmt.Sprintf("OFFSET 0 ROWS FETCH NEXT %d ROWS ONLY", n)
+	}
+	return fmt.Sprintf("LIMIT %d", n)
+}
+
+// BuildUpsertQuery generates a dialect-appropriate INSERT … ON CONFLICT … DO UPDATE query.
+// insertCols are all columns being inserted (each maps to one ? placeholder).
+// conflictCols are the columns that define uniqueness.
+// updateExprs control what happens on conflict: "col" → col = excluded.col, "col=NULL" → col = NULL.
+func (db *DB) BuildUpsertQuery(table string, insertCols []string, conflictCols []string, updateExprs []string) string {
+	if isSQLServerDriver(db.driver) {
+		return buildSQLServerUpsertQuery(table, insertCols, conflictCols, updateExprs)
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(insertCols)), ", ")
+
+	setClauses := make([]string, 0, len(updateExprs))
+	for _, expr := range updateExprs {
+		if idx := strings.Index(strings.ToUpper(expr), "=NULL"); idx >= 0 {
+			setClauses = append(setClauses, expr[:idx]+" = NULL")
+		} else {
+			setClauses = append(setClauses, expr+" = excluded."+expr)
+		}
+	}
+
+	return fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES (%s)\nON CONFLICT (%s)\nDO UPDATE SET %s",
+		table,
+		strings.Join(insertCols, ", "),
+		placeholders,
+		strings.Join(conflictCols, ", "),
+		strings.Join(setClauses, ", "),
+	)
+}
+
+// InsertAndReturnID executes an INSERT query and returns the generated row ID.
+func (db *DB) InsertAndReturnID(query string, args ...any) (int64, error) {
+	if isPostgresDriver(db.driver) {
+		var id int64
+		err := db.QueryRow(db.Rebind(query+" RETURNING id"), args...).Scan(&id)
+		return id, err
+	}
+	if isSQLServerDriver(db.driver) {
+		queryWithOutput, err := injectSQLOutputInsertedID(query)
+		if err != nil {
+			return 0, err
+		}
+
+		var id int64
+		err = db.QueryRow(db.Rebind(queryWithOutput), args...).Scan(&id)
+		return id, err
+	}
+	result, err := db.Exec(db.Rebind(query), args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// IsDuplicateKeyError reports whether err is a unique-constraint or duplicate-key
+// violation for the current database driver.
+func (db *DB) IsDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+	}
+
+	var msErr mssql.Error
+	if errors.As(err, &msErr) {
+		// 2601: Cannot insert duplicate key row in object with unique index
+		// 2627: Violation of PRIMARY KEY or UNIQUE KEY constraint
+		return msErr.Number == 2601 || msErr.Number == 2627
+	}
+
+	lowerMsg := strings.ToLower(err.Error())
+	return strings.Contains(lowerMsg, "duplicate key") ||
+		strings.Contains(lowerMsg, "unique constraint failed")
+}
+
+func buildSQLServerDSN(cfg *config.Database) string {
+	encrypt := "disable"
+	trustServerCertificate := "true"
+
+	switch strings.ToLower(cfg.SSLMode) {
+	case "", "disable", "false", "off":
+		encrypt = "disable"
+		trustServerCertificate = "true"
+	case "strict":
+		encrypt = "strict"
+		trustServerCertificate = "false"
+	default:
+		encrypt = "true"
+		trustServerCertificate = "false"
+	}
+
+	q := url.Values{}
+	q.Set("database", cfg.Name)
+	q.Set("encrypt", encrypt)
+	q.Set("TrustServerCertificate", trustServerCertificate)
+
+	host := cfg.Host
+	if host == "" {
+		host = "localhost"
+	}
+
+	u := &url.URL{
+		Scheme:   DriverSQLServer,
+		Host:     fmt.Sprintf("%s:%d", host, cfg.Port),
+		RawQuery: q.Encode(),
+	}
+	if cfg.User != "" {
+		u.User = url.UserPassword(cfg.User, cfg.Password)
+	}
+
+	return u.String()
+}
+
+func buildSQLServerUpsertQuery(table string, insertCols []string, conflictCols []string, updateExprs []string) string {
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(insertCols)), ", ")
+	sourceCols := strings.Join(insertCols, ", ")
+
+	onParts := make([]string, 0, len(conflictCols))
+	for _, col := range conflictCols {
+		onParts = append(onParts, fmt.Sprintf("target.%s = src.%s", col, col))
+	}
+
+	setClauses := make([]string, 0, len(updateExprs))
+	for _, expr := range updateExprs {
+		if idx := strings.Index(strings.ToUpper(expr), "=NULL"); idx >= 0 {
+			col := strings.TrimSpace(expr[:idx])
+			setClauses = append(setClauses, fmt.Sprintf("target.%s = NULL", col))
+		} else {
+			setClauses = append(setClauses, fmt.Sprintf("target.%s = src.%s", expr, expr))
+		}
+	}
+
+	insertValues := make([]string, 0, len(insertCols))
+	for _, col := range insertCols {
+		insertValues = append(insertValues, "src."+col)
+	}
+
+	return fmt.Sprintf(
+		"MERGE INTO %s AS target\nUSING (VALUES (%s)) AS src (%s)\nON %s\nWHEN MATCHED THEN UPDATE SET %s\nWHEN NOT MATCHED THEN INSERT (%s) VALUES (%s);",
+		table,
+		placeholders,
+		sourceCols,
+		strings.Join(onParts, " AND "),
+		strings.Join(setClauses, ", "),
+		sourceCols,
+		strings.Join(insertValues, ", "),
+	)
+}
+
+func injectSQLOutputInsertedID(query string) (string, error) {
+	matcher := regexp.MustCompile(`(?is)\)\s*VALUES`)
+	loc := matcher.FindStringIndex(query)
+	if loc == nil {
+		return "", fmt.Errorf("failed to inject OUTPUT inserted.id: expected INSERT query with VALUES")
+	}
+
+	return query[:loc[0]] + ") OUTPUT inserted.id VALUES" + query[loc[1]:], nil
+}

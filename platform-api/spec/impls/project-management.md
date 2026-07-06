@@ -2,11 +2,11 @@
 
 ## Entry Points
 
-- `platform-api/src/internal/handler/project.go` – registers `/api/v0.9/projects` and `/api/v0.9/organizations/:orgId/projects` routes.
-- `platform-api/src/internal/service/project.go` – handles validation, duplicate checks, and deletion constraints (last project, projects with APIs).
-- `platform-api/src/internal/repository/project.go` – executes SQL CRUD operations scoped to organizations.
-- `platform-api/src/internal/database/schema.sql` – defines the `projects` table with foreign key and index support.
-- `platform-api/src/resources/openapi.yaml` – captures the project management operations surfaced to clients.
+- `platform-api/internal/handler/project.go` – registers `/api/v0.9/projects` and `/api/v0.9/organizations/:orgId/projects` routes.
+- `platform-api/internal/service/project.go` – handles validation, duplicate checks, and deletion constraints (last project, projects with APIs).
+- `platform-api/internal/repository/project.go` – executes SQL CRUD operations scoped to organizations.
+- `platform-api/internal/database/schema.sql` – defines the `projects` table with foreign key and index support.
+- `platform-api/resources/openapi.yaml` – captures the project management operations surfaced to clients.
 
 ## Behaviour
 

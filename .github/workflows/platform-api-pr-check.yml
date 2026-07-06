@@ -33,7 +33,7 @@ jobs:
 
       - name: Go build
         run: go build ./cmd/main.go
-        working-directory: platform-api/src
+        working-directory: platform-api
 
       - name: Run tests
         run: make test
@@ -41,7 +41,7 @@ jobs:
 
       - name: Cross-database integration tests (SQLite)
         run: IT_DB=sqlite go test -tags integration -count=1 ./internal/integration/...
-        working-directory: platform-api/src
+        working-directory: platform-api
 
   pr-check-postgres:
     runs-on: ubuntu-24.04
@@ -78,7 +78,7 @@ jobs:
 
       - name: Cross-database integration tests (PostgreSQL)
         run: go test -tags integration -count=1 -v ./internal/integration/...
-        working-directory: platform-api/src
+        working-directory: platform-api
 
   pr-check-sqlserver:
     runs-on: ubuntu-24.04
@@ -121,7 +121,7 @@ jobs:
 
       - name: Build with SQL Server configuration
         run: go build ./cmd/main.go
-        working-directory: platform-api/src
+        working-directory: platform-api
 
       - name: Wait for SQL Server to be ready
         run: |
@@ -146,7 +146,7 @@ jobs:
       # schema, pagination and delete cascades against SQL Server.
       - name: Cross-database integration tests (SQL Server)
         run: go test -tags integration -count=1 -v ./internal/integration/...
-        working-directory: platform-api/src
+        working-directory: platform-api
 
       - name: Debug on failure
         if: failure()
