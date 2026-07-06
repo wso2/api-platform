@@ -33,10 +33,10 @@ import (
 const (
 	PushCmdLiteral = "push"
 	PushCmdExample = `# Push an MCP proxy artifact using the active AI workspace
-ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --project-id <project-id>
+ap ai-workspace mcp-proxy push -f build/bijira-mcp-everything.json --project-id <project-id>
 
 # Push using a specific AI workspace
-ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-workspace mcp-proxy push -f build/bijira-mcp-everything.json --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (

@@ -32,13 +32,13 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# List all MCP proxies in a project
-ap ai-ws mcp-proxy get --project-id <project-id>
+ap ai-workspace mcp-proxy get --project-id <project-id>
 
 # Get a single MCP proxy by ID
-ap ai-ws mcp-proxy get --id bijira-mcp-everything
+ap ai-workspace mcp-proxy get --id bijira-mcp-everything
 
 # List using a specific AI workspace with pagination
-ap ai-ws mcp-proxy get --project-id <project-id> --limit 50 --offset 0 --display-name my-workspace --platform eu`
+ap ai-workspace mcp-proxy get --project-id <project-id> --limit 50 --offset 0 --display-name my-workspace --platform eu`
 )
 
 var (

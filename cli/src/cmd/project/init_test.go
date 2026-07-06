@@ -116,7 +116,7 @@ func TestBuildDirectoryStructureAIWorkspaceMetadata(t *testing.T) {
 
 	for _, want := range []string{
 		"apiVersion: ai-workspace.api-platform.wso2.com/v1alpha",
-		"kind: LlmProxy",
+		"kind: LlmProxyMetadata",
 		"name: openai-dev-llm",
 		"displayName: OpenAI Dev LLM",
 	} {

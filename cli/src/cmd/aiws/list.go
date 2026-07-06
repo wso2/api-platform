@@ -30,7 +30,7 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all AI workspaces
-ap ai-ws list`
+ap ai-workspace list`
 )
 
 var listCmd = &cobra.Command{

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-// Package aiworkspace holds the HTTP client used by the `ap ai-ws` commands to
+// Package aiworkspace holds the HTTP client used by the `ap ai-workspace` commands to
 // talk to an AI Workspace server (LLM proxies / providers).
 package aiworkspace
 
@@ -191,7 +191,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Client) missingCredsError(authType, envVars string) error {
-	return fmt.Errorf("authentication credentials not found for ai-workspace '%s' (auth type: %s).\nPlease either:\n  - Re-add ai-workspace: ap ai-ws add --display-name %s --server <server_url> --auth %s\n  - Or export: %s",
+	return fmt.Errorf("authentication credentials not found for ai-workspace '%s' (auth type: %s).\nPlease either:\n  - Re-add ai-workspace: ap ai-workspace add --display-name %s --server <server_url> --auth %s\n  - Or export: %s",
 		c.aiWorkspace.Name, authType, c.aiWorkspace.Name, authType, envVars)
 }
 

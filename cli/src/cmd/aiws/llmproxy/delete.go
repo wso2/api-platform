@@ -32,10 +32,10 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete an LLM proxy by ID using the active AI workspace
-ap ai-ws llm-proxy delete --id wso2-openai-proxy
+ap ai-workspace app-llm-proxy delete --id wso2-openai-proxy
 
 # Delete using a specific AI workspace
-ap ai-ws llm-proxy delete --id wso2-openai-proxy --display-name my-workspace --platform eu`
+ap ai-workspace app-llm-proxy delete --id wso2-openai-proxy --display-name my-workspace --platform eu`
 )
 
 var (

@@ -32,13 +32,13 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all MCP proxies in a project
-ap ai-ws mcp-proxy list --project-id <project-id>
+ap ai-workspace mcp-proxy list --project-id <project-id>
 
 # List with pagination
-ap ai-ws mcp-proxy list --project-id <project-id> --limit 50 --offset 0
+ap ai-workspace mcp-proxy list --project-id <project-id> --limit 50 --offset 0
 
 # List using a specific AI workspace
-ap ai-ws mcp-proxy list --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-workspace mcp-proxy list --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (

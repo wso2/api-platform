@@ -32,10 +32,10 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete an MCP proxy by ID using the active AI workspace
-ap ai-ws mcp-proxy delete --id bijira-mcp-everything
+ap ai-workspace mcp-proxy delete --id bijira-mcp-everything
 
 # Delete using a specific AI workspace
-ap ai-ws mcp-proxy delete --id bijira-mcp-everything --display-name my-workspace --platform eu`
+ap ai-workspace mcp-proxy delete --id bijira-mcp-everything --display-name my-workspace --platform eu`
 )
 
 var (

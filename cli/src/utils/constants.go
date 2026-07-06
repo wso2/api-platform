@@ -101,11 +101,11 @@ const (
 	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
 
 	// Artifact Types
-	TypeREST        = "rest"
-	TypeSOAP        = "soap"
-	TypeLLMProxy    = "llm-proxy"
-	TypeLLMProvider = "llm-provider"
-	TypeMCPProxy    = "mcp-proxy"
+	TypeREST        = "REST"
+	TypeSOAP        = "SOAP"
+	TypeLLMProxy    = "LLM-Proxy"
+	TypeLLMProvider = "App-LLM-Provider"
+	TypeMCPProxy    = "MCP-Proxy"
 )
 
 // PolicyHub REST API defaults and paths

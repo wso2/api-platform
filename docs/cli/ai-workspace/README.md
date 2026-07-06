@@ -4,14 +4,14 @@ This guide covers the AI-Workspace commands currently implemented under `cli/src
 
 Available command group:
 
-- `ap ai-ws`
+- `ap ai-workspace`
 
 The `add`, `list`, `remove`, `use`, and `current` commands manage AI-Workspace **server connections** stored in the CLI config file (the same per-platform config used by `ap gateway` and `ap devportal`). The `build` command is different: it works inside an **API project** and generates an LLM proxy creation payload from the project's artifacts.
 
 ## Prerequisites
 
 - Add at least one AI-Workspace configuration before using commands that target a specific workspace connection.
-- AI-Workspace connections are stored in the CLI config file managed by `ap ai-ws add`.
+- AI-Workspace connections are stored in the CLI config file managed by `ap ai-workspace add`.
 - Commands that use an active AI-Workspace resolve the platform first, then the active AI-Workspace under that platform.
 
 ## Authentication
@@ -38,22 +38,22 @@ Environment variables override credentials stored in the CLI config.
 
 ## Connection Commands
 
-### `ap ai-ws add`
+### `ap ai-workspace add`
 
 Adds an AI-Workspace configuration to the CLI config file.
 
 ```shell
-ap ai-ws add --display-name <name> --server <server-url> --auth <basic|oauth|api-key> [--platform <platform>] [--no-interactive]
+ap ai-workspace add --display-name <name> --server <server-url> --auth <basic|oauth|api-key> [--platform <platform>] [--no-interactive]
 ```
 
 Examples:
 
 ```shell
-ap ai-ws add
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth basic
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth oauth
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth api-key
-ap ai-ws add --display-name my-workspace --platform eu --server https://ai-workspace.example.com --auth api-key --no-interactive
+ap ai-workspace add
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth basic
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth oauth
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth api-key
+ap ai-workspace add --display-name my-workspace --platform eu --server https://ai-workspace.example.com --auth api-key --no-interactive
 ```
 
 Notes:
@@ -62,19 +62,19 @@ Notes:
 - Supplying credentials as flags is supported, but interactive mode or environment variables are preferred.
 - If credentials are omitted, runtime commands expect the corresponding environment variables.
 
-### `ap ai-ws list`
+### `ap ai-workspace list`
 
 Lists AI-Workspace configurations for a platform.
 
 ```shell
-ap ai-ws list [--platform <platform>]
+ap ai-workspace list [--platform <platform>]
 ```
 
 Examples:
 
 ```shell
-ap ai-ws list
-ap ai-ws list --platform eu
+ap ai-workspace list
+ap ai-workspace list --platform eu
 ```
 
 Notes:
@@ -82,33 +82,33 @@ Notes:
 - If `--platform` is omitted, the current platform is used.
 - The active AI-Workspace is marked in the output table.
 
-### `ap ai-ws remove`
+### `ap ai-workspace remove`
 
 Removes an AI-Workspace configuration from a platform.
 
 ```shell
-ap ai-ws remove --display-name <name> [--platform <platform>]
+ap ai-workspace remove --display-name <name> [--platform <platform>]
 ```
 
 Example:
 
 ```shell
-ap ai-ws remove --display-name my-workspace
+ap ai-workspace remove --display-name my-workspace
 ```
 
-### `ap ai-ws use`
+### `ap ai-workspace use`
 
 Sets the active AI-Workspace for a platform.
 
 ```shell
-ap ai-ws use --display-name <name> [--platform <platform>]
+ap ai-workspace use --display-name <name> [--platform <platform>]
 ```
 
 Examples:
 
 ```shell
-ap ai-ws use --display-name my-workspace
-ap ai-ws use --display-name my-workspace --platform eu
+ap ai-workspace use --display-name my-workspace
+ap ai-workspace use --display-name my-workspace --platform eu
 ```
 
 Notes:
@@ -116,48 +116,48 @@ Notes:
 - If `--platform` is omitted, the current platform is used.
 - The command reports whether credentials will come from environment variables or the stored config.
 
-### `ap ai-ws current`
+### `ap ai-workspace current`
 
 Shows the active AI-Workspace for a platform.
 
 ```shell
-ap ai-ws current [--platform <platform>]
+ap ai-workspace current [--platform <platform>]
 ```
 
 Example:
 
 ```shell
-ap ai-ws current
+ap ai-workspace current
 ```
 
-## `ap ai-ws build`
+## `ap ai-workspace build`
 
-Generates an **LLM proxy**, **LLM provider**, or **MCP proxy** creation payload (JSON) from an API project's artifacts. The payload shape is selected by the `kind` declared in `metadata.yaml`/`runtime.yaml`:
+Generates an **LLM proxy**, **LLM provider**, or **MCP proxy** creation payload (JSON) from an API project's artifacts. The payload shape is selected by the `kind` declared in `metadata.yaml`/`runtime.yaml`. In `metadata.yaml` the kind carries a `Metadata` suffix (the ai-workspace metadata kind); `runtime.yaml` uses the bare kind:
 
-- `kind: LlmProxy` → matches the `POST /llm-proxies` request body (`LLMProxy` schema).
-- `kind: LlmProvider` → matches the `POST /llm-providers` request body (`LLMProvider` schema).
-- `kind: Mcp` → MCP proxy creation payload (capabilities + policies).
+- `kind: LlmProxyMetadata` (metadata.yaml) / `LlmProxy` (runtime.yaml) → matches the `POST /llm-proxies` request body (`LLMProxy` schema).
+- `kind: LlmProviderMetadata` (metadata.yaml) / `LlmProvider` (runtime.yaml) → matches the `POST /llm-providers` request body (`LLMProvider` schema).
+- `kind: McpMetadata` (metadata.yaml) / `Mcp` (runtime.yaml) → MCP proxy creation payload (capabilities + policies).
 
-Any other kind is rejected.
+Any other kind is rejected. The `Metadata` suffix is stripped before the metadata and runtime kinds are matched, so the two files still refer to the same artifact (e.g. `LlmProxyMetadata` in metadata.yaml matches `LlmProxy` in runtime.yaml).
 
 ```shell
-ap ai-ws build [-f <project-directory>] [-o <file.json | directory>]
+ap ai-workspace build [-f <project-directory>] [-o <file.json | directory>]
 ```
 
 Examples:
 
 ```shell
 # Build using the current directory as the project root
-ap ai-ws build
+ap ai-workspace build
 
 # Build from a specific project directory
-ap ai-ws build -f /path/to/project
+ap ai-workspace build -f /path/to/project
 
 # Write the payload to a specific directory
-ap ai-ws build -o build/
+ap ai-workspace build -o build/
 
 # Write the payload to a specific file
-ap ai-ws build -o build/openai.json
+ap ai-workspace build -o build/openai.json
 ```
 
 ### What it reads
@@ -178,7 +178,7 @@ For each configured entry, the build:
 
 - Resolves `metadata`, `runtime`, and `definition` relative to that entry's `portalRoot` (defaults: `./metadata.yaml`, `./runtime.yaml`, `./definition.yaml`; `portalRoot` defaults to `.`, the project root).
 - Requires `metadata.yaml` and `runtime.yaml` to exist.
-- Requires the `kind` declared in `metadata.yaml` and `runtime.yaml` to match; otherwise the build fails with a kind-mismatch error.
+- Requires the `kind` declared in `metadata.yaml` and `runtime.yaml` to match once the metadata's `Metadata` suffix is stripped (e.g. `LlmProxyMetadata` vs `LlmProxy`); otherwise the build fails with a kind-mismatch error.
 - Requires `metadata.name` to match between `metadata.yaml` and `runtime.yaml`; otherwise the build fails with a name-mismatch error.
 - Requires `definition.yaml` (the OpenAPI spec) for every kind — see [The OpenAPI spec](#the-openapi-spec) below.
 - If no `ai-workspaces` section exists, a single `default` entry (`portalRoot: .`) is created in the project config and used.
@@ -187,20 +187,20 @@ All resolved paths are constrained to the project directory; a path that escapes
 
 #### Associating gateways (`metadata.yaml`)
 
-Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in a top-level `associatedGateways` section of `metadata.yaml` (a sibling of `spec`, **not** nested under it). This applies to all artifact kinds (`LlmProxy`, `LlmProvider`, `Mcp`). Each entry is keyed by the gateway `id`. The build copies this list into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
+Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in an `associatedGateways` section **under `spec`** in `metadata.yaml`. This applies to all artifact kinds (`LlmProxyMetadata`, `LlmProviderMetadata`, `McpMetadata`). Each entry is keyed by the gateway `id`. The build extracts this list from `spec.associatedGateways` and copies it into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
 
 ```yaml
 # metadata.yaml
-kind: LlmProvider
+kind: LlmProviderMetadata
 metadata:
   name: wso2-claude-provider
 spec:
   displayName: wso2 claude provider
   version: v1.0
-associatedGateways:
-  - id: default
-    configurations:
-      host: prod-gw.example.com
+  associatedGateways:
+    - id: default
+      configurations:
+        host: prod-gw.example.com
 ```
 
 `configurations` is a free-form object — the supported keys depend on the artifact type.
@@ -224,7 +224,7 @@ One JSON file per configured AI-Workspace entry, written to the build output.
 | `operationPolicies[]` (`name`, `version`, `paths[].{path,methods,params}`) | `runtime.yaml` → `spec.operationPolicies`; each path's `params` is copied verbatim |
 | `readOnly` | always `false` |
 | `openapi` | content of `definition.yaml` (**required**) |
-| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `associatedGateways` (top-level) (omitted when absent) |
+| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `spec.associatedGateways` (omitted when absent) |
 | `projectId` | intentionally omitted (injected by `push`/`edit` via `--project-id`) |
 
 #### `LlmProvider`
@@ -243,7 +243,7 @@ One JSON file per configured AI-Workspace entry, written to the build output.
 | `rateLimiting` | the `*-ratelimit` policies (see below) |
 | `policies[]` (`name`, `version`, `paths[].{path,methods,params}`) | every other `runtime.yaml` → `spec.policies` entry (i.e. not `api-key-auth` or `*-ratelimit`) |
 | `openapi` | content of `definition.yaml` (**required** for providers) |
-| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `associatedGateways` (top-level) (omitted when absent) |
+| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `spec.associatedGateways` (omitted when absent) |
 
 **rateLimiting mapping.** Each policy whose name ends with `-ratelimit` becomes a rate-limiting dimension, selected by name:
 
@@ -280,7 +280,7 @@ A limit whose path is `/*` is applied as a `global` limit for its scope; a limit
 | `upstream` (`main.{url,auth}`) | `runtime.yaml` → `spec.upstream` |
 | `policies[]` (`name`, `version`, `params`) | `runtime.yaml` → `spec.policies` (auth/authz/etc.) |
 | `capabilities` (`prompts`, `resources`, `tools`) | `definition.yaml` (**required** for MCP) |
-| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `associatedGateways` (top-level) (omitted when absent) |
+| `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `spec.associatedGateways` (omitted when absent) |
 | `description` | empty |
 
 `definition.yaml` for an MCP proxy holds `prompts`, `resources`, and `tools`. `prompts` and `tools` are passed through unchanged; `resources` are trimmed to `uri`, `name`, and `mimeType` (any inline `text`/`blob` content is dropped). `projectId` is omitted and injected at publish time.
@@ -316,60 +316,60 @@ The scoping query parameter differs by resource:
 - **LLM providers** need no scoping parameter — the organization is derived from the auth token (`GET /llm-providers`, `GET /llm-providers/{id}`).
 - **LLM/MCP proxies** are scoped by `projectId` (`--project-id`) when listing; fetching a single proxy by `--id` takes only the id path parameter (no org/project query).
 
-### `ap ai-ws llm-provider list`
+### `ap ai-workspace llm-provider list`
 
 Lists all LLM providers (`GET /llm-providers`, operationId `listLLMProviders`). The organization comes from the auth token, so no `--org` is needed.
 
 ```shell
-ap ai-ws llm-provider list [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace llm-provider list [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
-### `ap ai-ws llm-provider get`
+### `ap ai-workspace llm-provider get`
 
 The organization comes from the auth token, so no `--org` is needed.
 
 ```shell
 # List all LLM providers (GET /llm-providers)
-ap ai-ws llm-provider get [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace llm-provider get [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
 
 # Get a single LLM provider (GET /llm-providers/{id})
-ap ai-ws llm-provider get --id <provider-id>
+ap ai-workspace llm-provider get --id <provider-id>
 ```
 
-### `ap ai-ws llm-proxy list`
+### `ap ai-workspace app-llm-proxy list`
 
 Lists all LLM proxies in a project (`GET /llm-proxies?projectId={project}`, operationId `listLLMProxies`). `--project-id` is required.
 
 ```shell
-ap ai-ws llm-proxy list --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace app-llm-proxy list --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
-### `ap ai-ws llm-proxy get`
+### `ap ai-workspace app-llm-proxy get`
 
 ```shell
 # List all LLM proxies in a project (GET /llm-proxies?projectId={project})
-ap ai-ws llm-proxy get --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace app-llm-proxy get --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
 
 # Get a single LLM proxy (GET /llm-proxies/{id})
-ap ai-ws llm-proxy get --id <proxy-id>
+ap ai-workspace app-llm-proxy get --id <proxy-id>
 ```
 
-### `ap ai-ws mcp-proxy list`
+### `ap ai-workspace mcp-proxy list`
 
 Lists all MCP proxies in a project (`GET /mcp-proxies?projectId={project}`, operationId `listMCPProxies`). `--project-id` is required.
 
 ```shell
-ap ai-ws mcp-proxy list --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace mcp-proxy list --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
-### `ap ai-ws mcp-proxy get`
+### `ap ai-workspace mcp-proxy get`
 
 ```shell
 # List all MCP proxies in a project (GET /mcp-proxies?projectId={project})
-ap ai-ws mcp-proxy get --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace mcp-proxy get --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
 
 # Get a single MCP proxy (GET /mcp-proxies/{id})
-ap ai-ws mcp-proxy get --id <proxy-id>
+ap ai-workspace mcp-proxy get --id <proxy-id>
 ```
 
 Notes:
@@ -384,22 +384,22 @@ Notes:
 
 These commands delete an artifact by its identifier (`DELETE /{resource}/{id}`). The artifact is identified solely by `--id` — no organization or project scoping is required — and a successful delete (`204 No Content`) prints a confirmation line.
 
-### `ap ai-ws llm-provider delete`
+### `ap ai-workspace llm-provider delete`
 
 ```shell
-ap ai-ws llm-provider delete --id <provider-id> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace llm-provider delete --id <provider-id> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
-### `ap ai-ws llm-proxy delete`
+### `ap ai-workspace app-llm-proxy delete`
 
 ```shell
-ap ai-ws llm-proxy delete --id <proxy-id> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace app-llm-proxy delete --id <proxy-id> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
-### `ap ai-ws mcp-proxy delete`
+### `ap ai-workspace mcp-proxy delete`
 
 ```shell
-ap ai-ws mcp-proxy delete --id <proxy-id> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace mcp-proxy delete --id <proxy-id> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
 Notes:
@@ -409,49 +409,49 @@ Notes:
 
 ## Push Commands
 
-These commands push a payload JSON (produced by `ap ai-ws build`) to the AI workspace server resolved from the CLI config (`--display-name`/`--platform`, or the active AI workspace). The organization is derived from the auth token, so **no `--org` flag is needed**. Credentials come from the configured auth type (see [Authentication](#authentication)).
+These commands push a payload JSON (produced by `ap ai-workspace build`) to the AI workspace server resolved from the CLI config (`--display-name`/`--platform`, or the active AI workspace). The organization is derived from the auth token, so **no `--org` flag is needed**. Credentials come from the configured auth type (see [Authentication](#authentication)).
 
-### `ap ai-ws llm-provider push`
+### `ap ai-workspace llm-provider push`
 
 Creates an LLM provider with `POST /api/v0.9/llm-providers` (operationId `createLLMProvider`). The JSON file is sent as the request body unchanged.
 
 ```shell
-ap ai-ws llm-provider push -f <payload.json> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace llm-provider push -f <payload.json> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap ai-ws llm-provider push -f build/wso2-claude.json
-ap ai-ws llm-provider push -f build/wso2-claude.json --display-name my-workspace --platform eu
+ap ai-workspace llm-provider push -f build/wso2-claude.json
+ap ai-workspace llm-provider push -f build/wso2-claude.json --display-name my-workspace --platform eu
 ```
 
-### `ap ai-ws llm-proxy push`
+### `ap ai-workspace app-llm-proxy push`
 
 Creates an LLM proxy with `POST /api/v0.9/llm-proxies` (operationId `createLLMProxy`). The supplied `--project-id` is injected into the payload as `projectId` before it is sent.
 
 ```shell
-ap ai-ws llm-proxy push -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace app-llm-proxy push -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --project-id 550e8400-e29b-41d4-a716-446655440000
+ap ai-workspace app-llm-proxy push -f build/wso2-openai-proxy.json --project-id 550e8400-e29b-41d4-a716-446655440000
 ```
 
-### `ap ai-ws mcp-proxy push`
+### `ap ai-workspace mcp-proxy push`
 
 Creates an MCP proxy with `POST /api/v0.9/mcp-proxies` (operationId `createMCPProxy`). Like the LLM proxy, the supplied `--project-id` is injected into the payload as `projectId` before it is sent.
 
 ```shell
-ap ai-ws mcp-proxy push -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace mcp-proxy push -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --project-id 019ecf0e-8237-7153-96d5-bb3934e2c313
+ap ai-workspace mcp-proxy push -f build/bijira-mcp-everything.json --project-id 019ecf0e-8237-7153-96d5-bb3934e2c313
 ```
 
 Notes:
@@ -464,28 +464,28 @@ Notes:
 
 These commands update an existing artifact on the AI workspace by sending its payload JSON with a `PUT` request to the id-scoped resource path (`/{resource}/{id}`). The resource `id` is taken from the payload's `id` field, the organization is derived from the auth token (**no `--org` flag**), and the AI workspace and credentials are resolved exactly like the push commands.
 
-### `ap ai-ws llm-provider edit`
+### `ap ai-workspace llm-provider edit`
 
 Updates an existing LLM provider with `PUT /api/v0.9/llm-providers/{id}` (operationId `updateLLMProvider`). The JSON file is sent as the request body unchanged.
 
 ```shell
-ap ai-ws llm-provider edit -f <payload.json> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace llm-provider edit -f <payload.json> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
-### `ap ai-ws llm-proxy edit`
+### `ap ai-workspace app-llm-proxy edit`
 
 Updates an existing LLM proxy with `PUT /api/v0.9/llm-proxies/{id}` (operationId `updateLLMProxy`). The supplied `--project-id` is injected into the payload as `projectId` before it is sent.
 
 ```shell
-ap ai-ws llm-proxy edit -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace app-llm-proxy edit -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
-### `ap ai-ws mcp-proxy edit`
+### `ap ai-workspace mcp-proxy edit`
 
 Updates an existing MCP proxy with `PUT /api/v0.9/mcp-proxies/{id}` (operationId `updateMCPProxy`). Like the LLM proxy, the supplied `--project-id` is injected into the payload as `projectId` before it is sent.
 
 ```shell
-ap ai-ws mcp-proxy edit -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
+ap ai-workspace mcp-proxy edit -f <payload.json> --project-id <project-id> [--display-name <name>] [--platform <platform>] [--insecure]
 ```
 
 Notes:
@@ -499,6 +499,6 @@ Notes:
 
 - `ap platform add`
 - `ap platform use`
-- `ap ai-ws use`
-- `ap ai-ws build`
+- `ap ai-workspace use`
+- `ap ai-workspace build`
 - `ap project init`

@@ -32,13 +32,13 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# List all LLM proxies in a project
-ap ai-ws llm-proxy get --project-id <project-id>
+ap ai-workspace app-llm-proxy get --project-id <project-id>
 
 # Get a single LLM proxy by ID
-ap ai-ws llm-proxy get --id wso2-openai-proxy
+ap ai-workspace app-llm-proxy get --id wso2-openai-proxy
 
 # List using a specific AI workspace with pagination
-ap ai-ws llm-proxy get --project-id <project-id> --limit 50 --offset 0 --display-name my-workspace --platform eu`
+ap ai-workspace app-llm-proxy get --project-id <project-id> --limit 50 --offset 0 --display-name my-workspace --platform eu`
 )
 
 var (

@@ -35,16 +35,16 @@ import (
 const (
 	BuildCmdLiteral = "build"
 	BuildCmdExample = `# Build the AI workspace artifact in the current directory
-ap ai-ws build
+ap ai-workspace build
 
 # Build from a specific project directory
-ap ai-ws build -f /path/to/project
+ap ai-workspace build -f /path/to/project
 
 # Write the generated payload to a specific directory
-ap ai-ws build -o build/
+ap ai-workspace build -o build/
 
 # Write the generated payload to a specific file
-ap ai-ws build -o build/openai.json`
+ap ai-workspace build -o build/openai.json`
 )
 
 var (
@@ -249,11 +249,15 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, se
 		return "", fmt.Errorf("ai-workspace config %q: failed to read runtime: %w", config.Name, err)
 	}
 
-	// The kind declared in metadata.yaml and runtime.yaml must match.
-	metadataKind := strings.TrimSpace(metadata.Kind)
-	runtimeKind := strings.TrimSpace(runtime.Kind)
+	// The kind declared in metadata.yaml carries a "Metadata" suffix
+	// (e.g. LlmProxyMetadata) while runtime.yaml uses the base kind (LlmProxy).
+	// Normalize both to the base kind before comparing and dispatching.
+	rawMetadataKind := strings.TrimSpace(metadata.Kind)
+	rawRuntimeKind := strings.TrimSpace(runtime.Kind)
+	metadataKind := strings.TrimSuffix(rawMetadataKind, metadataKindSuffix)
+	runtimeKind := strings.TrimSuffix(rawRuntimeKind, metadataKindSuffix)
 	if metadataKind != runtimeKind {
-		return "", fmt.Errorf("ai-workspace config %q: kind mismatch: metadata.yaml has kind %q but runtime.yaml has kind %q", config.Name, metadataKind, runtimeKind)
+		return "", fmt.Errorf("ai-workspace config %q: kind mismatch: metadata.yaml has kind %q but runtime.yaml has kind %q", config.Name, rawMetadataKind, rawRuntimeKind)
 	}
 
 	resourceName := strings.TrimSpace(metadata.Metadata.Name)
@@ -327,6 +331,10 @@ const (
 	kindLLMProxy    = "LlmProxy"
 	kindLLMProvider = "LlmProvider"
 	kindMCP         = "Mcp"
+	// metadataKindSuffix is appended to the metadata.yaml kind for ai-workspace
+	// artifacts (e.g. LlmProxyMetadata) to distinguish it from the runtime kind
+	// (LlmProxy). It is stripped before comparing/dispatching on the kind.
+	metadataKindSuffix = "Metadata"
 )
 
 // loadAIWorkspaceSpec reads the configured definition.yaml relative to baseDir
@@ -411,7 +419,7 @@ func buildLLMProviderPayload(name string, metadata aiWorkspaceMetadata, runtime 
 		Template:           template,
 		OpenAPI:            openapi,
 		ModelProviders:     modelProvidersForTemplate(template),
-		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
+		AssociatedGateways: normalizeAssociatedGateways(metadata.Spec.AssociatedGateways),
 	}
 
 	if up := runtime.Spec.Upstream; up != nil {
@@ -479,7 +487,7 @@ func buildMCPProxyPayload(name string, metadata aiWorkspaceMetadata, runtime aiW
 			Resources: mcpResources(definition.Resources),
 			Tools:     definition.Tools,
 		},
-		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
+		AssociatedGateways: normalizeAssociatedGateways(metadata.Spec.AssociatedGateways),
 	}
 
 	if up := runtime.Spec.Upstream; up != nil {
@@ -829,7 +837,7 @@ func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtim
 		OpenAPI:            openapi,
 		ReadOnly:           false,
 		Provider:           llmProxyProvider{ID: strings.TrimSpace(runtime.Spec.Provider.ID)},
-		AssociatedGateways: normalizeAssociatedGateways(metadata.AssociatedGateways),
+		AssociatedGateways: normalizeAssociatedGateways(metadata.Spec.AssociatedGateways),
 	}
 
 	// The proxy references its provider by id; the provider owns the credential
@@ -914,10 +922,10 @@ type aiWorkspaceMetadata struct {
 	Spec struct {
 		DisplayName string `yaml:"displayName"`
 		Version     string `yaml:"version"`
+		// AssociatedGateways lives under spec in metadata.yaml; the build extracts
+		// it from there and folds it into the generated payload.
+		AssociatedGateways []associatedGateway `yaml:"associatedGateways"`
 	} `yaml:"spec"`
-	// AssociatedGateways is a top-level section in metadata.yaml (a sibling of
-	// spec), not nested under spec.
-	AssociatedGateways []associatedGateway `yaml:"associatedGateways"`
 }
 
 // associatedGateway mirrors the AssociatedGateway schema (openapi.yaml): the

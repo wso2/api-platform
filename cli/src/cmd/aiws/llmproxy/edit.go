@@ -33,10 +33,10 @@ import (
 const (
 	EditCmdLiteral = "edit"
 	EditCmdExample = `# Update an existing LLM proxy using the active AI workspace
-ap ai-ws llm-proxy edit -f build/wso2-openai-proxy.json --project-id <project-id>
+ap ai-workspace app-llm-proxy edit -f build/wso2-openai-proxy.json --project-id <project-id>
 
 # Update using a specific AI workspace
-ap ai-ws llm-proxy edit -f build/wso2-openai-proxy.json --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-workspace app-llm-proxy edit -f build/wso2-openai-proxy.json --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (

@@ -33,10 +33,10 @@ import (
 const (
 	PushCmdLiteral = "push"
 	PushCmdExample = `# Push an LLM provider artifact using the active AI workspace
-ap ai-ws llm-provider push -f build/wso2-claude.json
+ap ai-workspace llm-provider push -f build/wso2-claude.json
 
 # Push using a specific AI workspace
-ap ai-ws llm-provider push -f build/wso2-claude.json --display-name my-workspace --platform eu`
+ap ai-workspace llm-provider push -f build/wso2-claude.json --display-name my-workspace --platform eu`
 )
 
 var (

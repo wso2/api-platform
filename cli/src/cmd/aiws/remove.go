@@ -30,7 +30,7 @@ import (
 const (
 	RemoveCmdLiteral = "remove"
 	RemoveCmdExample = `# Remove an AI workspace
-ap ai-ws remove --display-name my-workspace`
+ap ai-workspace remove --display-name my-workspace`
 )
 
 var (

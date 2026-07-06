@@ -12,7 +12,7 @@ A single API project is the source of truth for all destinations:
 
 ```mermaid
 flowchart LR
-    A["<b>0 · Set up once</b><br/>connect + select<br/>gateway · devportal · ai-ws"] --> B["<b>1 · Create</b><br/>ap project init"]
+    A["<b>0 · Set up once</b><br/>connect + select<br/>gateway · devportal · ai-workspace"] --> B["<b>1 · Create</b><br/>ap project init"]
     B --> C["<b>Author</b><br/>metadata.yaml · runtime.yaml · definition.yaml"]
     C --> D["<b>2 · Deploy</b><br/>ap gateway apply -f runtime.yaml"]
     D --> E{"Publish to?"}
@@ -24,7 +24,7 @@ flowchart LR
 
     subgraph AW["AI Workspace"]
         direction LR
-        I["<b>3b · Build</b><br/>ap ai-ws build"] --> J["<b>4b · Push</b><br/>ap ai-ws llm-proxy push"]
+        I["<b>3b · Build</b><br/>ap ai-workspace build"] --> J["<b>4b · Push</b><br/>ap ai-workspace app-llm-proxy push"]
     end
 
     E -->|REST API| F
@@ -46,7 +46,7 @@ Register and select the servers the CLI talks to. Each connection lives under th
 ap platform add --display-name <name> --control-plane <url>   # optional; if you use platforms
 ap gateway   add --display-name <gw>   --server <gw-url>      && ap gateway   use --display-name <gw>
 ap devportal add --display-name <dp>   --server <dp-url> --auth api-key  && ap devportal use --display-name <dp>
-ap ai-ws     add --display-name <aiws> --server <aiws-url> --auth api-key && ap ai-ws use --display-name <aiws>
+ap ai-workspace     add --display-name <aiws> --server <aiws-url> --auth api-key && ap ai-workspace use --display-name <aiws>
 ```
 
 Commands resolve the **active** gateway / devportal / ai-workspace of the active platform unless you pass `--display-name` (and `--platform`). See [Gateway](gateway/README.md), [DevPortal](devportal/README.md), and [AI-Workspace](ai-workspace/README.md) references.
@@ -89,17 +89,17 @@ ap devportal rest-api publish -f build/devportal.zip --org <org-id>
 #### AI Workspace
 
 ```shell
-ap ai-ws build                                                      # → build/<workspace>.json
-ap ai-ws llm-proxy push -f build/<workspace>.json --project-id <project-id>
-# the same pattern applies to:  ap ai-ws llm-provider push  /  ap ai-ws mcp-proxy push
+ap ai-workspace build                                                      # → build/<workspace>.json
+ap ai-workspace app-llm-proxy push -f build/<workspace>.json --project-id <project-id>
+# the same pattern applies to:  ap ai-workspace llm-provider push  /  ap ai-workspace mcp-proxy push
 # (the organization comes from the auth token — no --org flag)
 ```
 
-`ap ai-ws build` reads each ai-workspace entry in `.api-platform/config.yaml` and generates a creation payload (JSON), folding the OpenAPI spec from `definition.yaml` into the payload.
+`ap ai-workspace build` reads each ai-workspace entry in `.api-platform/config.yaml` and generates a creation payload (JSON), folding the OpenAPI spec from `definition.yaml` into the payload.
 
 ## Notes
 
-- `ap devportal gen`, `ap devportal build`, and `ap ai-ws build` all operate on an API project (they require `.api-platform/config.yaml`).
+- `ap devportal gen`, `ap devportal build`, and `ap ai-workspace build` all operate on an API project (they require `.api-platform/config.yaml`).
 - Developer Portal is two stages: `gen` **generates** the editable artifact source under `./devportal`, then `build` **packages** it into `build/devportal.zip`. AI Workspace's `build` generates the JSON payload directly (no separate `gen`).
 - Both `build` commands write into the project's `build/` directory, one artifact per configured portal entry.
 - `--org` on the publish/push commands is the target organization in the Developer Portal / AI Workspace.

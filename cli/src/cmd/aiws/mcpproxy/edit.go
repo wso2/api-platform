@@ -33,10 +33,10 @@ import (
 const (
 	EditCmdLiteral = "edit"
 	EditCmdExample = `# Update an existing MCP proxy using the active AI workspace
-ap ai-ws mcp-proxy edit -f build/bijira-mcp-everything.json --project-id <project-id>
+ap ai-workspace mcp-proxy edit -f build/bijira-mcp-everything.json --project-id <project-id>
 
 # Update using a specific AI workspace
-ap ai-ws mcp-proxy edit -f build/bijira-mcp-everything.json --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-workspace mcp-proxy edit -f build/bijira-mcp-everything.json --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (

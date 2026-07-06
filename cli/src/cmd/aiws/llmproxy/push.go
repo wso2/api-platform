@@ -33,10 +33,10 @@ import (
 const (
 	PushCmdLiteral = "push"
 	PushCmdExample = `# Push an LLM proxy artifact using the active AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id>
+ap ai-workspace app-llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id>
 
 # Push using a specific AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-workspace app-llm-proxy push -f build/wso2-openai-proxy.json --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (

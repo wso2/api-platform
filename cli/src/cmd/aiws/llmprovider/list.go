@@ -31,13 +31,13 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all LLM providers
-ap ai-ws llm-provider list
+ap ai-workspace llm-provider list
 
 # List with pagination
-ap ai-ws llm-provider list --limit 50 --offset 0
+ap ai-workspace llm-provider list --limit 50 --offset 0
 
 # List using a specific AI workspace
-ap ai-ws llm-provider list --display-name my-workspace --platform eu`
+ap ai-workspace llm-provider list --display-name my-workspace --platform eu`
 )
 
 var (

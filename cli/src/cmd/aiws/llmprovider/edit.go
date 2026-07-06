@@ -33,10 +33,10 @@ import (
 const (
 	EditCmdLiteral = "edit"
 	EditCmdExample = `# Update an existing LLM provider using the active AI workspace
-ap ai-ws llm-provider edit -f build/wso2-claude.json
+ap ai-workspace llm-provider edit -f build/wso2-claude.json
 
 # Update using a specific AI workspace
-ap ai-ws llm-provider edit -f build/wso2-claude.json --display-name my-workspace --platform eu`
+ap ai-workspace llm-provider edit -f build/wso2-claude.json --display-name my-workspace --platform eu`
 )
 
 var (

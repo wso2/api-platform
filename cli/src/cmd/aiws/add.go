@@ -31,21 +31,21 @@ import (
 const (
 	AddCmdLiteral = "add"
 	AddCmdExample = `# Add a new AI workspace fully interactively
-ap ai-ws add
+ap ai-workspace add
 
 # Add an AI workspace with basic auth
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth basic
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth basic
 
 # Add an AI workspace with OAuth auth
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth oauth
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth oauth
 
 # Add an AI workspace with API key auth
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth api-key
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth api-key
 
 # Add an AI workspace without interactive prompts using flags
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth basic --no-interactive --username admin --password admin
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth oauth --no-interactive --token your_token_here
-ap ai-ws add --display-name my-workspace --server https://ai-workspace.example.com --auth api-key --no-interactive --api-key your_api_key_here`
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth basic --no-interactive --username admin --password admin
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth oauth --no-interactive --token your_token_here
+ap ai-workspace add --display-name my-workspace --server https://ai-workspace.example.com --auth api-key --no-interactive --api-key your_api_key_here`
 )
 
 var (

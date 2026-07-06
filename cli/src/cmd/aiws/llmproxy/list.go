@@ -32,13 +32,13 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all LLM proxies in a project
-ap ai-ws llm-proxy list --project-id <project-id>
+ap ai-workspace app-llm-proxy list --project-id <project-id>
 
 # List with pagination
-ap ai-ws llm-proxy list --project-id <project-id> --limit 50 --offset 0
+ap ai-workspace app-llm-proxy list --project-id <project-id> --limit 50 --offset 0
 
 # List using a specific AI workspace
-ap ai-ws llm-proxy list --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-workspace app-llm-proxy list --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (

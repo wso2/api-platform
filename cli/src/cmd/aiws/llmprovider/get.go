@@ -32,13 +32,13 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# List all LLM providers
-ap ai-ws llm-provider get
+ap ai-workspace llm-provider get
 
 # Get a single LLM provider by ID
-ap ai-ws llm-provider get --id wso2-claude
+ap ai-workspace llm-provider get --id wso2-claude
 
 # List using a specific AI workspace with pagination
-ap ai-ws llm-provider get --limit 50 --offset 0 --display-name my-workspace --platform eu`
+ap ai-workspace llm-provider get --limit 50 --offset 0 --display-name my-workspace --platform eu`
 )
 
 var (

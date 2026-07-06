@@ -30,7 +30,7 @@ import (
 const (
 	CurrentCmdLiteral = "current"
 	CurrentCmdExample = `# Show the current active AI workspace
-ap ai-ws current`
+ap ai-workspace current`
 )
 
 var currentCmd = &cobra.Command{

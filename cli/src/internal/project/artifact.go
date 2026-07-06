@@ -82,6 +82,23 @@ func ArtifactKind(artifactType string) string {
 	}
 }
 
+// MetadataKind returns the kind stamped into an artifact's metadata.yaml.
+// AI-workspace metadata carries a "Metadata" suffix (e.g. LlmProxyMetadata) to
+// distinguish it from the runtime/gateway kind (which keeps the bare kind);
+// management artifacts use the bare kind unchanged.
+func MetadataKind(artifactType string) string {
+	kind := ArtifactKind(artifactType)
+	if IsAIWorkspaceType(artifactType) {
+		return kind + MetadataKindSuffix
+	}
+	return kind
+}
+
+// MetadataKindSuffix is appended to the metadata.yaml kind for ai-workspace
+// artifacts to distinguish it from the runtime kind (e.g. LlmProxyMetadata vs
+// LlmProxy).
+const MetadataKindSuffix = "Metadata"
+
 // MetadataAPIVersion returns the apiVersion for an artifact's metadata.yaml,
 // which differs between the management and ai-workspace planes.
 func MetadataAPIVersion(artifactType string) string {

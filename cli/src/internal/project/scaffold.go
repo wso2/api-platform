@@ -154,7 +154,7 @@ func BuildConfigYAML() (string, error) {
 func BuildMetadataYAML(artifactType, resourceName, displayName string) (string, error) {
 	m := manifest{
 		APIVersion: MetadataAPIVersion(artifactType),
-		Kind:       ArtifactKind(artifactType),
+		Kind:       MetadataKind(artifactType),
 		Metadata:   manifestMeta{Name: resourceName},
 	}
 

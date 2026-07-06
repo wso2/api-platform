@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	AiWSCmdLiteral = "ai-ws"
+	AiWSCmdLiteral = "ai-workspace"
 	AiWSCmdExample = `# Add a new AI-Workspace
-ap ai-ws add --display-name my-portal --platform eu --server https://ai-workspace.example.com --auth api-key`
+ap ai-workspace add --display-name my-portal --platform eu --server https://ai-workspace.example.com --auth api-key`
 )
 
 var AiWSCmd = &cobra.Command{

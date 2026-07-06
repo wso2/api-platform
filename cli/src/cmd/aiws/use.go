@@ -30,7 +30,7 @@ import (
 const (
 	UseCmdLiteral = "use"
 	UseCmdExample = `# Set my-workspace as the active AI workspace
-ap ai-ws use --display-name my-workspace`
+ap ai-workspace use --display-name my-workspace`
 )
 
 var (
