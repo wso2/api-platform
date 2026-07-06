@@ -28,10 +28,7 @@ jobs:
             // A checked GFM checkbox looks like: "- [x] <text>" or "* [x] <text>"
             // We escape the checklist item for use in a regular expression.
             const escapedItem = CHECKLIST_ITEM.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const checkedPattern = new RegExp(
-              `^[\\s]*[-*]\\s+\\[x\\]\\s+${escapedItem}`,
-              'im'
-            );
+            const checkedPattern = /^[\s]*[-*]\s+\[x\]\s+.*\*{0,2}Design Document\*{0,2}.*$/im;
 
             if (!checkedPattern.test(body)) {
               console.log('Checklist item is not checked — nothing to do.');
