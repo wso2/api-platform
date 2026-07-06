@@ -23,7 +23,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/wso2/api-platform/cli/cmd/aiws"
+	"github.com/wso2/api-platform/cli/cmd/aiworkspace"
 	"github.com/wso2/api-platform/cli/cmd/devportal"
 	"github.com/wso2/api-platform/cli/cmd/gateway"
 	"github.com/wso2/api-platform/cli/cmd/platform"

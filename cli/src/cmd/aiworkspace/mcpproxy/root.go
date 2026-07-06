@@ -28,7 +28,7 @@ const (
 ap ai-workspace mcp-proxy list --project-id <project-id>
 
 # Create or update an MCP proxy from a project with:
-#   ap ai-workspace push --project-id <project-id>
+#   ap ai-workspace apply --project-id <project-id>
 #   ap ai-workspace edit --project-id <project-id>`
 )
 

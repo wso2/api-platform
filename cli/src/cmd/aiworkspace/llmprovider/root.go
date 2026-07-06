@@ -28,7 +28,7 @@ const (
 ap ai-workspace llm-provider list
 
 # Create or update a provider from a project with:
-#   ap ai-workspace push   /   ap ai-workspace edit`
+#   ap ai-workspace apply   /   ap ai-workspace edit`
 )
 
 // LLMProviderCmd is the parent command for LLM provider operations.

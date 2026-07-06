@@ -53,7 +53,7 @@ var buildCmd = &cobra.Command{
 		"(or the current directory if not specified). The command reads the ai-workspace " +
 		"configuration in .api-platform/config.yaml and checks that its metadata.yaml, runtime.yaml " +
 		"and definition.yaml are present, that the metadata and runtime kinds align, and that the " +
-		"resource name matches. It does not generate or send any artifact — use `ap ai-workspace push` " +
+		"resource name matches. It does not generate or send any artifact — use `ap ai-workspace apply` " +
 		"to generate the creation payload and create the artifact.",
 	Example: BuildCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -105,7 +105,7 @@ func normalizeAIWorkspaceProjectConfig(config *project.AIWorkspaceConfig) {
 // artifact, loaded from metadata.yaml, runtime.yaml and definition.yaml. It is
 // produced by loadAIWorkspaceArtifact (which validates but does not generate a
 // payload) and consumed by buildPayload (which generates the creation payload).
-// The split lets `build` validate only, while `push`/`edit` validate then
+// The split lets `build` validate only, while `apply`/`edit` validate then
 // generate and send.
 type aiWorkspaceArtifact struct {
 	ConfigName   string
@@ -120,7 +120,7 @@ type aiWorkspaceArtifact struct {
 // resolveProjectAIWorkspace resolves the project root from projectDir, loads the
 // project config, ensures a single ai-workspace configuration exists (creating a
 // default and persisting it when absent), normalizes it, and returns the project
-// root and the ai-workspace config entry. Shared by build, push and edit.
+// root and the ai-workspace config entry. Shared by build, apply and edit.
 func resolveProjectAIWorkspace(projectDir string) (string, *project.AIWorkspaceConfig, error) {
 	if strings.TrimSpace(projectDir) == "" {
 		projectDir = "."

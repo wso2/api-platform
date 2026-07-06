@@ -6,7 +6,7 @@ Available command group:
 
 - `ap ai-workspace`
 
-The `add`, `list`, `remove`, `use`, and `current` commands manage AI-Workspace **server connections** stored in the CLI config file (the same per-platform config used by `ap gateway` and `ap devportal`). The `build`, `push`, and `edit` commands are different: they work inside an **API project**. `build` **validates** the project's artifact; `push`/`edit` **generate** the creation payload from the project's artifacts and create/update the artifact on the server (the endpoint is chosen by the artifact kind).
+The `add`, `list`, `remove`, `use`, and `current` commands manage AI-Workspace **server connections** stored in the CLI config file (the same per-platform config used by `ap gateway` and `ap devportal`). The `build`, `apply`, and `edit` commands are different: they work inside an **API project**. `build` **validates** the project's artifact; `apply`/`edit` **generate** the creation payload from the project's artifacts and create/update the artifact on the server (the endpoint is chosen by the artifact kind).
 
 ## Prerequisites
 
@@ -170,7 +170,7 @@ ai-workspace:
     definition: ./definition.yaml   # OpenAPI spec, required for all kinds
 ```
 
-Validation (the same checks `push` and `edit` run before sending):
+Validation (the same checks `apply` and `edit` run before sending):
 
 - Resolves `metadata`, `runtime`, and `definition` relative to the entry's `portalRoot` (defaults: `./metadata.yaml`, `./runtime.yaml`, `./definition.yaml`; `portalRoot` defaults to `.`, the project root).
 - Requires `metadata.yaml` and `runtime.yaml` to exist.
@@ -183,7 +183,7 @@ All resolved paths are constrained to the project directory; a path that escapes
 
 #### Associating gateways (`metadata.yaml`)
 
-Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in an `associatedGateways` section **under `spec`** in `metadata.yaml`. This applies to all artifact kinds (`LlmProxyMetadata`, `LlmProviderMetadata`, `McpMetadata`). Each entry is keyed by the gateway `id`. `push`/`edit` extract this list from `spec.associatedGateways` and copy it into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
+Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in an `associatedGateways` section **under `spec`** in `metadata.yaml`. This applies to all artifact kinds (`LlmProxyMetadata`, `LlmProviderMetadata`, `McpMetadata`). Each entry is keyed by the gateway `id`. `apply`/`edit` extract this list from `spec.associatedGateways` and copy it into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
 
 ```yaml
 # metadata.yaml
@@ -201,18 +201,18 @@ spec:
 
 `configurations` is a free-form object — the supported keys depend on the artifact type.
 
-## `ap ai-workspace push` / `ap ai-workspace edit`
+## `ap ai-workspace apply` / `ap ai-workspace edit`
 
-These commands run the same validation as `build`, then **generate** the creation payload from the project artifacts and send it to the AI workspace. `push` **creates** the artifact (`POST`); `edit` **updates** an existing one (`PUT /{resource}/{id}`, where `id` is `metadata.name`). Both live at the root of `ap ai-workspace` (not under a per-kind group) and select the endpoint from the artifact **kind**:
+These commands run the same validation as `build`, then **generate** the creation payload from the project artifacts and send it to the AI workspace. `apply` **creates** the artifact (`POST`); `edit` **updates** an existing one (`PUT /{resource}/{id}`, where `id` is `metadata.name`). Both live at the root of `ap ai-workspace` (not under a per-kind group) and select the endpoint from the artifact **kind**:
 
-| Kind | `push` endpoint | `edit` endpoint |
+| Kind | `apply` endpoint | `edit` endpoint |
 | --- | --- | --- |
 | `LlmProvider` | `POST /llm-providers` | `PUT /llm-providers/{id}` |
 | `LlmProxy` | `POST /llm-proxies` | `PUT /llm-proxies/{id}` |
 | `Mcp` | `POST /mcp-proxies` | `PUT /mcp-proxies/{id}` |
 
 ```shell
-ap ai-workspace push [-f <project-directory>] [--project-id <id>] [--env-file <path>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
+ap ai-workspace apply [-f <project-directory>] [--project-id <id>] [--env-file <path>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
 ap ai-workspace edit [-f <project-directory>] [--project-id <id>] [--env-file <path>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
 ```
 
@@ -220,15 +220,15 @@ Examples:
 
 ```shell
 # Create/update a provider (no project scoping)
-ap ai-workspace push
+ap ai-workspace apply
 ap ai-workspace edit
 
 # Create/update a proxy or MCP proxy (project-scoped)
-ap ai-workspace push --project-id <project-id>
+ap ai-workspace apply --project-id <project-id>
 ap ai-workspace edit --project-id <project-id>
 
 # Resolve ENV_CLI_* placeholders from a specific env file
-ap ai-workspace push --env-file ./secrets.env
+ap ai-workspace apply --env-file ./secrets.env
 ```
 
 Notes:
@@ -241,18 +241,18 @@ Notes:
 
 ### Environment variable placeholders (`ENV_CLI_*`)
 
-`metadata.yaml` and `runtime.yaml` may reference **environment variables** for specific field values using the `ENV_CLI_` prefix. This lets you keep values that change between environments — upstream URLs, hosts, project IDs, model names, etc. — out of the project files and supply them at push time. Supported forms: `${ENV_CLI_NAME}`, `$ENV_CLI_NAME`, or a bare `ENV_CLI_NAME` token.
+`metadata.yaml` and `runtime.yaml` may reference **environment variables** for specific field values using the `ENV_CLI_` prefix. This lets you keep values that change between environments — upstream URLs, hosts, project IDs, model names, etc. — out of the project files and supply them at apply time. Supported forms: `${ENV_CLI_NAME}`, `$ENV_CLI_NAME`, or a bare `ENV_CLI_NAME` token.
 
 > **This is for environment-specific configuration values, not secrets.** The resolved value is substituted into the artifact and sent to the server (it travels in the request body and is stored in the created artifact). Do **not** use it for API keys, tokens, or other secrets. Secrets should be managed server-side and referenced with the platform's `{{ secret "name" }}` placeholders (resolved by the server from its encrypted secret store), which the CLI leaves untouched.
 
 ```yaml
-# runtime.yaml — a per-environment upstream URL supplied at push time
+# runtime.yaml — a per-environment upstream URL supplied at apply time
 spec:
   upstream:
     url: ${ENV_CLI_UPSTREAM_URL}
 ```
 
-`push`/`edit` resolve the placeholders in the **generated payload** just before it is sent, looking up each variable in this order:
+`apply`/`edit` resolve the placeholders in the **generated payload** just before it is sent, looking up each variable in this order:
 
 1. **`--env-file <path>`** — when given, values come from that env file (a missing file is an error).
 2. **`.env` in the project root** — used by default when `--env-file` is not given.
@@ -260,7 +260,7 @@ spec:
 
 The env file format is one `KEY=VALUE` per line; blank lines and `#` comments are ignored, an `export ` prefix is allowed, and single/double quotes around the value are stripped.
 
-**Push/edit fail if a referenced variable has no value** at push time — the command errors and names every unresolved variable, and nothing is sent to the server. Define the missing variables in an env file (`--env-file` or the project's `.env`) or in the environment and retry. `build` does not resolve placeholders — it only validates the project files.
+**Apply/edit fail if a referenced variable has no value** at apply time — the command errors and names every unresolved variable, and nothing is sent to the server. Define the missing variables in an env file (`--env-file` or the project's `.env`) or in the environment and retry. `build` does not resolve placeholders — it only validates the project files.
 
 ### Generated payload
 
@@ -282,7 +282,7 @@ The payload shape is selected by kind.
 | `readOnly` | always `false` |
 | `openapi` | content of `definition.yaml` (**required**) |
 | `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `spec.associatedGateways` (omitted when absent) |
-| `projectId` | intentionally omitted (injected by `push`/`edit` via `--project-id`) |
+| `projectId` | intentionally omitted (injected by `apply`/`edit` via `--project-id`) |
 
 #### `LlmProvider`
 
