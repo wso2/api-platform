@@ -1,0 +1,60 @@
+name: openai-header-router
+version: v1.0.0
+description: |
+  Selects an LLM provider for OpenAI Chat Completions requests using a request
+  header, then publishes the selected provider id to shared metadata for
+  downstream translator policies.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    headerName:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Name of the request header to read for provider selection.
+        Comparison is case-insensitive.
+      default: x-provider
+      minLength: 1
+    defaultProvider:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider id selected when the header is missing, empty, or does
+        not match any entry in "mappings". This must be a provider id that
+        a downstream translator is bound to.
+      minLength: 1
+    mappings:
+      type: array
+      x-wso2-policy-advanced-param: false
+      description: |
+        Mapping from incoming header values to provider ids. The first
+        matching entry wins.
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          headerValue:
+            type: string
+            description: |
+              Header value to match (case-insensitive, leading/trailing
+              whitespace trimmed).
+            minLength: 1
+          provider:
+            type: string
+            description: |
+              Provider id published to SharedContext.Metadata
+              ["selected_provider"] when this entry matches.
+            minLength: 1
+        required:
+          - headerValue
+          - provider
+      minItems: 1
+  required:
+    - mappings
+    - defaultProvider
+
+systemParameters:
+  type: object
+  properties: {}

@@ -154,7 +154,7 @@ gateway/gateway-runtime/target
 gateway/gateway-controller/target/
 gateway/gateway-builder/target/
 event-gateway/gateway-runtime/target/
-dev-policies/
+# dev-policies/
 
 # Copilot Prompts
 .github/prompts
