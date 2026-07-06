@@ -37,9 +37,9 @@
 #   Every devportal config value can also be overridden via a DP_* env var.
 #   Create a .env file next to this file for persistent overrides.
 #
-# Demo mode (off by default):
-#   demo=true docker compose up
-#   Enables the "Seed sample APIs" button in Settings and the onboarding prompt.
+# Demo mode (on by default):
+#   demo=false docker compose up
+#   Disables the "Seed sample APIs" button in Settings and the onboarding prompt.
 #
 # Database:
 #   SQLite is used by default — no external database required.
@@ -59,7 +59,7 @@
 services:
   # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.11.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
@@ -102,7 +102,7 @@ services:
   #     - devportal-network
 
   devportal:
-    image: ghcr.io/wso2/api-platform/developer-portal:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha-SNAPSHOT
     depends_on:
       platform-api:
         condition: service_healthy
@@ -146,11 +146,11 @@ services:
       # Seed a default organization on startup (idempotent)
       DP_DEFAULTORGNAME: "default"
 
-      # Demo mode — off by default. When enabled, the Settings > Manage APIs page
+      # Demo mode — on by default. When enabled, the Settings > Manage APIs page
       # shows a "Seed sample APIs" button and admins get a one-time onboarding
-      # prompt to deploy sample APIs/MCPs. Enable with:
-      #   demo=true docker compose up
-      DP_DEMO_ENABLED: "${demo:-false}"
+      # prompt to deploy sample APIs/MCPs. Disable with:
+      #   demo=false docker compose up
+      DP_DEMO_ENABLED: "${demo:-true}"
 
       # Auto-generate default subscription plans for every new org
       DP_GENERATEDEFAULTSUBPLANS: "true"

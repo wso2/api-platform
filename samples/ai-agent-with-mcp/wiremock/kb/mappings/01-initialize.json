@@ -1,0 +1,13 @@
+{
+  "name": "kb-initialize",
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [{ "matchesJsonPath": "$[?(@.method == 'initialize')]" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "kb-initialize.json"
+  }
+}

@@ -20,6 +20,8 @@ package config
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"platform-api/src/internal/utils"
@@ -29,16 +31,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These tests reproduce the demo-mode secret-encryption-key bug end to end: when
-// APIP_DEMO_MODE is on (the default) and no encryption key is configured,
-// LoadConfig mints a fresh random PLATFORM_SECRET_ENCRYPTION_KEY on every start
-// (config.go generateRandomSecret). A secret encrypted before a restart is then
-// encrypted with a key the next process no longer has, so it can never be
-// decrypted again — silent data loss for already-stored secrets.
-//
-// The existing config tests prove the key is random per LoadConfig call; these go
-// one step further and prove the *consequence* (decryption failure) through the
-// same vault the server uses, and that a stable configured key avoids it.
+// These tests verify the demo-mode secret-encryption-key lifecycle end to end:
+// when APIP_DEMO_MODE is on (the default) and no encryption key is configured,
+// LoadConfig persists a generated key to DATABASE_SECRET_ENCRYPTION_KEY_FILE on
+// first start and reloads it on subsequent starts, so a secret encrypted before
+// a restart still decrypts after it. Only when the key file is unusable does
+// demo mode fall back to an ephemeral per-process key (secrets then do not
+// survive restarts). Decryption is exercised through the same vault the server
+// uses, not just by comparing key strings.
 
 const secretUnderTest = "sk-super-secret-value-123"
 
@@ -53,44 +53,81 @@ func newSecretVault(t *testing.T, keyStr string) *vault.InHouseVault {
 	return v
 }
 
-// TestDemoModeEphemeralKey_BreaksSecretDecryptionAcrossRestart is the bug: a
-// secret encrypted on the first start cannot be decrypted after a "restart"
-// (a second LoadConfig), because the demo-mode ephemeral key changed.
-func TestDemoModeEphemeralKey_BreaksSecretDecryptionAcrossRestart(t *testing.T) {
+// TestDemoModeKeyFile_SecretSurvivesRestart verifies the demo-mode fix: with no
+// key configured, the first LoadConfig generates and persists a key file, a
+// second LoadConfig ("restart") reloads the same key, and a secret encrypted
+// before the restart still decrypts after it.
+func TestDemoModeKeyFile_SecretSurvivesRestart(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "secret-encryption.key")
 	t.Setenv("APIP_DEMO_MODE", "true")
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", keyFile)
 
-	// First start: encrypt a secret with the key from the freshly loaded config.
+	// First start: the key file is generated and the secret encrypted with it.
+	cfg1, err := LoadConfig("")
+	require.NoError(t, err)
+	require.NotEmpty(t, cfg1.Database.SecretEncryptionKey)
+	info, err := os.Stat(keyFile)
+	require.NoError(t, err, "demo mode must persist the generated key file")
+	assert.Equal(t, int64(32), info.Size())
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+
+	ciphertext, err := newSecretVault(t, cfg1.Database.SecretEncryptionKey).
+		Encrypt(context.Background(), secretUnderTest)
+	require.NoError(t, err)
+
+	// Restart: the second LoadConfig must reload the persisted key, not mint a
+	// new one, so the pre-restart ciphertext still decrypts.
+	cfg2, err := LoadConfig("")
+	require.NoError(t, err)
+	require.Equal(t, cfg1.Database.SecretEncryptionKey, cfg2.Database.SecretEncryptionKey,
+		"demo mode must reload the persisted key file across restarts")
+
+	plaintext, err := newSecretVault(t, cfg2.Database.SecretEncryptionKey).
+		Decrypt(context.Background(), ciphertext)
+	require.NoError(t, err,
+		"a secret encrypted before restart must stay decryptable via the persisted demo-mode key")
+	assert.Equal(t, secretUnderTest, plaintext)
+}
+
+// TestDemoModeUnusableKeyFile_FallsBackToEphemeralKey covers the fallback path:
+// if the key file cannot be used (here: wrong size), demo mode still starts but
+// mints a fresh ephemeral key per process, so secrets do not survive a restart.
+func TestDemoModeUnusableKeyFile_FallsBackToEphemeralKey(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "secret-encryption.key")
+	require.NoError(t, os.WriteFile(keyFile, []byte("short"), 0600),
+		"seeding an invalid (wrong-size) key file")
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", keyFile)
+
 	cfg1, err := LoadConfig("")
 	require.NoError(t, err)
 	vault1 := newSecretVault(t, cfg1.Database.SecretEncryptionKey)
 	ciphertext, err := vault1.Encrypt(context.Background(), secretUnderTest)
 	require.NoError(t, err)
 
-	// Sanity: the same key round-trips, so the ciphertext itself is valid — this
-	// isolates the failure below to the key change, not a bad ciphertext.
+	// Sanity: the same key round-trips, so the failure below is the key change.
 	roundTrip, err := vault1.Decrypt(context.Background(), ciphertext)
 	require.NoError(t, err)
 	require.Equal(t, secretUnderTest, roundTrip)
 
-	// Restart: a second LoadConfig mints a different ephemeral key (root cause).
 	cfg2, err := LoadConfig("")
 	require.NoError(t, err)
 	require.NotEqual(t, cfg1.Database.SecretEncryptionKey, cfg2.Database.SecretEncryptionKey,
-		"demo-mode must mint a new ephemeral key on each start")
+		"an unusable key file must fall back to a fresh ephemeral key per start")
 
-	// The consequence: the pre-restart ciphertext no longer decrypts (AES-GCM
-	// auth-tag mismatch under the new key).
-	vault2 := newSecretVault(t, cfg2.Database.SecretEncryptionKey)
-	_, err = vault2.Decrypt(context.Background(), ciphertext)
+	_, err = newSecretVault(t, cfg2.Database.SecretEncryptionKey).
+		Decrypt(context.Background(), ciphertext)
 	assert.Error(t, err,
-		"BUG: a secret encrypted before restart must not decrypt with the new demo-mode "+
-			"ephemeral key — already-stored secrets become permanently unreadable after restart")
+		"with an ephemeral fallback key, secrets encrypted before restart are unreadable")
 }
 
-// TestStableConfiguredKey_SecretSurvivesRestart is the contrast / fix: when
+// TestStableConfiguredKey_SecretSurvivesRestart: when
 // PLATFORM_SECRET_ENCRYPTION_KEY is configured, the key is stable across restarts
 // and a secret encrypted before a restart still decrypts after it.
 func TestStableConfiguredKey_SecretSurvivesRestart(t *testing.T) {

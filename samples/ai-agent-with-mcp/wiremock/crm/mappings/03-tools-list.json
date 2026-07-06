@@ -1,0 +1,1 @@
+{"request":{"method":"POST","url":"/mcp","bodyPatterns":[{"matchesJsonPath":{"expression":"$.method","equalTo":"tools/list"}}]},"response":{"status":200,"headers":{"Content-Type":"application/json"},"bodyFileName":"crm-tools-list.json","transformers":["response-template"]}}

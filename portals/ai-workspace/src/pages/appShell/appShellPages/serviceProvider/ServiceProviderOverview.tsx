@@ -281,7 +281,7 @@ function ServiceProviderOverviewContent() {
     [gateways, selectedGatewayId]
   );
   const generatedInvokeUrl = useMemo(() => {
-    const vhost = selectedGateway?.vhost?.trim();
+    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
     if (!vhost) return '';
 
     const normalizedBase = /^https?:\/\//i.test(vhost)
@@ -294,7 +294,7 @@ function ServiceProviderOverviewContent() {
         : `/${context}`
       : '/';
     return `${normalizedBase}${normalizedContext}`;
-  }, [provider?.context, selectedGateway?.vhost]);
+  }, [provider?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
   const selectedProjectForProxy = useMemo(
     () =>
       projectsForCurrentOrganization.find(
@@ -793,7 +793,8 @@ function ServiceProviderOverviewContent() {
     descriptionText.length > 200
       ? `${descriptionText.slice(0, 200).trim()}…`
       : descriptionText;
-  const lastUpdated = provider.createdAt ?? provider.lastUpdated;
+  const lastUpdated =
+    provider.updatedAt ?? provider.lastUpdated ?? provider.createdAt;
   const modelProviders = provider.modelProviders ?? [];
   const providerModels = modelProviders.flatMap((modelProvider) =>
     (modelProvider.models ?? []).map((model) => ({
@@ -1150,7 +1151,7 @@ function ServiceProviderOverviewContent() {
                                   variant="body2"
                                   color="primary.main"
                                 >
-                                  {model.name || model.id}
+                                  {model.displayName || model.id}
                                 </Typography>
                               </Box>
                             ))}

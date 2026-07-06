@@ -20,6 +20,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,6 +34,8 @@ func TestLoadConfig_MissingSecretEncryptionKey_DemoMode_GeneratesEphemeralKey(t 
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	// Ensure the koanf env-var alias doesn't accidentally provide a value.
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+	t.Setenv("AUTH_JWT_SECRET_KEY", "")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err, "LoadConfig must succeed in DEMO_MODE even without a secret encryption key")
@@ -41,18 +44,23 @@ func TestLoadConfig_MissingSecretEncryptionKey_DemoMode_GeneratesEphemeralKey(t 
 }
 
 // TC-35 (negative): Missing key WITHOUT demo mode → fatal error returned.
+// JWT auth is disabled so the JWT-key check doesn't fire before the encryption-key check.
 func TestLoadConfig_MissingSecretEncryptionKey_NonDemoMode_ReturnsError(t *testing.T) {
 	t.Setenv("APIP_DEMO_MODE", "false")
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	// Provide a JWT secret so LoadConfig passes JWT validation and reaches the
-	// encryption-key check this test is asserting on.
-	t.Setenv("AUTH_JWT_SECRET_KEY", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+	t.Setenv("AUTH_JWT_SECRET_KEY", "")
+	t.Setenv("AUTH_JWT_ENABLED", "false")
+	// Use a blocking file as parent so the key file path resolves but can't be
+	// created, ensuring LoadConfig reaches the missing-key error path.
+	blockingFile := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(blockingFile, []byte("block"), 0600))
+	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", filepath.Join(blockingFile, "secret-encryption.key"))
 
 	_, err := LoadConfig("")
 	assert.Error(t, err, "LoadConfig must return an error when no encryption key is configured and DEMO_MODE is off")
-	assert.Contains(t, err.Error(), "no encryption key configured for secrets management")
+	assert.Contains(t, err.Error(), "failed to load secret key file")
 }
 
 // Missing key with APIP_DEMO_MODE unset → demo mode is the default, so an
@@ -62,6 +70,7 @@ func TestLoadConfig_MissingSecretEncryptionKey_UnsetDemoMode_DefaultsToDemo(t *t
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+	t.Setenv("AUTH_JWT_SECRET_KEY", "")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err, "LoadConfig must succeed when APIP_DEMO_MODE is unset (demo is the default)")
@@ -70,10 +79,19 @@ func TestLoadConfig_MissingSecretEncryptionKey_UnsetDemoMode_DefaultsToDemo(t *t
 }
 
 // TC-35: Ephemeral key must be unique each LoadConfig call (i.e. truly random, not a constant).
-func TestLoadConfig_EphemeralKey_IsRandomPerCall(t *testing.T) {
+// Without an explicit key file path (e.g. postgres with no DATABASE_SECRET_ENCRYPTION_KEY_FILE and no DB path),
+// no persistence is possible and the key is still ephemeral — each LoadConfig call produces a different value.
+func TestLoadConfig_EphemeralKey_IsRandomPerCall_NoDatabasePath(t *testing.T) {
+	// Use a temp file as the "parent directory" — os.MkdirAll can't create a
+	// directory where a file already exists, so persistence always fails.
+	blockingFile := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(blockingFile, []byte("block"), 0600))
+	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", filepath.Join(blockingFile, "secret-encryption.key"))
 	t.Setenv("APIP_DEMO_MODE", "true")
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+	t.Setenv("AUTH_JWT_SECRET_KEY", "")
 
 	cfg1, err := LoadConfig("")
 	require.NoError(t, err)
@@ -81,7 +99,36 @@ func TestLoadConfig_EphemeralKey_IsRandomPerCall(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEqual(t, cfg1.Database.SecretEncryptionKey, cfg2.Database.SecretEncryptionKey,
-		"ephemeral keys must differ between independent LoadConfig calls")
+		"without a database path, ephemeral keys must differ between independent LoadConfig calls")
+}
+
+// With a key file path configured, the first LoadConfig generates and persists a 32-byte
+// binary key file; subsequent calls load the same key — secrets survive restarts.
+func TestLoadConfig_DemoMode_PersistsAndReloadsKey(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "secret-encryption.key")
+
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+	t.Setenv("AUTH_JWT_SECRET_KEY", "")
+	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", keyFile)
+
+	cfg1, err := LoadConfig("")
+	require.NoError(t, err)
+	require.NotEmpty(t, cfg1.Database.SecretEncryptionKey)
+
+	// Key file must be a 32-byte binary file.
+	data, readErr := os.ReadFile(keyFile)
+	require.NoError(t, readErr, "key file must exist after first LoadConfig")
+	assert.Len(t, data, 32, "key file must contain exactly 32 bytes")
+
+	// Second call must load the same key.
+	cfg2, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, cfg1.Database.SecretEncryptionKey, cfg2.Database.SecretEncryptionKey,
+		"second LoadConfig must reuse the persisted key so secrets remain readable after restart")
 }
 
 // TestLoadConfig_ExplicitSecretEncryptionKey verifies the normal path where the
@@ -90,8 +137,7 @@ func TestLoadConfig_ExplicitSecretEncryptionKey_UsedAsIs(t *testing.T) {
 	const stableKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", stableKey)
 	t.Setenv("APIP_DEMO_MODE", "false")
-	// Non-demo mode requires an explicit JWT secret; set one so LoadConfig succeeds.
-	t.Setenv("AUTH_JWT_SECRET_KEY", stableKey)
+	t.Setenv("AUTH_JWT_ENABLED", "false")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)

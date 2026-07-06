@@ -299,6 +299,9 @@ async function authResolver(req, res, next) {
                 }
                 const orgErr = await resolveOrgFromClaim(req, tokenOrgClaim);
                 if (orgErr) return next(orgErr);
+            } else if (decoded.org_handle) {
+                const orgErr = await resolveOrgFromClaim(req, decoded.org_handle);
+                if (orgErr) return next(orgErr);
             }
             const rawSub = decoded[constants.USER_ID];
             const userUuid = await resolveUserUuid(req, rawSub);

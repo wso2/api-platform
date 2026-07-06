@@ -83,26 +83,41 @@ func (a *apiRef) validate() error {
 // apiKeyData is the data payload for all apikey.* events. key carries the encrypted secret and is
 // present only for generate/regenerate (events that carry a new secret, listed in
 // encrypted_fields as "key"); revoke omits it.
+//
+// handle is the Platform API handle for the key: its stable identity (api_keys uniqueness is
+// artifact + name), used to resolve the key on regenerate/revoke/application_updated and set as the
+// key name on generate. display_name is the human-readable name shown for the key.
 type apiKeyData struct {
-	KeyID     string        `json:"key_id"`
-	Name      string        `json:"name"`
-	ExpiresAt string        `json:"expires_at"`
-	API       apiRef        `json:"api"`
-	Key       *EncryptedKey `json:"key"`
+	KeyID       string        `json:"key_id"`
+	Handle      string        `json:"handle"`
+	DisplayName string        `json:"display_name"`
+	ExpiresAt   string        `json:"expires_at"`
+	API         apiRef        `json:"api"`
+	Key         *EncryptedKey `json:"key"`
 }
 
 func (d *apiKeyData) validate() error {
 	return d.API.validate()
 }
 
-// namePtr returns the key name as a pointer, or nil when absent. When present, the same name is
-// the stable identity used by regenerate/revoke (api_keys uniqueness is artifact + name).
-func (d *apiKeyData) namePtr() *string {
-	if strings.TrimSpace(d.Name) == "" {
+// handlePtr returns the key handle as a pointer, or nil when absent. When present it is the stable
+// identity used by generate (as the key name) and regenerate/revoke/application_updated (to resolve
+// the key), since api_keys uniqueness is artifact + name.
+func (d *apiKeyData) handlePtr() *string {
+	if strings.TrimSpace(d.Handle) == "" {
 		return nil
 	}
-	v := strings.TrimSpace(d.Name)
+	v := strings.TrimSpace(d.Handle)
 	return &v
+}
+
+// displayName returns the human-readable key name. It falls back to the handle when the event omits
+// display_name, so the created key always has a display name.
+func (d *apiKeyData) displayName() string {
+	if v := strings.TrimSpace(d.DisplayName); v != "" {
+		return v
+	}
+	return strings.TrimSpace(d.Handle)
 }
 
 func (d *apiKeyData) externalRefPtr() *string {
@@ -128,9 +143,9 @@ func parseExpiresAt(s string) (*time.Time, error) {
 // handleAPIKeyGenerated decrypts the new key secret and injects it via the existing API-key service,
 // which hashes it, persists it, and broadcasts to the gateways where the API is deployed.
 //
-// The key is identified by (api, name), so name is required and the operation is idempotent by that
-// identity: a duplicate delivery whose key already exists is treated as success rather than failing
-// on the (artifact_uuid, name) unique constraint.
+// The key is identified by (api, handle), so handle is required and the operation is idempotent by
+// that identity: a duplicate delivery whose key already exists is treated as success rather than
+// failing on the (artifact_uuid, name) unique constraint.
 func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) error {
 	var d apiKeyData
 	if err := env.decodeData(&d); err != nil {
@@ -139,8 +154,8 @@ func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) err
 	if err := d.validate(); err != nil {
 		return err
 	}
-	if d.namePtr() == nil {
-		return fmt.Errorf("%w: data.name is required to identify the generated key", ErrInvalidEnvelope)
+	if d.handlePtr() == nil {
+		return fmt.Errorf("%w: data.handle is required to identify the generated key", ErrInvalidEnvelope)
 	}
 	if d.Key == nil {
 		return fmt.Errorf("%w: data.key (encrypted secret) is required for %s", ErrInvalidEnvelope, env.EventType)
@@ -157,14 +172,16 @@ func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) err
 	}
 
 	req := &api.CreateAPIKeyRequest{
+		// Id is the key's Platform API handle (its stable name); DisplayName is the human-readable name.
+		Id:            d.handlePtr(),
 		ApiKey:        plaintext,
-		DisplayName:   *d.namePtr(),
+		DisplayName:   d.displayName(),
 		ExternalRefId: d.externalRefPtr(),
 		ExpiresAt:     expiresAt,
 	}
 	// userID is empty: webhook events are system-originated, not tied to an interactive user.
 	if err := r.apiKeys.CreateAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, "", req); err != nil {
-		// Domain-level idempotency: a key already injected under this (api, name) means a prior
+		// Domain-level idempotency: a key already injected under this (api, handle) means a prior
 		// delivery succeeded. The underlying Create surfaces a raw unique-constraint error, so match
 		// on the constraint phrasing rather than a typed error.
 		if looksLikeUniqueViolation(err) {
@@ -175,7 +192,7 @@ func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) err
 	return nil
 }
 
-// handleAPIKeyRegenerated rotates an existing key. The key is identified by its name within the API.
+// handleAPIKeyRegenerated rotates an existing key. The key is identified by its handle within the API.
 func (r *Receiver) handleAPIKeyRegenerated(ctx context.Context, env *Envelope) error {
 	var d apiKeyData
 	if err := env.decodeData(&d); err != nil {
@@ -184,8 +201,8 @@ func (r *Receiver) handleAPIKeyRegenerated(ctx context.Context, env *Envelope) e
 	if err := d.validate(); err != nil {
 		return err
 	}
-	if d.namePtr() == nil {
-		return fmt.Errorf("%w: data.name is required to identify the key to regenerate", ErrInvalidEnvelope)
+	if d.handlePtr() == nil {
+		return fmt.Errorf("%w: data.handle is required to identify the key to regenerate", ErrInvalidEnvelope)
 	}
 	if d.Key == nil {
 		return fmt.Errorf("%w: data.key (encrypted secret) is required for %s", ErrInvalidEnvelope, env.EventType)
@@ -209,10 +226,10 @@ func (r *Receiver) handleAPIKeyRegenerated(ctx context.Context, env *Envelope) e
 		ExternalRefId: d.externalRefPtr(),
 		ExpiresAt:     expiresAt,
 	}
-	return r.apiKeys.UpdateAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, *d.namePtr(), "", req)
+	return r.apiKeys.UpdateAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, *d.handlePtr(), "", req)
 }
 
-// handleAPIKeyRevoked revokes an existing key, identified by its name within the API.
+// handleAPIKeyRevoked revokes an existing key, identified by its handle within the API.
 func (r *Receiver) handleAPIKeyRevoked(ctx context.Context, env *Envelope) error {
 	var d apiKeyData
 	if err := env.decodeData(&d); err != nil {
@@ -221,10 +238,10 @@ func (r *Receiver) handleAPIKeyRevoked(ctx context.Context, env *Envelope) error
 	if err := d.validate(); err != nil {
 		return err
 	}
-	if d.namePtr() == nil {
-		return fmt.Errorf("%w: data.name is required to identify the key to revoke", ErrInvalidEnvelope)
+	if d.handlePtr() == nil {
+		return fmt.Errorf("%w: data.handle is required to identify the key to revoke", ErrInvalidEnvelope)
 	}
-	return r.apiKeys.RevokeAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, *d.namePtr(), "")
+	return r.apiKeys.RevokeAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, *d.handlePtr(), "")
 }
 
 // appRef is the optional application reference on apikey.application_updated. It is null when the
@@ -238,7 +255,7 @@ type appRef struct {
 }
 
 // apiKeyApplicationData is the data payload for apikey.application_updated. The key is resolved the
-// same way as the other apikey.* events — by (api.ref_id, name) — so it embeds apiKeyData for that
+// same way as the other apikey.* events — by (api.ref_id, handle) — so it embeds apiKeyData for that
 // identity. application is the new owning application, or null to dissociate the key.
 type apiKeyApplicationData struct {
 	apiKeyData
@@ -246,7 +263,7 @@ type apiKeyApplicationData struct {
 }
 
 // handleAPIKeyApplicationUpdated reconciles a change to which application an API key belongs to.
-// The key is resolved exactly like revoke — by (api.ref_id, name); application is the new owner, or
+// The key is resolved exactly like revoke — by (api.ref_id, handle); application is the new owner, or
 // null to dissociate. SetAPIKeyApplication is idempotent, so a redelivery re-applies the same owner.
 func (r *Receiver) handleAPIKeyApplicationUpdated(ctx context.Context, env *Envelope) error {
 	var d apiKeyApplicationData
@@ -256,12 +273,15 @@ func (r *Receiver) handleAPIKeyApplicationUpdated(ctx context.Context, env *Enve
 	if err := d.validate(); err != nil {
 		return err
 	}
-	if d.namePtr() == nil {
-		return fmt.Errorf("%w: data.name is required to identify the key", ErrInvalidEnvelope)
+	if d.handlePtr() == nil {
+		return fmt.Errorf("%w: data.handle is required to identify the key", ErrInvalidEnvelope)
 	}
 	appHandle := ""
 	if d.Application != nil {
 		appHandle = strings.TrimSpace(d.Application.Handle)
+		if appHandle == "" {
+			return fmt.Errorf("%w: data.application.handle is required when application is present (send null to dissociate)", ErrInvalidEnvelope)
+		}
 	}
-	return r.apps.SetAPIKeyApplication(*d.namePtr(), d.API.RefID, d.API.kind(), appHandle, env.OrgID, "")
+	return r.apps.SetAPIKeyApplication(*d.handlePtr(), d.API.RefID, d.API.kind(), appHandle, env.OrgID, "")
 }

@@ -23,9 +23,9 @@ const { applyAudit } = require('./dtoUtils');
  */
 class WebhookSubscriberDTO {
     constructor(sub, audit) {
-        this.id = sub.uuid;
+        this.id = sub.handle;
         this.orgId = sub.org_uuid;
-        this.name = sub.name;
+        this.displayName = sub.display_name;
         this.targetUrl = sub.target_url;
         this.enabled = !!sub.enabled;
         this.events = sub.event_patterns || [];

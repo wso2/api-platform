@@ -40,26 +40,15 @@ Workflows must be explicitly published to become visible to consumers. Draft wor
 
 ## Controlling Visibility
 
-Visibility is controlled independently for human users and AI agents.
+A workflow has two independent controls:
 
-### Portal UI Visibility
+- **Status** (`Draft` / `Published`) — whether the workflow exists anywhere outside the admin console. Draft workflows are not shown in the portal UI or any agent-facing surface.
+- **Agent Visibility** (`Visible` / `Hidden`) — for a published workflow, whether it's additionally exposed to AI agents via `llms.txt` and `api-workflows.md`. A published workflow always appears in the portal's API Workflows section for human users regardless of this setting; setting it to **Hidden** only excludes it from agent-facing surfaces.
 
-Determines whether the workflow appears in the Developer Portal for human users.
-
-- **Visible** — appears in the portal's API Workflows section and in search results
-- **Hidden** — not shown in the portal UI; still accessible via direct URL
-
-### Agent Visibility
-
-Determines whether the workflow is exposed to AI agents via machine-readable surfaces.
-
-- **Visible** — included in `llms.txt` and `api-workflows.md`
-- **Hidden** — excluded from agent-facing surfaces; human users can still see it in the portal UI
-
-This allows workflows to be tailored for specific audiences — for example, exposing a workflow to agents before it is ready for the developer-facing portal, or vice versa.
+This lets you publish a workflow for human users in the portal before deciding it's ready to be surfaced to AI agents.
 
 ## Related
 
 - [Consuming API Workflows](../discover-apis/api-workflows.md) — how developers and agents discover and use workflows
-- [LLM Instructions](llm-instructions.md) — configure high-level guidance for AI agents
+- [LLM Instructions](llm-instructions.md) — configure the portal identity shown to AI agents
 - [AI Agent Discovery](../discover-apis/ai-agent-discovery.md) — how agents navigate the portal

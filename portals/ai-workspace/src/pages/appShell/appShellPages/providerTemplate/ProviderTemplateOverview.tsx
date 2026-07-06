@@ -1113,25 +1113,21 @@ export default function ProviderTemplateOverview() {
               {isDpOrigin && !isReadOnly && (
                 <GatewayArtifactReadOnlyBanner message="Token mapping is managed by the gateway that created this template and is read-only here." />
               )}
-              <Box
-                sx={
-                  isSectionReadOnly
-                    ? { pointerEvents: 'none', opacity: 0.7 }
-                    : undefined
-                }
-              >
-                <TemplateTokenMapping
-                  defaultTokens={defaultTokens}
-                  onChangeDefaultToken={updateToken}
-                  resourceMappings={resourceMappings}
-                  onChangeResourceMappings={(next) => {
-                    setResourceMappings(next);
-                    setIsDirty(true);
-                  }}
-                  spec={parsedSpec}
-                  hidePerResource={isSectionReadOnly}
-                />
-              </Box>
+              {/* Read-only sections stay fully viewable: TemplateTokenMapping
+                  disables its editable fields via readOnly while keeping the
+                  scope toggle, search, per-resource list and expansion working
+                  (no pointerEvents:none, and per-resource is not hidden). */}
+              <TemplateTokenMapping
+                defaultTokens={defaultTokens}
+                onChangeDefaultToken={updateToken}
+                resourceMappings={resourceMappings}
+                onChangeResourceMappings={(next) => {
+                  setResourceMappings(next);
+                  setIsDirty(true);
+                }}
+                spec={parsedSpec}
+                readOnly={isSectionReadOnly}
+              />
             </TabPanel>
           </Box>
         </Card>

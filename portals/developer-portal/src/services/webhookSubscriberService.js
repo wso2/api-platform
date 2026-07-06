@@ -26,7 +26,7 @@ const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
 function _validateRequiredFields(payload) {
-    const missing = ['name', 'targetUrl'].filter(f => !payload[f]);
+    const missing = ['handle', 'targetUrl'].filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
     }
@@ -34,22 +34,26 @@ function _validateRequiredFields(payload) {
 }
 
 /**
- * Build a specific conflict message for the name unique constraint.
+ * Build a specific conflict message for the handle unique constraint.
  */
 function _uniqueConstraintMessage(error, payload) {
     const fields = Array.isArray(error.fields)
         ? error.fields
         : error.fields ? Object.keys(error.fields) : (error.errors || []).map(e => e.path);
-    if (fields.includes('name')) {
-        return `A webhook subscriber with name "${payload?.name}" already exists in this organization.`;
+    if (fields.includes('handle')) {
+        return `A webhook subscriber with id "${payload?.id}" already exists in this organization.`;
     }
-    return 'A webhook subscriber with that name already exists in this organization.';
+    return 'A webhook subscriber with that id already exists in this organization.';
 }
 
 const createWebhookSubscriber = async (req, res) => {
     try {
         const orgId = req.orgId;
         const payload = req.body;
+        if (payload && payload.id) {
+            payload.handle = payload.id;
+        }
+        payload.displayName = payload.displayName || payload.handle;
 
         const validationError = _validateRequiredFields(payload);
         if (validationError) {
@@ -78,10 +82,13 @@ const updateWebhookSubscriber = async (req, res) => {
         const orgId = req.orgId;
         const { subscriberId } = req.params;
         const payload = req.body;
+        if (payload && payload.id) {
+            payload.handle = payload.id;
+        }
 
         const userId = util.resolveActor(req);
         const [, updatedRows] = await whDao.update(orgId, subscriberId, payload, userId);
-        logUserAction('WEBHOOK_SUBSCRIBER_UPDATED', req, { orgId, subscriberId, resourceUuid: subscriberId, resourceType: 'webhook_subscriber' });
+        logUserAction('WEBHOOK_SUBSCRIBER_UPDATED', req, { orgId, subscriberId, resourceUuid: updatedRows[0].uuid, resourceType: 'webhook_subscriber' });
         const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedRows[0]);
         const dto = new WebhookSubscriberDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
@@ -147,8 +154,8 @@ const getWebhookSubscriberDeliveries = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { subscriberId } = req.params;
-        await whDao.get(orgId, subscriberId);
-        const deliveries = await eventDao.listDeliveriesForSubscriber(orgId, subscriberId, 20);
+        const sub = await whDao.get(orgId, subscriberId);
+        const deliveries = await eventDao.listDeliveriesForSubscriber(orgId, sub.uuid, 20);
         return res.status(200).json({ list: deliveries.map(_formatDeliverySummary) });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -163,8 +170,9 @@ const deleteWebhookSubscriber = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { subscriberId } = req.params;
+        const sub = await whDao.get(orgId, subscriberId);
         await whDao.delete(orgId, subscriberId);
-        logUserAction('WEBHOOK_SUBSCRIBER_DELETED', req, { orgId, subscriberId, resourceUuid: subscriberId, resourceType: 'webhook_subscriber' });
+        logUserAction('WEBHOOK_SUBSCRIBER_DELETED', req, { orgId, subscriberId, resourceUuid: sub.uuid, resourceType: 'webhook_subscriber' });
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

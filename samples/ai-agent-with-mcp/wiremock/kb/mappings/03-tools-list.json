@@ -1,0 +1,13 @@
+{
+  "name": "kb-tools-list",
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [{ "matchesJsonPath": "$[?(@.method == 'tools/list')]" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "kb-tools-list.json"
+  }
+}

@@ -105,7 +105,7 @@ Send the manifest and definition together as a multipart upload:
 
 ```bash
 # REST API with OpenAPI definition
-curl -X POST "http://localhost:3000/api/v0.9/apis" \
+curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
@@ -113,15 +113,15 @@ curl -X POST "http://localhost:3000/api/v0.9/apis" \
 
 ```bash
 # GraphQL API
-curl -X POST "http://localhost:3000/api/v0.9/apis" \
+curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@schema.graphql;type=application/graphql"
 ```
 
 ```bash
-# MCP server
-curl -X POST "http://localhost:3000/api/v0.9/apis" \
+# MCP server (note: MCP servers are created under /mcp-servers, not /apis)
+curl -k -X POST "https://localhost:3000/api/v0.9/mcp-servers" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@mcp.yaml" \
   -F "apiDefinition=@mcp-spec.yaml;type=application/yaml"
@@ -134,7 +134,7 @@ curl -X POST "http://localhost:3000/api/v0.9/apis" \
 | `spec.displayName` | Yes | Display name shown in the catalog |
 | `spec.version` | Yes | Version string (e.g. `v1.0`, `2.3`) |
 | `spec.description` | No | Short description shown in the catalog listing |
-| `spec.status` | No | `PUBLISHED` (default) or `PROTOTYPED` |
+| `spec.status` | No | `PUBLISHED` (default) or `DEPRECATED` |
 | `spec.tags` | No | Tags for search and filtering |
 | `spec.labels` | No | Labels that control which views the API appears in |
 | `spec.subscriptionPlans` | No | Names of subscription plans available for this API |
@@ -146,27 +146,31 @@ curl -X POST "http://localhost:3000/api/v0.9/apis" \
 
 The response includes the `apiId` needed for subsequent steps.
 
-## Step 3 — Upload the API Definition Separately (Optional)
+## Step 3 — Update the API Definition (Optional)
 
-If you need to update the definition file independently of the manifest:
+`PUT /apis/{apiId}` replaces the definition file, but it always requires the metadata alongside it. Include `apiMetadata` with at least `id` (matching the API's existing handle), `name`, and `endPoints`, together with the new definition file:
 
 ```bash
 # OpenAPI YAML
-curl -X POST \
-  "http://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+curl -k -X PUT \
+  "https://localhost:3000/api/v0.9/apis/{apiId}" \
   -H "Authorization: Bearer $TOKEN" \
+  -F 'apiMetadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 ```bash
 # AsyncAPI YAML
-curl -X POST \
-  "http://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+curl -k -X PUT \
+  "https://localhost:3000/api/v0.9/apis/{apiId}" \
   -H "Authorization: Bearer $TOKEN" \
+  -F 'apiMetadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
   -F "apiDefinition=@asyncapi.yaml;type=application/yaml"
 ```
 
 The uploaded definition is shown in the API's **Try-Out** tab and is exposed at the machine-readable spec endpoint for AI agent consumption.
+
+> **Note:** `POST`/`PUT /apis/{apiId}/assets` is a different endpoint used to upload the API's static content package (landing-page assets and documents) — see [API Content and Docs](api-content-and-docs.md). It does not accept the API definition file.
 
 ## Step 4 — Add Documentation Content (Optional)
 
@@ -298,7 +302,7 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/api/v0.9/apis/{apiId} \
+curl -k -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api-update.yaml"
 ```
@@ -306,7 +310,7 @@ curl -X PUT http://localhost:3000/api/v0.9/apis/{apiId} \
 ## Delete an API
 
 ```bash
-curl -X DELETE http://localhost:3000/api/v0.9/apis/{apiId} \
+curl -k -X DELETE https://localhost:3000/api/v0.9/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -315,13 +319,13 @@ curl -X DELETE http://localhost:3000/api/v0.9/apis/{apiId} \
 ## List APIs
 
 ```bash
-curl http://localhost:3000/api/v0.9/apis -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3000/api/v0.9/apis -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get an API
 
 ```bash
-curl http://localhost:3000/api/v0.9/apis/{apiId} -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3000/api/v0.9/apis/{apiId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Related

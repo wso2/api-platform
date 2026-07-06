@@ -136,6 +136,10 @@ interface PolicyParameterEditorProps {
   onCancel: () => void;
   onSubmit: (values: ParameterValues) => void;
   disabled?: boolean;
+  // readOnly renders the parameters for viewing only: every field is
+  // non-editable and the submit action is hidden, but the values remain visible
+  // and the close/cancel action stays enabled.
+  readOnly?: boolean;
 }
 
 /**
@@ -318,6 +322,7 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
   onCancel,
   onSubmit,
   disabled = false,
+  readOnly = false,
 }) => {
   const classes = useStyles();
   const { name, description, parameters } = policyDefinition;
@@ -481,7 +486,7 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
         onAddArrayItem={handleAddArrayItem}
         onDeleteArrayItem={handleDeleteArrayItem}
         errors={errors}
-        disabled={disabled}
+        disabled={disabled || readOnly}
       />
 
       {/* Action Buttons */}
@@ -493,17 +498,19 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
           data-testid="policy-param-cancel"
           disabled={disabled}
         >
-          Cancel
+          {readOnly ? 'Close' : 'Cancel'}
         </Button>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleSubmit}
-          data-testid="policy-param-submit"
-          disabled={disabled || !isLevelOneValid}
-        >
-          {existingValues ? 'Update' : 'Add'}
-        </Button>
+        {!readOnly && (
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSubmit}
+            data-testid="policy-param-submit"
+            disabled={disabled || !isLevelOneValid}
+          >
+            {existingValues ? 'Update' : 'Add'}
+          </Button>
+        )}
       </Box>
     </Box>
   );

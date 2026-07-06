@@ -1,0 +1,1 @@
+{"request":{"method":"POST","url":"/mcp","bodyPatterns":[{"matchesJsonPath":{"expression":"$.method","equalTo":"initialize"}}]},"response":{"status":200,"headers":{"Content-Type":"application/json"},"bodyFileName":"crm-initialize.json","transformers":["response-template"]}}

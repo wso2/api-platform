@@ -1,0 +1,136 @@
+openapi: 3.0.3
+info:
+  title: CRM API
+  description: >
+    Customer Relationship Management API. Provides customer profile data
+    including contact details, account status, loyalty tier, and latest order reference.
+  version: "1.0"
+
+servers:
+  - url: https://<your-tunnel-url>/crm
+    description: >
+      Replace <your-tunnel-url> with your VS Code port-forwarding URL
+      (e.g. https://abc123-8000.app.github.dev).
+      This is the backend endpoint Bijira will call when routing requests through the proxy.
+
+paths:
+  /customers/{customer_id}:
+    get:
+      operationId: get_customer
+      summary: Get customer by ID
+      description: >
+        Retrieve the full profile of a customer by their ID.
+        Use when you need to find a customer's name, contact details,
+        account status, or loyalty tier.
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: The customer ID (e.g. C-4821)
+          schema:
+            type: string
+            example: C-4821
+      responses:
+        "200":
+          description: Customer profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+              example:
+                id: C-4821
+                name: John Smith
+                email: john.smith@example.com
+                phone: "+1-555-0182"
+                account_status: active
+                tier: gold
+                address:
+                  street: 142 Maple Avenue
+                  city: Portland
+                  state: OR
+                  zip: "97201"
+                latest_order_id: O-9901
+                member_since: "2021-03-14"
+        "404":
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /customers:
+    get:
+      operationId: list_customers
+      summary: List customers
+      description: >
+        List all customers, optionally filtered by loyalty tier or account status.
+      parameters:
+        - name: tier
+          in: query
+          required: false
+          description: Filter by loyalty tier (basic, silver, gold)
+          schema:
+            type: string
+            enum: [basic, silver, gold]
+        - name: status
+          in: query
+          required: false
+          description: Filter by account status (active, suspended)
+          schema:
+            type: string
+            enum: [active, suspended]
+      responses:
+        "200":
+          description: List of customers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Customer"
+                  total:
+                    type: integer
+
+components:
+  schemas:
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          example: C-4821
+        name:
+          type: string
+          example: John Smith
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        account_status:
+          type: string
+          enum: [active, suspended]
+        tier:
+          type: string
+          enum: [basic, silver, gold]
+        address:
+          type: object
+          properties:
+            street: { type: string }
+            city:   { type: string }
+            state:  { type: string }
+            zip:    { type: string }
+        latest_order_id:
+          type: string
+          example: O-9901
+        member_since:
+          type: string
+          format: date
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string

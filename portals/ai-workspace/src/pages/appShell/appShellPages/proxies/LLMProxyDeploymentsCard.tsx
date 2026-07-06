@@ -211,7 +211,7 @@ export default function LLMProxyDeploymentsCard() {
     [deployedGateways, selectedGatewayId]
   );
   const generatedInvokeUrl = useMemo(() => {
-    const vhost = selectedGateway?.vhost?.trim();
+    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
     if (!vhost) return '';
 
     const normalizedBase = /^https?:\/\//i.test(vhost)
@@ -224,7 +224,7 @@ export default function LLMProxyDeploymentsCard() {
         : `/${context}`
       : '/';
     return `${normalizedBase}${normalizedContext}`;
-  }, [proxy?.context, selectedGateway?.vhost]);
+  }, [proxy?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
 
   const handleCopyInvokeUrl = async () => {
     if (!generatedInvokeUrl) return;

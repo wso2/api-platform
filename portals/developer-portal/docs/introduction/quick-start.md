@@ -34,7 +34,7 @@ cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 docker compose up
 ```
 
-Docker Compose starts the Developer Portal (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
+This starts the Developer Portal in demo mode (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
@@ -46,7 +46,7 @@ https://localhost:3000/default/views/default
 
 Sign in with `admin` / `admin` (the credentials defined in `configs/config-platform-api.toml`).
 
-You should see the default API catalog page.
+You should see the default API catalog page. Since demo mode is on, you'll get a one-time onboarding prompt offering to deploy a set of sample APIs/MCPs — this is optional and can be skipped. You can also trigger it later from **Settings → Manage APIs → Seed sample APIs**.
 
 ### 5. Publish your first API
 
@@ -174,15 +174,12 @@ Scripts and CLI tools authenticate with a Bearer token obtained directly from th
 
 ```bash
 # Get a token from the Platform API (runs alongside the devportal)
+# Basic auth against the Platform API is only available in demo mode
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
-# Find the org UUID
-ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
-  https://localhost:3000/organizations | jq -r '.[0].orgId')
-
-# Publish the API
-curl -sk -X POST "https://localhost:3000/o/$ORG_ID/api/v0.9/apis" \
+# Publish the API (the token's org_handle claim scopes this to the "default" org)
+curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml;type=application/yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"

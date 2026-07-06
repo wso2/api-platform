@@ -750,9 +750,6 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 	if target.ManagedBy == "wso2" {
 		return constants.ErrLLMProviderTemplateReadOnly
 	}
-	if err := ensureOriginMutable(target.Origin); err != nil {
-		return err
-	}
 	// Block deletion while any provider built from this specific version still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
 	if err != nil {

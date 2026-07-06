@@ -67,10 +67,10 @@ DP_DESIGNMODE_PATHTOLAYOUT=./my-layout/
 | Page shell | `layout/main.hbs` | Controls the outer HTML, `<head>`, nav frame |
 | Header | `partials/header.hbs` | Top navigation bar |
 | Footer | `partials/footer.hbs` | Footer content |
-| Home page content | `partials/home.hbs` | Home page body section |
-| API landing body | `partials/api-content.hbs` | Default body for API overview pages |
-| API listing extras | `partials/apis-md.hbs` | Markdown injected above the API list |
-| API landing extras | `partials/api-landing-md.hbs` | Markdown injected on API overview pages |
+| Home page content | `pages/home/partials/home.hbs` | Home page body section |
+| API landing body | `pages/api-landing/partials/api-content.hbs` | Default body for API overview pages |
+| API listing extras | `pages/apis/partials/apis-md.hbs` | Markdown injected above the API list |
+| API landing extras | `pages/api-landing/partials/api-landing-md.hbs` | Markdown injected on API overview pages |
 | Stylesheet | `styles/main.css` | Portal-wide CSS (can `@import` other CSS files) |
 | Images | `images/` | Custom logo and other images |
 
@@ -132,9 +132,9 @@ When the theme is ready, zip the `pathToLayout` directory and upload it to the p
 zip -r my-theme.zip layout/ partials/ styles/ images/
 ```
 
-**Option 1 — Admin UI:** Go to **Admin Settings → Developer Portal → Org Level → Upload View Content**, select the ZIP, and click **Publish To Developer Portal**.
+**Option 1 — Admin UI:** Click **Settings** in the sidebar, open the **Views** tab, then in the **Upload View Content** card select the target view, choose the ZIP file, and click **Upload**.
 
-**Option 2 — curl:** Replace `{orgId}` with your organization ID and `{viewName}` with the view name (e.g. `default`). The examples use a `$TOKEN` variable — get one first:
+**Option 2 — curl:** Replace `{viewName}` with the view name (e.g. `default`). The examples use a `$TOKEN` variable — get one first:
 ```bash
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)

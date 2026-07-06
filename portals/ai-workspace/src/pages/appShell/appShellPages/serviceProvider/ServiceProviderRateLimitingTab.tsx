@@ -234,7 +234,7 @@ function CriteriaRows({
                 />
                 <IconButton
                   size="small"
-                  disabled={!item.enabled || disabled}
+                  disabled={!item.enabled}
                   onClick={() => toggleOpen(item.label)}
                 >
                   {openMap[item.label] ? (

@@ -353,7 +353,7 @@ export default function ExternalServersOverview(): JSX.Element {
   );
 
   const generatedInvokeUrl = useMemo(() => {
-    const vhost = selectedGateway?.vhost?.trim();
+    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
     if (!vhost) return '';
 
     const normalizedBase = /^https?:\/\//i.test(vhost)
@@ -366,7 +366,7 @@ export default function ExternalServersOverview(): JSX.Element {
         : `/${context}`
       : '/';
     return `${normalizedBase}${normalizedContext}`;
-  }, [server?.context, selectedGateway?.vhost]);
+  }, [server?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
 
   const handleCopyInvokeUrl = async () => {
     if (!generatedInvokeUrl) return;

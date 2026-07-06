@@ -186,6 +186,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_view_label_mappings_label_view" ON "dp_vie
 CREATE INDEX IF NOT EXISTS "idx_view_label_mappings_view_uuid" ON "dp_view_label_mappings" ("view_uuid");
 
 -- dp_webhook_subscribers
-CREATE TABLE IF NOT EXISTS "dp_webhook_subscribers" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "name" VARCHAR(255) NOT NULL, "target_url" VARCHAR(1023) NOT NULL, "secret_enc" BYTEA, "public_key" BYTEA, "event_patterns" JSONB DEFAULT '[]', "enabled" SMALLINT NOT NULL DEFAULT 1, "timeout_ms" INTEGER NOT NULL DEFAULT 5000, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
+CREATE TABLE IF NOT EXISTS "dp_webhook_subscribers" ("uuid" VARCHAR(40) , "org_uuid" VARCHAR(40) NOT NULL REFERENCES "dp_organizations" ("uuid") ON DELETE NO ACTION ON UPDATE CASCADE, "handle" VARCHAR(255) NOT NULL, "display_name" VARCHAR(255) NOT NULL, "target_url" VARCHAR(1023) NOT NULL, "secret_enc" BYTEA, "public_key" BYTEA, "event_patterns" JSONB DEFAULT '[]', "enabled" SMALLINT NOT NULL DEFAULT 1, "timeout_ms" INTEGER NOT NULL DEFAULT 5000, "created_by" VARCHAR(255) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL, "updated_by" VARCHAR(255) NOT NULL, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("uuid"));
 
-CREATE UNIQUE INDEX IF NOT EXISTS "uq_webhook_subscriber_org_name" ON "dp_webhook_subscribers" ("org_uuid", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_webhook_subscriber_org_handle" ON "dp_webhook_subscribers" ("org_uuid", "handle");

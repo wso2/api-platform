@@ -255,16 +255,8 @@
                     <option value="RestApi">REST</option>
                     <option value="WS">WebSocket</option>
                     <option value="GRAPHQL">GraphQL</option>
-                    <option value="SOAP">SOAP</option>
                     <option value="WebSubApi">WebSub</option>
                     <option value="Mcp">MCP</option>
-                  </select>
-                </div>
-                <div class="cfg-form-group">
-                  <label for="wz-status">Status</label>
-                  <select id="wz-status" class="cfg-form-input">
-                    <option value="CREATED">Created</option>
-                    <option value="PUBLISHED">Published</option>
                   </select>
                 </div>
                 <div class="cfg-form-group">
@@ -291,8 +283,9 @@
               <p class="cfg-form-section-title">Endpoints</p>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group">
-                  <label for="wz-prod">Production URL</label>
+                  <label for="wz-prod">Production URL <span class="required" id="wz-prod-required" style="display:none;">*</span></label>
                   <input type="text" id="wz-prod" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.example.com/booking" />
+                  <p id="wz-prod-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-sandbox">Sandbox URL</label>
@@ -315,17 +308,6 @@
                     <option value="PUBLISHED">Published</option>
                     <option value="DEPRECATED">Deprecated</option>
                   </select>
-                </div>
-                <div class="cfg-form-group">
-                  <label>Agent visibility</label>
-                  <div class="cfg-vis-toggle">
-                    <button type="button" class="cfg-vis-btn active" id="wz-vis-visible" data-val="Visible">
-                      <i class="bi bi-eye"></i> Visible
-                    </button>
-                    <button type="button" class="cfg-vis-btn" id="wz-vis-hidden" data-val="Hidden">
-                      <i class="bi bi-eye-slash"></i> Hidden
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -363,12 +345,12 @@
                 <div class="cfg-chip-input-wrap" id="wz-policy-chip-wrap">
                   <div id="wz-policy-chips" style="display:contents;"></div>
                   <input type="text" class="cfg-chip-text-input" id="wz-policy-search"
-                    placeholder="{{#if orgPolicies.length}}Type to search plans…{{else}}No plans available{{/if}}"
-                    autocomplete="off" {{#unless orgPolicies.length}}disabled{{/unless}} />
+                    placeholder="{{#if orgPlans.length}}Type to search plans…{{else}}No plans available{{/if}}"
+                    autocomplete="off" {{#unless orgPlans.length}}disabled{{/unless}} />
                 </div>
                 <div class="cfg-chip-dropdown" id="wz-policy-dropdown"></div>
-                {{#unless orgPolicies.length}}
-                <p style="font-size:.844rem;color:#9aa3af;margin:6px 0 0;">No subscription policies yet. Create them under <strong>Subscription Policies</strong>.</p>
+                {{#unless orgPlans.length}}
+                <p style="font-size:.844rem;color:#9aa3af;margin:6px 0 0;">No subscription plans yet. Create them under <strong>Subscription Plans</strong>.</p>
                 {{/unless}}
               </div>
             </div>
@@ -511,7 +493,7 @@
           <table class="cfg-table">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>Display name</th>
                 <th>Target URL</th>
                 <th>Events</th>
                 <th>Secret</th>
@@ -525,7 +507,7 @@
               <tr id="cfg-webhook-row-{{id}}" data-id="{{id}}">
                 <td>
                   <button type="button" class="cfg-webhook-edit-btn" data-id="{{id}}"
-                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{name}}</button>
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
                 </td>
                 <td>
                   <span class="cfg-name-chip" title="{{targetUrl}}"
@@ -547,7 +529,7 @@
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="cfg-icon-btn cfg-icon-btn--danger cfg-webhook-delete-btn" type="button"
-                      data-id="{{id}}" data-name="{{name}}" title="Delete">
+                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
                       <i class="bi bi-trash"></i>
                     </button>
                   </div>
@@ -726,8 +708,13 @@
       <button type="button" class="cfg-modal-close" id="cfg-webhook-modal-close"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
-      <label for="wh-name">Name <span class="required">*</span></label>
-      <input type="text" id="wh-name" class="cfg-form-input" placeholder="e.g. Production listener" />
+      <label for="wh-display">Display name <span class="required">*</span></label>
+      <input type="text" id="wh-display" class="cfg-form-input" placeholder="e.g. Production listener" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-handle">Handle <span class="required">*</span></label>
+      <input type="text" id="wh-handle" class="cfg-form-input cfg-form-input--mono" placeholder="production-listener" />
+      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="wh-url">Target URL <span class="required">*</span></label>
@@ -873,7 +860,7 @@
       }
     } catch(e) {}
     try {
-      var pe = document.getElementById('cfg-policies-data');
+      var pe = document.getElementById('cfg-plans-data');
       if (pe) allPolicies = JSON.parse(pe.textContent) || [];
     } catch(e) {}
   }());
@@ -922,6 +909,16 @@
     document.getElementById('wz-vis-visible').classList.remove('active');
   });
 
+  /* ── production URL required when status is Published ── */
+  function syncProdRequiredMarker() {
+    var required = document.getElementById('wz-status').value === 'PUBLISHED';
+    document.getElementById('wz-prod-required').style.display = required ? '' : 'none';
+  }
+  document.getElementById('wz-status').addEventListener('change', function() {
+    syncProdRequiredMarker();
+    setFieldError('wz-prod', 'wz-prod-error', '');
+  });
+
   /* ── subscription policy chip input ── */
   function renderPolicyChips() {
     var container = document.getElementById('wz-policy-chips');
@@ -930,12 +927,12 @@
     policyChips.forEach(function(pol) {
       var chip = document.createElement('span');
       chip.className = 'cfg-chip';
-      chip.innerHTML = esc(pol.displayName || pol.policyName) +
-        '<button type="button" class="cfg-chip-remove" data-name="'+esc(pol.policyName)+'" title="Remove"><i class="bi bi-x"></i></button>';
+      chip.innerHTML = esc(pol.displayName || pol.planName) +
+        '<button type="button" class="cfg-chip-remove" data-name="'+esc(pol.planName)+'" title="Remove"><i class="bi bi-x"></i></button>';
       chip.querySelector('.cfg-chip-remove').addEventListener('click', function(e) {
         e.stopPropagation();
         var name = e.currentTarget.dataset.name;
-        policyChips = policyChips.filter(function(p){ return p.policyName !== name; });
+        policyChips = policyChips.filter(function(p){ return p.planName !== name; });
         renderPolicyChips();
       });
       container.appendChild(chip);
@@ -947,18 +944,18 @@
     if (!dd) return;
     var q = (query||'').toLowerCase().trim();
     var matches = allPolicies.filter(function(p) {
-      if (policyChips.some(function(c){ return c.policyName === p.policyName; })) return false;
+      if (policyChips.some(function(c){ return c.planName === p.planName; })) return false;
       if (!q) return true;
       return (p.displayName||'').toLowerCase().indexOf(q) >= 0 ||
-             (p.policyName||'').toLowerCase().indexOf(q) >= 0 ||
+             (p.planName||'').toLowerCase().indexOf(q) >= 0 ||
              (p.description||'').toLowerCase().indexOf(q) >= 0;
     });
     if (!matches.length) {
       dd.innerHTML = '<div class="cfg-chip-dd-empty">No matching plans</div>';
     } else {
       dd.innerHTML = matches.map(function(p) {
-        return '<div class="cfg-chip-dd-item" data-name="'+esc(p.policyName)+'">' +
-          '<div class="cfg-chip-dd-name">'+esc(p.displayName||p.policyName)+'</div>' +
+        return '<div class="cfg-chip-dd-item" data-name="'+esc(p.planName)+'">' +
+          '<div class="cfg-chip-dd-name">'+esc(p.displayName||p.planName)+'</div>' +
           (p.description ? '<div class="cfg-chip-dd-desc">'+esc(p.description)+'</div>' : '') +
           '</div>';
       }).join('');
@@ -966,8 +963,8 @@
         item.addEventListener('mousedown', function(e) {
           e.preventDefault();
           var name = item.dataset.name;
-          var pol = allPolicies.find(function(p){ return p.policyName === name; });
-          if (pol && !policyChips.some(function(c){ return c.policyName === name; })) {
+          var pol = allPolicies.find(function(p){ return p.planName === name; });
+          if (pol && !policyChips.some(function(c){ return c.planName === name; })) {
             policyChips.push(pol);
             renderPolicyChips();
           }
@@ -985,17 +982,17 @@
   }
 
   function selectedPolicies() {
-    return policyChips.map(function(p){ return p.policyName; });
+    return policyChips.map(function(p){ return p.planName; });
   }
 
   function setSelectedPolicies(namesOrObjs) {
     policyChips = [];
     if (namesOrObjs && namesOrObjs.length) {
       namesOrObjs.forEach(function(item) {
-        var name = typeof item === 'string' ? item : (item.policyName || '');
+        var name = typeof item === 'string' ? item : (item.planName || item.displayName || '');
         if (!name) return;
-        var pol = allPolicies.find(function(p){ return p.policyName === name; });
-        policyChips.push(pol || { policyName: name, displayName: name, description: '' });
+        var pol = allPolicies.find(function(p){ return p.planName === name || p.displayName === name; });
+        policyChips.push(pol || { planName: name, displayName: name, description: '' });
       });
     }
     renderPolicyChips();
@@ -1041,7 +1038,7 @@
       agentVis = api.agentVisibility || 'Visible';
       document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
-      setSelectedPolicies(api.subscriptionPolicies || []);
+      setSelectedPolicies(api.subscriptionPlans || []);
       /* existing docs are embedded server-side in cfg-org-apis-data */
       existingDocs = api.existingDocs || [];
     } else {
@@ -1053,14 +1050,16 @@
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
-      setSelectedPlans([]);
+      setSelectedPolicies([]);
     }
 
+    syncProdRequiredMarker();
+
     /* clear any leftover validation errors */
-    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
+    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-prod-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
       var el = document.getElementById(eid); if (el) el.style.display = 'none';
     });
-    ['wz-name','wz-version','wz-handle','wz-desc','wz-tech-email','wz-biz-email'].forEach(function(fid) {
+    ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-tech-email','wz-biz-email'].forEach(function(fid) {
       var el = document.getElementById(fid); if (el) el.classList.remove('cfg-form-input--error');
     });
 
@@ -1134,7 +1133,7 @@
         productionURL: v('wz-prod') || undefined,
         sandboxURL:    v('wz-sandbox') || undefined,
       },
-      subscriptionPolicies: selectedPolicies().map(function(n){ return { policyName: n }; }),
+      subscriptionPlans: selectedPolicies().map(function(n){ return { id: n }; }),
       docsToRemove: docsToRemove.length ? docsToRemove : undefined,
     };
 
@@ -1415,6 +1414,15 @@
       setFieldError('wz-handle', 'wz-handle-error', '');
     }
 
+    var status = document.getElementById('wz-status').value;
+    var prodUrl = v('wz-prod');
+    if (status === 'PUBLISHED' && !prodUrl) {
+      setFieldError('wz-prod', 'wz-prod-error', 'Production URL is required to publish an API.');
+      ok = false;
+    } else {
+      setFieldError('wz-prod', 'wz-prod-error', '');
+    }
+
     var techEmail = v('wz-tech-email');
     if (techEmail && !emailRe.test(techEmail)) {
       setFieldError('wz-tech-email', 'wz-tech-email-error', 'Invalid email address.');
@@ -1642,14 +1650,14 @@
     function row(lbl, val, mono) {
       return '<span class="cfg-drawer-lbl">'+esc(lbl)+'</span><span class="cfg-drawer-val'+(mono?' cfg-drawer-val--mono':'')+'">'+esc(val||'—')+'</span>';
     }
-    var polNames = (api.subscriptionPolicies||[]).map(function(p){ return typeof p === 'string' ? p : (p.policyName||''); }).filter(Boolean);
+    var polNames = (api.subscriptionPlans||[]).map(function(p){ return typeof p === 'string' ? p : (p.planName||''); }).filter(Boolean);
     grid.innerHTML = [
       row('Version', api.apiVersion),
       row('Agent visibility', api.agentVisibility),
       row('Production URL', api.productionUrl, true),
       row('Sandbox URL', api.sandboxUrl, true),
       row('Tags', Array.isArray(api.tags) ? api.tags.join(', ') : api.tags),
-      row('Policies', polNames.join(', ')),
+      row('Plans', polNames.join(', ')),
     ].join('');
     document.getElementById('cfg-drawer-edit-btn').onclick = function() {
       document.getElementById('cfg-detail-drawer').classList.remove('open');
@@ -1703,18 +1711,31 @@
     if (!displayName || !name) { await showAlert('Display name and name are required.', 'error'); return; }
 
     try {
+      var res;
       if (editLabelName && editLabelName !== name) {
-        /* name changed — delete old first */
-        await fetch(window.devportalApi.root('/labels?names='+encodeURIComponent(editLabelName)), {
+        /* handle changed — handle is immutable, so delete old and create new */
+        await fetch(window.devportalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
           method: 'DELETE',
           headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
         });
+        res = await fetch(window.devportalApi.root('/labels'), {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          body: JSON.stringify({ id: name, displayName: displayName }),
+        });
+      } else if (editLabelName) {
+        res = await fetch(window.devportalApi.root('/labels/'+encodeURIComponent(name)), {
+          method: 'PUT',
+          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          body: JSON.stringify({ id: name, displayName: displayName }),
+        });
+      } else {
+        res = await fetch(window.devportalApi.root('/labels'), {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          body: JSON.stringify({ id: name, displayName: displayName }),
+        });
       }
-      var res = await fetch(window.devportalApi.root('/labels'), {
-        method: 'PUT',
-        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
-        body: JSON.stringify([{ id: name, displayName: displayName }]),
-      });
       if (res.ok) {
         await showAlert(editLabelName ? 'Label updated.' : 'Label created.', 'success');
         window.location.reload();
@@ -1757,7 +1778,7 @@
     if (!pendingDelName) return;
     document.getElementById('cfg-delete-label-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.root('/labels?names='+encodeURIComponent(pendingDelName)), {
+      var res = await fetch(window.devportalApi.root('/labels/'+encodeURIComponent(pendingDelName)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });
@@ -1878,13 +1899,12 @@
     }
 
     var body = {
+      id:          planName,
       displayName: displayName,
-      handle:      planName,
       description: v('pol-desc') || undefined,
       limits:      limits,
       refId:       v('pol-refid') || undefined,
     };
-    if (editPlanId) body.id = editPlanId;
 
     try {
       var method = editPlanId ? 'PUT' : 'POST';
@@ -2010,7 +2030,8 @@
     editWebhookId = mode === 'edit' ? data.id : null;
     document.getElementById('cfg-webhook-modal-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
     document.getElementById('cfg-webhook-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
-    document.getElementById('wh-name').value      = mode === 'edit' ? (data.name || '')      : '';
+    document.getElementById('wh-display').value   = mode === 'edit' ? (data.displayName || '') : '';
+    document.getElementById('wh-handle').value    = mode === 'edit' ? (data.id || '')          : '';
     document.getElementById('wh-url').value       = mode === 'edit' ? (data.targetUrl || '')       : '';
     document.getElementById('wh-secret').value    = '';
     document.getElementById('wh-publickey').value = '';
@@ -2020,15 +2041,22 @@
     document.getElementById('wh-publickey-hint').style.display = mode === 'edit' && data.hasPublicKey ? 'block' : 'none';
     setSelectedEvents(mode === 'edit' ? data.events : []);
     document.getElementById('cfg-webhook-modal').style.display = 'flex';
-    document.getElementById('wh-name').focus();
+    document.getElementById('wh-display').focus();
   }
   function closeWebhookModal() { document.getElementById('cfg-webhook-modal').style.display = 'none'; editWebhookId = null; }
 
+  /* ── auto-slug display → handle ── */
+  document.getElementById('wh-display').addEventListener('input', function() {
+    if (editWebhookId) return;
+    document.getElementById('wh-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  });
+
   /* ── save ── */
   document.getElementById('cfg-webhook-modal-save').addEventListener('click', async function() {
-    var name = v('wh-name');
-    var url  = v('wh-url');
-    if (!name || !url) { await showAlert('Name and target URL are required.', 'error'); return; }
+    var displayName = v('wh-display');
+    var handle      = v('wh-handle');
+    var url         = v('wh-url');
+    if (!displayName || !handle || !url) { await showAlert('Display name, handle and target URL are required.', 'error'); return; }
 
     var parsedUrl;
     try { parsedUrl = new URL(url); } catch (e) { parsedUrl = null; }
@@ -2051,7 +2079,8 @@
     }
 
     var body = {
-      name: name,
+      id: handle,
+      displayName: displayName,
       targetUrl: url,
       events: events,
       enabled: document.getElementById('wh-enabled').checked,

@@ -346,7 +346,28 @@ Status Code **200**
 |»»»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |»»»» displayName|string|false|none|none|
 |»»»» description|string|false|none|none|
-|»»»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
+|»»»» limits|[object]|false|none|Rate/quota limits enforced for this plan. Empty when the plan is unlimited.|
+|»»»»» limitType|string|false|none|none|
+|»»»»» limitCount|any|false|none|Returned as a string when the stored count exceeds the safe integer range, otherwise a number. Unlimited plans have no limit entries — the `limits` array is empty.|
+
+*oneOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»»» *anonymous*|integer|false|none|none|
+
+*xor*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»»» *anonymous*|string|false|none|none|
+
+*continued*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» timeUnit|string¦null|false|none|none|
+|»»»»» timeAmount|integer|false|none|none|
 |»»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
 |»»»» orgId|string|false|none|none|
 |»»»» createdBy|string|false|none|Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
@@ -357,11 +378,6 @@ Status Code **200**
 |»»» updatedBy|string|false|none|Identity of the user who last updated this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |»»» createdAt|string(date-time)|false|none|none|
 |»»» updatedAt|string(date-time)|false|none|none|
-
-*continued*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -381,6 +397,15 @@ Status Code **200**
 |type|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
 
 #### Enumerated Values
 

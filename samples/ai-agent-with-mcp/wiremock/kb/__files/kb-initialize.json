@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":{{jsonPath request.body '$.id'}},"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"kb-mcp","version":"1.0.0"}}}

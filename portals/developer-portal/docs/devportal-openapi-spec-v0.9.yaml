@@ -2498,8 +2498,8 @@ components:
       required: true
       schema:
         type: string
-        example: sub-uuid-12345
-      description: Webhook subscriber ID (UUID).
+        example: production-gateway
+      description: The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.
     viewId:
       name: viewId
       in: path
@@ -2725,9 +2725,10 @@ components:
       required: true
       description: >-
         Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk
-        create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`.
-        Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a
-        single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.
+        create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in
+        the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or
+        `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy
+        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.
       content:
         application/json:
           schema:
@@ -3676,7 +3677,11 @@ components:
               - id: string
                 displayName: string
                 description: string
-                requestCount: string
+                limits:
+                  - limitType: REQUEST_COUNT
+                    limitCount: 10000
+                    timeUnit: MONTH
+                    timeAmount: 1
                 refId: string
                 orgId: string
                 createdBy: alice@example.com
@@ -4422,12 +4427,39 @@ components:
           type: string
         description:
           type: string
-        requestCount:
-          type: string
-          nullable: true
-          description: >-
-            Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type
-            (request-count or event-count) used to create the plan. Null if not set.
+        limits:
+          type: array
+          description: Rate/quota limits enforced for this plan. Empty when the plan is unlimited.
+          items:
+            type: object
+            properties:
+              limitType:
+                type: string
+                enum:
+                  - REQUEST_COUNT
+                  - EVENT_COUNT
+                  - BANDWIDTH
+                  - TOTAL_TOKEN_COUNT
+              limitCount:
+                oneOf:
+                  - type: integer
+                  - type: string
+                example: 10000
+                description: >-
+                  Returned as a string when the stored count exceeds the safe integer range, otherwise a
+                  number. Unlimited plans have no limit entries — the `limits` array is empty.
+              timeUnit:
+                type: string
+                enum:
+                  - MINUTE
+                  - HOUR
+                  - DAY
+                  - MONTH
+                  - null
+                nullable: true
+              timeAmount:
+                type: integer
+                example: 1
         refId:
           type: string
           nullable: true
@@ -4647,10 +4679,19 @@ components:
           additionalProperties: false
     SubscriptionPlanRequest:
       type: object
+      example:
+        id: Gold
+        refId: string
+        displayName: string
+        description: string
+        limits:
+          - limitType: REQUEST_COUNT
+            limitCount: 10000
+            timeUnit: MINUTE
+            timeAmount: 1
       required:
         - id
         - displayName
-        - type
       properties:
         id:
           type: string
@@ -4665,22 +4706,61 @@ components:
           type: string
         description:
           type: string
+        limits:
+          type: array
+          description: >-
+            Rate/quota limits enforced for this plan. Omit or leave empty for an unlimited plan. Replaces the
+            whole limit set on update.
+          items:
+            type: object
+            required:
+              - limitCount
+            properties:
+              limitType:
+                type: string
+                enum:
+                  - REQUEST_COUNT
+                  - EVENT_COUNT
+                  - BANDWIDTH
+                  - TOTAL_TOKEN_COUNT
+                default: REQUEST_COUNT
+              limitCount:
+                type: integer
+                description: Use -1 for unlimited, otherwise a positive number.
+                example: 10000
+              timeUnit:
+                type: string
+                enum:
+                  - MINUTE
+                  - HOUR
+                  - DAY
+                  - MONTH
+                  - null
+                nullable: true
+                description: Omit for a limit with no time window.
+              timeAmount:
+                type: integer
+                default: 1
+                description: Size of the time window, in `timeUnit` units.
         type:
           type: string
           enum:
             - requestcount
             - eventcount
-          description: Service accepts case-insensitive `requestcount` or `eventcount`.
+          description: >-
+            Legacy shorthand accepted only via SubscriptionPlan/SubscriptionPlanList YAML upload
+            (`multipart/form-data`); converted into `limits` before storage. Ignored for JSON requests — use
+            `limits` instead.
         requestCount:
           oneOf:
             - type: integer
             - type: string
-          description: Required for request-count plans. Use -1 for unlimited.
+          description: "Legacy YAML shorthand paired with `type: requestcount`. Use -1 for unlimited."
         eventCount:
           oneOf:
             - type: integer
             - type: string
-          description: Required for event-count plans. Use -1 for unlimited.
+          description: "Legacy YAML shorthand paired with `type: eventcount`. Use -1 for unlimited."
     LabelRequest:
       type: object
       required:
@@ -5070,12 +5150,16 @@ components:
     WebhookSubscriberRequest:
       type: object
       required:
-        - displayName
+        - id
         - targetUrl
       properties:
-        name:
+        id:
           type: string
-          description: Unique name within the organization.
+          description: Desired handle for the webhook subscriber (unique per org), stored as-is.
+          example: production-gateway
+        displayName:
+          type: string
+          description: Optional display name. Defaults to the handle when omitted.
           example: Production Gateway
         targetUrl:
           type: string
@@ -5116,12 +5200,12 @@ components:
       properties:
         id:
           type: string
-          description: Webhook subscriber UUID.
-          example: sub-uuid-12345
+          description: The webhook subscriber's handle (unique per org). Not the internal database uuid.
+          example: production-gateway
         orgId:
           type: string
           example: org-12345
-        name:
+        displayName:
           type: string
           example: Production Gateway
         targetUrl:

@@ -632,7 +632,7 @@ export default function ServiceProviderDeploymentsCard({
                           {gateway.displayName || gateway.name}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          {gateway.vhost}
+                          {gateway.endpoints?.[0] || gateway.vhost}
                         </Typography>
                         <Chip
                           label={gateway.isActive ? 'Active' : 'Inactive'}

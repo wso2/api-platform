@@ -141,7 +141,7 @@ export default function LLMProxyOverviewTab() {
   );
 
   const generatedGatewayUrl = useMemo(() => {
-    const vhost = selectedGateway?.vhost?.trim();
+    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
     if (!vhost) return '';
 
     const normalizedBase = /^https?:\/\//i.test(vhost)
@@ -154,7 +154,7 @@ export default function LLMProxyOverviewTab() {
         : `/${context}`
       : '/';
     return `${normalizedBase}${normalizedContext}`;
-  }, [proxy?.context, selectedGateway?.vhost]);
+  }, [proxy?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
 
   const swaggerSpecWithGatewayServer = useMemo<OpenApiSpec>(() => {
     if (!parsedOpenApiSpec) return {};

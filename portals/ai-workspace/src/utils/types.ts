@@ -175,7 +175,7 @@ export type LLMProviderType =
  */
 export interface LLMModel {
   id: string;
-  name: string;
+  displayName: string;
   description?: string;
 }
 
@@ -184,7 +184,7 @@ export interface LLMModel {
  */
 export interface ModelProvider {
   id: string;
-  name: string;
+  displayName: string;
   models: LLMModel[];
 }
 

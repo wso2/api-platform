@@ -172,7 +172,6 @@ export default function PolicyMapper({
   };
 
   const handleEditPolicyItem = async (item: SelectedPolicy) => {
-    if (readOnly) return;
     setEditingInstanceId(item.instanceId);
     setIsDrawerOpen(true);
     setIsFetchingPolicies(true);
@@ -404,7 +403,9 @@ export default function PolicyMapper({
                   return (
                     <DisabledActionTooltip
                       key={item.instanceId}
-                      disabled={readOnly}
+                      // The card is always clickable to VIEW the policy's
+                      // details (read-only just disables edit/remove/reorder)
+                      disabled={false}
                       title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                     >
                       <Box
@@ -444,16 +445,15 @@ export default function PolicyMapper({
                         boxShadow: isDragOver
                           ? '0 0 0 3px rgba(29, 78, 216, 0.12)'
                           : '0 1px 3px rgba(0, 0, 0, 0.04)',
-                        cursor: readOnly ? 'default' : 'pointer',
+                        // Clickable to view details even when read-only.
+                        cursor: 'pointer',
                         opacity:
                           draggedInstanceId === item.instanceId ? 0.5 : 1,
                         transition: 'all 0.15s ease',
-                        '&:hover': readOnly
-                          ? undefined
-                          : {
-                              borderColor: '#D1D5DB',
-                              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
-                            },
+                        '&:hover': {
+                          borderColor: '#D1D5DB',
+                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                        },
                       }}
                     >
                       <DragHandle />
@@ -699,6 +699,7 @@ export default function PolicyMapper({
                                 existingValues={editingInstanceId ? policySettings : undefined}
                                 onCancel={() => setIsDetailView(false)}
                                 onSubmit={handlePolicySubmit}
+                                readOnly={readOnly}
                               />
                             ) : (
                               <Typography

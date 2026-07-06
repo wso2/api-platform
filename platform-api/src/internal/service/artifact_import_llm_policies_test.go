@@ -167,7 +167,7 @@ func TestLiftLLMPolicies_NoSpecialPolicies(t *testing.T) {
 		{Name: "custom-a"},
 		{Name: "custom-b"},
 	}
-	sec, rl, remaining := liftLLMPolicies(in)
+	sec, rl, remaining := liftLLMPolicies(in, true)
 	if sec != nil {
 		t.Errorf("security = %+v, want nil", sec)
 	}
@@ -176,5 +176,39 @@ func TestLiftLLMPolicies_NoSpecialPolicies(t *testing.T) {
 	}
 	if len(remaining) != 2 {
 		t.Errorf("remaining = %d, want 2", len(remaining))
+	}
+}
+
+// TestLiftLLMPolicies_ProxyKeepsRateLimits verifies that with rate-limit lifting
+// disabled (LLM proxies have no rate-limiting field) rate-limit policies are preserved
+// as ordinary policies instead of being dropped, while security is still lifted. This
+// guards the fix for gateway-pushed proxies losing e.g. llm-cost-based-ratelimit.
+func TestLiftLLMPolicies_ProxyKeepsRateLimits(t *testing.T) {
+	in := []model.LLMPolicy{
+		{Name: importPolicyAPIKeyAuth, Paths: []model.LLMPolicyPath{{Path: "/*", Methods: []string{"*"},
+			Params: map[string]interface{}{"key": "X-API-Key", "in": "header"}}}},
+		{Name: importPolicyCostRateLimit, Paths: []model.LLMPolicyPath{{Path: "/*", Methods: []string{"*"},
+			Params: map[string]interface{}{"budgetLimits": []interface{}{map[string]interface{}{"amount": 100, "duration": "1h"}}}}}},
+		{Name: "content-length-guardrail", Paths: []model.LLMPolicyPath{{Path: "/chat/completions", Methods: []string{"POST"}}}},
+	}
+	sec, rl, remaining := liftLLMPolicies(in, false)
+	if sec == nil || sec.APIKey == nil {
+		t.Fatalf("security not lifted: %+v", sec)
+	}
+	if rl != nil {
+		t.Errorf("rateLimiting = %+v, want nil (proxies have no rate-limiting field)", rl)
+	}
+	names := make(map[string]bool, len(remaining))
+	for _, p := range remaining {
+		names[p.Name] = true
+	}
+	if !names[importPolicyCostRateLimit] {
+		t.Errorf("remaining = %+v, want %q preserved for proxies", remaining, importPolicyCostRateLimit)
+	}
+	if !names["content-length-guardrail"] {
+		t.Errorf("remaining = %+v, want content-length-guardrail preserved", remaining)
+	}
+	if names[importPolicyAPIKeyAuth] {
+		t.Errorf("api-key-auth leaked into remaining; it should be lifted to Security")
 	}
 }

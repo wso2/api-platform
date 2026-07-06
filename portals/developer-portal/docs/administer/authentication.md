@@ -79,13 +79,13 @@ When multiple devportal organizations share one IDP, the portal enforces per-org
 
 1. Each devportal org has an `ORGANIZATION_IDENTIFIER` — the IDP-side identifier for that org (e.g. an Asgardeo sub-org handle).
 2. When a user clicks Login, the portal looks up the org's `ORGANIZATION_IDENTIFIER` and passes it to the IDP in the authorization request, scoping the login session to that org.
-3. The IDP issues an org-scoped token. On every authenticated request, the portal checks that the token's org claim (`orgIDClaim`) matches the org's `ORGANIZATION_IDENTIFIER`. A mismatch returns a 401.
+3. The IDP issues an org-scoped token. On every authenticated request, the portal checks that the token's org claim (`orgIDClaim`) matches the org's `ORGANIZATION_IDENTIFIER`. A mismatch returns a 403.
 
 **User flow with multiple orgs:**
 
 - Public pages are always accessible — no org check is performed.
 - Protected pages (applications, subscriptions, API keys) require a token whose org claim matches the org being accessed.
-- If a user navigates from Org A to Org B's protected pages while logged in as Org A, they see a 401. They must log out and log in again on Org B.
+- If a user navigates from Org A to Org B's protected pages while logged in as Org A, they see a 403. They must log out and log in again on Org B.
 
 > The mechanism for passing the org identifier to the IDP is IDP-specific. Asgardeo uses an `org=<identifier>` query parameter on the authorization URL. Other IDPs may use different approaches (e.g. tenant-specific realm URLs in Keycloak). The `ORGANIZATION_IDENTIFIER` mismatch check runs regardless of IDP type.
 

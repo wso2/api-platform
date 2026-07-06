@@ -309,10 +309,44 @@ export default function ServiceProviderGuardrailsTab() {
     return items;
   }, [provider?.globalPolicies, policies, displayNameMap]);
 
-  const resources = useMemo(
-    () => parseOpenApiText(provider?.openapi || '', provider?.accessControl),
-    [provider?.openapi, provider?.accessControl]
-  );
+  const resources = useMemo(() => {
+    const specResources = parseOpenApiText(
+      provider?.openapi || '',
+      provider?.accessControl
+    );
+    // A gateway-pushed provider has no OpenAPI spec, so specResources is empty.
+    // Derive a resource row for every concrete (method, path) referenced by an
+    // operation/legacy policy so its guardrails are still shown and viewable in
+    // the resource-wise section. Wildcard method ('*') / path ('/*') entries are
+    // provider-wide (handled elsewhere) and are skipped here.
+    const seen = new Set(
+      specResources.map((r) => `${r.method.toUpperCase()} ${r.path}`)
+    );
+    const derived: ResourceItem[] = [];
+    const addPaths = (
+      paths?: Array<{ methods?: string[]; path: string }>
+    ) => {
+      (paths ?? []).forEach((pc) => {
+        if (!pc?.path || pc.path === '/*') return;
+        (pc.methods ?? []).forEach((m) => {
+          const method = (m || '').toUpperCase();
+          if (!method || method === '*') return;
+          const dedupeKey = `${method} ${pc.path}`;
+          if (seen.has(dedupeKey)) return;
+          seen.add(dedupeKey);
+          derived.push({ method, path: pc.path });
+        });
+      });
+    };
+    (provider?.operationPolicies ?? []).forEach((p) => addPaths(p.paths));
+    policies.forEach((p) => addPaths(p.paths));
+    return [...specResources, ...derived];
+  }, [
+    provider?.openapi,
+    provider?.accessControl,
+    provider?.operationPolicies,
+    policies,
+  ]);
 
   const selectedGuardrailPolicy =
     drawerGuardrails.find((policy) => policy.name === selectedGuardrail) ??
@@ -340,17 +374,20 @@ export default function ServiceProviderGuardrailsTab() {
     source: 'global' | 'operation' | 'legacy'
   ) => {
     let policyName: string;
+    let policyVersion: string | undefined;
     let existingParams: ParameterValues = {};
 
     if (source === 'global') {
       const policy = (provider?.globalPolicies ?? [])[policyIndex];
       if (!policy) return;
       policyName = policy.name;
+      policyVersion = policy.version;
       existingParams = (policy.params as ParameterValues) ?? {};
     } else if (source === 'operation') {
       const policy = (provider?.operationPolicies ?? [])[policyIndex];
       if (!policy) return;
       policyName = policy.name;
+      policyVersion = policy.version;
       existingParams =
         pathIndex !== null
           ? ((policy.paths[pathIndex]?.params as ParameterValues) ?? {})
@@ -359,6 +396,7 @@ export default function ServiceProviderGuardrailsTab() {
       const policy = policies[policyIndex];
       if (!policy) return;
       policyName = policy.name;
+      policyVersion = policy.version;
       existingParams =
         pathIndex !== null
           ? ((policy.paths?.[pathIndex]?.params as ParameterValues) ?? {})
@@ -374,16 +412,22 @@ export default function ServiceProviderGuardrailsTab() {
     setDefinitionError(null);
     setDrawerOpen(true);
 
+    // Prefer the policy-hub version, but fall back to the applied policy's own
+    // version so non-guardrail policies shown as pills (e.g. the llm-cost tracker,
+    // which the guardrails hub list doesn't include) can still load their
+    // definition. getGuardrailDefinition hits the generic policy-definition
+    // endpoint, so it resolves any policy by name+version.
     const guardrailMeta = availableGuardrails.find(
       (g) => g.name === policyName
     );
-    if (!guardrailMeta?.version) {
-      setDefinitionError('No version available for this guardrail.');
+    const definitionVersion = guardrailMeta?.version ?? policyVersion;
+    if (!definitionVersion) {
+      setDefinitionError('No version available for this policy.');
       return;
     }
 
     setDefinitionLoading(true);
-    getGuardrailDefinition(guardrailMeta.name, guardrailMeta.version)
+    getGuardrailDefinition(policyName, definitionVersion)
       .then((response) => {
         const parsedDefinition = parsePolicyYaml(response);
         setPolicyDefinition(parsedDefinition);
@@ -693,13 +737,10 @@ export default function ServiceProviderGuardrailsTab() {
               <GuardrailPill
                 key={g.id}
                 label={`${g.displayName} (${g.version})`}
-                onClick={
-                  isReadOnlyProvider
-                    ? undefined
-                    : () =>
-                      handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
-                        scope: 'global',
-                      }, g.source)
+                onClick={() =>
+                  handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
+                    scope: 'global',
+                  }, g.source)
                 }
                 onRemove={
                   isReadOnlyProvider
@@ -985,20 +1026,17 @@ export default function ServiceProviderGuardrailsTab() {
                                           /^v/,
                                           ''
                                         )})`}
-                                        onClick={
-                                          isReadOnlyProvider
-                                            ? undefined
-                                            : () =>
-                                              handleEditGuardrailPill(
-                                                guardrail.policyIndex,
-                                                guardrail.pathIndex,
-                                                {
-                                                  scope: 'resource',
-                                                  method,
-                                                  path: resource.path,
-                                                },
-                                                guardrail.source
-                                              )
+                                        onClick={() =>
+                                          handleEditGuardrailPill(
+                                            guardrail.policyIndex,
+                                            guardrail.pathIndex,
+                                            {
+                                              scope: 'resource',
+                                              method,
+                                              path: resource.path,
+                                            },
+                                            guardrail.source
+                                          )
                                         }
                                         onRemove={
                                           isReadOnlyProvider
@@ -1254,6 +1292,7 @@ export default function ServiceProviderGuardrailsTab() {
                               existingValues={editingTarget ? guardrailSettings : undefined}
                               onCancel={() => setIsDetailView(false)}
                               onSubmit={handlePolicySubmit}
+                              readOnly={isReadOnlyProvider}
                             />
                           ) : (
                             <Typography variant="body2" color="text.secondary">
