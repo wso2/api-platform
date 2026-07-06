@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo } from "react";
 import {
   ColorSchemeToggle,
   ComplexSelect,
@@ -26,18 +26,18 @@ import {
   Box,
   Stack,
   Typography,
-} from '@wso2/oxygen-ui';
-import { Building2, ChevronRight, X } from '@wso2/oxygen-ui-icons-react';
-import SearchableComplexSelect from '../../Components/common/SearchableComplexSelect';
-import Logo from '../../Components/Logo';
-import UserMenu from '../../Components/UserMenu';
-import { useRole } from '../../contexts/RoleContext';
+} from "@wso2/oxygen-ui";
+import { Building2, ChevronRight, X } from "@wso2/oxygen-ui-icons-react";
+import SearchableComplexSelect from "../../Components/common/SearchableComplexSelect";
+import Logo from "../../Components/Logo";
+import UserMenu from "../../Components/UserMenu";
+import { useRole } from "../../contexts/RoleContext";
 import {
   buildOrgPath,
   buildProjectPath,
   getProjectSlug,
-} from '../../utils/projectRouting';
-import ProjectQuickSelector from './ProjectQuickSelector';
+} from "../../utils/projectRouting";
+import ProjectQuickSelector from "./ProjectQuickSelector";
 
 type SelectableOrg = {
   id: string;
@@ -99,11 +99,11 @@ export default function AppHeader(props: Props) {
 
   const userForMenu = useMemo(
     () => ({
-      name: userName || userEmail || 'User',
-      email: userEmail || '',
+      name: userName || userEmail || "User",
+      email: userEmail || "",
       role: role || undefined,
     }),
-    [userName, userEmail, role]
+    [userName, userEmail, role],
   );
 
   const canShowProjectSwitcher = Boolean(currentProject?.id);
@@ -111,24 +111,30 @@ export default function AppHeader(props: Props) {
 
   const handleProjectSelection = (nextProjectId: string) => {
     setSelectedProjectId(nextProjectId);
-    const nextProject = projectOptions.find((p) => p.id === nextProjectId) ?? null;
+    const nextProject =
+      projectOptions.find((p) => p.id === nextProjectId) ?? null;
     setCurrentProject?.(nextProject);
     if (nextProject?.id && currentOrganization?.id) {
-      navigate(buildOrgPath(currentOrganization, `/projects/${getProjectSlug(nextProject)}/home`));
+      navigate(
+        buildOrgPath(
+          currentOrganization,
+          `/projects/${getProjectSlug(nextProject)}/home`,
+        ),
+      );
     }
   };
 
   const clearProjectSelection = () => {
-    setSelectedProjectId('');
+    setSelectedProjectId("");
     setCurrentProject?.(null);
     if (currentOrganization?.id) {
-      navigate(buildOrgPath(currentOrganization, '/home'));
+      navigate(buildOrgPath(currentOrganization, "/home"));
     }
   };
 
   const homePath = currentProject
-    ? buildProjectPath(currentOrganization, currentProject, '/home')
-    : buildOrgPath(currentOrganization, '/home');
+    ? buildProjectPath(currentOrganization, currentProject, "/home")
+    : buildOrgPath(currentOrganization, "/home");
 
   return (
     <Header>
@@ -137,7 +143,10 @@ export default function AppHeader(props: Props) {
         onToggle={shellActions.toggleSidebar}
       />
 
-      <Header.Brand onClick={() => navigate(homePath)} sx={{ cursor: 'pointer' }}>
+      <Header.Brand
+        onClick={() => navigate(homePath)}
+        sx={{ cursor: "pointer" }}
+      >
         <Header.BrandLogo>
           <Logo />
         </Header.BrandLogo>
@@ -149,24 +158,29 @@ export default function AppHeader(props: Props) {
             <>
               <Box
                 sx={{
-                  display: 'inline-flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                  px: 1.25,
-                  py: 0.5,
+                  display: "inline-flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  p: 1.5,
                   minWidth: 100,
-                  height: 40,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: "8px",
+                  bgcolor: "background.acrylic",
                   flexShrink: 0,
-                  cursor: 'default',
-                  userSelect: 'none',
+                  cursor: "default",
+                  userSelect: "none",
                 }}
               >
                 <Typography
                   variant="caption"
-                  sx={{ color: 'text.secondary', lineHeight: 1, mb: 0.25, fontSize: '0.65rem' }}
+                  sx={{
+                    color: "text.secondary",
+                    lineHeight: 1,
+                    mb: 0.25,
+                    fontSize: "0.7rem",
+                    marginBottom: 1,
+                  }}
                 >
                   Organizations
                 </Typography>
@@ -175,7 +189,15 @@ export default function AppHeader(props: Props) {
                   <Typography
                     variant="body2"
                     fontWeight={500}
-                    sx={{ color: 'text.primary', lineHeight: 1, fontSize: '0.8rem' }}
+                    sx={{
+                      color: "text.primary",
+                      lineHeight: 1,
+                      fontSize: "0.9rem",
+                      fontWeight: 400,
+                      textOverflow: "ellipsis",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                    }}
                   >
                     {currentOrganization.name}
                   </Typography>
@@ -186,7 +208,7 @@ export default function AppHeader(props: Props) {
           )}
 
           {canShowProjectSwitcher ? (
-            <Box sx={{ position: 'relative', minWidth: 220 }}>
+            <Box sx={{ position: "relative", minWidth: 220 }}>
               <SearchableComplexSelect
                 value={selectedProjectId}
                 selectedOption={currentProject}
@@ -218,7 +240,7 @@ export default function AppHeader(props: Props) {
                   clearProjectSelection();
                 }}
                 sx={{
-                  position: 'absolute',
+                  position: "absolute",
                   top: 6,
                   right: 2,
                   zIndex: 1,
@@ -249,13 +271,10 @@ export default function AppHeader(props: Props) {
         <Divider
           orientation="vertical"
           flexItem
-          sx={{ mx: 1, display: { xs: 'none', sm: 'block' } }}
+          sx={{ mx: 1, display: { xs: "none", sm: "block" } }}
         />
 
-        <UserMenu
-          user={userForMenu as any}
-          onLogout={onLogout}
-        />
+        <UserMenu user={userForMenu as any} onLogout={onLogout} />
       </Header.Actions>
     </Header>
   );
