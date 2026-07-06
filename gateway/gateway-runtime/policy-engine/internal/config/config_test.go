@@ -1174,6 +1174,23 @@ func TestValidate_AnalyticsPayloadMigration(t *testing.T) {
 	}
 }
 
+// TestValidate_AnalyticsPayloadMigration_SkippedWhenAnalyticsDisabled guards
+// against a stale analytics.allow_payloads left over from a disabled analytics
+// setup silently turning on body capture for an unrelated consumer (traffic
+// logging) enabled later. The deprecated capture aliases belong to analytics, so
+// they must only be honored while analytics itself is enabled.
+func TestValidate_AnalyticsPayloadMigration_SkippedWhenAnalyticsDisabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.Analytics.Enabled = false
+	cfg.TrafficLogging.Enabled = true // an unrelated consumer activates the collector
+	cfg.Analytics.AllowPayloads = true
+
+	err := cfg.Validate()
+	require.NoError(t, err)
+	assert.False(t, cfg.Collector.SendRequestBody)
+	assert.False(t, cfg.Collector.SendResponseBody)
+}
+
 // TestValidate_CollectorPrerequisite verifies that enabling a consumer (analytics,
 // traffic logging) without the collector auto-enables the collector (a
 // backward-compat soft prerequisite) rather than failing.

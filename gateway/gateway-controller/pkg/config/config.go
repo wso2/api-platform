@@ -976,8 +976,8 @@ func defaultConfig() *Config {
 		Collector: CollectorConfig{
 			SendRequestBody:     false,
 			SendResponseBody:    false,
-			SendRequestHeaders:  true,
-			SendResponseHeaders: true,
+			SendRequestHeaders:  false,
+			SendResponseHeaders: false,
 			GRPCEventServerCfg:  defaultGRPCEventServerConfig(),
 		},
 		TracingConfig: TracingConfig{
@@ -1781,9 +1781,11 @@ func (c *Config) IsCollectorEnabled() bool {
 func (c *Config) migrateDeprecatedAnalyticsTransport() {
 	def := defaultGRPCEventServerConfig()
 	if c.Analytics.GRPCEventServerCfg != def {
-		slog.Warn("analytics.grpc_event_server is deprecated; use collector.als instead")
 		if c.Collector.GRPCEventServerCfg == def {
+			slog.Warn("analytics.grpc_event_server is deprecated; migrating it to collector.als")
 			c.Collector.GRPCEventServerCfg = c.Analytics.GRPCEventServerCfg
+		} else {
+			slog.Warn("analytics.grpc_event_server is deprecated and collector.als is already configured; ignoring the analytics.grpc_event_server override")
 		}
 	}
 }
@@ -1791,8 +1793,15 @@ func (c *Config) migrateDeprecatedAnalyticsTransport() {
 // migrateDeprecatedAnalyticsCapture maps the deprecated analytics.allow_payloads /
 // analytics.send_request_body / analytics.send_response_body onto the collector's
 // body-capture flags (when the collector flag is not already set), so existing
-// configs keep working after capture settings moved under [collector].
+// configs keep working after capture settings moved under [collector]. These are
+// analytics's own deprecated flags, so they are only honored while analytics is
+// enabled — otherwise a stale value left over from a disabled analytics setup
+// could silently turn on body capture for an unrelated consumer (e.g.
+// traffic_logging) enabled later.
 func (c *Config) migrateDeprecatedAnalyticsCapture() {
+	if !c.Analytics.Enabled {
+		return
+	}
 	// Directional aliases take precedence over allow_payloads.
 	if c.Analytics.SendRequestBody && !c.Collector.SendRequestBody {
 		slog.Warn("analytics.send_request_body is deprecated; use collector.send_request_body instead")

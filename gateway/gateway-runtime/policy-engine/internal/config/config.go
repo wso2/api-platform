@@ -627,9 +627,11 @@ func (c *Config) IsCollectorEnabled() bool {
 func (c *Config) migrateDeprecatedAnalyticsTransport() {
 	def := defaultAccessLogsServiceConfig()
 	if c.Analytics.AccessLogsServiceCfg != def {
-		slog.Warn("analytics.access_logs_service is deprecated; use collector.als instead")
 		if c.Collector.AccessLogsServiceCfg == def {
+			slog.Warn("analytics.access_logs_service is deprecated; migrating it to collector.als")
 			c.Collector.AccessLogsServiceCfg = c.Analytics.AccessLogsServiceCfg
+		} else {
+			slog.Warn("analytics.access_logs_service is deprecated and collector.als is already configured; ignoring the analytics.access_logs_service override")
 		}
 	}
 }
@@ -664,8 +666,15 @@ func validateAccessLogsServiceConfig(als AccessLogsServiceConfig) error {
 // migrateDeprecatedAnalyticsCapture maps the deprecated analytics.allow_payloads /
 // analytics.send_request_body / analytics.send_response_body onto the collector's
 // body-capture flags (when the collector flag is not already set), so existing
-// configs keep working after capture settings moved under [collector].
+// configs keep working after capture settings moved under [collector]. These are
+// analytics's own deprecated flags, so they are only honored while analytics is
+// enabled — otherwise a stale value left over from a disabled analytics setup
+// could silently turn on body capture for an unrelated consumer (e.g.
+// traffic_logging) enabled later.
 func (c *Config) migrateDeprecatedAnalyticsCapture() {
+	if !c.Analytics.Enabled {
+		return
+	}
 	// Directional aliases take precedence over allow_payloads.
 	if c.Analytics.SendRequestBody && !c.Collector.SendRequestBody {
 		slog.Warn("analytics.send_request_body is deprecated; use collector.send_request_body instead")

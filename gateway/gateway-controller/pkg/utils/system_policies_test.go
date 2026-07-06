@@ -155,6 +155,25 @@ func TestInjectSystemPolicies_CollectorEnabled(t *testing.T) {
 	assert.Equal(t, "existing", result[1].Name)
 }
 
+func TestInjectSystemPolicies_TrafficLoggingOnlyEnablesCollector(t *testing.T) {
+	// Traffic logging alone (no analytics) -> collector implicitly on -> system
+	// policy injected. Guards against a regression that gates injection on
+	// cfg.Analytics.Enabled alone instead of cfg.IsCollectorEnabled().
+	cfg := &config.Config{
+		TrafficLogging: config.TrafficLoggingConfig{Enabled: true},
+	}
+	policies := []policyenginev1.PolicyInstance{
+		{Name: "existing", Version: "v1.0.0"},
+	}
+
+	result := InjectSystemPolicies(policies, cfg, nil)
+	assert.Len(t, result, 2)
+	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
+	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_VERSION, result[0].Version)
+	assert.True(t, result[0].Enabled)
+	assert.Equal(t, "existing", result[1].Name)
+}
+
 func TestInjectSystemPolicies_BodyFlagsPropagated(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{Enabled: true},
@@ -204,7 +223,7 @@ func TestInjectSystemPolicies_HeaderFlagsPropagated(t *testing.T) {
 
 func TestInjectSystemPolicies_HeaderFlagsDefaultFalse(t *testing.T) {
 	// Zero-value collector (headers unset) with a consumer on: propagation passes the
-	// struct's false through. (Production defaults these true; see defaultConfig.)
+	// struct's false through, matching the production default (see defaultConfig).
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{Enabled: true},
 	}

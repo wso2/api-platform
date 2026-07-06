@@ -297,10 +297,11 @@ send_request_body = false
 send_response_body = false
 # Capture ALL request/response headers into the collected event (request_headers/
 # response_headers). Applies to every API via the collector system policy, so no
-# per-API header policy is needed. Sensitive values are redacted on output by each
-# consumer (e.g. traffic_logging.masked_headers). On by default.
-send_request_headers = true
-send_response_headers = true
+# per-API header policy is needed. Sensitive values are redacted on output by
+# consumers that support it (e.g. traffic_logging.masked_headers) — the Moesif
+# publisher does not mask headers. Off by default; enable deliberately per consumer.
+send_request_headers = false
+send_response_headers = false
 
 # ALS transport tuning (advanced; defaults are sensible). One section read by BOTH
 # ends of the Envoy → policy-engine access-log stream:

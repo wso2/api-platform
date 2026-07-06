@@ -8,8 +8,10 @@
 send_request_body = false
 send_response_body = false
 # Capture ALL request/response headers (redacted on output by per-consumer masking).
-send_request_headers = true
-send_response_headers = true
+# Off by default; the Moesif publisher does not mask headers, so only enable this
+# for consumers you know redact sensitive values (e.g. traffic_logging.masked_headers).
+send_request_headers = false
+send_response_headers = false
 
 # Analytics consumer (e.g. Moesif). Enabling it activates the collector automatically.
 [analytics]
