@@ -121,14 +121,6 @@ func (s *APIServer) CreateMCPProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(mcp, cfg))
-
-	if result.IsStale {
-		return
-	}
-
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, cfg.DeployedAt, log)
-	}
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies

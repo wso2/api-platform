@@ -134,8 +134,9 @@ func (i *llmProxyImporter) resolveProviderUUID(providerHandle, orgID string) (st
 // generateLLMProxyDeploymentYAML: the provider object ({id, auth}) is flattened into the
 // provider handle plus the gateway-specific upstream auth, and the policy list (which
 // carries security on the wire) is lifted back into the first-class Security field.
-// (LLM proxies have no rate-limiting field, so the lifted rate-limiting — which the proxy
-// flow never emits — is discarded.)
+// LLM proxies have no rate-limiting field, so rate-limit policies are NOT lifted
+// (liftRateLimits=false) and are kept as ordinary policies so a gateway-pushed proxy
+// that carries them (e.g. llm-cost-based-ratelimit) still surfaces them in the response.
 func mapLLMProxySpecToConfig(spec dto.LLMProxyDeploymentSpec) model.LLMProxyConfig {
 	cfg := model.LLMProxyConfig{
 		Name:     spec.DisplayName,
@@ -159,7 +160,7 @@ func mapLLMProxySpecToConfig(spec dto.LLMProxyDeploymentSpec) model.LLMProxyConf
 	liftInput := mapGlobalPoliciesAPIToLLMPolicies(&spec.GlobalPolicies)
 	liftInput = append(liftInput, mapOperationPoliciesAPIToLLMPolicies(&spec.OperationPolicies)...)
 	liftInput = append(liftInput, mapPoliciesAPIToModel(&spec.Policies)...)
-	security, _, remaining := liftLLMPolicies(liftInput)
+	security, _, remaining := liftLLMPolicies(liftInput, false)
 	cfg.Security, cfg.Policies = security, remaining
 	return cfg
 }

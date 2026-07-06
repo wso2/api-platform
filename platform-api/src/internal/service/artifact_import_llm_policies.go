@@ -41,17 +41,28 @@ const (
 // plane's first-class Security and RateLimiting structures, and returns the
 // remaining (genuine) policies in their original order.
 //
+// liftRateLimits controls whether rate-limit policies (token/advanced/cost) are lifted
+// into the returned RateLimitingConfig.
 // Notes / known lossiness (inherent to the forward conversion):
 //   - Reset windows are recovered in canonical minute/hour units, because the forward
 //     formatting collapses day/week/month into hours.
 //   - Provider Global and Provider ResourceWise.Default both serialize to the "/*"
 //     path, so a "/*" entry is reconstructed as Global.
-func liftLLMPolicies(policies []model.LLMPolicy) (*model.SecurityConfig, *model.LLMRateLimitingConfig, []model.LLMPolicy) {
+func liftLLMPolicies(policies []model.LLMPolicy, liftRateLimits bool) (*model.SecurityConfig, *model.LLMRateLimitingConfig, []model.LLMPolicy) {
 	var security *model.SecurityConfig
 	rl := &rateLimitBuilder{}
 	remaining := make([]model.LLMPolicy, 0, len(policies))
 
 	for _, p := range policies {
+		// When the caller has no rate-limiting field to store into (proxies),
+		// keep rate-limit policies as ordinary policies
+		if !liftRateLimits &&
+			(p.Name == importPolicyTokenRateLimit ||
+				p.Name == importPolicyAdvancedRateLimit ||
+				p.Name == importPolicyCostRateLimit) {
+			remaining = append(remaining, p)
+			continue
+		}
 		switch p.Name {
 		case importPolicyAPIKeyAuth:
 			if s := liftAPIKeySecurity(p); s != nil {
