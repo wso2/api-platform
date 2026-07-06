@@ -40,13 +40,19 @@ go run ./cmd/main.go
 
 ### Step-by-Step Workflow
 
+Across the API, resources with a handle expose it as `id` (an immutable, URL-safe
+slug), with a separate human-readable `displayName`. Path parameters are
+handle-based, not UUIDs — e.g. `{projectId}`, `{gatewayId}`, `{restApiId}` are
+all handles. See [`src/resources/openapi.yaml`](src/resources/openapi.yaml)
+for the full contract.
+
 **1. Register an Organization**
 
 ```bash
 curl -k -X POST https://localhost:9243/api/v0.9/organizations \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
-  -d '{"id":"<org-uuid>","handle":"acme","name":"ACME Corporation","region":"us-east-1"}'
+  -d '{"id":"acme","displayName":"ACME Corporation","region":"us-east-1"}'
 ```
 
 **2. Create a Project**
@@ -56,8 +62,19 @@ curl -k -X POST https://localhost:9243/api/v0.9/projects \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
-    "name": "Production APIs"
+    "displayName": "Production APIs"
   }'
+```
+
+Response includes the project handle, auto-generated from `displayName` if `id` is omitted:
+```json
+{
+  "id": "production-apis",
+  "displayName": "Production APIs",
+  "organizationId": "acme",
+  "createdAt": "2026-06-21T15:12:44+05:30",
+  "updatedAt": "2026-06-21T15:12:44+05:30"
+}
 ```
 
 **3. Create a Gateway**
@@ -68,28 +85,33 @@ curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
-    "name": "prod-gateway-01",
+    "id": "prod-gateway-01",
     "displayName": "Production Gateway 01",
-    "vhost": "localhost",
+    "endpoints": ["https://prod-gateway-01.example.com:8443/api/v1"],
     "functionalityType": "regular"
   }'
 ```
 
-Response includes the gateway UUID:
+Response includes the gateway handle (used as `{gatewayId}` in all subsequent calls):
 ```json
 {
-  "id": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
-  "name": "prod-gateway-01",
+  "id": "prod-gateway-01",
   "displayName": "Production Gateway 01",
-  "createdAt": "2025-10-21T15:12:44.168980842+05:30",
-  "updatedAt": "2025-10-21T15:12:44.16898088+05:30"
+  "organizationId": "acme",
+  "endpoints": ["https://prod-gateway-01.example.com:8443/api/v1"],
+  "functionalityType": "regular",
+  "isCritical": false,
+  "version": "1.0",
+  "isActive": false,
+  "createdAt": "2026-06-21T15:12:44+05:30",
+  "updatedAt": "2026-06-21T15:12:44+05:30"
 }
 ```
 
 **4. Generate Gateway Token**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v0.9/gateways/<gateway-uuid>/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/prod-gateway-01/tokens \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-token>'
 ```
@@ -99,16 +121,18 @@ Response includes the gateway authentication token:
 {
   "id": "7ed55286-66a4-43ae-9271-bd1ead475a55",
   "token": "QY8Rnm9bJ-incsGU0xtFz2vx16I1IVhEf0Ma_4O5F9s",
-  "createdAt": "2025-10-21T15:12:57.60936197+05:30",
+  "createdAt": "2026-06-21T15:12:57+05:30",
   "message": "New token generated successfully. Old token remains active until revoked."
 }
 ```
 
 **List Gateway Tokens:**
 ```bash
-curl -k https://localhost:9243/api/v0.9/gateways/<gateway-uuid>/tokens \
+curl -k https://localhost:9243/api/v0.9/gateways/prod-gateway-01/tokens \
   -H 'Authorization: Bearer <your-token>'
 ```
+
+Returns a bare array of token summaries (`[{"id": "...", "status": "active", "createdAt": "...", "revokedAt": null}]`) — token hashes are never exposed.
 
 **5. Connect Gateway to Platform (WebSocket)**
 
@@ -126,8 +150,12 @@ wscat -n -c wss://localhost:9243/api/internal/v1/ws/gateways/connect \
 Expected output:
 ```
 Connected (press CTRL+C to quit)
-< {"type":"connection.ack","gatewayId":"4dac93bd-07ba-417e-aef8-353cebe3ba73","connectionId":"3150a8b6-649d-4d12-8512-7d72e8ec7f13","timestamp":"2025-10-21T14:42:13+05:30"}
+< {"type":"connection.ack","gatewayId":"4dac93bd-07ba-417e-aef8-353cebe3ba73","connectionId":"3150a8b6-649d-4d12-8512-7d72e8ec7f13","timestamp":"2026-06-21T14:42:13+05:30"}
 ```
+
+Note: `gatewayId` on WebSocket events is the gateway's internal UUID, not the
+handle returned by the REST API — the gateway itself doesn't need to know its
+handle.
 
 Keep this connection open to receive real-time deployment events.
 
@@ -139,11 +167,11 @@ curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
       "id": "weather-api",
-      "name": "Weather API",
+      "displayName": "Weather API",
       "description": "Weather API with main and sandbox upstreams",
-      "context": "/weather",
-      "version": "v1.0",
-      "projectId": "<project-uuid>",
+      "context": "weather",
+      "version": "1.0.0",
+      "projectId": "production-apis",
       "lifeCycleStatus": "CREATED",
       "transport": ["http","https"],
       "upstream": {
@@ -152,6 +180,8 @@ curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis' \
        }
     }'
 ```
+
+`projectId` is the project's handle (from step 2), not its UUID.
 
 **7. Deploy API to Gateway**
 
@@ -163,35 +193,39 @@ curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis/weather-api/deploymen
   -d '{
     "name": "weather-v1-prod",
     "base": "current",
-    "gatewayId": "<gateway-uuid>",
-    "vhost": {
-      "main": "example.wso2.com",
-      "sandbox": "sand-example.wso2.com"
+    "gatewayId": "prod-gateway-01",
+    "metadata": {
+      "vhostMain": "example.wso2.com",
+      "vhostSandbox": "sand-example.wso2.com"
     }
 }'
 ```
+
+`gatewayId` is the gateway's handle (from step 3), not its UUID.
 
 Expected response:
 ```json
 {
   "deploymentId": "90d10e1c-8560-5c36-9d5a-124ecaa17485",
   "name": "weather-v1-prod",
-  "gatewayId": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
+  "gatewayId": "prod-gateway-01",
   "status": "DEPLOYED",
-  "vhost": {
-    "main": "example.wso2.com",
-    "sandbox": "sand-example.wso2.com"
+  "metadata": {
+    "vhostMain": "example.wso2.com",
+    "vhostSandbox": "sand-example.wso2.com"
   },
-  "createdAt": "2025-10-21T16:15:18+05:30",
-  "updatedAt": "2025-10-21T16:15:18+05:30",
+  "createdAt": "2026-06-21T16:15:18+05:30",
+  "updatedAt": "2026-06-21T16:15:18+05:30",
   "baseDeploymentId": null
 }
 ```
 
 The connected gateway will receive a deployment event via WebSocket:
 ```
-< {"type":"api.deployed","payload":{"apiId":"54588845-c860-4a56-8802-c06b03028543","revisionId":"90d10e1c-8560-5c36-9d5a-124ecaa17485","vhost":"mg.wso2.com","environment":"production"},"timestamp":"2025-10-21T16:15:18+05:30","correlationId":"ae7488ec-9559-4a81-bddd-b85e1391d2c0"}
+< {"type":"api.deployed","payload":{"apiId":"54588845-c860-4a56-8802-c06b03028543","deploymentId":"90d10e1c-8560-5c36-9d5a-124ecaa17485","performedAt":"2026-06-21T16:15:18+05:30"},"gatewayId":"4dac93bd-07ba-417e-aef8-353cebe3ba73","timestamp":"2026-06-21T16:15:18+05:30","correlationId":"ae7488ec-9559-4a81-bddd-b85e1391d2c0"}
 ```
+
+`apiId` and `gatewayId` in the event payload are internal UUIDs, distinct from the handle-based `id` used in the REST API.
 
 ## Configuration
 
