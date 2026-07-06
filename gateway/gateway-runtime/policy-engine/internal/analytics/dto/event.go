@@ -62,26 +62,30 @@ type TrafficLogDirective struct {
 	Request  *TrafficLogFlow   `json:"request,omitempty"`
 	Response *TrafficLogFlow   `json:"response,omitempty"`
 	Fields   *TrafficLogFields `json:"fields,omitempty"`
-	// Properties holds the policy's resolved customProperties (context references
-	// already expanded at request time). The Log publisher emits them under
-	// properties.custom on the log line.
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	// Labels holds the policy's resolved labels (context references already
+	// expanded at request time). The Log publisher emits them as a top-level
+	// "labels" object on the log line.
+	Labels map[string]interface{} `json:"labels,omitempty"`
+	// MaskedHeaders lists lower-cased header names whose values are redacted
+	// in the emitted log line. Merged with the global masked_headers config.
+	MaskedHeaders []string `json:"maskedHeaders,omitempty"`
 }
 
 // TrafficLogFlow is the per-flow (request or response) presentation config.
 type TrafficLogFlow struct {
-	Payload        bool     `json:"payload"`
-	Headers        bool     `json:"headers"`
-	ExcludeHeaders []string `json:"excludeHeaders,omitempty"`
+	Payload bool `json:"payload"`
+	Headers bool `json:"headers"`
 }
 
-// TrafficLogFields selects which fields appear in the emitted line. When set it is
-// authoritative over field presence: the per-flow Payload/Headers booleans are
-// ignored (per-flow ExcludeHeaders and global masking still apply). Names are
-// top-level keys (e.g. "latencies", "target") or dotted property paths
-// (e.g. "properties.requestHeaders"). Mode "exclude" drops the named keys; any
-// other value (default "include") keeps only the named keys.
+// TrafficLogFields selects which fields appear in the emitted line. Exactly one
+// of Only or Exclude should be set. Only keeps exactly the named fields; Exclude
+// drops the named fields and keeps everything else. Names are top-level keys
+// (e.g. "latencies", "requestHeaders") or dotted sub-key paths within map fields
+// (e.g. "requestHeaders.authorization", "labels.env"). When set, this is
+// authoritative over field presence; per-flow Payload/Headers booleans are ignored
+// (global header masking still applies). If both are set, Only takes precedence.
 type TrafficLogFields struct {
-	Mode  string   `json:"mode,omitempty"`
-	Names []string `json:"names,omitempty"`
+	Only    []string `json:"only,omitempty"`
+	Exclude []string `json:"exclude,omitempty"`
 }
+

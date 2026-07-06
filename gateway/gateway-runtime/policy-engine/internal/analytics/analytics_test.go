@@ -409,7 +409,7 @@ func TestPrepareAnalyticEvent_TrafficLogMarker(t *testing.T) {
 
 	logEntry := createLogEntryWithMetadata(map[string]string{
 		APINameKey:            "TestAPI",
-		TrafficLogMetadataKey: `{"request":{"payload":false,"headers":true,"excludeHeaders":["x-key"]}}`,
+		TrafficLogMetadataKey: `{"request":{"payload":false,"headers":true}}`,
 	})
 
 	event := analytics.prepareAnalyticEvent(logEntry)
@@ -419,7 +419,6 @@ func TestPrepareAnalyticEvent_TrafficLogMarker(t *testing.T) {
 	require.NotNil(t, event.TrafficLog.Request)
 	assert.True(t, event.TrafficLog.Request.Headers)
 	assert.False(t, event.TrafficLog.Request.Payload)
-	assert.Equal(t, []string{"x-key"}, event.TrafficLog.Request.ExcludeHeaders)
 	assert.Nil(t, event.TrafficLog.Response, "unset flow stays nil")
 
 	// The marker must never leak into serialized properties (or other publishers).

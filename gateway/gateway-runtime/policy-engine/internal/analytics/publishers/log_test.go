@@ -58,13 +58,21 @@ func bothFlows() *dto.TrafficLogDirective {
 	}
 }
 
-// decodeProps runs the single JSON line and returns the decoded event + its properties.
-func decodeLine(t *testing.T, out string) (map[string]interface{}, map[string]interface{}) {
+// decodeLine parses the single JSON line emitted by the Log publisher.
+func decodeLine(t *testing.T, out string) map[string]interface{} {
 	t.Helper()
 	var decoded map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(out), &decoded))
-	props, _ := decoded["properties"].(map[string]interface{})
-	return decoded, props
+	return decoded
+}
+
+// headerMap returns the JSON-decoded header object as map[string]interface{} for
+// easy key/value assertions. Fails the test if v is not the expected type.
+func headerMap(t *testing.T, v interface{}) map[string]interface{} {
+	t.Helper()
+	m, ok := v.(map[string]interface{})
+	require.True(t, ok, "expected header object (map[string]interface{}), got %T", v)
+	return m
 }
 
 func TestNewLog_NilConfig(t *testing.T) {
@@ -96,10 +104,11 @@ func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
 	// Single line (one trailing newline).
 	assert.Equal(t, 1, strings.Count(strings.TrimRight(out, "\n"), "\n")+1)
 
-	decoded, props := decodeLine(t, out)
+	decoded := decodeLine(t, out)
 	api := decoded["api"].(map[string]interface{})
-	assert.Equal(t, "test-api", api["apiName"])
-	assert.Equal(t, `{"x-foo":"bar"}`, props["requestHeaders"])
+	assert.Equal(t, "test-api", api["name"])
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "bar", reqH["x-foo"])
 
 	// ALS-derived latencies are always present in the line — the key improvement
 	// over the inline log-message policy, which could never see them.
@@ -107,13 +116,13 @@ func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
 	assert.Equal(t, float64(100), latencies["responseLatency"])
 }
 
-// Custom properties from the directive are emitted under properties.custom.
-func TestLog_Publish_CustomPropertiesUnderCustom(t *testing.T) {
+// Labels from the directive are emitted as a top-level "labels" object.
+func TestLog_Publish_LabelsTopLevel(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.TrafficLog = &dto.TrafficLogDirective{
 		Request: &dto.TrafficLogFlow{Headers: true},
-		Properties: map[string]interface{}{
+		Labels: map[string]interface{}{
 			"who":        "alice",
 			"authType":   "jwt",
 			"retryCount": float64(3),
@@ -123,48 +132,47 @@ func TestLog_Publish_CustomPropertiesUnderCustom(t *testing.T) {
 
 	l.Publish(event)
 
-	_, props := decodeLine(t, read())
-	custom, ok := props["custom"].(map[string]interface{})
-	require.True(t, ok, "expected properties.custom object, got %v", props["custom"])
-	assert.Equal(t, "alice", custom["who"])
-	assert.Equal(t, "jwt", custom["authType"])
-	assert.Equal(t, float64(3), custom["retryCount"])
-	// Reserved keys are untouched by the custom namespace.
-	assert.Equal(t, `{"x-foo":"bar"}`, props["requestHeaders"])
+	decoded := decodeLine(t, read())
+	labels, ok := decoded["labels"].(map[string]interface{})
+	require.True(t, ok, "expected top-level labels object, got %T", decoded["labels"])
+	assert.Equal(t, "alice", labels["who"])
+	assert.Equal(t, "jwt", labels["authType"])
+	assert.Equal(t, float64(3), labels["retryCount"])
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "bar", reqH["x-foo"])
 }
 
-// A directive with no Properties emits no custom key.
-func TestLog_Publish_NoCustomWhenAbsent(t *testing.T) {
+// A directive with no labels emits no "labels" key.
+func TestLog_Publish_NoLabelsWhenAbsent(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.TrafficLog = bothFlows()
 
 	l.Publish(event)
 
-	_, props := decodeLine(t, read())
-	_, present := props["custom"]
-	assert.False(t, present, "no custom key expected when directive has no Properties")
+	decoded := decodeLine(t, read())
+	_, present := decoded["labels"]
+	assert.False(t, present, "no labels key expected when directive has no labels")
 }
 
-// The fields projection can select properties.custom like any other property path.
-func TestLog_Publish_CustomProjectableViaFields(t *testing.T) {
+// The fields projection can select "labels" like any other top-level key.
+func TestLog_Publish_LabelsProjectableViaFields(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.TrafficLog = &dto.TrafficLogDirective{
-		Properties: map[string]interface{}{"who": "alice"},
-		Fields:     &dto.TrafficLogFields{Mode: "include", Names: []string{"properties.custom"}},
+		Labels: map[string]interface{}{"who": "alice"},
+		Fields: &dto.TrafficLogFields{Only: []string{"labels"}},
 	}
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 
 	l.Publish(event)
 
-	_, props := decodeLine(t, read())
-	custom, ok := props["custom"].(map[string]interface{})
-	require.True(t, ok, "expected properties.custom retained by include projection")
-	assert.Equal(t, "alice", custom["who"])
-	// Non-selected property dropped by the include projection.
-	_, hasHeaders := props["requestHeaders"]
-	assert.False(t, hasHeaders, "requestHeaders should be dropped by include projection")
+	decoded := decodeLine(t, read())
+	labels, ok := decoded["labels"].(map[string]interface{})
+	require.True(t, ok, "expected labels retained by include projection")
+	assert.Equal(t, "alice", labels["who"])
+	_, hasHeaders := decoded["requestHeaders"]
+	assert.False(t, hasHeaders, "requestHeaders not in Only list -> dropped")
 }
 
 func TestLog_Publish_MasksHeaders(t *testing.T) {
@@ -176,32 +184,67 @@ func TestLog_Publish_MasksHeaders(t *testing.T) {
 
 	l.Publish(event)
 
-	_, props := decodeLine(t, read())
-
-	var reqH map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(props["requestHeaders"].(string)), &reqH))
+	decoded := decodeLine(t, read())
+	reqH := headerMap(t, decoded["requestHeaders"])
 	assert.Equal(t, "****", reqH["Authorization"]) // masked
 	assert.Equal(t, "bar", reqH["x-foo"])          // untouched
 
-	var resH map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(props["responseHeaders"].(string)), &resH))
+	resH := headerMap(t, decoded["responseHeaders"])
 	assert.Equal(t, "****", resH["authorization"]) // case-insensitive match
 }
 
-// Per-API excludeHeaders drops the header entirely (vs global masking which redacts).
-func TestLog_Publish_ExcludeHeadersDrops(t *testing.T) {
+// Per-API maskedHeaders are merged with the global config mask; either source alone redacts.
+func TestLog_Publish_PerAPIMaskedHeadersMergedWithGlobal(t *testing.T) {
+	// Global config masks "authorization"; per-API directive adds "x-secret".
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
 	event := createBaseEvent()
 	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: true, ExcludeHeaders: []string{"X-Secret"}},
+		Request:       &dto.TrafficLogFlow{Headers: true},
+		MaskedHeaders: []string{"x-secret"},
 	}
 	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Secret":"top","x-foo":"bar"}`
 
 	l.Publish(event)
 
-	_, props := decodeLine(t, read())
-	var reqH map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(props["requestHeaders"].(string)), &reqH))
+	decoded := decodeLine(t, read())
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "****", reqH["Authorization"], "global masked header still redacted")
+	assert.Equal(t, "****", reqH["X-Secret"], "per-API masked header redacted")
+	assert.Equal(t, "bar", reqH["x-foo"], "unmasked header unchanged")
+}
+
+// Per-API maskedHeaders work even when no global headers are configured.
+func TestLog_Publish_PerAPIMaskedHeadersNoGlobal(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Request:       &dto.TrafficLogFlow{Headers: true},
+		MaskedHeaders: []string{"X-Token"},
+	}
+	event.Properties["requestHeaders"] = `{"X-Token":"secret","x-foo":"bar"}`
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "****", reqH["X-Token"])
+	assert.Equal(t, "bar", reqH["x-foo"])
+}
+
+// fields.exclude with a dotted path drops a specific header entirely (vs global masking which redacts).
+func TestLog_Publish_ExcludeHeadersDrops(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Request: &dto.TrafficLogFlow{Headers: true},
+		Fields:  &dto.TrafficLogFields{Exclude: []string{"requestHeaders.X-Secret"}},
+	}
+	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Secret":"top","x-foo":"bar"}`
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	reqH := headerMap(t, decoded["requestHeaders"])
 
 	_, hasSecret := reqH["X-Secret"]
 	assert.False(t, hasSecret, "excluded header must be dropped")
@@ -224,13 +267,13 @@ func TestLog_Publish_DisabledFieldsOmitted(t *testing.T) {
 
 	l.Publish(event)
 
-	_, props := decodeLine(t, read())
-	_, hasReqHeaders := props["requestHeaders"]
+	decoded := decodeLine(t, read())
+	_, hasReqHeaders := decoded["requestHeaders"]
 	assert.False(t, hasReqHeaders, "request headers disabled -> omitted")
-	assert.Equal(t, "req-body", props["request_payload"], "request payload enabled -> kept")
+	assert.Equal(t, "req-body", decoded["requestBody"], "request payload enabled -> kept")
 
-	_, hasRespHeaders := props["responseHeaders"]
-	_, hasRespPayload := props["response_payload"]
+	_, hasRespHeaders := decoded["responseHeaders"]
+	_, hasRespPayload := decoded["responseBody"]
 	assert.False(t, hasRespHeaders, "nil response flow -> response headers omitted")
 	assert.False(t, hasRespPayload, "nil response flow -> response payload omitted")
 }
@@ -254,39 +297,33 @@ func TestLog_Publish_NilEvent(t *testing.T) {
 	assert.Empty(t, read())
 }
 
-// Field selection (include): only named top-level keys and properties.* survive,
-// and it is authoritative over presence (request.headers boolean is ignored, but
-// excludeHeaders + masking still apply).
+// Field selection (include): only named top-level keys survive; fields.only is
+// authoritative over presence (request.headers boolean is ignored, masking still applies).
 func TestLog_Publish_FieldsInclude(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
 	event := createBaseEvent()
-	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Drop":"d","X-Keep":"k"}`
+	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Keep":"k"}`
 	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
 	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: false, ExcludeHeaders: []string{"X-Drop"}}, // boolean ignored
-		Fields:  &dto.TrafficLogFields{Mode: "include", Names: []string{"latencies", "properties.requestHeaders"}},
+		Request: &dto.TrafficLogFlow{Headers: false}, // boolean ignored when fields set
+		Fields:  &dto.TrafficLogFields{Only: []string{"latencies", "requestHeaders"}},
 	}
 
 	l.Publish(event)
-	decoded, props := decodeLine(t, read())
+	decoded := decodeLine(t, read())
 
 	_, hasAPI := decoded["api"]
 	_, hasOp := decoded["operation"]
 	assert.False(t, hasAPI, "api not listed -> dropped")
 	assert.False(t, hasOp, "operation not listed -> dropped")
 	assert.Contains(t, decoded, "latencies", "latencies listed -> kept")
-	require.NotNil(t, props, "properties kept (a properties.* path was listed)")
 
-	_, hasResp := props["responseHeaders"]
+	_, hasResp := decoded["responseHeaders"]
 	assert.False(t, hasResp, "responseHeaders not listed -> dropped")
 
-	reqRaw, ok := props["requestHeaders"].(string)
-	require.True(t, ok, "requestHeaders present (fields authoritative, boolean ignored)")
-	var reqH map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(reqRaw), &reqH))
+	require.NotNil(t, decoded["requestHeaders"], "requestHeaders present (fields authoritative, boolean ignored)")
+	reqH := headerMap(t, decoded["requestHeaders"])
 	assert.Equal(t, "****", reqH["Authorization"], "masking still applies")
-	_, hasDrop := reqH["X-Drop"]
-	assert.False(t, hasDrop, "excludeHeaders still applies")
 	assert.Equal(t, "k", reqH["X-Keep"])
 }
 
@@ -297,40 +334,44 @@ func TestLog_Publish_FieldsExclude(t *testing.T) {
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 	event.Properties["request_payload"] = "secret-body"
 	event.TrafficLog = &dto.TrafficLogDirective{
-		Fields: &dto.TrafficLogFields{Mode: "exclude", Names: []string{"operation", "properties.request_payload"}},
+		Fields: &dto.TrafficLogFields{Exclude: []string{"operation", "requestBody"}},
 	}
 
 	l.Publish(event)
-	decoded, props := decodeLine(t, read())
+	decoded := decodeLine(t, read())
 
 	_, hasOp := decoded["operation"]
 	assert.False(t, hasOp, "operation excluded")
 	assert.Contains(t, decoded, "api", "api kept")
 	assert.Contains(t, decoded, "latencies", "latencies kept")
-	require.NotNil(t, props)
-	_, hasPayload := props["request_payload"]
-	assert.False(t, hasPayload, "request_payload excluded")
-	assert.Contains(t, props, "requestHeaders", "requestHeaders kept (not excluded)")
+	_, hasPayload := decoded["requestBody"]
+	assert.False(t, hasPayload, "requestBody excluded")
+	assert.Contains(t, decoded, "requestHeaders", "requestHeaders kept (not excluded)")
 }
 
-// Naming the whole "properties" key keeps all of its subkeys.
-func TestLog_Publish_FieldsIncludeWholeProperties(t *testing.T) {
+// requestBody and labels are top-level keys like any other and can be selected
+// explicitly via fields.only.
+func TestLog_Publish_FieldsIncludeRequestBodyAndLabels(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
-	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
+	event.Properties["request_payload"] = "body-data"
 	event.TrafficLog = &dto.TrafficLogDirective{
-		Fields: &dto.TrafficLogFields{Mode: "include", Names: []string{"properties"}},
+		Labels: map[string]interface{}{"env": "prod"},
+		Fields: &dto.TrafficLogFields{Only: []string{"requestBody", "labels"}},
 	}
 
 	l.Publish(event)
-	decoded, props := decodeLine(t, read())
+	decoded := decodeLine(t, read())
 
 	_, hasAPI := decoded["api"]
 	assert.False(t, hasAPI, "api not listed -> dropped")
-	require.NotNil(t, props)
-	assert.Contains(t, props, "requestHeaders")
-	assert.Contains(t, props, "responseHeaders")
+	_, hasHeaders := decoded["requestHeaders"]
+	assert.False(t, hasHeaders, "requestHeaders not in Only list -> dropped")
+	assert.Equal(t, "body-data", decoded["requestBody"])
+	labels, ok := decoded["labels"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "prod", labels["env"])
 }
 
 // Output-side payload truncation (0 = no limit).
@@ -342,9 +383,9 @@ func TestLog_Publish_TruncatesPayload(t *testing.T) {
 	event.Properties["response_payload"] = "goodbye world"
 
 	l.Publish(event)
-	_, props := decodeLine(t, read())
-	assert.Equal(t, "hello", props["request_payload"])
-	assert.Equal(t, "goodb", props["response_payload"])
+	decoded := decodeLine(t, read())
+	assert.Equal(t, "hello", decoded["requestBody"])
+	assert.Equal(t, "goodb", decoded["responseBody"])
 }
 
 func TestLog_Publish_NoTruncationWhenZero(t *testing.T) {
@@ -354,11 +395,11 @@ func TestLog_Publish_NoTruncationWhenZero(t *testing.T) {
 	event.Properties["request_payload"] = "hello world"
 
 	l.Publish(event)
-	_, props := decodeLine(t, read())
-	assert.Equal(t, "hello world", props["request_payload"])
+	decoded := decodeLine(t, read())
+	assert.Equal(t, "hello world", decoded["requestBody"])
 }
 
-func TestLog_Publish_InvalidHeaderJSONLeftAsIs(t *testing.T) {
+func TestLog_Publish_UnparseableHeadersDropped(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
 	event := createBaseEvent()
 	event.TrafficLog = bothFlows()
@@ -366,6 +407,62 @@ func TestLog_Publish_InvalidHeaderJSONLeftAsIs(t *testing.T) {
 
 	l.Publish(event)
 
-	_, props := decodeLine(t, read())
-	assert.Equal(t, "not-json", props["requestHeaders"])
+	decoded := decodeLine(t, read())
+	_, hasHeaders := decoded["requestHeaders"]
+	assert.False(t, hasHeaders, "unparseable header value must be silently dropped")
+}
+
+// Application is omitted entirely for unauthenticated requests (all fields empty).
+func TestLog_Publish_UnauthenticatedRequestOmitsApplication(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.Application = &dto.Application{} // all fields are ""
+	event.TrafficLog = bothFlows()
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	_, hasApp := decoded["application"]
+	assert.False(t, hasApp, "application with all-empty fields must be absent")
+}
+
+// TrafficLogAPI uses clean field names (id/name/kind) not the Moesif apiId/apiName/apiType.
+func TestLog_Publish_APIFieldNames(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.TrafficLog = bothFlows()
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	api, ok := decoded["api"].(map[string]interface{})
+	require.True(t, ok, "api object must be present")
+	assert.Equal(t, "api-123", api["id"])
+	assert.Equal(t, "test-api", api["name"])
+	assert.Equal(t, "v1.0", api["version"])
+	assert.Equal(t, "Rest", api["kind"])
+	assert.Equal(t, "/test", api["context"])
+	assert.Equal(t, "project-123", api["projectId"])
+	// Moesif-specific keys must not bleed into traffic logs.
+	for _, moesifKey := range []string{"apiId", "apiName", "apiCreator", "apiCreatorTenantDomain", "organizationId"} {
+		_, present := api[moesifKey]
+		assert.False(t, present, "Moesif field %q must not appear in traffic log", moesifKey)
+	}
+}
+
+// Top-level fields — status, correlationId, client — are always present when set.
+func TestLog_Publish_TopLevelFieldsPresent(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.TrafficLog = bothFlows()
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	assert.Equal(t, float64(200), decoded["status"], "proxy response code must appear as status")
+	assert.Equal(t, "corr-123", decoded["correlationId"])
+	client, ok := decoded["client"].(map[string]interface{})
+	require.True(t, ok, "client object must be present")
+	assert.Equal(t, "192.168.1.1", client["ip"])
+	assert.Equal(t, "test-agent", client["userAgent"])
 }
