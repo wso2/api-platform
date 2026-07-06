@@ -16,7 +16,7 @@ use (
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/analytics
 	./kubernetes/gateway-operator
-	./platform-api/src
+	./platform-api
 	./portals/ai-workspace/bff
 	./samples/sample-service
 	./sdk/ai

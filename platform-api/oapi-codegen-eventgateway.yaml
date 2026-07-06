@@ -1,5 +1,5 @@
 package: api
-output: src/api/generated_eventgateway.go
+output: api/generated_eventgateway.go
 generate:
   models: true
 output-options:

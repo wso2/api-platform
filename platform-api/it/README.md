@@ -9,10 +9,10 @@ supported store instead of only on the SQLite path used by the unit tests.
 
 | Path | Purpose |
 |------|---------|
-| `src/internal/integration/` | The tests (Go, build tag `integration`). |
-| `src/internal/integration/harness_test.go` | DB selection + schema bootstrap, driven by `IT_DB`. |
-| `src/internal/integration/cascade_test.go` | Delete-cascade behavior across the real foreign keys. |
-| `src/internal/integration/lifecycle_test.go` | Create + paginated list through the real repository layer. |
+| `internal/integration/` | The tests (Go, build tag `integration`). |
+| `internal/integration/harness_test.go` | DB selection + schema bootstrap, driven by `IT_DB`. |
+| `internal/integration/cascade_test.go` | Delete-cascade behavior across the real foreign keys. |
+| `internal/integration/lifecycle_test.go` | Create + paginated list through the real repository layer. |
 | `it/docker-compose.postgres.yaml` | Throwaway PostgreSQL for the tests. |
 | `it/docker-compose.sqlserver.yaml` | Throwaway SQL Server for the tests. |
 
@@ -42,7 +42,7 @@ The suite is parameterized purely by environment variables, so it can also point
 at an already-running database:
 
 ```bash
-cd src
+cd ..
 IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=1433 \
   IT_DB_USER=sa IT_DB_PASSWORD='Strong!Passw0rd' IT_DB_NAME=platform_api_it \
   go test -tags integration -v ./internal/integration/...

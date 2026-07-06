@@ -50,12 +50,12 @@ COPY --from=common go.mod go.sum /common/
 COPY --from=httpkit go.mod go.sum /httpkit/
 
 # Fetch dependencies before copying full source for better layer caching.
-COPY src/go.mod src/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY --from=common . /common
 COPY --from=httpkit . /httpkit
-COPY src/ ./
+COPY . ./
 
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         export CC=x86_64-linux-gnu-gcc; \
@@ -103,12 +103,12 @@ COPY --from=builder /build/platform-api .
 # These are copied to the same relative locations the binary expects by default
 # (see config.defaultConfig), so no DB_SCHEMA_PATH / LLM_TEMPLATE_DEFINITIONS_PATH
 # env overrides are needed. Any of them can still be overridden via config.toml.
-COPY src/internal/database/schema.sql            ./internal/database/schema.sql
-COPY src/internal/database/schema.postgres.sql   ./internal/database/schema.postgres.sql
-COPY src/internal/database/schema.sqlserver.sql  ./internal/database/schema.sqlserver.sql
-COPY src/internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.sql
-COPY src/resources/default-llm-provider-templates ./resources/default-llm-provider-templates
-COPY src/resources/openapi.yaml                  ./resources/openapi.yaml
+COPY internal/database/schema.sql            ./internal/database/schema.sql
+COPY internal/database/schema.postgres.sql   ./internal/database/schema.postgres.sql
+COPY internal/database/schema.sqlserver.sql  ./internal/database/schema.sqlserver.sql
+COPY internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.sql
+COPY resources/default-llm-provider-templates ./resources/default-llm-provider-templates
+COPY resources/openapi.yaml                  ./resources/openapi.yaml
 
 RUN mkdir -p /app/data /app/data/certs && \
     chown -R wso2:appgroup /app

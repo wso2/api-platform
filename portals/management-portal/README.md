@@ -65,7 +65,7 @@ docker run -p 9243:9243 wso2/platform-api:latest
 ## Option 2: Run Locally
 
 ```bash
-cd platform-api/src
+cd platform-api
 go run ./cmd/main.go
 ```
 
