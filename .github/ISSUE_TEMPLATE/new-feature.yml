@@ -10,16 +10,13 @@ body:
       label: Please select the area the issue is related to
       multiple: true
       options:
-        - Area/Management (Management API or Management Portal UI)
-        - Area/Gateway (Routing, API deployment in gateway etc.)
-        - Area/Policies (Policies, Policy Hub, Policy Engine etc)
-        - Area/APIDesigner (API Designer VSCode extension)
-        - Area/DeveloperPortal (Developer Portal API, Developer Portal UI)
-        - Area/AIGateway (AI Gateway runtime/control plane)
-        - Area/EventGateway (Event Gateway runtime/control plane)
-        - Area/AIPolicies (AI Gateway Policies, Guardrails)
-        - Area/Operator (Kubernetes operator for AI Gateway or Regular Gateway)
-        - Area/Other (Anything else which does not match above categories)
+        - Gateway
+        - Platform API
+        - Developer Portal
+        - AI Workspace
+        - CLI
+        - Gateway Operator
+        - Event Gateway
     validations:
       required: true
   - type: dropdown
@@ -54,3 +51,15 @@ body:
       description: Link any related issues or pull requests.
     validations:
       required: false
+  - type: checkboxes
+    id: steps_to_verify
+    attributes:
+      label: Steps to Verify
+      description: Check off each step as it is completed before marking this feature as done.
+      options:
+        - label: "**Design Document** — A detailed design document has been created and reviewed, covering architecture, data flow, and edge cases."
+        - label: "**Design Mail** — A design summary email has been sent to relevant stakeholders for awareness and feedback."
+        - label: "**Code Review** — All code changes have been peer-reviewed and approved according to the project's review standards."
+        - label: "**Testing** — Adequate unit, integration, and/or end-to-end tests have been written and are passing."
+        - label: "**Documentation** — User-facing and/or developer documentation has been updated to reflect the new feature."
+        - label: "**Feature Complete** — The feature is fully implemented, all checklist items above are done, and it is ready for release."
