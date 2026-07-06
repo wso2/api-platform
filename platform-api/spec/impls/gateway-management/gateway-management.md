@@ -68,8 +68,7 @@ The organization ID is automatically extracted from the JWT token and used for a
 2. Validates request payload (id/handle, displayName, description, endpoints, functionalityType)
 3. Verifies organization exists
 4. Prevents duplicate handles within organization
-5. Generates secure registration token
-6. Returns gateway details (registration itself does not return a token — call `POST /gateways/{gatewayId}/tokens` afterward)
+5. Returns gateway details (registration itself does not generate or return a token — call `POST /gateways/{gatewayId}/tokens` afterward to obtain one)
 
 **Request Fields**:
 - **id**: Optional. Lowercase alphanumeric with hyphens, 3-40 characters, pattern: `^[a-z0-9-]+$`. Auto-generated from `displayName` if omitted. Immutable after creation.
