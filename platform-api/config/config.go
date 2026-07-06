@@ -37,7 +37,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
-	"platform-api/src/internal/logger"
+	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
 // FileBasedUser represents a built-in user for file-based auth mode.

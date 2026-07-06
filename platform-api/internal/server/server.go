@@ -808,8 +808,9 @@ func (s *Server) Start(port string, certDir string) error {
 	if demoMode() {
 		mode = "DEMO"
 	}
-	s.logger.Info("Platform API started", "mode=", mode)
-	fmt.Printf("\n    >>> Platform API started mode=%s <<<\n\n", mode)
+	s.logger.Info("Platform API started", "mode", mode)
+
+	fmt.Printf("\n    >>> Platform API started [%s] <<<\n\n", mode)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
