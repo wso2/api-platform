@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/logger"
 	"ai-workspace-bff/internal/server"
 	"ai-workspace-bff/internal/tlsutil"
 )
@@ -54,13 +55,13 @@ func printStartedMarker(mode string) {
 }
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
-
 	cfg, err := config.Load()
 	if err != nil {
+		slog.SetDefault(logger.NewLogger(logger.Config{Level: "info", Format: "text"}))
 		slog.Error("configuration error", "err", err)
 		os.Exit(1)
 	}
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
