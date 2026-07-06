@@ -36,6 +36,8 @@ import (
 	kenv "github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+
+	"platform-api/src/internal/logger"
 )
 
 // FileBasedUser represents a built-in user for file-based auth mode.
@@ -330,6 +332,11 @@ func LoadConfig(configPath string) (*Server, error) {
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Install the configured logger as the slog default so the warnings/info logs
+	// emitted below (and any package-level slog.* call in this file) use the same
+	// format as the rest of the application, instead of slog's default handler.
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
 
 	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
 		return nil, err

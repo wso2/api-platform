@@ -43,12 +43,15 @@ func NewLogger(cfg Config) *slog.Logger {
 				if src, ok := a.Value.Any().(*slog.Source); ok {
 					// Extract path with special handling:
 					// - hide "internal" prefix for internal package logs
-					// - keep "cmd" prefix for main entrypoint logs
+					// - keep the package prefix (cmd, config, plugins, ...) for everything else under platform-api/src
+					// - fall back to the path relative to the repo root for code outside platform-api/src (e.g. common/)
 					file := src.File
 					if idx := strings.Index(src.File, "platform-api/src/internal/"); idx != -1 {
 						file = src.File[idx+len("platform-api/src/internal/"):]
-					} else if idx := strings.Index(src.File, "platform-api/src/cmd/"); idx != -1 {
+					} else if idx := strings.Index(src.File, "platform-api/src/"); idx != -1 {
 						file = src.File[idx+len("platform-api/src/"):]
+					} else if idx := strings.LastIndex(src.File, "api-platform/"); idx != -1 {
+						file = src.File[idx+len("api-platform/"):]
 					}
 					return slog.String("source", fmt.Sprintf("%s:%d", file, src.Line))
 				}
