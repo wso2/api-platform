@@ -38,7 +38,7 @@ services:
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
     volumes:
-      - ../../platform-api/src/internal/database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
+      - ../../platform-api/internal/database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
     networks: [e2e]
 
   platform-api:

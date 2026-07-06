@@ -28,7 +28,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-devportal.sql
-      - ../../platform-api/src/internal/database/init-platform-api-db.sql:/docker-entrypoint-initdb.d/02-init-platform-api.sql
+      - ../../platform-api/internal/database/init-platform-api-db.sql:/docker-entrypoint-initdb.d/02-init-platform-api.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d devportal"]
       interval: 5s

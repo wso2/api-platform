@@ -44,18 +44,18 @@ help: ## Show this help message
 
 test: ## Run tests
 	@echo "Running tests..."
-	@cd src && go test -v ./...
+	@go test -v ./...
 
 it: it-sqlite ## Run cross-database integration tests on SQLite (alias of it-sqlite)
 
 it-sqlite: ## Run cross-database integration tests on SQLite
 	@echo "Running integration tests on SQLite..."
-	@cd src && IT_DB=sqlite go test -tags integration -count=1 -v ./internal/integration/...
+	@IT_DB=sqlite go test -tags integration -count=1 -v ./internal/integration/...
 
 it-postgres: ## Run cross-database integration tests on PostgreSQL (spins up a container)
 	@echo "Starting PostgreSQL for integration tests..."
 	@docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml up -d --wait
-	@cd src && IT_DB=postgres IT_DB_HOST=localhost IT_DB_PORT=55432 IT_DB_USER=postgres \
+	@IT_DB=postgres IT_DB_HOST=localhost IT_DB_PORT=55432 IT_DB_USER=postgres \
 		IT_DB_PASSWORD=postgres IT_DB_NAME=platform_api_it \
 		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
 		docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml down -v >/dev/null 2>&1; \
@@ -65,7 +65,7 @@ it-sqlserver: ## Run cross-database integration tests on SQL Server (spins up a 
 	@echo "Starting SQL Server ($(MSSQL_IMAGE)) for integration tests..."
 	@MSSQL_IMAGE=$(MSSQL_IMAGE) MSSQL_PASSWORD='$(MSSQL_PASSWORD)' \
 		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml up -d
-	@cd src && IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=14333 IT_DB_USER=sa \
+	@IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=14333 IT_DB_USER=sa \
 		IT_DB_PASSWORD='$(MSSQL_PASSWORD)' IT_DB_NAME=platform_api_it \
 		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
 		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml down -v >/dev/null 2>&1; \
@@ -99,11 +99,11 @@ build: ## Build Docker image
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Adding bindings to OpenAPI spec..."
 	@command -v yq >/dev/null 2>&1 || { echo "Error: yq is not installed. Install it via 'brew install yq' or 'go install github.com/mikefarah/yq/v4@latest'"; exit 1; }
-	@yq '.components.schemas[].properties |= (. as $$props | (parent | .required[]) as $$req_field | select($$props | has($$req_field)) | .[$$req_field]."x-oapi-codegen-extra-tags".binding = "required")' src/resources/openapi.yaml > src/resources/openapi_with_binding.yaml
+	@yq '.components.schemas[].properties |= (. as $$props | (parent | .required[]) as $$req_field | select($$props | has($$req_field)) | .[$$req_field]."x-oapi-codegen-extra-tags".binding = "required")' resources/openapi.yaml > resources/openapi_with_binding.yaml
 	@echo "Generating API server code from OpenAPI spec with bindings..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml src/resources/openapi_with_binding.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml resources/openapi_with_binding.yaml
 	@echo "Generating API models for the eventgateway plugin spec..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-eventgateway.yaml src/plugins/eventgateway/openapi.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-eventgateway.yaml plugins/eventgateway/openapi.yaml
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."

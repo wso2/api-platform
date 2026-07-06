@@ -12,11 +12,11 @@ Before using the Platform API, obtain a bearer token for authentication. In loca
 
 ```bash
 # Build
-cd platform-api/src
+cd platform-api
 go build ./cmd/main.go
 
 # Run (TLS with self-signed certificates)
-cd platform-api/src
+cd platform-api
 go run ./cmd/main.go
 ```
 
@@ -34,7 +34,7 @@ export DATABASE_USER=sa
 export DATABASE_PASSWORD='<strong-password>'
 export DATABASE_SSL_MODE=disable
 
-cd platform-api/src
+cd platform-api
 go run ./cmd/main.go
 ```
 

@@ -174,7 +174,7 @@ dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zi
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
 	@cp -R configs/. $(DIST_DIR)/configs/
-	@cp ../../platform-api/src/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
+	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 ifeq ($(PLATFORM_API_FROM_TAG),true)
 	@echo "Fetching platform-api db-scripts from tag $(PLATFORM_API_TAG)..."
 	@tag="$(PLATFORM_API_TAG)"; dest="$(DIST_DIR)/resources/platform-api/db-scripts"; \
@@ -184,12 +184,12 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 	if ! git -C ../.. rev-parse -q --verify "refs/tags/$$tag" >/dev/null 2>&1; then \
 		echo "Error: tag $$tag not found (check PLATFORM_API_VERSION)" >&2; exit 1; \
 	fi; \
-	files=$$(git -C ../.. ls-tree -r --name-only "$$tag" -- platform-api/src/internal/database | grep '\.sql$$'); \
-	if [ -z "$$files" ]; then echo "Error: no .sql files found under platform-api/src/internal/database at $$tag" >&2; exit 1; fi; \
+	files=$$(git -C ../.. ls-tree -r --name-only "$$tag" -- platform-api/internal/database | grep '\.sql$$'); \
+	if [ -z "$$files" ]; then echo "Error: no .sql files found under platform-api/internal/database at $$tag" >&2; exit 1; fi; \
 	for f in $$files; do git -C ../.. show "$$tag:$$f" > "$$dest/$$(basename $$f)"; done; \
 	echo "✓ Fetched $$(echo "$$files" | wc -l | tr -d ' ') db-script(s) from $$tag"
 else
-	@cp ../../platform-api/src/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
+	@cp ../../platform-api/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 endif
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak -E \
