@@ -26,7 +26,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"os"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -142,19 +141,19 @@ func linkDevportalOrg() error {
 }
 
 // registerWebhookSubscriber points the portal at the platform-api receiver with
-// the shared HMAC secret and the receiver's RSA public key. Idempotent: a repeat
-// registration (E2E_KEEP reruns) that conflicts is treated as success.
+// the shared HMAC secret and the run's generated RSA public key (see
+// prepareWebhookKey). Idempotent: a repeat registration (E2E_KEEP reruns) that
+// conflicts is treated as success.
 func registerWebhookSubscriber() error {
-	pub, err := os.ReadFile(webhookPubKeySource)
-	if err != nil {
-		return fmt.Errorf("read webhook public key %s: %w", webhookPubKeySource, err)
+	if webhookPublicKeyPEM == "" {
+		return fmt.Errorf("webhook public key not generated (prepareWebhookKey must run first)")
 	}
 	st, body, err := dpCall(http.MethodPost, "/webhook-subscribers", map[string]any{
 		"id":          "platform-api",
 		"displayName": "Platform API",
 		"targetUrl":   webhookReceiverURL,
 		"secret":      webhookSecret,
-		"publicKey":   string(pub),
+		"publicKey":   webhookPublicKeyPEM,
 		"events":      []string{"apikey.*", "subscription.*"},
 		"enabled":     true,
 	})

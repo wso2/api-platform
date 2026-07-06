@@ -71,17 +71,19 @@ services:
       # Developer Portal webhook receiver (only the postgres stack runs the devportal).
       # Enabled via env so the sqlite/sqlserver stacks — which have no devportal and no
       # mounted key — leave it off. The private key must be readable by the container
-      # user (uid 10001); the suite copies the repo key to a 0644 temp and points
-      # PA_WEBHOOK_KEY at it (see prepareWebhookKey in suite_test.go).
+      # user (uid 10001); the suite generates a fresh RSA pair, writes the 0644 private
+      # key and points PA_WEBHOOK_KEY at it (see prepareWebhookKey in suite_test.go).
       - WEBHOOK_ENABLED=true
       - WEBHOOK_SECRET=5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22
       - WEBHOOK_PRIVATE_KEY_PATH=/etc/platform-api/devportal-webhook.pem
       - WEBHOOK_GATEWAY_TYPE=wso2/api-platform
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
-      # RSA private key paired with portals/developer-portal/devportal-webhook.pub;
-      # platform-api decrypts the webhook's encrypted key/token fields with it.
-      - ${PA_WEBHOOK_KEY:-../../portals/developer-portal/devportal-webhook.pem}:/etc/platform-api/devportal-webhook.pem:ro
+      # RSA private key that platform-api decrypts the webhook's encrypted key/token
+      # fields with; its public half is registered on the devportal subscriber. The
+      # suite always sets PA_WEBHOOK_KEY (the generated key); the default is only a
+      # fallback for manual `docker compose up` after a suite run has generated it.
+      - ${PA_WEBHOOK_KEY:-./.webhook-key.it.pem}:/etc/platform-api/devportal-webhook.pem:ro
     ports:
       - "${PA_HOST_PORT:-9243}:9243"
     depends_on:

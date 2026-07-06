@@ -148,17 +148,18 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
    - Auth: the devportal accepts the platform-api admin JWT directly (shared
      `DP_PLATFORMAPI_JWTSECRET`, org from the token's `org_handle` claim). The
      admin must carry `dp:*` scopes, which platform-api's built-in admin lacks —
-     so the suite injects an admin (ap:* **and** dp:*) via the
+     so the suite injects an admin (ap:* *and* dp:*) via the
      `AUTH_FILE_BASED_USERS` env var (a mounted config's users are ignored; only
      that env override wins). Bearer auth (not API-key mode) is used because the
      write paths need a resolved user for `created_by`.
-   - `BeforeSuite` links the portal org (`cpRefId = "default"`, the platform-api
-     org handle) and registers a webhook subscriber pointing at
-     `…/api/internal/v0.9/webhook/events` with the shared HMAC secret and the RSA
-     **public** key `devportal-webhook.pub`. platform-api decrypts with the paired
-     `devportal-webhook.pem` (mounted in; the suite copies it to a 0644 file under
-     the compose dir — the container runs as uid 10001 and the source is 0600, and
-     `/tmp` isn't shared into the container VM).
+   - `BeforeSuite` generates a fresh RSA key pair per run (`prepareWebhookKey`),
+     links the portal org (`cpRefId = "default"`, the platform-api org handle), and
+     registers a webhook subscriber pointing at `…/api/internal/v0.9/webhook/events`
+     with the shared HMAC secret and the generated **public** key. platform-api
+     decrypts with the matching private key, which is written 0644 under the compose
+     dir and mounted in via `PA_WEBHOOK_KEY` (the container runs as uid 10001, and
+     `/tmp` isn't shared into the container VM). The key is generated rather than read
+     from the repo because the private key is gitignored (and absent in CI).
    - The delivery worker POSTs over raw https with the default agent, so the
      devportal container sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to accept
      platform-api's self-signed cert.

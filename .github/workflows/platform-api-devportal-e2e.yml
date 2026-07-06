@@ -10,9 +10,7 @@ name: Platform API + Gateway + Developer Portal E2E
 # The developer-portal scenarios are postgres-only (they need the shared postgres
 # server for the devportal store + webhook round-trip), so this runs a single
 # postgres job. It builds the developer-portal image on top of the platform-api,
-# gateway and sample-service images, so it is heavier than the combined e2e and is
-# intentionally kept off the per-PR critical path — it runs on demand and when the
-# e2e itself changes.
+# gateway and sample-service images.
 on:
   workflow_dispatch:
   pull_request:
