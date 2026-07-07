@@ -38,7 +38,7 @@ func TestRunListCommand_PrintsTable(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/apis" {
+		if req.URL.Path != "/o/org-1/devportal/v1/apis" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		if req.URL.RawQuery != "tags=default" {
@@ -138,7 +138,7 @@ func TestRunGetCommand_PrintsJSON(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/apis/api-1" {
+		if req.URL.Path != "/o/org-1/devportal/v1/apis/api-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -174,7 +174,7 @@ func TestRunPublishCommand_DefaultArtifactAndMultipartUpload(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/apis" {
+		if req.URL.Path != "/o/org-1/devportal/v1/apis" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		assertMultipartArtifact(t, req, "devportal.zip")
@@ -227,7 +227,7 @@ func TestRunEditCommand_UploadsArtifact(t *testing.T) {
 		if req.Method != http.MethodPut {
 			t.Fatalf("expected PUT request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/apis/api-1" {
+		if req.URL.Path != "/o/org-1/devportal/v1/apis/api-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		assertMultipartArtifact(t, req, "artifact.zip")
@@ -254,7 +254,7 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 		if req.Method != http.MethodDelete {
 			t.Fatalf("expected DELETE request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/apis/api-1" {
+		if req.URL.Path != "/o/org-1/devportal/v1/apis/api-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -338,4 +338,3 @@ func TestRestAPIImports(t *testing.T) {
 	_ = multipart.ErrMessageTooLarge
 	_ = os.ErrNotExist
 }
-

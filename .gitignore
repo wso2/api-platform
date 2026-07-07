@@ -164,5 +164,7 @@ dev-policies/
 
 gateway/target/
 
+portals/ai-workspace/docker-compose.yaml
+
 # Devportal
 portals/developer-portal/target/

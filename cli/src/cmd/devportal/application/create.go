@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -110,7 +109,7 @@ func runCreateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, createInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/applications", url.PathEscape(orgID))
+	path := internaldevportal.OrgScopedPath(orgID, "applications")
 	resp, err := client.PostJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create application", err, createInsecure)

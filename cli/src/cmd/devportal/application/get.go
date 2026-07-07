@@ -90,7 +90,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/applications", url.PathEscape(orgID))
+	path := internaldevportal.OrgScopedPath(orgID, "applications")
 	appID := strings.TrimSpace(getAppID)
 	if appID != "" {
 		path = fmt.Sprintf("%s/%s", path, url.PathEscape(appID))

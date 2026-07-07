@@ -15,26 +15,35 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package apiproject
 
-import "github.com/spf13/cobra"
+package mcpproxy
 
-const (
-	ApiProjectCmdLiteral = "apiproject"
-	ApiProjectCmdExample = `# Add a new API project
-ap apiproject init --display-name foo-api --type rest --version 1.0 --context /foo`
+import (
+	"github.com/spf13/cobra"
 )
 
-var ApiProjectCmd = &cobra.Command{
-	Use:     ApiProjectCmdLiteral,
-	Short:   "Execute API project operations",
-	Long:    "This command allows you to manage API projects.",
-	Example: ApiProjectCmdExample,
+const (
+	MCPProxyCmdLiteral = "mcp-proxy"
+	MCPProxyCmdExample = `# List MCP proxies in a project on the AI workspace
+ap ai-workspace mcp-proxy list --project-id <project-id>
+
+# Create or update an MCP proxy from a project with:
+#   ap ai-workspace apply --project-id <project-id>`
+)
+
+// MCPProxyCmd is the parent command for MCP proxy operations.
+var MCPProxyCmd = &cobra.Command{
+	Use:     MCPProxyCmdLiteral,
+	Short:   "Manage MCP proxies on the AI workspace",
+	Long:    "This command allows you to manage MCP proxies on the WSO2 API Platform AI workspace.",
+	Example: MCPProxyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
 func init() {
-	ApiProjectCmd.AddCommand(initCmd)
+	MCPProxyCmd.AddCommand(listCmd)
+	MCPProxyCmd.AddCommand(getCmd)
+	MCPProxyCmd.AddCommand(deleteCmd)
 }

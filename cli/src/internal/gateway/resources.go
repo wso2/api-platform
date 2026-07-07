@@ -26,8 +26,10 @@ import (
 
 // ResourceKind represents the type of gateway resource
 const (
-	ResourceKindRestAPI = "RestApi"
-	ResourceKindMCP     = "Mcp"
+	ResourceKindRestAPI     = "RestApi"
+	ResourceKindMCP         = "Mcp"
+	ResourceKindLLMProvider = "LlmProvider"
+	ResourceKindLLMProxy    = "LlmProxy"
 )
 
 // Resource represents a parsed gateway resource
@@ -79,6 +81,36 @@ func (h *MCPHandler) UpdateEndpoint(handle string) string {
 	return fmt.Sprintf(utils.GatewayMCPProxyByIDPath, handle)
 }
 
+// LLMProviderHandler handles LlmProvider kind resources
+type LLMProviderHandler struct{}
+
+func (h *LLMProviderHandler) GetEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayLLMProviderByIDPath, handle)
+}
+
+func (h *LLMProviderHandler) CreateEndpoint() string {
+	return utils.GatewayLLMProvidersPath
+}
+
+func (h *LLMProviderHandler) UpdateEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayLLMProviderByIDPath, handle)
+}
+
+// LLMProxyHandler handles LlmProxy kind resources
+type LLMProxyHandler struct{}
+
+func (h *LLMProxyHandler) GetEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayLLMProxyByIDPath, handle)
+}
+
+func (h *LLMProxyHandler) CreateEndpoint() string {
+	return utils.GatewayLLMProxiesPath
+}
+
+func (h *LLMProxyHandler) UpdateEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayLLMProxyByIDPath, handle)
+}
+
 // GetResourceHandler returns the appropriate handler for a resource kind
 func GetResourceHandler(kind string) ResourceHandler {
 	switch kind {
@@ -86,6 +118,10 @@ func GetResourceHandler(kind string) ResourceHandler {
 		return &RestAPIHandler{}
 	case ResourceKindMCP:
 		return &MCPHandler{}
+	case ResourceKindLLMProvider:
+		return &LLMProviderHandler{}
+	case ResourceKindLLMProxy:
+		return &LLMProxyHandler{}
 	default:
 		return nil
 	}

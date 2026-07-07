@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -70,8 +69,8 @@ type apiKeyRequest struct {
 }
 
 var generateCmd = &cobra.Command{
-	Use:     GenerateCmdLiteral,
-	Short:   "Generate a DevPortal API key",
+	Use:   GenerateCmdLiteral,
+	Short: "Generate a DevPortal API key",
 	Long: "Generates an API key for an API in the selected DevPortal. The plaintext secret is " +
 		"returned once in the response and never persisted. Run without the required flags to be " +
 		"prompted interactively.",
@@ -123,7 +122,7 @@ func runGenerateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, generateInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/api-keys/generate", url.PathEscape(orgID))
+	path := internaldevportal.OrgScopedPath(orgID, "api-keys/generate")
 	resp, err := client.PostJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("generate API key", err, generateInsecure)

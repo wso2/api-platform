@@ -37,12 +37,16 @@ const (
 	DefaultGatewayRuntime    = "ghcr.io/wso2/api-platform/gateway-runtime:%s"    // %s = version
 
 	// REST API Endpoints
-	GatewayHealthPath       = "/health"
-	GatewayAPIsPath         = "/rest-apis"
-	GatewayAPIByIDPath      = "/rest-apis/%s"
-	GatewayMCPProxiesPath   = "/mcp-proxies"
-	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
-	DevPortalHealthPath     = "/health"
+	GatewayHealthPath          = "/health"
+	GatewayAPIsPath            = "/rest-apis"
+	GatewayAPIByIDPath         = "/rest-apis/%s"
+	GatewayMCPProxiesPath      = "/mcp-proxies"
+	GatewayMCPProxyByIDPath    = "/mcp-proxies/%s"
+	GatewayLLMProvidersPath    = "/llm-providers"
+	GatewayLLMProviderByIDPath = "/llm-providers/%s"
+	GatewayLLMProxiesPath      = "/llm-proxies"
+	GatewayLLMProxyByIDPath    = "/llm-proxies/%s"
+	DevPortalHealthPath        = "/health"
 
 	// API Key Endpoints (scoped to a REST API)
 	GatewayAPIKeysPath          = "/rest-apis/%s/api-keys"    // %s = REST API id
@@ -76,6 +80,18 @@ const (
 	EnvDevPortalAPIKey   = "WSO2AP_DEVPORTAL_API_KEY"  // For DevPortal API key auth
 	DevPortalAPIHeader   = "x-wso2-api-key"
 
+	// AI Workspace Authentication Environment Variables
+	EnvAIWorkspaceUsername = "WSO2AP_AIWORKSPACE_USERNAME" // For AI workspace basic auth
+	EnvAIWorkspacePassword = "WSO2AP_AIWORKSPACE_PASSWORD" // For AI workspace basic auth
+	EnvAIWorkspaceToken    = "WSO2AP_AIWORKSPACE_TOKEN"    // For AI workspace OAuth auth
+	EnvAIWorkspaceAPIKey   = "WSO2AP_AIWORKSPACE_API_KEY"  // For AI workspace API key auth
+	AIWorkspaceAPIHeader   = "x-wso2-api-key"
+
+	// AI Workspace REST API Endpoints
+	AIWorkspaceLLMProvidersPath = "/api/v0.9/llm-providers"
+	AIWorkspaceLLMProxiesPath   = "/api/v0.9/llm-proxies"
+	AIWorkspaceMCPProxiesPath   = "/api/v0.9/mcp-proxies"
+
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
 
@@ -84,9 +100,12 @@ const (
 	MaxUncompressedPerFile = 20 * 1024 * 1024  // Maximum uncompressed size allowed per file (20 MB).
 	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
 
-	// API Types
-	APITypeREST = "rest"
-	APITypeSOAP = "soap"
+	// Artifact Types
+	TypeREST        = "REST"
+	TypeSOAP        = "SOAP"
+	TypeLLMProxy    = "LLM-Proxy"
+	TypeLLMProvider = "App-LLM-Provider"
+	TypeMCPProxy    = "MCP-Proxy"
 )
 
 // PolicyHub REST API defaults and paths

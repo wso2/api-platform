@@ -92,7 +92,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/apis/%s", url.PathEscape(orgID), url.PathEscape(apiID))
+	path := internaldevportal.OrgScopedPath(orgID, "apis/"+url.PathEscape(apiID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete api artifact", err, deleteInsecure)

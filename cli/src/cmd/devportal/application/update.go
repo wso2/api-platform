@@ -110,7 +110,7 @@ func runUpdateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, updateInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/applications/%s", url.PathEscape(orgID), url.PathEscape(appID))
+	path := internaldevportal.OrgScopedPath(orgID, "applications/"+url.PathEscape(appID))
 	resp, err := client.PutJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("update application", err, updateInsecure)

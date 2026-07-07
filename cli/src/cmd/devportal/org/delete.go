@@ -84,7 +84,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s", url.PathEscape(orgID))
+	path := fmt.Sprintf("/organizations/%s", url.PathEscape(orgID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete organization", err, deleteInsecure)
@@ -93,4 +93,3 @@ func runDeleteCommand() error {
 	fmt.Printf("Organization deleted from devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
 }
-

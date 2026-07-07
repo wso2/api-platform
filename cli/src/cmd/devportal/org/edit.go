@@ -92,7 +92,7 @@ func runEditCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, editInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s", url.PathEscape(orgID))
+	path := fmt.Sprintf("/organizations/%s", url.PathEscape(orgID))
 	resp, err := client.PutJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("update organization", err, editInsecure)

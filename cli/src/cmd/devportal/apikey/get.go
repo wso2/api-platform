@@ -93,7 +93,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/api-keys?apiId=%s", url.PathEscape(orgID), url.QueryEscape(apiID))
+	path := internaldevportal.OrgScopedPath(orgID, "api-keys?apiId="+url.QueryEscape(apiID))
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("get API keys", err, getInsecure)

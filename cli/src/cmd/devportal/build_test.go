@@ -18,14 +18,18 @@
 package devportal
 
 import (
+	"archive/zip"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wso2/api-platform/cli/internal/project"
 )
 
 func TestEnsureUniqueDevPortalZipNames_DetectsCollision(t *testing.T) {
-	configs := []devPortalProjectConfig{
+	configs := []project.PortalConfig{
 		{Name: "My Portal"},
 		{Name: "my_portal"},
 	}
@@ -40,7 +44,7 @@ func TestEnsureUniqueDevPortalZipNames_DetectsCollision(t *testing.T) {
 }
 
 func TestEnsureUniqueDevPortalZipNames_AllowsDistinctNames(t *testing.T) {
-	configs := []devPortalProjectConfig{
+	configs := []project.PortalConfig{
 		{Name: ""},
 		{Name: "eu"},
 		{Name: "us"},
@@ -68,9 +72,9 @@ func TestEnsureWithinProjectRoot_AllowsContainedPaths(t *testing.T) {
 	projectRoot := t.TempDir()
 
 	cases := []string{
-		projectRoot,                                         // the root itself
-		filepath.Join(projectRoot, "devportal"),             // nested dir
-		filepath.Join(projectRoot, "devportal", "api.yaml"), // nested file
+		projectRoot,                             // the root itself
+		filepath.Join(projectRoot, "devportal"), // nested dir
+		filepath.Join(projectRoot, "devportal", "metadata.yaml"), // nested file
 	}
 	for _, path := range cases {
 		if err := ensureWithinProjectRoot(projectRoot, path, "default", "portalRoot"); err != nil {
@@ -90,7 +94,7 @@ func TestEnsureWithinProjectRoot_RejectsSymlinkEscape(t *testing.T) {
 		t.Skipf("symlinks unsupported on this platform: %v", err)
 	}
 
-	err := ensureWithinProjectRoot(projectRoot, filepath.Join(link, "secret.yaml"), "default", "apiMetadata")
+	err := ensureWithinProjectRoot(projectRoot, filepath.Join(link, "secret.yaml"), "default", "metadataFile")
 	if err == nil || !strings.Contains(err.Error(), "resolves outside the project root") {
 		t.Fatalf("expected symlink escape to be rejected, got %v", err)
 	}
@@ -98,7 +102,7 @@ func TestEnsureWithinProjectRoot_RejectsSymlinkEscape(t *testing.T) {
 
 func TestValidateDevPortalConfig_RejectsEscapingPortalRoot(t *testing.T) {
 	projectRoot := t.TempDir()
-	portalConfig := &devPortalProjectConfig{Name: "default", PortalRoot: "../../etc"}
+	portalConfig := &project.PortalConfig{Name: "default", PortalRoot: "../../etc"}
 
 	err := validateDevPortalConfig(projectRoot, portalConfig)
 	if err == nil {
@@ -109,100 +113,157 @@ func TestValidateDevPortalConfig_RejectsEscapingPortalRoot(t *testing.T) {
 	}
 }
 
-func TestBuildDefaultDevPortalManifest_RejectsEscapingSourcePath(t *testing.T) {
+func TestRegisterDefaultDevPortalConfig_RequiresExistingFolder(t *testing.T) {
 	projectRoot := t.TempDir()
-	projectConfig := &apiProjectConfig{
-		FilePaths: apiProjectFilePaths{
-			APIMetadata:        "../../../etc/passwd",
-			DeploymentArtifact: "./gateway.yaml",
-		},
-	}
 
-	_, err := buildDefaultDevPortalManifest(projectRoot, projectConfig)
-	if err == nil || !strings.Contains(err.Error(), "resolves outside the project root") {
-		t.Fatalf("expected containment error, got %v", err)
+	_, err := registerDefaultDevPortalConfig(projectRoot)
+	if err == nil || !strings.Contains(err.Error(), "no devportal artifact found") {
+		t.Fatalf("expected missing-folder error, got %v", err)
 	}
 }
 
-func TestCreateDefaultDevPortalConfig_RejectsEscapingSourcePath(t *testing.T) {
+func TestRegisterDefaultDevPortalConfig_ReturnsConfigForExistingFolder(t *testing.T) {
 	projectRoot := t.TempDir()
-	projectConfig := &apiProjectConfig{
-		FilePaths: apiProjectFilePaths{
-			APIDefinition: "../../outside/definition.yaml",
-			Docs:          "./docs",
-		},
+	if err := os.MkdirAll(filepath.Join(projectRoot, "devportal"), 0755); err != nil {
+		t.Fatalf("failed to create devportal dir: %v", err)
 	}
 
-	_, err := projectConfig.createDefaultDevPortalConfig(projectRoot)
-	if err == nil || !strings.Contains(err.Error(), "resolves outside the project root") {
-		t.Fatalf("expected containment error, got %v", err)
+	portalConfig, err := registerDefaultDevPortalConfig(projectRoot)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if portalConfig.Name != "default" || portalConfig.PortalRoot != "./devportal" {
+		t.Fatalf("unexpected portal config: %+v", portalConfig)
 	}
 }
 
-func TestRunBuildCommand_RequiresAPIProjectDirectory(t *testing.T) {
+func TestRunBuildCommand_RequiresProjectDirectory(t *testing.T) {
 	workDir := t.TempDir()
 	buildProjectDir = workDir
 
 	err := runBuildCommand()
-	if err == nil || err.Error() != "unable to find api project directory, please execute this command inside api project" {
-		t.Fatalf("expected api project directory error, got %v", err)
+	if err == nil || err.Error() != "unable to find project directory, please execute this command inside a project" {
+		t.Fatalf("expected project directory error, got %v", err)
 	}
 }
 
-func TestRunBuildCommand_CreatesDefaultDevPortalArtifacts(t *testing.T) {
-	projectRoot := createAPIProjectFixture(t)
+func TestRunBuildCommand_RequiresDevPortalFolderWhenNoConfig(t *testing.T) {
+	projectRoot := createProjectFixture(t)
+	buildProjectDir = projectRoot
+
+	err := runBuildCommand()
+	if err == nil || !strings.Contains(err.Error(), "no devportal artifact found") {
+		t.Fatalf("expected missing-folder error, got %v", err)
+	}
+}
+
+func TestRunBuildCommand_RegistersExistingFolderAndArchives(t *testing.T) {
+	projectRoot := createProjectFixture(t)
+	createDevPortalFolderFixture(t, projectRoot, "devportal")
 	buildProjectDir = projectRoot
 
 	if err := runBuildCommand(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, path := range []string{
-		filepath.Join(projectRoot, "devportal"),
-		filepath.Join(projectRoot, "devportal", "devportal.yaml"),
-		filepath.Join(projectRoot, "devportal", "definition.yaml"),
-		filepath.Join(projectRoot, "devportal", "docs"),
-		filepath.Join(projectRoot, "devportal", "content"),
-		filepath.Join(projectRoot, "build", "devportal.zip"),
-	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected path to exist: %s (%v)", path, err)
-		}
+	if _, err := os.Stat(filepath.Join(projectRoot, "build", "devportal.zip")); err != nil {
+		t.Fatalf("expected devportal.zip to be created: %v", err)
 	}
 
-	projectConfig, err := loadProjectConfig(filepath.Join(projectRoot, ".api-platform", "config.yaml"))
+	projectConfig, err := project.Load(filepath.Join(projectRoot, ".api-platform", "config.yaml"))
 	if err != nil {
 		t.Fatalf("failed to load updated project config: %v", err)
 	}
 	if len(projectConfig.DevPortals) != 1 || projectConfig.DevPortals[0].Name != "default" {
-		t.Fatalf("expected default devportal config to be added, got %+v", projectConfig.DevPortals)
-	}
-
-	manifestData, err := os.ReadFile(filepath.Join(projectRoot, "devportal", "devportal.yaml"))
-	if err != nil {
-		t.Fatalf("failed to read manifest: %v", err)
-	}
-	if !strings.Contains(string(manifestData), "displayName: Petstore API") {
-		t.Fatalf("expected generated manifest to contain displayName, got %q", string(manifestData))
+		t.Fatalf("expected default devportal config to be registered, got %+v", projectConfig.DevPortals)
 	}
 }
 
+func TestRunBuildCommand_StampsReferenceIDAndGatewayTypeIntoArchiveOnly(t *testing.T) {
+	projectRoot := createProjectFixture(t)
+	createDevPortalFolderFixture(t, projectRoot, "devportal")
+	buildProjectDir = projectRoot
+
+	buildReferenceID = "1ba42a09-45c0-40f8-a1bf-e4aa7cde1575"
+	buildGatewayType = "wso2/api-platform"
+	t.Cleanup(func() {
+		buildReferenceID = ""
+		buildGatewayType = ""
+	})
+
+	if err := runBuildCommand(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The project's source manifest must be left untouched — the build flags
+	// must not leak back into the workspace.
+	sourceData, readErr := os.ReadFile(filepath.Join(projectRoot, "devportal", "devportal.yaml"))
+	if readErr != nil {
+		t.Fatalf("failed to read source manifest: %v", readErr)
+	}
+	for _, unwanted := range []string{"referenceID", "gatewayType"} {
+		if strings.Contains(string(sourceData), unwanted) {
+			t.Fatalf("source manifest should not be mutated by build, but contains %q: %s", unwanted, sourceData)
+		}
+	}
+
+	// The stamped values must be present in the archived (staged) manifest.
+	archived := readFileFromZip(t, filepath.Join(projectRoot, "build", "devportal.zip"), archiveMetadataFileName)
+	for _, want := range []string{
+		"referenceID: 1ba42a09-45c0-40f8-a1bf-e4aa7cde1575",
+		"gatewayType: wso2/api-platform",
+	} {
+		if !strings.Contains(archived, want) {
+			t.Fatalf("expected archived manifest to contain %q, got %q", want, archived)
+		}
+	}
+}
+
+// readFileFromZip returns the contents of the named entry inside the zip at
+// zipPath, failing the test if the archive or entry cannot be read.
+func readFileFromZip(t *testing.T, zipPath, entryName string) string {
+	t.Helper()
+
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("failed to open archive %s: %v", zipPath, err)
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if file.Name != entryName {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatalf("failed to open %s in archive: %v", entryName, err)
+		}
+		defer rc.Close()
+		data, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("failed to read %s from archive: %v", entryName, err)
+		}
+		return string(data)
+	}
+
+	t.Fatalf("entry %q not found in archive %s", entryName, zipPath)
+	return ""
+}
+
 func TestRunBuildCommand_BuildsMultipleConfiguredDevPortalsAndCleansBuildDir(t *testing.T) {
-	projectRoot := createAPIProjectFixture(t)
+	projectRoot := createProjectFixture(t)
 
 	defaultPortalRoot := filepath.Join(projectRoot, "devportal")
 	petstorePortalRoot := filepath.Join(projectRoot, "petstore")
-	if err := os.MkdirAll(filepath.Join(defaultPortalRoot, "docs"), 0755); err != nil {
-		t.Fatalf("failed to create docs: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(defaultPortalRoot, "content"), 0755); err != nil {
-		t.Fatalf("failed to create content: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(petstorePortalRoot, "docs"), 0755); err != nil {
-		t.Fatalf("failed to create docs: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(petstorePortalRoot, "content"), 0755); err != nil {
-		t.Fatalf("failed to create content: %v", err)
+	for _, dir := range []string{
+		filepath.Join(defaultPortalRoot, "docs"),
+		filepath.Join(defaultPortalRoot, "content"),
+		filepath.Join(petstorePortalRoot, "docs"),
+		filepath.Join(petstorePortalRoot, "content"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("failed to create dir %s: %v", dir, err)
+		}
 	}
 
 	for _, path := range []string{
@@ -214,34 +275,28 @@ func TestRunBuildCommand_BuildsMultipleConfiguredDevPortalsAndCleansBuildDir(t *
 		}
 	}
 
-	if err := saveProjectConfig(filepath.Join(projectRoot, ".api-platform", "config.yaml"), &apiProjectConfig{
-		Version: "1.0.0",
-		FilePaths: apiProjectFilePaths{
-			DeploymentArtifact: "./gateway.yaml",
-			APIMetadata:        "./api.yaml",
-			APIDefinition:      "./definition.yaml",
-			Docs:               "./docs",
-			Tests:              "./tests",
-		},
-		DevPortals: []devPortalProjectConfig{
+	if err := project.Save(filepath.Join(projectRoot, ".api-platform", "config.yaml"), &project.Config{
+		Version:   "1.0.0",
+		FilePaths: project.DefaultFilePaths(),
+		DevPortals: []project.PortalConfig{
 			{
 				Name:       "default",
 				PortalRoot: "./devportal",
-				FilePaths: devPortalProjectPaths{
-					APIMetadata:   "./devportal.yaml",
-					APIDefinition: "./../definition.yaml",
-					Docs:          "./docs",
-					Content:       "./content",
+				FilePaths: project.PortalFilePaths{
+					MetadataFile: "./devportal.yaml",
+					Definition:   "./../definition.yaml",
+					Docs:         "./docs",
+					Content:      "./content",
 				},
 			},
 			{
 				Name:       "petstore",
 				PortalRoot: "./petstore",
-				FilePaths: devPortalProjectPaths{
-					APIMetadata:   "./devportal.yaml",
-					APIDefinition: "./../definition.yaml",
-					Docs:          "./docs",
-					Content:       "./content",
+				FilePaths: project.PortalFilePaths{
+					MetadataFile: "./devportal.yaml",
+					Definition:   "./../definition.yaml",
+					Docs:         "./docs",
+					Content:      "./content",
 				},
 			},
 		},
@@ -276,8 +331,75 @@ func TestRunBuildCommand_BuildsMultipleConfiguredDevPortalsAndCleansBuildDir(t *
 	}
 }
 
+func TestRunBuildCommand_PartialSuccessReportsFailureAndBuildsRest(t *testing.T) {
+	projectRoot := createProjectFixture(t)
+
+	// "default" is fully set up; "broken" is missing its required content dir.
+	defaultPortalRoot := filepath.Join(projectRoot, "devportal")
+	brokenPortalRoot := filepath.Join(projectRoot, "broken")
+	for _, dir := range []string{
+		filepath.Join(defaultPortalRoot, "docs"),
+		filepath.Join(defaultPortalRoot, "content"),
+		filepath.Join(brokenPortalRoot, "docs"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("failed to create dir %s: %v", dir, err)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(defaultPortalRoot, "devportal.yaml"),
+		filepath.Join(brokenPortalRoot, "devportal.yaml"),
+	} {
+		if err := os.WriteFile(path, []byte("apiVersion: devportal.api-platform.wso2.com/v1\nkind: RestApi\n"), 0644); err != nil {
+			t.Fatalf("failed to write portal manifest: %v", err)
+		}
+	}
+
+	if err := project.Save(filepath.Join(projectRoot, ".api-platform", "config.yaml"), &project.Config{
+		FilePaths: project.DefaultFilePaths(),
+		DevPortals: []project.PortalConfig{
+			{
+				Name:       "default",
+				PortalRoot: "./devportal",
+				FilePaths: project.PortalFilePaths{
+					MetadataFile: "./devportal.yaml",
+					Definition:   "./../definition.yaml",
+					Docs:         "./docs",
+					Content:      "./content",
+				},
+			},
+			{
+				Name:       "broken",
+				PortalRoot: "./broken",
+				FilePaths: project.PortalFilePaths{
+					MetadataFile: "./devportal.yaml",
+					Definition:   "./../definition.yaml",
+					Docs:         "./docs",
+					Content:      "./content",
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("failed to save project config: %v", err)
+	}
+
+	buildProjectDir = projectRoot
+	err := runBuildCommand()
+	if err == nil || !strings.Contains(err.Error(), `devportal config "broken" is invalid: content path does not exist`) {
+		t.Fatalf("expected failure for the broken config, got %v", err)
+	}
+
+	// The healthy config must still have produced its archive.
+	if _, statErr := os.Stat(filepath.Join(projectRoot, "build", "devportal.zip")); statErr != nil {
+		t.Fatalf("expected the healthy config to still build its archive: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(projectRoot, "build", "devportal_broken.zip")); !os.IsNotExist(statErr) {
+		t.Fatalf("did not expect an archive for the broken config, got err=%v", statErr)
+	}
+}
+
 func TestRunBuildCommand_ValidatesRequiredContentPath(t *testing.T) {
-	projectRoot := createAPIProjectFixture(t)
+	projectRoot := createProjectFixture(t)
 
 	portalRoot := filepath.Join(projectRoot, "devportal")
 	if err := os.MkdirAll(filepath.Join(portalRoot, "docs"), 0755); err != nil {
@@ -287,23 +409,17 @@ func TestRunBuildCommand_ValidatesRequiredContentPath(t *testing.T) {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
-	if err := saveProjectConfig(filepath.Join(projectRoot, ".api-platform", "config.yaml"), &apiProjectConfig{
-		FilePaths: apiProjectFilePaths{
-			DeploymentArtifact: "./gateway.yaml",
-			APIMetadata:        "./api.yaml",
-			APIDefinition:      "./definition.yaml",
-			Docs:               "./docs",
-			Tests:              "./tests",
-		},
-		DevPortals: []devPortalProjectConfig{
+	if err := project.Save(filepath.Join(projectRoot, ".api-platform", "config.yaml"), &project.Config{
+		FilePaths: project.DefaultFilePaths(),
+		DevPortals: []project.PortalConfig{
 			{
 				Name:       "default",
 				PortalRoot: "./devportal",
-				FilePaths: devPortalProjectPaths{
-					APIMetadata:   "./devportal.yaml",
-					APIDefinition: "./../definition.yaml",
-					Docs:          "./docs",
-					Content:       "./content",
+				FilePaths: project.PortalFilePaths{
+					MetadataFile: "./devportal.yaml",
+					Definition:   "./../definition.yaml",
+					Docs:         "./docs",
+					Content:      "./content",
 				},
 			},
 		},
@@ -318,7 +434,7 @@ func TestRunBuildCommand_ValidatesRequiredContentPath(t *testing.T) {
 	}
 }
 
-func createAPIProjectFixture(t *testing.T) string {
+func createProjectFixture(t *testing.T) string {
 	t.Helper()
 
 	projectRoot := t.TempDir()
@@ -333,9 +449,9 @@ func createAPIProjectFixture(t *testing.T) string {
 	}
 
 	files := map[string]string{
-		filepath.Join(projectRoot, ".api-platform", "config.yaml"): "version: 1.0.0\nfilePaths:\n  deploymentArtifact: ./gateway.yaml\n  apiMetadata: ./api.yaml\n  apiDefinition: ./definition.yaml\n  docs: ./docs\n  tests: ./tests\n",
-		filepath.Join(projectRoot, "api.yaml"):                     "apiVersion: management.api-platform.wso2.com/v1\nkind: Api\nmetadata:\n  name: foo-1.0.0\n",
-		filepath.Join(projectRoot, "gateway.yaml"):                 "apiVersion: gateway.api-platform.wso2.com/v1\nkind: RestApi\nspec:\n  displayName: Petstore API\n  version: 1.0.0\n  subscriptionPlans:\n    - gold\n    - silver\n",
+		filepath.Join(projectRoot, ".api-platform", "config.yaml"): "version: 1.0.0\nfilePaths:\n  deploymentArtifact: ./runtime.yaml\n  metadataFile: ./metadata.yaml\n  definition: ./definition.yaml\n  docs: ./docs\n  tests: ./tests\n",
+		filepath.Join(projectRoot, "metadata.yaml"):                "apiVersion: management.api-platform.wso2.com/v1\nkind: RestApi\nmetadata:\n  name: foo-1.0.0\nspec:\n  referenceID: \"\"\n",
+		filepath.Join(projectRoot, "runtime.yaml"):                 "apiVersion: gateway.api-platform.wso2.com/v1\nkind: RestApi\nspec:\n  displayName: Petstore API\n  version: 1.0.0\n  subscriptionPlans:\n    - gold\n    - silver\n",
 		filepath.Join(projectRoot, "definition.yaml"):              "openapi: 3.0.0\ninfo:\n  title: Petstore API\n",
 		filepath.Join(projectRoot, "docs", "README.md"):            "# Docs\n",
 	}
@@ -347,4 +463,31 @@ func createAPIProjectFixture(t *testing.T) string {
 	}
 
 	return projectRoot
+}
+
+// createDevPortalFolderFixture creates a complete devportal artifact folder
+// (as `ap devportal gen` would) under projectRoot/portalDir so build has
+// something to archive.
+func createDevPortalFolderFixture(t *testing.T, projectRoot, portalDir string) {
+	t.Helper()
+
+	portalRoot := filepath.Join(projectRoot, portalDir)
+	for _, dir := range []string{
+		filepath.Join(portalRoot, "docs"),
+		filepath.Join(portalRoot, "content"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("failed to create devportal fixture dir %s: %v", dir, err)
+		}
+	}
+
+	files := map[string]string{
+		filepath.Join(portalRoot, "devportal.yaml"):  "apiVersion: devportal.api-platform.wso2.com/v1\nkind: RestApi\nmetadata:\n  name: foo-1.0.0\nspec:\n  type: REST\n  displayName: Petstore API\n",
+		filepath.Join(portalRoot, "definition.yaml"): "openapi: 3.0.0\ninfo:\n  title: Petstore API\n",
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write devportal fixture file %s: %v", path, err)
+		}
+	}
 }
