@@ -111,7 +111,7 @@ func buildCreatePayload() ([]byte, error) {
 		"apiId": apiID,
 	}
 	if subscriptionPlan != "" {
-		payload["subscriptionPlanName"] = subscriptionPlan
+		payload["subscriptionPlanId"] = subscriptionPlan
 	}
 
 	data, err := json.Marshal(payload)
