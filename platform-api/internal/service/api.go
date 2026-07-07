@@ -45,6 +45,7 @@ type APIService struct {
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	customPolicyRepo     repository.CustomPolicyRepository
 	gatewayEventsService *GatewayEventsService
+	secretService        *SecretService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
@@ -75,6 +76,13 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 	}
 }
 
+// SetSecretService injects the SecretService used to validate {{ secret "..." }}
+// placeholders on Create/Update. Called after both services are constructed to
+// avoid circular dependency.
+func (s *APIService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
+}
+
 // resolveRESTAPIIdentity replaces resp's createdBy/updatedBy UUIDs with the
 // raw external identity (or constants.DeletedUser), in place.
 func (s *APIService) resolveRESTAPIIdentity(resp *api.RESTAPI) error {
@@ -92,6 +100,20 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	// Validate request
 	if err := s.validateCreateAPIRequest(req, orgUUID); err != nil {
 		return nil, err
+	}
+
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (upstream auth and policies alike), so
+	// validation must cover the same surface.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
 	}
 
 	projectHandle := strings.TrimSpace(req.ProjectId)
@@ -301,6 +323,18 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 		return nil, constants.ErrAPINotFound
 	}
 
+	// Validate {{ secret "..." }} placeholders anywhere in the request — see
+	// CreateAPI for why this covers the whole request, not just upstream.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	// Apply updates using shared helper
 	updatedAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgUUID)
 	if err != nil {
@@ -329,6 +363,26 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
+	}
+
+	// Best-effort: delete secrets rotated away from on Main/Sandbox auth. Must
+	// run after the update above persists the new reference, so the in-use
+	// check no longer sees this API pointing at the old handle.
+	if s.secretService != nil {
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			mainUpstreamAuthValue(&existingAPIModel.Configuration.Upstream),
+			mainUpstreamAuthValue(&updatedAPIModel.Configuration.Upstream),
+			updatedBy,
+			s.slogger,
+		)
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			sandboxUpstreamAuthValue(&existingAPIModel.Configuration.Upstream),
+			sandboxUpstreamAuthValue(&updatedAPIModel.Configuration.Upstream),
+			updatedBy,
+			s.slogger,
+		)
 	}
 
 	s.refreshCustomPolicyUsages(apiUUID, orgUUID, updatedAPIModel)
@@ -735,10 +789,47 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTA
 	existingAPI.Policies = req.Policies
 	existingAPI.SubscriptionPlans = req.SubscriptionPlans
 	if !s.isEmptyUpstream(req.Upstream) {
-		existingAPI.Upstream = req.Upstream
+		// isEmptyUpstream only looks at Url/Ref, so a request that updates the
+		// URL but omits auth (routine — auth.value is redacted on GET, so a
+		// naive read-modify-write round-trip never has it to resend) must not
+		// wipe the stored credential. Preserve auth from the existing model
+		// (unredacted) whenever the incoming value is empty.
+		existingAPI.Upstream = preserveUpstreamAuthOnAPIUpdate(existingAPIModel.Configuration.Upstream, req.Upstream)
 	}
 
 	return existingAPI, nil
+}
+
+// preserveUpstreamAuthOnAPIUpdate merges updated's Main/Sandbox auth onto
+// existing's stored (unredacted) values whenever updated's auth value is
+// empty, then returns updated with those merged auth blocks. Non-auth fields
+// (Url, Ref) are taken from updated as-is.
+func preserveUpstreamAuthOnAPIUpdate(existing model.UpstreamConfig, updated api.Upstream) api.Upstream {
+	updated.Main.Auth = preserveAPIUpstreamAuth(existing.Main, updated.Main.Auth)
+	if updated.Sandbox != nil {
+		updated.Sandbox.Auth = preserveAPIUpstreamAuth(existing.Sandbox, updated.Sandbox.Auth)
+	}
+	return updated
+}
+
+// preserveAPIUpstreamAuth backfills updated's Value from existing's stored
+// value when updated is nil or has an empty value.
+func preserveAPIUpstreamAuth(existing *model.UpstreamEndpoint, updated *api.UpstreamAuth) *api.UpstreamAuth {
+	if existing == nil || existing.Auth == nil || existing.Auth.Value == "" {
+		return updated
+	}
+	if updated == nil {
+		authType := api.UpstreamAuthType(existing.Auth.Type)
+		return &api.UpstreamAuth{
+			Type:   &authType,
+			Header: utils.StringPtrIfNotEmpty(existing.Auth.Header),
+			Value:  utils.StringPtrIfNotEmpty(existing.Auth.Value),
+		}
+	}
+	if updated.Value == nil || *updated.Value == "" {
+		updated.Value = utils.StringPtrIfNotEmpty(existing.Auth.Value)
+	}
+	return updated
 }
 
 // validateUpdateAPIRequest checks the validity of the update API request
