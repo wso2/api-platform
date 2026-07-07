@@ -4,7 +4,8 @@ name: Enforce Design Gate
 # This workflow polls https://github.com/orgs/wso2/projects/144 once per day and moves invalid
 # feature issues from "Development" back to "Design".
 #
-# This intentionally uses the built-in GITHUB_TOKEN, not a PAT secret.
+# Prerequisite:
+# - PROJECT_TOKEN secret with access to read/write the org Project v2 and comment on issues.
 on:
   schedule:
     - cron: '0 2 * * *'
@@ -21,6 +22,7 @@ jobs:
       - name: Revert invalid Projects v2 items to Design
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const PROJECT_OWNER = 'wso2';
             const PROJECT_NUMBER = 144;
