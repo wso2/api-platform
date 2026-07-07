@@ -125,7 +125,7 @@ func (w *world) aSecuredRestAPI() error {
 	if err != nil {
 		return err
 	}
-	w.apiID = jsonField(body, "id", "handle", "uuid")
+	w.apiID = jsonField(body, "id")
 	if st >= 300 || w.apiID == "" {
 		return fmt.Errorf("create secured API failed (%d): %s", st, body)
 	}
