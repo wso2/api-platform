@@ -1,7 +1,7 @@
 name: Enforce Design Gate
 
 # GitHub Projects v2 status changes do not trigger GitHub Actions directly.
-# This workflow polls the configured project once per day and moves invalid
+# This workflow polls https://github.com/orgs/wso2/projects/144 once per day and moves invalid
 # feature issues from "Development" back to "Design".
 #
 # This intentionally uses the built-in GITHUB_TOKEN, not a PAT secret.
@@ -22,7 +22,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const PROJECT_OWNER = context.repo.owner;
+            const PROJECT_OWNER = 'wso2';
+            const PROJECT_NUMBER = 144;
             const STATUS_FIELD = 'Status';
             const DESTINATION_STATUS = 'Development';
             const REVERT_STATUS = 'Design';
@@ -47,14 +48,88 @@ jobs:
               }
             `;
 
-            async function getProjects(ownerType) {
-              const ownerField = ownerType === 'organization' ? 'organization' : 'user';
+            async function getProject() {
               const query = `
-                query($login: String!) {
-                  owner: ${ownerField}(login: $login) {
-                    projectsV2(first: 100) {
-                      nodes {
-                        ${projectFragment}
+                query($login: String!, $number: Int!) {
+                  organization(login: $login) {
+                    projectV2(number: $number) {
+                      ${projectFragment}
+                    }
+                  }
+                }
+              `;
+
+              const result = await github.graphql(query, {
+                login: PROJECT_OWNER,
+                number: PROJECT_NUMBER,
+              });
+
+              return result.organization?.projectV2;
+            }
+
+            const project = await getProject();
+            if (!project) {
+              core.setFailed(`Could not find Projects v2 project ${PROJECT_OWNER}/${PROJECT_NUMBER}.`);
+              return;
+            }
+
+            const statusField = project.fields.nodes.find(field => field?.name === STATUS_FIELD);
+            const developmentOption = statusField?.options.find(option => option.name === DESTINATION_STATUS);
+            const designOption = statusField?.options.find(option => option.name === REVERT_STATUS);
+            if (!statusField || !developmentOption || !designOption) {
+              core.setFailed(`Project "${project.title}" must have a "${STATUS_FIELD}" field with "${DESTINATION_STATUS}" and "${REVERT_STATUS}" options.`);
+              return;
+            }
+
+            const items = [];
+            let cursor = null;
+            let hasNextPage = true;
+            let revertedCount = 0;
+
+            while (hasNextPage) {
+              const query = `
+                query($login: String!, $number: Int!, $cursor: String) {
+                  organization(login: $login) {
+                    projectV2(number: $number) {
+                      items(first: 100, after: $cursor) {
+                        nodes {
+                          id
+                          content {
+                            ... on Issue {
+                              number
+                              state
+                              title
+                              repository {
+                                name
+                                owner {
+                                  login
+                                }
+                              }
+                              labels(first: 100) {
+                                nodes {
+                                  name
+                                }
+                              }
+                            }
+                          }
+                          fieldValues(first: 100) {
+                            nodes {
+                              ... on ProjectV2ItemFieldSingleSelectValue {
+                                field {
+                                  ... on ProjectV2SingleSelectField {
+                                    name
+                                  }
+                                }
+                                optionId
+                                name
+                              }
+                            }
+                          }
+                        }
+                        pageInfo {
+                          hasNextPage
+                          endCursor
+                        }
                       }
                     }
                   }
@@ -63,191 +138,85 @@ jobs:
 
               const result = await github.graphql(query, {
                 login: PROJECT_OWNER,
+                number: PROJECT_NUMBER,
+                cursor,
               });
 
-              return result.owner?.projectsV2?.nodes ?? [];
+              const page = result.organization.projectV2.items;
+              items.push(...page.nodes);
+              hasNextPage = page.pageInfo.hasNextPage;
+              cursor = page.pageInfo.endCursor;
             }
 
-            let projects = [];
-            let projectOwnerType = null;
-            for (const ownerType of ['organization', 'user']) {
-              try {
-                projects = await getProjects(ownerType);
-                if (projects.length > 0) {
-                  projectOwnerType = ownerType;
-                  break;
-                }
-              } catch (err) {
-                console.log(`Project lookup as ${ownerType} failed: ${err.message}`);
+            console.log(`Checking ${items.length} items in project "${project.title}".`);
+
+            for (const item of items) {
+              const issue = item.content;
+              if (!issue?.number || !issue?.repository) {
+                continue;
               }
-            }
 
-            if (projects.length === 0) {
-              core.setFailed(`Could not find any Projects v2 projects owned by ${PROJECT_OWNER}.`);
-              return;
-            }
+              if (issue.state !== 'OPEN') {
+                console.log(`#${issue.number} is not open. Skipping.`);
+                continue;
+              }
 
-            projects = projects
-              .map(project => {
-                const statusField = project.fields.nodes.find(field => field?.name === STATUS_FIELD);
-                const developmentOption = statusField?.options.find(option => option.name === DESTINATION_STATUS);
-                const designOption = statusField?.options.find(option => option.name === REVERT_STATUS);
-                return {
-                  ...project,
-                  statusField,
-                  designOption,
-                  developmentOption,
-                };
-              })
-              .filter(project => project.statusField && project.designOption && project.developmentOption);
+              const status = item.fieldValues.nodes.find(value => value?.field?.name === STATUS_FIELD);
+              if (status?.name !== DESTINATION_STATUS) {
+                continue;
+              }
 
-            if (projects.length === 0) {
-              core.setFailed(`No Projects v2 projects owned by ${PROJECT_OWNER} have a "${STATUS_FIELD}" field with "${DESTINATION_STATUS}" and "${REVERT_STATUS}" options.`);
-              return;
-            }
+              const issueLabels = issue.labels.nodes.map(label => label.name);
+              if (!issueLabels.includes(GATE_TRIGGER_TYPE)) {
+                console.log(`#${issue.number} is not a feature issue. Skipping.`);
+                continue;
+              }
 
-            const ownerField = projectOwnerType === 'organization' ? 'organization' : 'user';
-            let checkedCount = 0;
-            let revertedCount = 0;
+              const missingLabels = REQUIRED_LABELS.filter(label => !issueLabels.includes(label));
+              if (missingLabels.length === 0) {
+                console.log(`#${issue.number} passed the design gate.`);
+                continue;
+              }
 
-            for (const project of projects) {
-              const items = [];
-              let cursor = null;
-              let hasNextPage = true;
+              console.log(`#${issue.number} is missing ${missingLabels.join(', ')}. Moving back to "${REVERT_STATUS}".`);
 
-              while (hasNextPage) {
-                const query = `
-                  query($login: String!, $number: Int!, $cursor: String) {
-                    owner: ${ownerField}(login: $login) {
-                      projectV2(number: $number) {
-                        items(first: 100, after: $cursor) {
-                          nodes {
-                            id
-                            content {
-                              ... on Issue {
-                                number
-                                state
-                                title
-                                repository {
-                                  name
-                                  owner {
-                                    login
-                                  }
-                                }
-                                labels(first: 100) {
-                                  nodes {
-                                    name
-                                  }
-                                }
-                              }
-                            }
-                            fieldValues(first: 100) {
-                              nodes {
-                                ... on ProjectV2ItemFieldSingleSelectValue {
-                                  field {
-                                    ... on ProjectV2SingleSelectField {
-                                      name
-                                    }
-                                  }
-                                  optionId
-                                  name
-                                }
-                              }
-                            }
-                          }
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
-                        }
-                      }
+              await github.graphql(`
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: {
+                      singleSelectOptionId: $optionId
+                    }
+                  }) {
+                    projectV2Item {
+                      id
                     }
                   }
-                `;
-
-                const result = await github.graphql(query, {
-                  login: PROJECT_OWNER,
-                  number: project.number,
-                  cursor,
-                });
-
-                const page = result.owner.projectV2.items;
-                items.push(...page.nodes);
-                hasNextPage = page.pageInfo.hasNextPage;
-                cursor = page.pageInfo.endCursor;
-              }
-
-              checkedCount += items.length;
-              console.log(`Checking ${items.length} items in project "${project.title}".`);
-
-              for (const item of items) {
-                const issue = item.content;
-                if (!issue?.number || !issue?.repository) {
-                  continue;
                 }
+              `, {
+                projectId: project.id,
+                itemId: item.id,
+                fieldId: statusField.id,
+                optionId: designOption.id,
+              });
 
-                if (issue.state !== 'OPEN') {
-                  console.log(`#${issue.number} is not open. Skipping.`);
-                  continue;
-                }
+              await github.rest.issues.createComment({
+                owner: issue.repository.owner.login,
+                repo: issue.repository.name,
+                issue_number: issue.number,
+                body: [
+                  '> [!CAUTION]',
+                  `> **Design gate enforced.** This feature issue was in **${DESTINATION_STATUS}** but is missing required design labels, so it has been moved back to **${REVERT_STATUS}**.`,
+                  '>',
+                  '> Required labels before Development:',
+                  '>',
+                  ...REQUIRED_LABELS.map(label => `> - ${issueLabels.includes(label) ? 'Present' : 'Missing'}: \`${label}\``),
+                ].join('\n'),
+              });
 
-                const status = item.fieldValues.nodes.find(value => value?.field?.name === STATUS_FIELD);
-                if (status?.name !== DESTINATION_STATUS) {
-                  continue;
-                }
-
-                const issueLabels = issue.labels.nodes.map(label => label.name);
-                if (!issueLabels.includes(GATE_TRIGGER_TYPE)) {
-                  console.log(`#${issue.number} is not a feature issue. Skipping.`);
-                  continue;
-                }
-
-                const missingLabels = REQUIRED_LABELS.filter(label => !issueLabels.includes(label));
-                if (missingLabels.length === 0) {
-                  console.log(`#${issue.number} passed the design gate.`);
-                  continue;
-                }
-
-                console.log(`#${issue.number} is missing ${missingLabels.join(', ')}. Moving back to "${REVERT_STATUS}".`);
-
-                await github.graphql(`
-                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                    updateProjectV2ItemFieldValue(input: {
-                      projectId: $projectId
-                      itemId: $itemId
-                      fieldId: $fieldId
-                      value: {
-                        singleSelectOptionId: $optionId
-                      }
-                    }) {
-                      projectV2Item {
-                        id
-                      }
-                    }
-                  }
-                `, {
-                  projectId: project.id,
-                  itemId: item.id,
-                  fieldId: project.statusField.id,
-                  optionId: project.designOption.id,
-                });
-
-                await github.rest.issues.createComment({
-                  owner: issue.repository.owner.login,
-                  repo: issue.repository.name,
-                  issue_number: issue.number,
-                  body: [
-                    '> [!CAUTION]',
-                    `> **Design gate enforced.** This feature issue was in **${DESTINATION_STATUS}** but is missing required design labels, so it has been moved back to **${REVERT_STATUS}**.`,
-                    '>',
-                    '> Required labels before Development:',
-                    '>',
-                    ...REQUIRED_LABELS.map(label => `> - ${issueLabels.includes(label) ? 'Present' : 'Missing'}: \`${label}\``),
-                  ].join('\n'),
-                });
-
-                revertedCount += 1;
-              }
+              revertedCount += 1;
             }
 
-            console.log(`Checked ${checkedCount} project items across ${projects.length} project(s). Reverted ${revertedCount}.`);
+            console.log(`Checked ${items.length} project items. Reverted ${revertedCount}.`);
