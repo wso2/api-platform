@@ -44,7 +44,7 @@ type TrafficLogEvent struct {
 	ResponseHeaders map[string]string      `json:"responseHeaders,omitempty"`
 	RequestBody     string                 `json:"requestBody,omitempty"`
 	ResponseBody    string                 `json:"responseBody,omitempty"`
-	Labels          map[string]interface{} `json:"labels,omitempty"`
+	Properties      map[string]interface{} `json:"properties,omitempty"`
 }
 
 // TrafficLogAPI identifies the API that processed the request.
@@ -189,8 +189,8 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		}
 	}
 
-	if len(dir.Labels) > 0 {
-		tl.Labels = dir.Labels
+	if len(dir.Properties) > 0 {
+		tl.Properties = dir.Properties
 	}
 
 	return tl

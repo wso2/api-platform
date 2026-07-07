@@ -117,13 +117,13 @@ func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
 	assert.Equal(t, float64(250000), latencies["durationUs"])
 }
 
-// Labels from the directive are emitted as a top-level "labels" object.
-func TestLog_Publish_LabelsTopLevel(t *testing.T) {
+// Properties from the directive are emitted as a top-level "properties" object.
+func TestLog_Publish_PropertiesTopLevel(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.TrafficLog = &dto.TrafficLogDirective{
 		Request: &dto.TrafficLogFlow{Headers: true},
-		Labels: map[string]interface{}{
+		Properties: map[string]interface{}{
 			"who":        "alice",
 			"authType":   "jwt",
 			"retryCount": float64(3),
@@ -134,17 +134,17 @@ func TestLog_Publish_LabelsTopLevel(t *testing.T) {
 	l.Publish(event)
 
 	decoded := decodeLine(t, read())
-	labels, ok := decoded["labels"].(map[string]interface{})
-	require.True(t, ok, "expected top-level labels object, got %T", decoded["labels"])
-	assert.Equal(t, "alice", labels["who"])
-	assert.Equal(t, "jwt", labels["authType"])
-	assert.Equal(t, float64(3), labels["retryCount"])
+	props, ok := decoded["properties"].(map[string]interface{})
+	require.True(t, ok, "expected top-level properties object, got %T", decoded["properties"])
+	assert.Equal(t, "alice", props["who"])
+	assert.Equal(t, "jwt", props["authType"])
+	assert.Equal(t, float64(3), props["retryCount"])
 	reqH := headerMap(t, decoded["requestHeaders"])
 	assert.Equal(t, "bar", reqH["x-foo"])
 }
 
-// A directive with no labels emits no "labels" key.
-func TestLog_Publish_NoLabelsWhenAbsent(t *testing.T) {
+// A directive with no properties emits no "properties" key.
+func TestLog_Publish_NoPropertiesWhenAbsent(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.TrafficLog = bothFlows()
@@ -152,26 +152,26 @@ func TestLog_Publish_NoLabelsWhenAbsent(t *testing.T) {
 	l.Publish(event)
 
 	decoded := decodeLine(t, read())
-	_, present := decoded["labels"]
-	assert.False(t, present, "no labels key expected when directive has no labels")
+	_, present := decoded["properties"]
+	assert.False(t, present, "no properties key expected when directive has no properties")
 }
 
-// The fields projection can select "labels" like any other top-level key.
-func TestLog_Publish_LabelsProjectableViaFields(t *testing.T) {
+// The fields projection can select "properties" like any other top-level key.
+func TestLog_Publish_PropertiesProjectableViaFields(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.TrafficLog = &dto.TrafficLogDirective{
-		Labels: map[string]interface{}{"who": "alice"},
-		Fields: &dto.TrafficLogFields{Only: []string{"labels"}},
+		Properties: map[string]interface{}{"who": "alice"},
+		Fields:     &dto.TrafficLogFields{Only: []string{"properties"}},
 	}
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 
 	l.Publish(event)
 
 	decoded := decodeLine(t, read())
-	labels, ok := decoded["labels"].(map[string]interface{})
-	require.True(t, ok, "expected labels retained by include projection")
-	assert.Equal(t, "alice", labels["who"])
+	props, ok := decoded["properties"].(map[string]interface{})
+	require.True(t, ok, "expected properties retained by include projection")
+	assert.Equal(t, "alice", props["who"])
 	_, hasHeaders := decoded["requestHeaders"]
 	assert.False(t, hasHeaders, "requestHeaders not in Only list -> dropped")
 }
@@ -350,16 +350,16 @@ func TestLog_Publish_FieldsExclude(t *testing.T) {
 	assert.Contains(t, decoded, "requestHeaders", "requestHeaders kept (not excluded)")
 }
 
-// requestBody and labels are top-level keys like any other and can be selected
+// requestBody and properties are top-level keys like any other and can be selected
 // explicitly via fields.only.
-func TestLog_Publish_FieldsIncludeRequestBodyAndLabels(t *testing.T) {
+func TestLog_Publish_FieldsIncludeRequestBodyAndProperties(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 	event.Properties["request_payload"] = "body-data"
 	event.TrafficLog = &dto.TrafficLogDirective{
-		Labels: map[string]interface{}{"env": "prod"},
-		Fields: &dto.TrafficLogFields{Only: []string{"requestBody", "labels"}},
+		Properties: map[string]interface{}{"env": "prod"},
+		Fields:     &dto.TrafficLogFields{Only: []string{"requestBody", "properties"}},
 	}
 
 	l.Publish(event)
@@ -370,9 +370,9 @@ func TestLog_Publish_FieldsIncludeRequestBodyAndLabels(t *testing.T) {
 	_, hasHeaders := decoded["requestHeaders"]
 	assert.False(t, hasHeaders, "requestHeaders not in Only list -> dropped")
 	assert.Equal(t, "body-data", decoded["requestBody"])
-	labels, ok := decoded["labels"].(map[string]interface{})
+	props, ok := decoded["properties"].(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, "prod", labels["env"])
+	assert.Equal(t, "prod", props["env"])
 }
 
 // Output-side payload truncation (0 = no limit).

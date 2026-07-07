@@ -69,10 +69,10 @@ type TrafficLogDirective struct {
 	Request  *TrafficLogFlow   `json:"request,omitempty"`
 	Response *TrafficLogFlow   `json:"response,omitempty"`
 	Fields   *TrafficLogFields `json:"fields,omitempty"`
-	// Labels holds the policy's resolved labels (context references already
+	// Properties holds the policy's resolved properties (context references already
 	// expanded at request time). The Log publisher emits them as a top-level
-	// "labels" object on the log line.
-	Labels map[string]interface{} `json:"labels,omitempty"`
+	// "properties" object on the log line.
+	Properties map[string]interface{} `json:"properties,omitempty"`
 	// MaskedHeaders lists lower-cased header names whose values are redacted
 	// in the emitted log line. Merged with the global masked_headers config.
 	MaskedHeaders []string `json:"maskedHeaders,omitempty"`
@@ -88,7 +88,7 @@ type TrafficLogFlow struct {
 // of Only or Exclude should be set. Only keeps exactly the named fields; Exclude
 // drops the named fields and keeps everything else. Names are top-level keys
 // (e.g. "latencies", "requestHeaders") or dotted sub-key paths within map fields
-// (e.g. "requestHeaders.authorization", "labels.env"). When set, this is
+// (e.g. "requestHeaders.authorization", "properties.env"). When set, this is
 // authoritative over field presence; per-flow Payload/Headers booleans are ignored
 // (global header masking still applies). If both are set, Only takes precedence.
 type TrafficLogFields struct {
