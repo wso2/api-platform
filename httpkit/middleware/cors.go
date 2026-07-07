@@ -10,6 +10,7 @@ import (
 // CORSOptions configures CORS behaviour for CORSMiddleware and WithCORS.
 type CORSOptions struct {
 	// AllowedOrigins lists origins that may access the resource.
+	// Empty (the default) denies all cross-origin access — fail closed.
 	// Use ["*"] to allow any origin (cannot be combined with AllowCredentials).
 	AllowedOrigins []string
 	// AllowedMethods lists the HTTP methods permitted for the resource.
@@ -71,7 +72,11 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 	w.Header().Add("Vary", "Origin")
 	w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 
-	if opts.AllowCredentials {
+	// Never pair a wildcard origin with credentials: the combination is spec-invalid
+	// (browsers reject it for credentialed requests) and, if a browser ever did honor it,
+	// would let any site read authenticated responses. Only send the credentials header
+	// when the origin was resolved to a specific, allowlisted value.
+	if opts.AllowCredentials && allowedOrigin != "*" {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
 
@@ -90,8 +95,10 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 }
 
 func resolveOrigin(origin string, allowed []string) string {
+	// Fail closed: an empty allowlist means no cross-origin access, not "allow all".
+	// Callers must opt in to "*" explicitly.
 	if len(allowed) == 0 {
-		return "*"
+		return ""
 	}
 	if slices.Contains(allowed, "*") {
 		return "*"
