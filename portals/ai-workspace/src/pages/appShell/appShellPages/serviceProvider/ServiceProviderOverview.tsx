@@ -291,6 +291,7 @@ function ServiceProviderOverviewContent() {
     name: string;
   } | null>(null);
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
+  const [isDeletingProvider, setIsDeletingProvider] = useState(false);
   const [checkingProviderId, setCheckingProviderId] = useState<string | null>(
     null
   );
@@ -543,9 +544,10 @@ function ServiceProviderOverviewContent() {
   const [highlightApiKeySection, setHighlightApiKeySection] = useState(false);
 
   const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || isDeletingProvider) return;
 
     try {
+      setIsDeletingProvider(true);
       await deleteProvider();
       await refreshProviders();
       showSnackbar('Provider deleted successfully.', 'success');
@@ -554,6 +556,8 @@ function ServiceProviderOverviewContent() {
       navigate(providersPath, { replace: true });
     } catch {
       showSnackbar('Failed to delete provider. Please try again.', 'error');
+    } finally {
+      setIsDeletingProvider(false);
     }
   };
 
@@ -1022,6 +1026,7 @@ function ServiceProviderOverviewContent() {
     <Dialog
       open={Boolean(deleteTarget)}
       onClose={() => {
+        if (isDeletingProvider) return;
         setDeleteTarget(null);
         setDeleteConfirmationInput('');
       }}
@@ -1049,6 +1054,7 @@ function ServiceProviderOverviewContent() {
         <Button
           variant="outlined"
           color="secondary"
+          disabled={isDeletingProvider}
           onClick={() => {
             setDeleteTarget(null);
             setDeleteConfirmationInput('');
@@ -1062,13 +1068,17 @@ function ServiceProviderOverviewContent() {
         <Button
           color="error"
           onClick={handleDeleteConfirm}
-          disabled={!isDeleteConfirmationValid}
+          disabled={!isDeleteConfirmationValid || isDeletingProvider}
           data-cyid="delete-provider-confirm-button"
         >
-          <FormattedMessage
-            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.delete"
-            defaultMessage={'Delete'}
-          />
+          {isDeletingProvider ? (
+            <CircularProgress size={20} />
+          ) : (
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.delete"
+              defaultMessage={'Delete'}
+            />
+          )}
         </Button>
       </DialogActions>
     </Dialog>

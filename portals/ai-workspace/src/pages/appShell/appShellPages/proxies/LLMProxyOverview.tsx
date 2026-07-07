@@ -247,11 +247,18 @@ function ProxyOverviewContent() {
   };
 
   const handleDelete = async () => {
-    if (!proxy) return;
+    if (!proxy || isDeleting) return;
     try {
       setIsDeleting(true);
       await deleteProxyApi();
-      await refreshProxies();
+      try {
+        await refreshProxies();
+      } catch (refreshError) {
+        console.error(
+          'Failed to refresh proxies after deleting App LLM Proxy:',
+          refreshError
+        );
+      }
       navigate(proxiesPath, {
         state: { proxyDeleted: true },
       });
