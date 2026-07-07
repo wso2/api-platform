@@ -24,7 +24,7 @@ application_id = "<MOESIF_APPLICATION_ID>"
 # Traffic-logging consumer: writes each collected event to stdout as a JSON line
 # (no external service needed). Enabling it activates the collector automatically.
 [traffic_logging]
-enabled = true
+enabled = false
 # Header names (case-insensitive) whose values are redacted as "****".
 masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
 # Max bytes of request/response payload written to each log line (0 = no limit).
