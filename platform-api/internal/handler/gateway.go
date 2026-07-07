@@ -265,7 +265,7 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Id != nil && *req.Id != gatewayId {
+	if err := utils.ValidateHandleImmutable(gatewayId, req.Id); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway id is immutable and cannot be changed"))
 		return

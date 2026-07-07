@@ -175,6 +175,12 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"MCP proxy id is immutable and cannot be changed"))
+		return
+	}
+
 	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update MCP proxy")
 	if !ok {
 		return

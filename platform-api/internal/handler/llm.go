@@ -373,6 +373,12 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"LLM provider template id is immutable and cannot be changed"))
+		return
+	}
+
 	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update LLM provider template")
 	if !ok {
 		return
@@ -561,6 +567,12 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 	var req api.LLMProvider
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		return
+	}
+
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"LLM provider id is immutable and cannot be changed"))
 		return
 	}
 
@@ -812,6 +824,12 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 	var req api.LLMProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		return
+	}
+
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"LLM proxy id is immutable and cannot be changed"))
 		return
 	}
 

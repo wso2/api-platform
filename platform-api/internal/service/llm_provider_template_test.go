@@ -378,19 +378,6 @@ func TestLLMProviderTemplateServiceUpdate_PropagatesNameToFamily(t *testing.T) {
 	}
 }
 
-func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{managedByForHandleResult: "customer"}
-	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
-
-	req := validTemplateRequest("Name")
-	otherHandle := "some-other-handle"
-	req.Id = &otherHandle
-	_, err := svc.Update("org-1", "mistralai", "alice", req)
-	if !errors.Is(err, constants.ErrHandleImmutable) {
-		t.Fatalf("expected ErrHandleImmutable, got: %v", err)
-	}
-}
-
 // ---- CreateVersion ----
 
 func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {

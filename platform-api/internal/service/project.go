@@ -207,11 +207,6 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 		return nil, constants.ErrProjectNotFound
 	}
 
-	// Validate that the handle in the body matches the path param (immutability check)
-	if req.Id == nil || *req.Id != handle {
-		return nil, constants.ErrHandleImmutable
-	}
-
 	if req.DisplayName != project.Name {
 		existingProjects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
 		if err != nil {

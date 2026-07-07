@@ -184,6 +184,16 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var reqId string
+	if req.Id != nil {
+		reqId = *req.Id
+	}
+	if err := utils.ValidateHandleImmutableRequired(projectId, reqId); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project id is immutable and cannot be changed"))
+		return
+	}
+
 	actor, ok := resolveActor(w, r, h.identity, h.slogger, "update project")
 	if !ok {
 		return
