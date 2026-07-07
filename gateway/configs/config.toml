@@ -15,11 +15,11 @@ send_response_headers = false
 
 # Analytics consumer (e.g. Moesif). Enabling it activates the collector automatically.
 [analytics]
-enabled = false
+enabled = true
 enabled_publishers = ["moesif"]
 
-# [analytics.publishers.moesif]
-# application_id = "<MOESIF_APPLICATION_ID>"
+[analytics.publishers.moesif]
+application_id = "<MOESIF_APPLICATION_ID>"
 
 # Traffic-logging consumer: writes each collected event to stdout as a JSON line
 # (no external service needed). Enabling it activates the collector automatically.

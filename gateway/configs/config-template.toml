@@ -298,8 +298,8 @@ send_response_body = false
 # Capture ALL request/response headers into the collected event (request_headers/
 # response_headers). Applies to every API via the collector system policy, so no
 # per-API header policy is needed. Sensitive values are redacted on output by
-# consumers that support it (e.g. traffic_logging.masked_headers) — the Moesif
-# publisher does not mask headers. Off by default; enable deliberately per consumer.
+# consumers that support it (e.g. traffic_logging.masked_headers) 
+# Off by default; enable deliberately per consumer.
 send_request_headers = false
 send_response_headers = false
 
@@ -328,15 +328,17 @@ max_header_limit = 8192
 # =============================================================================
 [analytics]
 enabled = false
-# Deprecated: allow_payloads / send_request_body / send_response_body are preserved
-# for backward compatibility and are mapped onto the [collector] body-capture flags
-# during validation (with a warning). Prefer setting [collector] directly.
+# Deprecated: allow_payloads is preserved for backward compatibility. When true
+# and both send_request_body and send_response_body are false, both directions
+# are enabled (bool fields cannot distinguish "unset" from explicitly false).
+# To disable payloads entirely, set allow_payloads = false or remove it; do not
+# rely on send_*_body = false while allow_payloads remains true.
 allow_payloads = false
-# send_request_body = false
-# send_response_body = false
-# Publishers that receive analytics events. Supported: "moesif" (sends to the
-# Moesif SaaS). For stdout JSON logging use [traffic_logging] instead of a "log"
-# publisher here.
+# Deprecated: send_request_body / send_response_body are preserved
+# for backward compatibility and are mapped onto the [collector] body-capture flags
+# during validation (with a warning). Prefer setting [collector] directly.\
+send_request_body = false
+send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
@@ -371,7 +373,7 @@ enabled = false
 masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
 # Max bytes of request/response payload written to each log line (0 = no limit).
 # Applied output-side, so the collector still captures full bodies and other
-# consumers (e.g. Moesif) are unaffected.
+# consumers are unaffected.
 max_payload_size = 0
 
 # =============================================================================
