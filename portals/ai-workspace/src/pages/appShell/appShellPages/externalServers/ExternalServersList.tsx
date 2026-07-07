@@ -62,7 +62,16 @@ import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import type { MCPServer } from '../../../../utils/types';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 
-export default function ExternalServersList(): JSX.Element {
+function getErrorDescription(error: unknown, fallbackMessage: string): string {
+  return (
+    (error as any)?.response?.data?.description ||
+    (error as any)?.response?.data?.message ||
+    (error instanceof Error ? error.message : null) ||
+    fallbackMessage
+  );
+}
+
+export default function ExternalServersList(): React.JSX.Element {
   const navigate = useNavigate();
   const { projectSlug } = useParams<{ projectSlug: string }>();
   const {
@@ -162,8 +171,11 @@ export default function ExternalServersList(): JSX.Element {
       await mcpProxiesApis.deleteMCPServer(serverId, apimBaseUrl);
       setServers((prev) => prev.filter((s) => s.id !== serverId));
       showSnackbar('MCP Proxy deleted successfully.', 'success');
-    } catch {
-      showSnackbar('Failed to delete MCP Proxy.', 'error');
+    } catch (error) {
+      showSnackbar(
+        getErrorDescription(error, 'Failed to delete MCP Proxy.'),
+        'error'
+      );
     }
     setDeleteTarget(null);
   };

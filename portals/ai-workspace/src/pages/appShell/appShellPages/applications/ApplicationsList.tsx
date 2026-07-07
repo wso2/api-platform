@@ -461,8 +461,7 @@ export default function ApplicationsList() {
               </Grid>
             ) : (
               filteredApplications.map((app) => {
-                const descriptionText =
-                  app.description?.trim() ?? 'No description';
+                const descriptionText = app.description?.trim() || '';
                 const lastUpdated =
                   app.lastUpdated ?? app.updatedAt ?? app.createdAt;
 

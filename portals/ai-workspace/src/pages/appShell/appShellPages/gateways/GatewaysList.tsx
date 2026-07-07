@@ -78,7 +78,7 @@ export default function GatewaysList() {
   } | null>(null);
 
   const { gateways, isLoading, error, refetch, deleteGatewayById } =
-    useGatewayList();
+    useGatewayList({ pollAlways: true });
 
   // Prefetch environments so they're available when navigating to Add/Edit views
   useEnvironments();

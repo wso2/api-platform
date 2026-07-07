@@ -62,6 +62,7 @@ import {
   LLMProviderContext,
   LLMProviderProvider,
   useLLMProvider,
+  useLLMProviders,
   formatRelativeTime,
 } from '../../../../contexts/llmProvider';
 import { GatewayDeployProvider } from '../../../../contexts/GatewayDeployContext';
@@ -75,7 +76,10 @@ import ServiceProviderDeploymentsCard from './ServiceProviderDeploymentsCard';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { getGateways } from '../../../../apis/gatewayApis';
-import { getLLMProviderDeployments } from '../../../../apis/llmProviderApis';
+import {
+  getLLMProviderDeployments,
+  getLLMProviderProxies,
+} from '../../../../apis/llmProviderApis';
 import * as proxyApis from '../../../../apis/proxyApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
 import {
@@ -107,7 +111,12 @@ import GoogleVertexLogo from '../../../../assets/brands/GoogleVertex.png';
 import GoogleGeminiLogo from '../../../../assets/brands/googlegemini.png';
 import MistralAILogo from '../../../../assets/brands/mistralai.png';
 import OpenAILogo from '../../../../assets/brands/openAI.png';
-import { ChevronLeft, Clock, Edit } from '@wso2/oxygen-ui-icons-react';
+import {
+  ChevronLeft,
+  Clock,
+  Edit,
+  Trash2,
+} from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import type {
   LLMProvider,
@@ -225,6 +234,7 @@ const stripReadOnlyProviderFields = (
 };
 
 function ServiceProviderOverviewContent() {
+  const { refreshProviders } = useLLMProviders();
   const { refetch: refetchSelectedEntity } = useAIEntity();
   const {
     provider,
@@ -248,6 +258,8 @@ function ServiceProviderOverviewContent() {
     isProjectsLoading,
   } = useAppShell();
   const isProjectLevel = Boolean(currentProject?.id);
+  const apimBaseUrl = PLATFORM_API_BASE_URL;
+  const canDelete = !isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_DELETE);
   const providersPath = isProjectLevel
     ? buildProjectPath(currentOrganization, currentProject, '/service-provider')
     : buildOrgPath(currentOrganization, '/service-provider');
@@ -274,6 +286,14 @@ function ServiceProviderOverviewContent() {
     string | null
   >(null);
   const [stepBannerRefreshTrigger, setStepBannerRefreshTrigger] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
+  const [checkingProviderId, setCheckingProviderId] = useState<string | null>(
+    null
+  );
   const showSnackbar = useAIWorkspaceSnackbar();
   const hasUnsavedChanges = hasDraftChanges || isRateLimitingDirty;
   const selectedGateway = useMemo(
@@ -521,6 +541,63 @@ function ServiceProviderOverviewContent() {
   };
 
   const [highlightApiKeySection, setHighlightApiKeySection] = useState(false);
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      await deleteProvider();
+      await refreshProviders();
+      showSnackbar('Provider deleted successfully.', 'success');
+      setDeleteTarget(null);
+      setDeleteConfirmationInput('');
+      navigate(providersPath, { replace: true });
+    } catch {
+      showSnackbar('Failed to delete provider. Please try again.', 'error');
+    }
+  };
+
+  const checkProviderUsageAndConfirmDelete = async (
+    providerId: string,
+    providerName: string
+  ) => {
+    if (!currentOrganization?.uuid) {
+      showSnackbar(
+        'Unable to verify App LLM Proxy usage because organization details are unavailable.',
+        'error'
+      );
+      return;
+    }
+
+    setCheckingProviderId(providerId);
+    try {
+      const linkedProxiesResponse = await getLLMProviderProxies(
+        providerId,
+        currentOrganization.uuid,
+        apimBaseUrl
+      );
+      const linkedProxyCount = linkedProxiesResponse.count ?? 0;
+      if (linkedProxyCount > 0) {
+        const proxyLabel = linkedProxyCount === 1 ? 'Proxy' : 'Proxies';
+        const usageVerb = linkedProxyCount === 1 ? 'is' : 'are';
+        showSnackbar(
+          `Cannot delete "${providerName}" because ${linkedProxyCount} App LLM ${proxyLabel} ${usageVerb} using this provider. Remove or update those proxies first.`,
+          'error'
+        );
+        return;
+      }
+
+      setDeleteTarget({ id: providerId, name: providerName });
+      setDeleteConfirmationInput('');
+    } catch {
+      showSnackbar(
+        'Failed to verify App LLM Proxy usage for this provider. Deletion has been blocked. Please try again.',
+        'error'
+      );
+    } finally {
+      setCheckingProviderId(null);
+    }
+  };
 
   const handleLLLMStepBannerClick = (stepId: LLLMStepBannerStepId) => {
     if (stepId === 'add-guardrails') {
@@ -788,7 +865,7 @@ function ServiceProviderOverviewContent() {
   const templateKey = (provider.template ?? '').toLowerCase();
   const templateLogo = TEMPLATE_LOGO_MAP[templateKey];
   const hasTemplateLogo = Boolean(templateLogo);
-  const descriptionText = provider.description?.trim() || 'No description';
+  const descriptionText = provider.description?.trim() || '';
   const truncatedDescription =
     descriptionText.length > 200
       ? `${descriptionText.slice(0, 200).trim()}…`
@@ -802,6 +879,25 @@ function ServiceProviderOverviewContent() {
       providerId: modelProvider.id,
     }))
   );
+  const providerDeleteAction = isAdminOrgLevel && canDelete ? (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+      <IconButton
+        size="small"
+        color="error"
+        disabled={checkingProviderId === providerKey}
+        onClick={() => {
+          void checkProviderUsageAndConfirmDelete(
+            providerKey,
+            provider.displayName
+          );
+        }}
+        aria-label={`Delete ${providerDisplayName}`}
+        data-cyid="delete-provider-button"
+      >
+        <Trash2 size={16} />
+      </IconButton>
+    </Box>
+  ) : null;
   const renderResourcesSpecViewer = () => {
     if (!hasOpenApiSpecText) {
       return (
@@ -915,6 +1011,63 @@ function ServiceProviderOverviewContent() {
           <FormattedMessage
             id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.projectPicker.continue"
             defaultMessage="Continue"
+          />
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+  const isDeleteConfirmationValid =
+    deleteConfirmationInput.trim() === (deleteTarget?.name ?? '').trim();
+  const deleteDialog = (
+    <Dialog
+      open={Boolean(deleteTarget)}
+      onClose={() => {
+        setDeleteTarget(null);
+        setDeleteConfirmationInput('');
+      }}
+    >
+      <DialogTitle>
+        Are you sure you want to remove the LLM Provider{' '}
+        <strong>'{deleteTarget?.name ?? ''}'</strong>?
+      </DialogTitle>
+      <DialogContent>
+        <Typography sx={{ mt: 1 }} variant="body2" color="text.secondary">
+          This action will be irreversible and all related details will be
+          lost. Please type in the component name below to confirm.
+        </Typography>
+        <TextField
+          fullWidth
+          size="small"
+          sx={{ mt: 2 }}
+          value={deleteConfirmationInput}
+          onChange={(event) => setDeleteConfirmationInput(event.target.value)}
+          placeholder={deleteTarget?.name ?? 'Enter provider name'}
+          data-cyid="delete-provider-confirm-input"
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button
+          variant="outlined"
+          color="secondary"
+          onClick={() => {
+            setDeleteTarget(null);
+            setDeleteConfirmationInput('');
+          }}
+        >
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.cancel"
+            defaultMessage={'Cancel'}
+          />
+        </Button>
+        <Button
+          color="error"
+          onClick={handleDeleteConfirm}
+          disabled={!isDeleteConfirmationValid}
+          data-cyid="delete-provider-confirm-button"
+        >
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.delete"
+            defaultMessage={'Delete'}
           />
         </Button>
       </DialogActions>
@@ -1051,7 +1204,11 @@ function ServiceProviderOverviewContent() {
                 </Box>
               </Box>
 
-              <Stack spacing={2} p={2}>
+              <Stack
+                spacing={2}
+                p={2}
+                sx={{ width: { xs: '100%', sm: 200 }, alignItems: 'stretch' }}
+              >
                 <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
                   <Box component="span">
                     <Button
@@ -1183,6 +1340,7 @@ function ServiceProviderOverviewContent() {
           ) : null}
         </Grid>
         {projectSelectionDialog}
+        {deleteDialog}
       </PageContent>
     );
   }
@@ -1322,54 +1480,56 @@ function ServiceProviderOverviewContent() {
               </Stack>
             </Box>
             <Stack
-              spacing={1}
               sx={{
-                alignSelf: 'flex-start',
+                alignSelf: 'stretch',
                 ml: 'auto',
-                gap: 1,
-                alignItems: 'center',
+                justifyContent: 'space-between',
+                alignItems: 'stretch',
                 width: { xs: '100%', sm: 200 },
               }}
             >
-              {/* For gateway-created (read-only) providers the deployments remain
-                  viewable (deploy/redeploy/restore/undeploy are disabled on the page
-                  itself), so the button navigates but is relabelled "View Deployments". */}
-              <Button
-                variant="contained"
-                component={RouterLink}
-                to="deploy"
-                onClick={isReadOnlyProvider ? undefined : handleBlockedNavigation}
-                fullWidth
-              >
-                {isReadOnlyProvider ? (
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.view.deployments"
-                    defaultMessage={'View Deployments'}
-                  />
-                ) : (
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
-                    defaultMessage={'Deploy to Gateway'}
-                  />
-                )}
-              </Button>
-              <DisabledActionTooltip
-                disabled={isProxyQuotaReached}
-                title={createProxyTooltip}
-                fullWidth
-              >
+              <Stack spacing={1} sx={{ alignItems: 'stretch' }}>
+                {/* For gateway-created (read-only) providers the deployments remain
+                    viewable (deploy/redeploy/restore/undeploy are disabled on the page
+                    itself), so the button navigates but is relabelled "View Deployments". */}
                 <Button
-                  variant="outlined"
-                  onClick={handleCreateProxyClick}
-                  disabled={!provider.id || isProxyQuotaReached}
+                  variant="contained"
+                  component={RouterLink}
+                  to="deploy"
+                  onClick={isReadOnlyProvider ? undefined : handleBlockedNavigation}
                   fullWidth
                 >
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                    defaultMessage="Create App LLM Proxy"
-                  />
+                  {isReadOnlyProvider ? (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.view.deployments"
+                      defaultMessage={'View Deployments'}
+                    />
+                  ) : (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
+                      defaultMessage={'Deploy to Gateway'}
+                    />
+                  )}
                 </Button>
-              </DisabledActionTooltip>
+                <DisabledActionTooltip
+                  disabled={isProxyQuotaReached}
+                  title={createProxyTooltip}
+                  fullWidth
+                >
+                  <Button
+                    variant="outlined"
+                    onClick={handleCreateProxyClick}
+                    disabled={!provider.id || isProxyQuotaReached}
+                    fullWidth
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
+                      defaultMessage="Create App LLM Proxy"
+                    />
+                  </Button>
+                </DisabledActionTooltip>
+              </Stack>
+              {providerDeleteAction}
             </Stack>
           </Box>
         </Card>
@@ -1487,6 +1647,7 @@ function ServiceProviderOverviewContent() {
         </Box>
       </Stack>
       {projectSelectionDialog}
+      {deleteDialog}
     </PageContent>
   );
 }

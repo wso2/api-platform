@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Avatar,
   Box,
@@ -62,6 +62,7 @@ import { truncateProviderDisplayName } from '../../../../utils/providerTemplateD
 import { FormattedMessage } from 'react-intl';
 import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 
 function getHttpStatusCode(error?: Error | null): number | null {
   if (!error) return null;
@@ -75,8 +76,23 @@ function getHttpStatusCode(error?: Error | null): number | null {
   return null;
 }
 
+function getErrorDescription(error: unknown, fallbackMessage: string): string {
+  return (
+    (error as any)?.response?.data?.description ||
+    (error as any)?.response?.data?.message ||
+    (error instanceof Error ? error.message : null) ||
+    fallbackMessage
+  );
+}
+
+type LLMProxyListLocationState = {
+  proxyDeleted?: boolean;
+} | null;
+
 export default function LLMProxiesList() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const showSnackbar = useAIWorkspaceSnackbar();
   const {
     proxiesResponse,
     isLoading: isProxiesLoading,
@@ -108,6 +124,14 @@ export default function LLMProxiesList() {
   useEffect(() => {
     setSelectedProjectId('');
   }, [currentOrganization?.id]);
+
+  useEffect(() => {
+    const state = location.state as LLMProxyListLocationState;
+    if (state?.proxyDeleted) {
+      showSnackbar('Successfully deleted App LLM Proxy.', 'success');
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate, showSnackbar]);
 
   const selectedProject = useMemo(
     () =>
@@ -168,8 +192,17 @@ export default function LLMProxiesList() {
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
-    await deleteProxy(deleteTarget.id);
-    setDeleteTarget(null);
+    try {
+      await deleteProxy(deleteTarget.id);
+      showSnackbar('Successfully deleted App LLM Proxy.', 'success');
+      setDeleteTarget(null);
+    } catch (error) {
+      showSnackbar(
+        getErrorDescription(error, 'Failed to delete App LLM Proxy.'),
+        'error'
+      );
+      setDeleteTarget(null);
+    }
   };
 
   const handleGoToProjectLevel = () => {
