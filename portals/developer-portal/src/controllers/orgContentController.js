@@ -59,7 +59,7 @@ const loadOrgContentFromFile = async (req, res) => {
     const layoutPath = config.designMode.pathToLayout;
     const templateContent = {
         userProfiles: [],
-        baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName,
+        baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName,
         devMode: true,
     };
 

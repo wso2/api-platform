@@ -86,12 +86,11 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
+    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
     const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
-        portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
@@ -142,12 +141,11 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
+    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
     const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
-        portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
@@ -209,12 +207,11 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
     const slots = {};
-    const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
+    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
     const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
-        portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,

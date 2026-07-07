@@ -22,11 +22,11 @@ Copy both sample configuration files:
 
 ```bash
 mkdir -p configs
-cp configs/config.yaml.example configs/config.yaml
+cp configs/config.toml.example configs/config.toml
 cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 ```
 
-`config.yaml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.
+`config.toml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.
 
 ### 3. Start the portal
 

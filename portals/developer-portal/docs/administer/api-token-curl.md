@@ -4,7 +4,7 @@ When the Developer Portal is configured with an external IDP (e.g. Asgardeo), RE
 
 ## Prerequisites
 
-- IDP is configured (`identityProvider.clientId` is set in `config.yaml`)
+- IDP is configured (`idp.clientId` is set in `config.toml`)
 - The `dp:*` scopes are registered in the IDP and assigned to your user (see [asgardeo-setup.md](asgardeo-setup.md) sections 3–4)
 - You have the **client ID** and **client secret** from your IDP application
 - You know your org's UUID (the `ORG_ID` column in the `DP_ORGANIZATION` table, or ask the admin)

@@ -36,8 +36,8 @@ const login = async (req, res, next) => {
     const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
     if (!req.isAuthenticated()) {
         const fidp = req.query.fidp;
-        const fidpMap = config.identityProvider?.fidp || {};
-        if (config.identityProvider?.clientId) {
+        const fidpMap = config.idp?.fidp || {};
+        if (config.idp?.clientId) {
             // IDP mode: redirect directly to the IDP, no intermediate login page
             const orgDetails = await orgDao.get(orgName);
             const orgIdentifier = orgDetails?.idp_ref_id;
@@ -70,7 +70,7 @@ const login = async (req, res, next) => {
 };
 
 const handleCallback = async (req, res, next) => {
-    if (!config.identityProvider?.clientId) return next();
+    if (!config.idp?.clientId) return next();
     const rules = util.validateRequestParameters();
     for (const validation of rules) {
         await validation.run(req);
@@ -98,7 +98,7 @@ const handleCallback = async (req, res, next) => {
                 }
                 res.set('Cache-Control', 'no-store');
                 let returnTo = req.user.returnTo;
-                if (!config.advanced?.disableOrgCallback && returnTo == null) {
+                if (config.idp?.orgCallback && returnTo == null) {
                     returnTo = `/${req.params.orgName}`;
                 }
                 returnTo = returnTo || `/${req.params.orgName}`;
@@ -123,9 +123,9 @@ const handleSignUp = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = config.identityProvider;
-    if (authJsonContent?.signUpURL) {
-        res.redirect(authJsonContent.signUpURL);
+    const authJsonContent = config.idp;
+    if (authJsonContent?.signUpUrl) {
+        res.redirect(authJsonContent.signUpUrl);
     } else {
         const returnTo = req.session.returnTo || `/${req.params.orgName}`;
         delete req.session.returnTo;
@@ -142,7 +142,7 @@ const handleLogOut = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = config.identityProvider;
+    const authJsonContent = config.idp;
     let idToken = ''
     if (req.user != null) {
         idToken = req.user.idToken;
@@ -191,7 +191,7 @@ const handleLogOut = async (req, res) => {
                 if (saveErr) {
                     logger.error('Session save failed before IDP logout redirect', { error: saveErr.message });
                 }
-                res.redirect(`${authJsonContent.logoutURL}?post_logout_redirect_uri=${authJsonContent.logoutRedirectURI}&id_token_hint=${idToken}`);
+                res.redirect(`${authJsonContent.logoutUrl}?post_logout_redirect_uri=${authJsonContent.logoutRedirectUri}&id_token_hint=${idToken}`);
             });
         });
     } else {
@@ -212,7 +212,7 @@ const handleLogOutLanding = async (req, res) => {
 
 const handleSilentSSO = async (req, res, next) => {
     // Skip if no IDP configured or silent SSO is disabled
-    if (!config.identityProvider?.clientId || config.advanced?.disableSilentSSO) return next();
+    if (!config.idp?.clientId || !config.idp?.silentSso) return next();
 
     if (req.isAuthenticated() || req.session.silentAuthRedirected) {
         return next();
@@ -235,7 +235,7 @@ const handleLocalLogin = async (req, res) => {
     const viewName = req.params.viewName;
     const baseUrl = `/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`;
 
-    if (config.identityProvider?.clientId) {
+    if (config.idp?.clientId) {
         return res.status(404).send('Not found');
     }
     if (!username || !password) {
@@ -277,9 +277,9 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
-    const adminRole = config.identityProvider?.adminRole || 'admin';
-    const superAdminRole = config.identityProvider?.superAdminRole || 'superAdmin';
-    const subscriberRole = config.identityProvider?.subscriberRole || 'Internal/subscriber';
+    const adminRole = config.idp?.roles?.admin || 'admin';
+    const superAdminRole = config.idp?.roles?.superAdmin || 'superAdmin';
+    const subscriberRole = config.idp?.roles?.subscriber || 'Internal/subscriber';
     // Users with any _manage scope are treated as admins in the devportal
     const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];

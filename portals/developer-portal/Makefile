@@ -141,7 +141,7 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs
 	@cp -R database $(DIST_DIR)
-	@cp configs/config.yaml.example $(DIST_DIR)/configs/config.yaml
+	@cp configs/config.toml.example $(DIST_DIR)/configs/config.toml
 	@cp configs/config-platform-api.toml.example $(DIST_DIR)/configs/config-platform-api.toml
 	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak \

@@ -47,21 +47,21 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DP_DB_HOST: postgres
-      DP_DB_PORT: 5432
-      DP_DB_DIALECT: postgres
-      DP_DB_USERNAME: devportal
-      DP_DB_PASSWORD: devportal
-      DP_DB_DATABASE: devportal
-      DP_SECRETS_DBSECRET: devportal
-      DP_DEFAULTORGNAME: "default"
+      APIP_DP_DATABASE_HOST: postgres
+      APIP_DP_DATABASE_PORT: 5432
+      APIP_DP_DATABASE_TYPE: postgres
+      APIP_DP_DATABASE_USERNAME: devportal
+      APIP_DP_DATABASE_PASSWORD: devportal
+      APIP_DP_DATABASE_NAME: devportal
+      APIP_DP_SECRETS_DBSECRET: devportal
+      APIP_DP_ORGANIZATION_DEFAULTNAME: "default"
       # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
-      DP_ADVANCED_HTTP: "true"
-      DP_BASEURL: "http://devportal:3000"
-      DP_GENERATEDEFAULTSUBPLANS: "true"
-      DP_ADVANCED_APIKEY_ENABLED: "true"
-      DP_ADVANCED_APIKEY_KEYVALUE: "devportal-it-test-key"
-      DP_LOGGING_CONSOLEONLY: "true"
+      APIP_DP_TLS_ENABLED: "false"
+      APIP_DP_SERVER_BASEURL: "http://devportal:3000"
+      APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS: "true"
+      APIP_DP_SECURITY_SERVICEAPIKEY_ENABLED: "true"
+      APIP_DP_SECURITY_SERVICEAPIKEY_VALUE: "devportal-it-test-key"
+      APIP_DP_LOGGING_CONSOLEONLY: "true"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 10s

@@ -29,7 +29,7 @@ const app = require('./app');
 
 const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
 
-const PORT = process.env.PORT || config.defaultPort;
+const PORT = process.env.PORT || config.server.port;
 
 function startBackgroundServices() {
     if (config.designMode?.enabled) return;
@@ -46,14 +46,14 @@ function startBackgroundServices() {
 }
 
 function logStartupBanner() {
-    const orgSegment = config.designMode?.enabled ? '' : `/${config.defaultOrgName || '<organization>'}`;
-    const visitUrl = `${config.baseUrl}${orgSegment}/views/default`;
+    const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
+    const visitUrl = `${config.server.baseUrl}${orgSegment}/views/default`;
     const line = '='.repeat(72);
     logger.info(`\n${line}\n\n\n\tDeveloper Portal Started.\n\tVisit Portal: ${visitUrl}\n\n\n${line}`);
 
     if (config.demo?.enabled) {
         logger.warn(
-            'DEMO MODE is ENABLED (DP_DEMO_ENABLED=true) — sample APIs/MCPs can be seeded ' +
+            'DEMO MODE is ENABLED (APIP_DP_DEMO_ENABLED=true) — sample APIs/MCPs can be seeded ' +
             'via Settings > Manage APIs or the onboarding overlay. Do not enable this in ' +
             'production deployments.'
         );
@@ -73,21 +73,21 @@ let server;
 async function startServer() {
     logger.info('Developer Portal starting...');
     // Sync database schema for SQLite in production mode
-    if (config.db.dialect === 'sqlite' && !config.designMode?.enabled) {
+    if (config.database.type === 'sqlite' && !config.designMode?.enabled) {
         await sequelize.sync();
         logger.info('Database: SQLite schema synced ✓');
     }
 
-    if (config.advanced.http || config.designMode?.enabled) {
+    if (!config.tls.enabled || config.designMode?.enabled) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
     } else {
     try {
-        const certPath = path.resolve(config.serverCerts.pathToCert);
-        const keyPath = path.resolve(config.serverCerts.pathToPK);
+        const certPath = path.resolve(config.tls.certFile);
+        const keyPath = path.resolve(config.tls.keyFile);
 
         const serverCert = fs.readFileSync(certPath);
         const serverKey = fs.readFileSync(keyPath);
-        const caCert = fs.readFileSync(path.resolve(config.serverCerts.pathToCA));
+        const caCert = fs.readFileSync(path.resolve(config.tls.caFile));
 
         server = https.createServer({
             key: serverKey,

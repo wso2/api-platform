@@ -37,23 +37,23 @@ function getNestedClaim(obj, path) {
 }
 
 function configurePassport(SERVER_ID) {
-    if (config.identityProvider?.clientId) {
-        const idpScope = config.identityProvider.scope;
+    if (config.idp?.clientId) {
+        const idpScope = config.idp.scope;
         const strategy = new OAuth2Strategy({
-            name: config.identityProvider.name || 'oauth2',
-            issuer: config.identityProvider.issuer,
-            authorizationURL: config.identityProvider.authorizationURL,
-            tokenURL: config.identityProvider.tokenURL,
-            userInfoURL: config.identityProvider.userInfoURL,
-            clientId: config.identityProvider.clientId,
-            clientSecret: config.identityProvider.clientSecret || undefined,
-            callbackURL: config.identityProvider.callbackURL,
+            name: config.idp.name || 'oauth2',
+            issuer: config.idp.issuer,
+            authorizationURL: config.idp.authorizationUrl,
+            tokenURL: config.idp.tokenUrl,
+            userInfoURL: config.idp.userInfoUrl,
+            clientId: config.idp.clientId,
+            clientSecret: config.idp.clientSecret || undefined,
+            callbackURL: config.idp.callbackUrl,
             pkce: true,
             state: true,
-            logoutURL: config.identityProvider.logoutURL,
-            logoutRedirectURI: config.identityProvider.logoutRedirectURI,
+            logoutURL: config.idp.logoutUrl,
+            logoutRedirectURI: config.idp.logoutRedirectUri,
             certificate: '',
-            jwksURL: config.identityProvider.jwksURL,
+            jwksURL: config.idp.jwksUrl,
             passReqToCallback: true,
             scope: typeof idpScope === 'string'
                 ? idpScope.split(/\s+/).filter(Boolean)
@@ -67,19 +67,19 @@ function configurePassport(SERVER_ID) {
             const decodedAccessToken = jwt.decode(accessToken);
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
-            const organizationId = getNestedClaim(decodedJWT, config.identityProvider.orgIDClaim) ?? '';
-            const rawRoles = getNestedClaim(decodedJWT, config.identityProvider.roleClaim) ?? '';
+            const organizationId = getNestedClaim(decodedJWT, config.idp.claims.orgId) ?? '';
+            const rawRoles = getNestedClaim(decodedJWT, config.idp.claims.role) ?? '';
             const roles = Array.isArray(rawRoles)
                 ? rawRoles
                 : String(rawRoles).split(/[\s,]+/).filter(Boolean);
-            const rawGroups = getNestedClaim(decodedJWT, config.identityProvider.groupsClaim) ?? '';
+            const rawGroups = getNestedClaim(decodedJWT, config.idp.claims.groups) ?? '';
             const groups = Array.isArray(rawGroups)
                 ? rawGroups
                 : String(rawGroups).split(/[\s,]+/).filter(Boolean);
-            if (roles.includes(config.identityProvider.superAdminRole) || roles.includes(config.identityProvider.adminRole)) {
+            if (roles.includes(config.idp.roles.superAdmin) || roles.includes(config.idp.roles.admin)) {
                 isAdmin = true;
             }
-            if (roles.includes(config.identityProvider.superAdminRole)) {
+            if (roles.includes(config.idp.roles.superAdmin)) {
                 isSuperAdmin = true;
             }
             const returnTo = req.session.returnTo;

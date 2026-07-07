@@ -34,7 +34,7 @@ make build
 ### Run
 
 ```bash
-mkdir -p configs && cp configs/config.yaml.example configs/config.yaml
+mkdir -p configs && cp configs/config.toml.example configs/config.toml
 docker compose up
 ```
 
@@ -46,7 +46,7 @@ Default credentials: `admin` / `admin` (defined in `configs/config-platform-api.
 
 What happens automatically on first start:
 - The DB schema is applied and the database is initialised automatically
-- A default **default** org, view, labels, and subscription plans are seeded automatically on startup (controlled by `defaultOrgName` in config)
+- A default **default** org, view, labels, and subscription plans are seeded automatically on startup (controlled by `organization.default_name` in config)
 - A self-signed TLS certificate is generated and stored in the `certs_data` Docker volume
 
 ### Test
@@ -137,35 +137,37 @@ Use this for active development, custom IdP configuration, or when you prefer to
 ### 1. Create config file
 
 ```bash
-mkdir -p configs && cp configs/config.yaml.example configs/config.yaml
+mkdir -p configs && cp configs/config.toml.example configs/config.toml
 ```
 
-`configs/config.yaml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
+`configs/config.toml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
 
 ### 2. Configure HTTP mode (optional)
 
-Open `configs/config.yaml` and confirm these are set (they are the defaults in `configs/config.yaml.example`):
+Open `configs/config.toml` and confirm these are set (they are the defaults in `configs/config.toml.example`):
 
-```yaml
-advanced:
-  http: true
-baseUrl: "http://localhost:3000"
-defaultPort: 3000
+```toml
+[tls]
+enabled = false
+
+[server]
+base_url = "http://localhost:3000"
+port = 3000
 ```
 
 ### 3. Configure the Identity Provider (optional)
 
-The portal's login flow requires a valid OAuth2/OIDC provider. Update the `identityProvider` block in `configs/config.yaml`:
+The portal's login flow requires a valid OAuth2/OIDC provider. Update the `[idp]` block in `configs/config.toml`:
 
-```yaml
-identityProvider:
-  issuer: "https://<your-idp>/oauth2/token"
-  authorizationURL: "https://<your-idp>/oauth2/authorize"
-  tokenURL: "https://<your-idp>/oauth2/token"
-  userInfoURL: "https://<your-idp>/oauth2/userinfo"
-  jwksURL: "https://<your-idp>/oauth2/jwks"
-  clientId: "<your-client-id>"
-  callbackURL: "http://localhost:3000/<handle>/callback"
+```toml
+[idp]
+issuer = "https://<your-idp>/oauth2/token"
+authorization_url = "https://<your-idp>/oauth2/authorize"
+token_url = "https://<your-idp>/oauth2/token"
+user_info_url = "https://<your-idp>/oauth2/userinfo"
+jwks_url = "https://<your-idp>/oauth2/jwks"
+client_id = "<your-client-id>"
+callback_url = "http://localhost:3000/<handle>/callback"
 ```
 
 For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
@@ -174,7 +176,7 @@ For local exploration you can skip IdP setup by using the Platform API sidecar i
 
 #### SQLite (default — no setup required)
 
-The portal uses SQLite out of the box. The database file is created automatically at the path configured by `db.storage` (default: `./devportal.db`). No installation or schema migration step is needed.
+The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.file` (default: `./devportal.db`). No installation or schema migration step is needed.
 
 #### PostgreSQL (optional)
 
@@ -189,23 +191,23 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-Then update the `db` block in `configs/config.yaml`:
+Then update the `[database]` block in `configs/config.toml`:
 
-```yaml
-db:
-  dialect: "postgres"
-  host: "localhost"
-  port: 5432
-  database: "devportal"
-  username: "postgres"
-  password: "postgres"
+```toml
+[database]
+type = "postgres"
+host = "localhost"
+port = 5432
+name = "devportal"
+username = "postgres"
+password = "postgres"
 ```
 
-In production, set the password via the `DP_DB_PASSWORD` environment variable instead of storing it in the config file.
+In production, set the password via the `APIP_DP_DATABASE_PASSWORD` environment variable instead of storing it in the config file.
 
 ### 5. Seed default organization
 
-The default organization is seeded automatically on startup when `defaultOrgName` is set in config (or via `DP_DEFAULTORGNAME` env var).
+The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULTNAME` env var).
 No manual step is required.
 
 ### 6. Install and run
@@ -243,9 +245,9 @@ DEVPORTAL_URL=https://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.
 
 ## Configuration Reference
 
-All settings live in `configs/config.yaml`. Every setting can also be overridden with a `DP_*` environment variable.
+All settings live in `configs/config.toml`. Every setting can also be overridden with an `APIP_DP_*` environment variable.
 
-The full annotated list of settings is in [`configs/config.yaml.example`](configs/config.yaml.example).
+The full annotated list of settings is in [`configs/config.toml.example`](configs/config.toml.example).
 
 ### Local auth
 
@@ -258,43 +260,43 @@ password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 1
 scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-The portal config (or `DP_PLATFORMAPI_*` env vars) must point to the Platform API. Docker Compose sets these automatically:
+The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. Docker Compose sets these automatically:
 
-```yaml
-platformApi:
-  baseUrl: "https://platform-api:9243"   # env: DP_PLATFORMAPI_BASEURL
-  jwtSecret: ""                           # same as AUTH_JWT_SECRET_KEY — env: DP_PLATFORMAPI_JWTSECRET
-  insecure: false                         # set true when Platform API uses a self-signed cert
+```toml
+[platform_api]
+base_url = "https://platform-api:9243"   # env: APIP_DP_PLATFORMAPI_BASEURL
+jwt_secret = ""                           # same as AUTH_JWT_SECRET_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
+insecure = false                          # set true when Platform API uses a self-signed cert
 ```
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 
 ### Environment variable overrides
 
-Every config key can be overridden with a `DP_*` environment variable. You can place these in a `.env` file at the project root.
+Every config key can be overridden with an `APIP_DP_*` environment variable. You can place these in a `.env` file at the project root.
 
 **Convention:**
-- Prefix: `DP_`
+- Prefix: `APIP_DP_`
 - `_` separates nesting levels (one token = one config object level)
 - `__` represents a literal underscore within a key name
-- Tokens are matched case-insensitively against config keys
+- Tokens are matched case-insensitively against config keys (matched against the camelCase struct produced from the TOML's snake_case keys)
 
 | Env var | Config path |
 |---------|-------------|
-| `DP_DB_HOST` | `config.db.host` |
-| `DP_DB_PORT` | `config.db.port` |
-| `DP_ADVANCED_HTTP` | `config.advanced.http` |
-| `DP_IDENTITYPROVIDER_CLIENTID` | `config.identityProvider.clientId` |
-| `DP_IDENTITYPROVIDER_ISSUER` | `config.identityProvider.issuer` |
-| `DP_BASEURL` | `config.baseUrl` |
-| `DP_DEFAULTPORT` | `config.defaultPort` |
-| `DP_ADVANCED_DBSSLDIALECTOPTION` | `config.advanced.dbSslDialectOption` |
+| `APIP_DP_DATABASE_HOST` | `config.database.host` |
+| `APIP_DP_DATABASE_PORT` | `config.database.port` |
+| `APIP_DP_TLS_ENABLED` | `config.tls.enabled` |
+| `APIP_DP_IDP_CLIENTID` | `config.idp.clientId` |
+| `APIP_DP_IDP_ISSUER` | `config.idp.issuer` |
+| `APIP_DP_SERVER_BASEURL` | `config.server.baseUrl` |
+| `APIP_DP_SERVER_PORT` | `config.server.port` |
+| `APIP_DP_DATABASE_SSL_ENABLED` | `config.database.ssl.enabled` |
 
 `.env` example:
 ```dotenv
-DP_DB_HOST=my-postgres-host
-DP_SECRETS_DBSECRET=my-secret-password
-DP_IDENTITYPROVIDER_CLIENTID=my-client-id
+APIP_DP_DATABASE_HOST=my-postgres-host
+APIP_DP_DATABASE_PASSWORD=my-secret-password
+APIP_DP_IDP_CLIENTID=my-client-id
 ```
 
 ---

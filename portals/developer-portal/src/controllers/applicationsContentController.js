@@ -189,7 +189,7 @@ const loadApplications = async (req, res, next) => {
     if (config.designMode?.enabled) {
         const templateContent = {
             applicationsMetadata: sampleApiLoader.loadApplications(),
-            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         };
         const html = renderTemplate('../pages/applications/page.hbs', config.designMode.pathToLayout + 'layout/main.hbs', templateContent, true);
@@ -222,7 +222,7 @@ const loadApplications = async (req, res, next) => {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.readOnlyMode,
+            isReadOnlyMode: config.server.readOnlyMode,
         }
         const templateResponse = await templateResponseValue('applications');
         const layoutResponse = await loadLayoutFromAPI(orgId, viewName);
@@ -279,7 +279,7 @@ const loadApplication = async (req, res, next) => {
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.readOnlyMode,
+            isReadOnlyMode: config.server.readOnlyMode,
             associatedApiKeys,
             availableKeysByApi
         }
@@ -340,7 +340,7 @@ const loadApplicationKeys = async (req, res, next) => {
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.readOnlyMode
+            isReadOnlyMode: config.server.readOnlyMode
         }
         const templateResponse = await templateResponseValue('manage-keys');
         const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
