@@ -38,8 +38,8 @@ type TrafficLogEvent struct {
 	Operation       *TrafficLogOperation   `json:"operation,omitempty"`
 	Target          *TrafficLogTarget      `json:"target,omitempty"`
 	Application     *TrafficLogApplication `json:"application,omitempty"`
-	Client          *TrafficLogClient      `json:"client,omitempty"`
-	Latencies       *dto.Latencies         `json:"latencies,omitempty"`
+	Client          *TrafficLogClient        `json:"client,omitempty"`
+	Latencies       *dto.TrafficLogLatencies `json:"latencies,omitempty"`
 	RequestHeaders  map[string]string      `json:"requestHeaders,omitempty"`
 	ResponseHeaders map[string]string      `json:"responseHeaders,omitempty"`
 	RequestBody     string                 `json:"requestBody,omitempty"`
@@ -89,7 +89,7 @@ type TrafficLogClient struct {
 func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) *TrafficLogEvent {
 	tl := &TrafficLogEvent{
 		Status:    event.ProxyResponseCode,
-		Latencies: event.Latencies,
+		Latencies: event.TrafficLogLatencies,
 	}
 
 	if !event.RequestTimestamp.IsZero() {

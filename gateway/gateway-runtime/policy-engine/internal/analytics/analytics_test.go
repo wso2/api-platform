@@ -529,6 +529,11 @@ func TestPrepareAnalyticEvent_WithLatencies(t *testing.T) {
 	require.NotNil(t, event)
 	require.NotNil(t, event.Latencies)
 	assert.True(t, event.Latencies.BackendLatency >= 0)
+
+	// Traffic-log latencies are computed in microseconds from the same timepoints.
+	require.NotNil(t, event.TrafficLogLatencies)
+	assert.Equal(t, int64(250000), event.TrafficLogLatencies.DurationUs)               // DS_RX_BEG → DS_TX_END = 250ms
+	assert.Equal(t, int64(50000), event.TrafficLogLatencies.RequestMediationLatencyUs) // 100ms - 50ms
 }
 
 func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {
@@ -552,8 +557,8 @@ func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	analytics := NewAnalytics(cfg)
 
 	logEntry := createLogEntryWithMetadata(map[string]string{
-		AIProviderNameMetadataKey: "openai",
-		ModelIDMetadataKey:        "gpt-4",
+		AIProviderNameMetadataKey:    "openai",
+		ModelIDMetadataKey:           "gpt-4",
 		constants.LLMCostMetadataKey: "0.0000423100",
 	})
 

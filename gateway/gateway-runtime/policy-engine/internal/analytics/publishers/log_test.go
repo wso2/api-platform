@@ -111,9 +111,10 @@ func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
 	assert.Equal(t, "bar", reqH["x-foo"])
 
 	// ALS-derived latencies are always present in the line — the key improvement
-	// over the inline log-message policy, which could never see them.
+	// over the inline log-message policy, which could never see them. The traffic
+	// log carries microsecond-precision timings, separate from Moesif's ms fields.
 	latencies := decoded["latencies"].(map[string]interface{})
-	assert.Equal(t, float64(100), latencies["responseLatency"])
+	assert.Equal(t, float64(250000), latencies["durationUs"])
 }
 
 // Labels from the directive are emitted as a top-level "labels" object.

@@ -147,14 +147,6 @@ func TestLatencies_GetSetResponseMediationLatency(t *testing.T) {
 	assert.Equal(t, int64(30), lat.GetResponseMediationLatency())
 }
 
-func TestLatencies_GetSetDuration(t *testing.T) {
-	lat := &Latencies{}
-	assert.Equal(t, int64(0), lat.GetDuration())
-
-	lat.SetDuration(200)
-	assert.Equal(t, int64(200), lat.GetDuration())
-}
-
 // =============================================================================
 // AIMetadata Tests
 // =============================================================================

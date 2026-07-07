@@ -47,6 +47,13 @@ type Event struct {
 	ErrorType         string                 `json:"errorType,omitempty" bson:"error_type"`
 	Properties        map[string]interface{} `json:"properties,omitempty" bson:"properties"`
 
+	// TrafficLogLatencies carries microsecond-precision gateway/backend timings
+	// for the stdout traffic-logging publisher. It is computed from the same ALS
+	// CommonProperties timepoints as Latencies but at full precision, and is kept
+	// separate so Moesif's millisecond units are unaffected. Never serialized
+	// (json:"-") and not sent to other publishers.
+	TrafficLogLatencies *TrafficLogLatencies `json:"-" bson:"-"`
+
 	// TrafficLog carries the per-API stdout traffic-logging opt-in marker stamped
 	// by the log-message policy (access-log mode). When nil, the API has not opted
 	// in and the stdout traffic-logging publisher skips the event. It is

@@ -276,34 +276,50 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		toMs := func(secs int64, nanos int32) int64 {
 			return (secs * 1000) + int64(nanos)/1_000_000
 		}
+		toUs := func(secs int64, nanos int32) int64 {
+			return (secs * 1_000_000) + int64(nanos)/1000
+		}
 
+		// Moesif-oriented latencies (milliseconds).
 		lastRx := toMs(properties.TimeToLastRxByte.Seconds, properties.TimeToLastRxByte.Nanos)
 		firstUpTx := toMs(properties.TimeToFirstUpstreamTxByte.Seconds, properties.TimeToFirstUpstreamTxByte.Nanos)
 		firstUpRx := toMs(properties.TimeToFirstUpstreamRxByte.Seconds, properties.TimeToFirstUpstreamRxByte.Nanos)
 		lastUpRx := toMs(properties.TimeToLastUpstreamRxByte.Seconds, properties.TimeToLastUpstreamRxByte.Nanos)
 		lastDownTx := toMs(properties.TimeToLastDownstreamTxByte.Seconds, properties.TimeToLastDownstreamTxByte.Nanos)
 
-		latencies := dto.Latencies{
-			Duration:                 lastDownTx,
+		event.Latencies = &dto.Latencies{
 			BackendLatency:           lastUpRx - firstUpTx,
 			RequestMediationLatency:  firstUpTx - lastRx,
 			ResponseLatency:          lastDownTx - firstUpRx,
 			ResponseMediationLatency: lastDownTx - lastUpRx,
 		}
 
+		// Traffic-log latencies (microseconds), derived from the same timepoints
+		// at full precision. Kept separate from the millisecond Latencies above so
+		// Moesif's units are unaffected.
+		lastRxUs := toUs(properties.TimeToLastRxByte.Seconds, properties.TimeToLastRxByte.Nanos)
+		firstUpTxUs := toUs(properties.TimeToFirstUpstreamTxByte.Seconds, properties.TimeToFirstUpstreamTxByte.Nanos)
+		firstUpRxUs := toUs(properties.TimeToFirstUpstreamRxByte.Seconds, properties.TimeToFirstUpstreamRxByte.Nanos)
+		lastDownTxUs := toUs(properties.TimeToLastDownstreamTxByte.Seconds, properties.TimeToLastDownstreamTxByte.Nanos)
+
+		trafficLatencies := dto.TrafficLogLatencies{
+			DurationUs:                lastDownTxUs,           // DS_RX_BEG → DS_TX_END
+			RequestMediationLatencyUs: firstUpTxUs - lastRxUs, // DS_RX_END → US_TX_BEG
+		}
+
 		// US_TX_END → US_RX_BEG: time the backend spent before sending the first response byte (TTFB).
 		if properties.TimeToLastUpstreamTxByte != nil {
-			lastUpTx := toMs(properties.TimeToLastUpstreamTxByte.Seconds, properties.TimeToLastUpstreamTxByte.Nanos)
-			latencies.BackendProcDuration = firstUpRx - lastUpTx
+			lastUpTxUs := toUs(properties.TimeToLastUpstreamTxByte.Seconds, properties.TimeToLastUpstreamTxByte.Nanos)
+			trafficLatencies.BackendLatencyUs = firstUpRxUs - lastUpTxUs
 		}
 
 		// US_RX_BEG → DS_TX_BEG: gateway overhead processing the first response byte before writing downstream.
 		if properties.TimeToFirstDownstreamTxByte != nil {
-			firstDownTx := toMs(properties.TimeToFirstDownstreamTxByte.Seconds, properties.TimeToFirstDownstreamTxByte.Nanos)
-			latencies.ResponseProcDuration = firstDownTx - firstUpRx
+			firstDownTxUs := toUs(properties.TimeToFirstDownstreamTxByte.Seconds, properties.TimeToFirstDownstreamTxByte.Nanos)
+			trafficLatencies.ResponseMediationLatencyUs = firstDownTxUs - firstUpRxUs
 		}
 
-		event.Latencies = &latencies
+		event.TrafficLogLatencies = &trafficLatencies
 	}
 
 	// prepare metaInfo
