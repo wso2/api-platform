@@ -1,12 +1,13 @@
 name: Enforce Design Gate
 
-# GitHub Projects v2 status changes do not trigger GitHub Actions directly.
-# This workflow polls https://github.com/orgs/wso2/projects/144 once per day and moves invalid
-# feature issues from "Development" back to "Design".
-#
-# Prerequisite:
-# - PROJECT_TOKEN secret with access to read/write the org Project v2 and comment on issues.
+# Token-free org Project v2 access is not available from GitHub Actions.
+# This workflow uses issue labels as the gate signal instead:
+# - "Development" means the issue is in/entering development.
+# - "feature" means the gate applies.
+# - Missing "Design Done" or "Mail Sent" adds "Design Gate Blocked" and a comment.
 on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened]
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
@@ -16,224 +17,144 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      repository-projects: write
 
     steps:
-      - name: Revert invalid Projects v2 items to Design
+      - name: Mark development issues that fail the design gate
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PROJECT_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const PROJECT_OWNER = 'wso2';
-            const PROJECT_NUMBER = 144;
-            const STATUS_FIELD = 'Status';
-            const DESTINATION_STATUS = 'Development';
-            const REVERT_STATUS = 'Design';
+            const DEVELOPMENT_LABEL = 'Development';
+            const BLOCKED_LABEL = 'Design Gate Blocked';
             const REQUIRED_LABELS = ['Design Done', 'Mail Sent'];
             const GATE_TRIGGER_TYPE = 'feature';
+            const MARKER = '<!-- design-gate-blocked -->';
 
-            const projectFragment = `
-              id
-              number
-              title
-              fields(first: 100) {
-                nodes {
-                  ... on ProjectV2SingleSelectField {
-                    id
-                    name
-                    options {
-                      id
-                      name
-                    }
-                  }
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  color,
+                  description,
+                });
+              } catch (err) {
+                if (err.status !== 422) {
+                  throw err;
                 }
               }
-            `;
+            }
 
-            async function getProject() {
-              const query = `
-                query($login: String!, $number: Int!) {
-                  organization(login: $login) {
-                    projectV2(number: $number) {
-                      ${projectFragment}
-                    }
-                  }
+            async function removeLabelIfPresent(issueNumber, label) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label,
+                });
+              } catch (err) {
+                if (err.status !== 404) {
+                  throw err;
                 }
-              `;
+              }
+            }
 
-              const result = await github.graphql(query, {
-                login: PROJECT_OWNER,
-                number: PROJECT_NUMBER,
+            async function hasDesignGateComment(issueNumber) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                per_page: 100,
               });
 
-              return result.organization?.projectV2;
+              return comments.some(comment => comment.body?.includes(MARKER));
             }
 
-            let project;
-            try {
-              project = await getProject();
-            } catch (err) {
-              core.setFailed([
-                `Could not access https://github.com/orgs/${PROJECT_OWNER}/projects/${PROJECT_NUMBER}.`,
-                'The token used by this workflow must have access to the org Project v2.',
-                'Use a PROJECT_TOKEN secret with org Projects read/write access and issue comment access.',
-                `Original error: ${err.message}`,
-              ].join('\n'));
-              return;
-            }
+            async function enforceIssue(issue) {
+              const issueNumber = issue.number;
+              const labels = issue.labels.map(label => typeof label === 'string' ? label : label.name);
 
-            if (!project) {
-              core.setFailed([
-                `Could not resolve https://github.com/orgs/${PROJECT_OWNER}/projects/${PROJECT_NUMBER}.`,
-                'If the project URL is correct, the PROJECT_TOKEN secret cannot see this org Project v2.',
-              ].join('\n'));
-              return;
-            }
-
-            const statusField = project.fields.nodes.find(field => field?.name === STATUS_FIELD);
-            const developmentOption = statusField?.options.find(option => option.name === DESTINATION_STATUS);
-            const designOption = statusField?.options.find(option => option.name === REVERT_STATUS);
-            if (!statusField || !developmentOption || !designOption) {
-              core.setFailed(`Project "${project.title}" must have a "${STATUS_FIELD}" field with "${DESTINATION_STATUS}" and "${REVERT_STATUS}" options.`);
-              return;
-            }
-
-            const items = [];
-            let cursor = null;
-            let hasNextPage = true;
-            let revertedCount = 0;
-
-            while (hasNextPage) {
-              const query = `
-                query($login: String!, $number: Int!, $cursor: String) {
-                  organization(login: $login) {
-                    projectV2(number: $number) {
-                      items(first: 100, after: $cursor) {
-                        nodes {
-                          id
-                          content {
-                            ... on Issue {
-                              number
-                              state
-                              title
-                              repository {
-                                name
-                                owner {
-                                  login
-                                }
-                              }
-                              labels(first: 100) {
-                                nodes {
-                                  name
-                                }
-                              }
-                            }
-                          }
-                          fieldValues(first: 100) {
-                            nodes {
-                              ... on ProjectV2ItemFieldSingleSelectValue {
-                                field {
-                                  ... on ProjectV2SingleSelectField {
-                                    name
-                                  }
-                                }
-                                optionId
-                                name
-                              }
-                            }
-                          }
-                        }
-                        pageInfo {
-                          hasNextPage
-                          endCursor
-                        }
-                      }
-                    }
-                  }
-                }
-              `;
-
-              const result = await github.graphql(query, {
-                login: PROJECT_OWNER,
-                number: PROJECT_NUMBER,
-                cursor,
-              });
-
-              const page = result.organization.projectV2.items;
-              items.push(...page.nodes);
-              hasNextPage = page.pageInfo.hasNextPage;
-              cursor = page.pageInfo.endCursor;
-            }
-
-            console.log(`Checking ${items.length} items in project "${project.title}".`);
-
-            for (const item of items) {
-              const issue = item.content;
-              if (!issue?.number || !issue?.repository) {
-                continue;
+              if (issue.state !== 'open') {
+                console.log(`#${issueNumber} is not open. Skipping.`);
+                return;
               }
 
-              if (issue.state !== 'OPEN') {
-                console.log(`#${issue.number} is not open. Skipping.`);
-                continue;
+              if (!labels.includes(GATE_TRIGGER_TYPE)) {
+                console.log(`#${issueNumber} is not a feature issue. Skipping.`);
+                await removeLabelIfPresent(issueNumber, BLOCKED_LABEL);
+                return;
               }
 
-              const status = item.fieldValues.nodes.find(value => value?.field?.name === STATUS_FIELD);
-              if (status?.name !== DESTINATION_STATUS) {
-                continue;
+              if (!labels.includes(DEVELOPMENT_LABEL)) {
+                console.log(`#${issueNumber} is not marked as ${DEVELOPMENT_LABEL}. Skipping.`);
+                await removeLabelIfPresent(issueNumber, BLOCKED_LABEL);
+                return;
               }
 
-              const issueLabels = issue.labels.nodes.map(label => label.name);
-              if (!issueLabels.includes(GATE_TRIGGER_TYPE)) {
-                console.log(`#${issue.number} is not a feature issue. Skipping.`);
-                continue;
-              }
-
-              const missingLabels = REQUIRED_LABELS.filter(label => !issueLabels.includes(label));
+              const missingLabels = REQUIRED_LABELS.filter(label => !labels.includes(label));
               if (missingLabels.length === 0) {
-                console.log(`#${issue.number} passed the design gate.`);
-                continue;
+                console.log(`#${issueNumber} passed the design gate.`);
+                await removeLabelIfPresent(issueNumber, BLOCKED_LABEL);
+                return;
               }
 
-              console.log(`#${issue.number} is missing ${missingLabels.join(', ')}. Moving back to "${REVERT_STATUS}".`);
+              console.log(`#${issueNumber} is missing ${missingLabels.join(', ')}. Marking as blocked.`);
 
-              await github.graphql(`
-                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                  updateProjectV2ItemFieldValue(input: {
-                    projectId: $projectId
-                    itemId: $itemId
-                    fieldId: $fieldId
-                    value: {
-                      singleSelectOptionId: $optionId
-                    }
-                  }) {
-                    projectV2Item {
-                      id
-                    }
-                  }
-                }
-              `, {
-                projectId: project.id,
-                itemId: item.id,
-                fieldId: statusField.id,
-                optionId: designOption.id,
+              await ensureLabel(
+                BLOCKED_LABEL,
+                'd73a4a',
+                'Issue is in development but missing required design labels.',
+              );
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [BLOCKED_LABEL],
               });
+
+              if (await hasDesignGateComment(issueNumber)) {
+                console.log(`#${issueNumber} already has a design gate comment.`);
+                return;
+              }
 
               await github.rest.issues.createComment({
-                owner: issue.repository.owner.login,
-                repo: issue.repository.name,
-                issue_number: issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
                 body: [
+                  MARKER,
                   '> [!CAUTION]',
-                  `> **Design gate enforced.** This feature issue was in **${DESTINATION_STATUS}** but is missing required design labels, so it has been moved back to **${REVERT_STATUS}**.`,
+                  `> **Design gate warning.** This feature issue is marked as **${DEVELOPMENT_LABEL}** but is missing required design labels.`,
                   '>',
-                  '> Required labels before Development:',
+                  '> Required labels before development:',
                   '>',
-                  ...REQUIRED_LABELS.map(label => `> - ${issueLabels.includes(label) ? 'Present' : 'Missing'}: \`${label}\``),
+                  ...REQUIRED_LABELS.map(label => `> - ${labels.includes(label) ? 'Present' : 'Missing'}: \`${label}\``),
                 ].join('\n'),
               });
-
-              revertedCount += 1;
             }
 
-            console.log(`Checked ${items.length} project items. Reverted ${revertedCount}.`);
+            if (context.payload.issue) {
+              await enforceIssue(context.payload.issue);
+              return;
+            }
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: `${GATE_TRIGGER_TYPE},${DEVELOPMENT_LABEL}`,
+              per_page: 100,
+            });
+
+            for (const issue of issues) {
+              if (issue.pull_request) {
+                continue;
+              }
+
+              await enforceIssue(issue);
+            }
+
+            console.log(`Checked ${issues.length} open ${GATE_TRIGGER_TYPE} issues marked ${DEVELOPMENT_LABEL}.`);
