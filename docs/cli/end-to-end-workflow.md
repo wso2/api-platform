@@ -24,7 +24,7 @@ flowchart LR
 
     subgraph AW["AI Workspace"]
         direction LR
-        I["<b>3b · Validate</b><br/>ap ai-workspace build"] --> J["<b>4b · Apply</b><br/>ap ai-workspace apply"]
+        I["<b>3b · Build</b><br/>ap ai-workspace build"] --> J["<b>4b · Apply</b><br/>ap ai-workspace apply"]
     end
 
     E -->|REST API| F
@@ -102,6 +102,4 @@ ap ai-workspace apply --project-id <project-id>           # generate the payload
 
 - `ap devportal gen`, `ap devportal build`, and `ap ai-workspace build`/`apply` all operate on an API project (they require `.api-platform/config.yaml`).
 - Developer Portal is two stages: `gen` **generates** the editable artifact source under `./devportal`, then `build` **packages** it into `build/devportal.zip`.
-- AI Workspace's `build` only **validates** — it writes nothing. The payload is generated in-memory by `apply` at publish time (no build artifact is written to `build/`).
-- `--org` on the publish/apply commands is the target organization in the Developer Portal / AI Workspace.
 - Add `--insecure` to any portal/gateway command when talking to a local or self-signed HTTPS endpoint.

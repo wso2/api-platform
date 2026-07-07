@@ -119,6 +119,13 @@ func runAddCommand() error {
 	addPlatform = strings.TrimSpace(addPlatform)
 	addServer = strings.TrimSpace(addServer)
 	addAuth = strings.ToLower(strings.TrimSpace(addAuth))
+	// Normalize credential flags too: trailing whitespace from flags would
+	// otherwise flow into the auth checks and be stored/sent verbatim. (The
+	// interactive prompts already trim via PromptInput/PromptPassword.)
+	addUsername = strings.TrimSpace(addUsername)
+	addPassword = strings.TrimSpace(addPassword)
+	addToken = strings.TrimSpace(addToken)
+	addAPIKey = strings.TrimSpace(addAPIKey)
 
 	if addName == "" {
 		return fmt.Errorf("missing required flag --%s (or provide it in interactive mode)", utils.FlagName)

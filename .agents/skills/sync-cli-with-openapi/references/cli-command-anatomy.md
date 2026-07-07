@@ -9,7 +9,7 @@ The two command families differ enough that you must not blend them. Pick the fa
 ## 1. Directory & registration layout (both families)
 
 ```
-cli/src/cmd/<family>/                 # gateway | devportal | platform | aiws | project
+cli/src/cmd/<family>/                 # gateway | devportal | platform | aiworkspace | project
   root.go                             # <Family>Cmd cobra group; init() AddCommand(...) each child
   <verb>.go                           # a leaf command directly under the family
   <resource>/                         # a subcommand GROUP for a resource
@@ -240,56 +240,40 @@ For **list/get/delete/update**, copy `cli/src/cmd/devportal/subplan/list.go`, `s
 
 ## 3b. AI-workspace family (`internal/aiworkspace`)
 
-Consumes the **LLM/MCP subset** of `platform-api/src/resources/openapi.yaml` — `/llm-providers`, `/llm-proxies`, `/mcp-proxies` (and `llm-provider-templates`) — reached under the `/api-proxy/api/v0.9/` prefix. Command literal is `ap ai-workspace`. Existing groups: `llmprovider` (`llm-provider`), `llmproxy` (`llm-proxy`), `mcpproxy` (`mcp-proxy`). Its verb vocabulary differs from gateway/devportal: **`push`** (create-or-update from a `--file` JSON artifact), **`edit`**, `get`, `list`, `delete`.
+Consumes the **LLM/MCP subset** of `platform-api/resources/openapi.yaml` — `/llm-providers`, `/llm-proxies`, `/mcp-proxies` (and `llm-provider-templates`) — reached under the `/api/v0.9/` prefix. Command literal is `ap ai-workspace`; sources live under `cli/src/cmd/aiworkspace/` (the Go package identifier is `aiws`). Resource groups: `llmprovider` (`llm-provider`), `llmproxy` (`app-llm-proxy`), `mcpproxy` (`mcp-proxy`) — each with `get`, `list`, `delete`. Create-or-update is **not** per-group: two **family-level** commands operate on an API project — **`build`** (validate the project's ai-workspace artifact) and **`apply`** (generate the payload from the project's `metadata.yaml`/`runtime.yaml`/`definition.yaml` and create-or-update it on the server, choosing the endpoint by artifact kind). The organization comes from the auth token, so there is **no `--org` flag**.
 
 **Key helpers**
 - `config.LoadConfig()` → `aiworkspace.ResolveAIWorkspace(cfg, name, platform)` → `(*config.AIWorkspace, resolvedPlatform, error)`.
 - `aiworkspace.NewClientWithOptions(aiWorkspace, insecure)`.
-- Client verbs: `client.Get(path)`, `client.PostJSON(path, []byte)`, `client.PutJSON(path, []byte)`, `client.Delete(path)`.
-- **Paths**: constants `AIWorkspace<Resource>Path` in `cli/src/utils/constants.go` (already carry the `/api-proxy/api/v0.9/` prefix), wrapped by helpers in `cli/src/internal/aiworkspace/helpers.go`:
-  - collection with org scope: `ProviderPath(orgID)` → `.../llm-providers?organizationId=<org>`.
-  - single resource: `ProviderResourcePath(orgID, id)` / `ProviderByIDPath(id)`.
-  - list with pagination: `ProviderListPath(orgID, aiworkspace.ListQuery{Limit, Offset})`; proxies/mcp use `projectId` scope (`ProxyListPath(projectID, q)`).
-  - Add a matching helper (and constant) for a new resource; **org/project scope is a query parameter (`?organizationId=`/`?projectId=`), never a path segment** — this is the main difference from the devportal family.
-- Input: `aiworkspace.ReadJSONFile(filePath)` for `--file` JSON artifacts.
+- Client verbs: `client.Get(path)`, `client.PostJSON(path, []byte)`, `client.PutJSON(path, []byte)`, `client.Delete(path)`, and `client.Exists(path)` — the create-or-update probe (2xx → exists, 404 → absent).
+- **Paths**: constants `AIWorkspace<Resource>Path` in `cli/src/utils/constants.go` (carry the `/api/v0.9/` prefix), wrapped by helpers in `cli/src/internal/aiworkspace/helpers.go`:
+  - collection: `ProviderPath()` / `ProxyPath()` / `MCPProxyPath()` — the organization is resolved from the token, so it is **not** in the path or query.
+  - single resource: `ProviderByIDPath(id)` / `ProxyByIDPath(id)` / `MCPProxyByIDPath(id)` — the id is `metadata.name`.
+  - list: `ProviderListPath(aiworkspace.ListQuery{Limit, Offset})`; proxies/MCP are project-scoped — `ProxyListPath(projectID, q)` / `MCPProxyListPath(projectID, q)` add `?projectId=`, the one scope carried as a query parameter (never a path segment).
 - Auth is handled by the client from workspace config or env vars (`WSO2AP_AIWORKSPACE_USERNAME`/`_PASSWORD`/`_TOKEN`/`_API_KEY`, header `x-wso2-api-key`).
-- Standard flags: `--org` (`FlagOrgID`), `--file` (`FlagFile`), `--display-name` (`FlagName`), `--platform` (`FlagPlatform`), `--insecure` (`FlagInsecure`).
+- Flags: `build`/`apply` take `--file` (project **directory**, not a payload file), `--project-id` (required for the `LlmProxy` and `Mcp` kinds), `--env-file` (resolves `ENV_CLI_*` placeholders), `--display-name`, `--platform`, `--output`, `--insecure`. Read verbs (`get`/`list`/`delete`) take `--id` / `--project-id` / `--limit` / `--offset` as applicable, plus `--display-name`, `--platform`, `--insecure`.
 
-### Template — ai-workspace push (create-or-update from `--file`)
+### Template — ai-workspace apply (create-or-update from an API project)
 
-Copy the closest sibling — `cli/src/cmd/aiws/llmprovider/push.go` (create/update), `get.go`, `list.go`, `delete.go`, `edit.go`. The shape:
+`apply` validates the project, builds the payload in memory (folding in `definition.yaml`), selects the endpoint from the artifact **kind** (`LlmProvider`/`LlmProxy`/`Mcp`), then probes existence by `metadata.name` and PUTs an update or POSTs a create. Copy the closest sibling — `cli/src/cmd/aiworkspace/apply.go` (create-or-update) and `cli/src/cmd/aiworkspace/build.go` (validate only); for read verbs copy `cli/src/cmd/aiworkspace/llmprovider/get.go`, `list.go`, `delete.go`. The create-or-update shape:
 
 ```go
-func runPushCommand() error {
-	orgID := strings.TrimSpace(pushOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-	payload, err := aiworkspace.ReadJSONFile(pushFilePath)
+func applyAIWorkspaceArtifact(client *aiworkspace.Client, artifact *aiWorkspaceArtifact, body []byte) (*http.Response, string, error) {
+	updatePath := aiWorkspaceUpdatePath(artifact.BaseKind, artifact.ResourceName) // <resource>ByIDPath(metadata.name)
+	exists, err := client.Exists(updatePath)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+	if exists {
+		resp, err := client.PutJSON(updatePath, body) // update existing
+		return resp, "updated", err
 	}
-	aiWorkspace, resolvedPlatform, err := aiworkspace.ResolveAIWorkspace(cfg, pushName, pushPlatform)
-	if err != nil {
-		return err
-	}
-	client := aiworkspace.NewClientWithOptions(aiWorkspace, pushInsecure)
-	resp, err := client.PostJSON(aiworkspace.ProviderPath(orgID), payload) // PutJSON(ProviderResourcePath(orgID,id)) for update
-	if err != nil {
-		return err
-	}
-	// status check + print, matching the sibling command
-	_ = resp
-	_ = resolvedPlatform
-	return nil
+	resp, err := client.PostJSON(aiWorkspaceCreatePath(artifact.BaseKind), body) // create new
+	return resp, "applied", err
 }
 ```
 
-Register new commands/groups the same way: group `root.go` `AddCommand`, then `cli/src/cmd/aiws/root.go`.
+Register new commands/groups the same way: group `root.go` `AddCommand`, then `cli/src/cmd/aiworkspace/root.go`.
 
 ## 4. Resource-group `root.go` template
 

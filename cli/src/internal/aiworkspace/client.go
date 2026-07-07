@@ -141,6 +141,9 @@ func (c *Client) sendNoBody(method, path string) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
+	// Non-2xx: the caller never receives the response, so close the body here to
+	// avoid leaking it (formatHTTPError reads it before the deferred close runs).
+	defer resp.Body.Close()
 	return nil, c.formatHTTPError(fmt.Sprintf("%s %s", method, path), resp)
 }
 
@@ -153,6 +156,9 @@ func (c *Client) sendJSON(method, path string, body []byte) (*http.Response, err
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
+	// Non-2xx: the caller never receives the response, so close the body here to
+	// avoid leaking it (formatHTTPError reads it before the deferred close runs).
+	defer resp.Body.Close()
 	return nil, c.formatHTTPError(fmt.Sprintf("%s %s", method, path), resp)
 }
 

@@ -1,6 +1,6 @@
 ---
 name: sync-cli-with-openapi
-description: Synchronize the `ap` CLI (cli/) with a REST API OpenAPI spec after the spec changes. Use when someone edits platform-api/src/resources/openapi.yaml (consumed by the `ap ai-ws` family via its LLM/MCP endpoints), portals/developer-portal/docs/devportal-openapi-spec-v1.yaml (the `ap devportal` family), or gateway/gateway-controller/api/management-openapi.yaml (the `ap gateway` family) and the matching CLI commands need updating — a changed request/response/parameter on an endpoint an existing command calls, OR a newly added endpoint that needs a brand-new command. Trigger on "update the CLI for this spec change", "the spec changed, sync the CLI commands", "add a CLI command for this new endpoint", or when naming this skill directly. Keeps commands, path constants/helpers, command registration, docs, and tests in lockstep with the spec.
+description: Synchronize the `ap` CLI (cli/) with a REST API OpenAPI spec after the spec changes. Use when someone edits platform-api/src/resources/openapi.yaml (consumed by the `ap ai-workspace` family via its LLM/MCP endpoints), portals/developer-portal/docs/devportal-openapi-spec-v1.yaml (the `ap devportal` family), or gateway/gateway-controller/api/management-openapi.yaml (the `ap gateway` family) and the matching CLI commands need updating — a changed request/response/parameter on an endpoint an existing command calls, OR a newly added endpoint that needs a brand-new command. Trigger on "update the CLI for this spec change", "the spec changed, sync the CLI commands", "add a CLI command for this new endpoint", or when naming this skill directly. Keeps commands, path constants/helpers, command registration, docs, and tests in lockstep with the spec.
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob
 ---
 
@@ -33,7 +33,7 @@ Use when you want CLI coverage for *specific* endpoints — regardless of what t
 
 Trigger prompts:
 - *"Add `ap` commands for `POST /devportal/v1/webhook-subscribers` and `GET /devportal/v1/webhook-subscribers/{subscriberId}`."*
-- *"From platform-api/openapi.yaml, only wire the `llm-provider-templates` endpoints (list, get, copy) into the `ai-ws` CLI."*
+- *"From platform-api/openapi.yaml, only wire the `llm-provider-templates` endpoints (list, get, copy) into the `ai-workspace` CLI."*
 
 The skill still reads each named operation's real schema from the spec so flags/payloads/validation are correct — it just skips the diff-classification breadth.
 
@@ -47,9 +47,9 @@ Three specs feed the CLI. Each is consumed by a distinct command family with its
 |---|---|---|---|
 | `gateway/gateway-controller/api/management-openapi.yaml` | `ap gateway ...` | `cli/src/cmd/gateway/` | `internal/gateway` |
 | `portals/developer-portal/docs/devportal-openapi-spec-v1.yaml` | `ap devportal ...` | `cli/src/cmd/devportal/` | `internal/devportal` |
-| `platform-api/src/resources/openapi.yaml` | `ap ai-ws ...` (partial — see note) | `cli/src/cmd/aiws/` | `internal/aiworkspace` |
+| `platform-api/src/resources/openapi.yaml` | `ap ai-workspace ...` (partial — see note) | `cli/src/cmd/aiworkspace/` | `internal/aiworkspace` |
 
-**Note on `platform-api/src/resources/openapi.yaml`:** the `ap ai-ws` (AI workspace) family consumes this spec, but **only its LLM/MCP subset** — `/llm-providers`, `/llm-proxies`, `/mcp-proxies` (and the `llm-provider-templates` endpoints). The CLI reaches them under the `/api-proxy/api/v0.9/` prefix via path constants in `cli/src/utils/constants.go` (e.g. `AIWorkspaceLLMProvidersPath = "/api-proxy/api/v0.9/llm-providers"`), so the spec path is *unversioned* (`/llm-providers`) but the CLI call is *versioned* — match on the resource segment, not the whole path. The spec's many other resources (`/organizations`, `/projects`, `/rest-apis`, `/gateways`, `/applications`, `/subscription-plans`, `/subscriptions`, …) have **no `ap` consumer today** — the `ap gateway` commands look similar but actually track the separate *gateway management* spec. So for a platform-api change: if it touches an LLM/MCP endpoint, sync the `ai-ws` family; otherwise discovery (Step 2) will find no consumer — say so and ask the user whether they want a new command family, rather than inventing edits.
+**Note on `platform-api/src/resources/openapi.yaml`:** the `ap ai-workspace` (AI workspace) family consumes this spec, but **only its LLM/MCP subset** — `/llm-providers`, `/llm-proxies`, `/mcp-proxies` (and the `llm-provider-templates` endpoints). The CLI reaches them under the `/api-proxy/api/v0.9/` prefix via path constants in `cli/src/utils/constants.go` (e.g. `AIWorkspaceLLMProvidersPath = "/api-proxy/api/v0.9/llm-providers"`), so the spec path is *unversioned* (`/llm-providers`) but the CLI call is *versioned* — match on the resource segment, not the whole path. The spec's many other resources (`/organizations`, `/projects`, `/rest-apis`, `/gateways`, `/applications`, `/subscription-plans`, `/subscriptions`, …) have **no `ap` consumer today** — the `ap gateway` commands look similar but actually track the separate *gateway management* spec. So for a platform-api change: if it touches an LLM/MCP endpoint, sync the `ai-workspace` family; otherwise discovery (Step 2) will find no consumer — say so and ask the user whether they want a new command family, rather than inventing edits.
 
 Full anatomy of a command, the exact helpers per family, and copy-ready templates live in **`references/cli-command-anatomy.md`**. Read that file before writing or editing any command — do not work from memory.
 
@@ -94,7 +94,7 @@ For each operation, find the call site. The path segment is the search key. Matc
 - **AI-workspace family** — paths are constants in `cli/src/utils/constants.go` (`AIWorkspaceLLMProvidersPath` etc., under `/api-proxy/api/v0.9/`), wrapped by helpers in `cli/src/internal/aiworkspace/helpers.go` (`ProviderPath(orgID)`, `ProviderResourcePath(orgID,id)`, `ProviderListPath(orgID,q)`, and the `Proxy*`/`MCPProxy*` equivalents). Org/project scoping is a **query parameter** (`?organizationId=`/`?projectId=`), not a path segment. Match on the resource segment, since the spec path is unversioned:
   ```bash
   grep -rn "llm-providers\|llm-proxies\|mcp-proxies" cli/src/utils/constants.go
-  grep -rn "AIWorkspaceLLMProvidersPath\|ProviderPath\|ProviderResourcePath" cli/src/cmd/aiws/ cli/src/internal/aiworkspace/
+  grep -rn "AIWorkspaceLLMProvidersPath\|ProviderPath\|ProviderResourcePath" cli/src/cmd/aiworkspace/ cli/src/internal/aiworkspace/
   ```
 
 Outcomes:
@@ -148,7 +148,7 @@ Fix compile/test failures. Then report: which operations were ADDED/MODIFIED/REM
 ## Guardrails
 
 - **Never invent an endpoint.** Every path/verb/parameter a command uses must exist in the spec diff or the current spec. If the spec is ambiguous, read the operation's schema in the spec file rather than guessing.
-- **Match the family's conventions exactly** — the gateway, devportal, and ai-ws families differ in client construction, path handling (constants vs `OrgScopedPath` vs query-param scoping), verb vocabulary (`create` vs `push`), auth flags, and error wrapping. Copy the closest existing sibling command; don't blend patterns across families.
+- **Match the family's conventions exactly** — the gateway, devportal, and ai-workspace families differ in client construction, path handling (constants vs `OrgScopedPath` vs query-param scoping), verb vocabulary (`create` vs `push`), auth flags, and error wrapping. Copy the closest existing sibling command; don't blend patterns across families.
 - **Treat CLI removals/renames as breaking.** Confirm before removing or renaming a command, flag, or its short form.
 - **Keep the license header** — every Go file starts with the Apache-2.0 WSO2 header block (copy it from any sibling file).
 - Prefer editing a sibling-derived copy over authoring from scratch; the templates in the reference are a fallback, the real source of truth is the existing commands in the same group.

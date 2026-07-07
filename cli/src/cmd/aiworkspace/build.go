@@ -620,12 +620,17 @@ func mapPolicy(policy runtimeProviderPolicy) llmPolicy {
 // upstream, policies) and definition.yaml (capabilities). projectId is left out
 // here and injected at publish time.
 func buildMCPProxyPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, definition mcpDefinition) mcpProxyPayload {
+	description := strings.TrimSpace(runtime.Spec.Description)
+	if description == "" {
+		description = defaultProxyDescription
+	}
+
 	payload := mcpProxyPayload{
 		ID:             name,
 		DisplayName:    strings.TrimSpace(metadata.Spec.DisplayName),
 		Version:        strings.TrimSpace(metadata.Spec.Version),
 		Context:        strings.TrimSpace(runtime.Spec.Context),
-		Description:    "",
+		Description:    description,
 		MCPSpecVersion: strings.TrimSpace(runtime.Spec.SpecVersion),
 		Capabilities: &mcpCapabilities{
 			Prompts:   definition.Prompts,

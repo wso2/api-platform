@@ -1,12 +1,12 @@
 # AI-Workspace CLI Reference
 
-This guide covers the AI-Workspace commands currently implemented under `cli/src/cmd/aiws`.
+This guide covers the AI-Workspace commands currently implemented under `cli/src/cmd/aiworkspace`.
 
 Available command group:
 
 - `ap ai-workspace`
 
-The `add`, `list`, `remove`, `use`, and `current` commands manage AI-Workspace **server connections** stored in the CLI config file (the same per-platform config used by `ap gateway` and `ap devportal`). The `build`, `apply`, and `edit` commands are different: they work inside an **API project**. `build` **validates** the project's artifact; `apply`/`edit` **generate** the creation payload from the project's artifacts and create/update the artifact on the server (the endpoint is chosen by the artifact kind).
+The `add`, `list`, `remove`, `use`, and `current` commands manage AI-Workspace **server connections** stored in the CLI config file (the same per-platform config used by `ap gateway` and `ap devportal`). The `build` and `apply` commands are different: they work inside an **API project**. `build` **validates** the project's artifact; `apply` **generates** the payload from the project's artifacts and **creates or updates** the artifact on the server (the endpoint is chosen by the artifact kind, and create-vs-update is decided from `metadata.name`).
 
 ## Prerequisites
 
@@ -170,7 +170,7 @@ ai-workspace:
     definition: ./definition.yaml   # OpenAPI spec, required for all kinds
 ```
 
-Validation (the same checks `apply` and `edit` run before sending):
+Validation (the same checks `apply` runs before sending):
 
 - Resolves `metadata`, `runtime`, and `definition` relative to the entry's `portalRoot` (defaults: `./metadata.yaml`, `./runtime.yaml`, `./definition.yaml`; `portalRoot` defaults to `.`, the project root).
 - Requires `metadata.yaml` and `runtime.yaml` to exist.
@@ -183,7 +183,7 @@ All resolved paths are constrained to the project directory; a path that escapes
 
 #### Associating gateways (`metadata.yaml`)
 
-Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in an `associatedGateways` section **under `spec`** in `metadata.yaml`. This applies to all artifact kinds (`LlmProxyMetadata`, `LlmProviderMetadata`, `McpMetadata`). Each entry is keyed by the gateway `id`. `apply`/`edit` extract this list from `spec.associatedGateways` and copy it into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
+Optionally list the gateways the artifact can be deployed to, with per-gateway configuration overrides, in an `associatedGateways` section **under `spec`** in `metadata.yaml`. This applies to all artifact kinds (`LlmProxyMetadata`, `LlmProviderMetadata`, `McpMetadata`). Each entry is keyed by the gateway `id`. `apply` extracts this list from `spec.associatedGateways` and copies it into the generated payload verbatim (entries without an `id` are dropped; the field is omitted entirely when absent):
 
 ```yaml
 # metadata.yaml
@@ -232,7 +232,7 @@ ap ai-workspace apply --env-file ./values.env
 
 Notes:
 
-- Create vs. update is decided automatically from `metadata.name` — there is no separate `edit` command. Re-running `apply` after a change updates the existing artifact in place.
+- Create vs. update is decided automatically from `metadata.name`: the first `apply` creates the artifact, and re-running `apply` after a change updates it in place.
 - `-f` is the **project directory** (defaults to the current directory), not a payload file — the payload is generated in-memory and never written to disk.
 - `--project-id` is **required** for the `LlmProxy` and `Mcp` kinds (they are project-scoped) and is injected into the payload; providers are not project-scoped and ignore it.
 - The organization is derived from the auth token, so there is **no `--org` flag**. The AI workspace connection and credentials resolve like the other commands (`--display-name`/`--platform` or the active workspace; see [Authentication](#authentication)).
@@ -282,7 +282,7 @@ The payload shape is selected by kind.
 | `readOnly` | always `false` |
 | `openapi` | content of `definition.yaml` (**required**) |
 | `associatedGateways[]` (`id`, `configurations`) | `metadata.yaml` → `spec.associatedGateways` (omitted when absent) |
-| `projectId` | intentionally omitted (injected by `apply`/`edit` via `--project-id`) |
+| `projectId` | intentionally omitted (injected by `apply` via `--project-id`) |
 
 #### `LlmProvider`
 
