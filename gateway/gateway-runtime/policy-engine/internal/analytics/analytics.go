@@ -23,7 +23,6 @@ import (
 	"log/slog"
 	"maps"
 	"strconv"
-	"sync"
 	"time"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
@@ -95,10 +94,6 @@ type Analytics struct {
 	cfg *config.Config
 	// publishers represents the publishers.
 	publishers []analytics_publisher.Publisher
-	// directiveCache caches parsed TrafficLogDirectives keyed by raw JSON string.
-	// The directive is static per API deployment, so this eliminates per-request
-	// allocations after the first parse.
-	directiveCache sync.Map
 }
 
 // NewAnalytics creates a new instance of Analytics. Publishers are assembled from
@@ -539,21 +534,15 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	return event
 }
 
-// parseTrafficLogDirective returns the parsed TrafficLogDirective for the given
-// raw JSON string, using a cache to avoid re-parsing the same static per-API
-// directive on every request. Two concurrent first-parses of the same string are
-// benign — the winner's value is stored and both callers get an equivalent result.
+// parseTrafficLogDirective parses the raw traffic_log directive JSON for the
+// current request.
 func (c *Analytics) parseTrafficLogDirective(raw string) *dto.TrafficLogDirective {
-	if cached, ok := c.directiveCache.Load(raw); ok {
-		return cached.(*dto.TrafficLogDirective)
-	}
 	dir := &dto.TrafficLogDirective{}
 	if raw != "" {
 		if err := json.Unmarshal([]byte(raw), dir); err != nil {
 			slog.Warn("Failed to parse traffic_log directive; opting in with defaults", "error", err)
 		}
 	}
-	c.directiveCache.Store(raw, dir)
 	return dir
 }
 

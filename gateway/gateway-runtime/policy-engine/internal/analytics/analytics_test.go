@@ -456,20 +456,6 @@ func TestPrepareAnalyticEvent_MalformedTrafficLogMarker(t *testing.T) {
 	assert.Nil(t, event.TrafficLog.Response)
 }
 
-func TestPrepareAnalyticEvent_TrafficLogDirectiveCached(t *testing.T) {
-	cfg := &config.Config{}
-	a := NewAnalytics(cfg)
-	raw := `{"request":{"payload":false,"headers":true}}`
-	logEntry := createLogEntryWithMetadata(map[string]string{TrafficLogMetadataKey: raw})
-
-	event1 := a.prepareAnalyticEvent(logEntry)
-	event2 := a.prepareAnalyticEvent(logEntry)
-
-	require.NotNil(t, event1.TrafficLog)
-	// Same pointer — second call must return the cached directive, not a new allocation.
-	assert.Same(t, event1.TrafficLog, event2.TrafficLog)
-}
-
 func TestPrepareAnalyticEvent_WithAnonymousApp(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)

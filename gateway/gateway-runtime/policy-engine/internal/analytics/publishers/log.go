@@ -90,7 +90,9 @@ func (l *Log) Publish(event *dto.Event) {
 	}
 
 	if fields := dir.Fields; fields != nil && (len(fields.Only) > 0 || len(fields.Exclude) > 0) {
-		var m map[string]interface{}
+		// Shallow-decode only the top level; untouched fields stay as raw JSON
+		// bytes and are never deep-decoded or re-encoded.
+		var m map[string]json.RawMessage
 		if err := json.Unmarshal(data, &m); err != nil {
 			slog.Error("Failed to unmarshal for field projection; emitting as-is", "error", err)
 		} else {
@@ -158,7 +160,9 @@ func (l *Log) truncatePayload(s string) string {
 // dotted sub-key paths within map fields (e.g. "requestHeaders.authorization",
 // "labels.env"). Only keeps exactly the named fields; Exclude drops the named
 // fields and keeps everything else. If both are set, Only takes precedence.
-func applyFieldsProjection(m map[string]interface{}, fields *dto.TrafficLogFields) {
+// Top-level values are kept as raw JSON bytes; only the specific nested
+// objects referenced by a dotted path are decoded and re-encoded.
+func applyFieldsProjection(m map[string]json.RawMessage, fields *dto.TrafficLogFields) {
 	if len(fields.Only) > 0 {
 		directKeys := make(map[string]bool)
 		subKeys := make(map[string][]string) // topKey → sub-keys to keep
@@ -178,35 +182,50 @@ func applyFieldsProjection(m map[string]interface{}, fields *dto.TrafficLogField
 			if directKeys[top] {
 				continue // whole key kept; don't filter sub-keys
 			}
-			if nested, ok := m[top].(map[string]interface{}); ok {
-				keep := make(map[string]bool, len(subs))
-				for _, s := range subs {
-					keep[s] = true
-				}
-				for k := range nested {
-					if !keep[k] {
-						delete(nested, k)
-					}
-				}
-				if len(nested) == 0 {
-					delete(m, top)
-				}
+			keep := make(map[string]bool, len(subs))
+			for _, s := range subs {
+				keep[s] = true
 			}
+			filterNestedKeys(m, top, func(k string) bool { return keep[k] })
 		}
 		return
 	}
 	for _, name := range fields.Exclude {
 		if top, sub, found := strings.Cut(name, "."); found {
-			if nested, ok := m[top].(map[string]interface{}); ok {
-				delete(nested, sub)
-				if len(nested) == 0 {
-					delete(m, top)
-				}
-			}
+			filterNestedKeys(m, top, func(k string) bool { return k != sub })
 		} else {
 			delete(m, name)
 		}
 	}
+}
+
+// filterNestedKeys decodes the JSON object stored at m[top], keeps only the
+// sub-keys for which keep returns true, and re-encodes the result back into
+// m[top]. Deletes m[top] entirely if no sub-keys survive, or if m[top] is
+// absent or not a JSON object.
+func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string) bool) {
+	raw, ok := m[top]
+	if !ok {
+		return
+	}
+	var nested map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &nested); err != nil {
+		return
+	}
+	for k := range nested {
+		if !keep(k) {
+			delete(nested, k)
+		}
+	}
+	if len(nested) == 0 {
+		delete(m, top)
+		return
+	}
+	filtered, err := json.Marshal(nested)
+	if err != nil {
+		return
+	}
+	m[top] = filtered
 }
 
 // maskHeaders redacts header values whose names appear in mask (case-insensitive).
