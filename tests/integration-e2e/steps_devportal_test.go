@@ -71,7 +71,6 @@ func (w *world) registerDevportalSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^an API key is generated in the developer portal$`, w.generateKeyInDevportal)
 	// The invocation assertions are shared with the platform-api-driven scenario.
 	sc.Step(`^invoking the secured API through the gateway with the developer portal credentials returns 200$`, w.invokeWithCredentialsSucceeds)
-	sc.Step(`^invoking with the new subscription token returns 200$`, w.invokeWithCredentialsSucceeds)
 
 	// Credential-lifecycle steps (revoke / expiry / plan / pause / delete / token regen).
 	w.registerDevportalLifecycleSteps(sc)

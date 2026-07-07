@@ -64,9 +64,14 @@ func (w *world) registerDevportalLifecycleSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the API key is expired in the developer portal$`, w.expireKey)
 	sc.Step(`^invoking with the expired API key is rejected$`, w.invokeExpiredKeyRejected)
 	sc.Step(`^the API key expiry is restored in the developer portal$`, w.restoreKeyExpiry)
-	sc.Step(`^the subscription plan is changed in the developer portal$`, w.changeSubPlan)
-	sc.Step(`^platform-api reports the new subscription plan$`, w.verifySubPlan)
+	sc.Step(`^the applied subscription plan of the API is switched in the developer portal$`, w.changeSubPlan)
+	sc.Step(`^platform-api receives the new subscription plan update of the API$`, w.verifySubPlan)
+	// The token-regeneration triple: the current token works, then after regen the new
+	// token works and the old one is rejected. The two 200-checks reuse the shared
+	// invokeWithCredentialsSucceeds (invokes with the current w.apiKey + w.subToken).
+	sc.Step(`^invoking with the current subscription token returns 200$`, w.invokeWithCredentialsSucceeds)
 	sc.Step(`^the subscription token is regenerated in the developer portal$`, w.regenerateSubToken)
+	sc.Step(`^invoking with the new subscription token returns 200$`, w.invokeWithCredentialsSucceeds)
 	sc.Step(`^invoking with the old subscription token is rejected$`, w.invokeOldTokenRejected)
 	sc.Step(`^the subscription is paused in the developer portal$`, w.pauseSubscription)
 	sc.Step(`^the subscription is resumed in the developer portal$`, w.resumeSubscription)

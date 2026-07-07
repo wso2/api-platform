@@ -46,9 +46,10 @@ Feature: Credentials issued in the developer portal authorize gateway invocation
     Then invoking the secured API through the gateway with the developer portal credentials returns 200
     # --- Subscription lifecycle (the API key stays valid throughout, so a rejection = 403 isolates the subscription) ---
     # Change the subscription plan, verify from the platform-api side.
-    When the subscription plan is changed in the developer portal
-    Then platform-api reports the new subscription plan
-    # Regenerate the subscription token; the new token works and the old one is rejected.
+    When the applied subscription plan of the API is switched in the developer portal
+    Then platform-api receives the new subscription plan update of the API
+    # Regenerate the subscription token; the current token works, then the new token works and the old one is rejected.
+    Then invoking with the current subscription token returns 200
     When the subscription token is regenerated in the developer portal
     Then invoking with the new subscription token returns 200
     And invoking with the old subscription token is rejected
