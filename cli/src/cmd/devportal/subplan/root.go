@@ -22,11 +22,14 @@ import "github.com/spf13/cobra"
 
 const (
 	SubPlanCmdLiteral = "sub-plan"
-	SubPlanCmdExample = `# Publish a subscription plan from a YAML CR file
-ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1
+	SubPlanCmdExample = `# List subscription plans
+ap devportal sub-plan list
 
-# Publish using a specific devportal
-ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1 --display-name my-portal --platform eu`
+# Get a subscription plan by policy ID
+ap devportal sub-plan get --policy-id gold
+
+# Create or update subscription plan(s) with:
+#   ap devportal apply -f sub_plan.yaml`
 )
 
 // SubPlanCmd represents the DevPortal subscription plan command group.

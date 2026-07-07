@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,23 +32,23 @@ import (
 	"github.com/wso2/api-platform/cli/internal/config"
 )
 
-// APIVersion is the Developer Portal REST API version segment used in all
-// organization-scoped resource paths. Bump this in one place when the API
-// version changes (for example "v1" -> "v2").
-const APIVersion = "v1"
+// APIVersion is the Developer Portal REST API version segment used in every
+// resource path. Bump this in one place when the API version changes.
+const APIVersion = "v0.9"
 
-// OrgScopedPath builds an organization-scoped Developer Portal resource path of
-// the form /o/{orgId}/devportal/{version}/{resource}. The orgID is path-escaped
-// here, so callers pass it raw. The resource is appended as-is, so callers
-// escape any path segments they interpolate and may include a trailing query
-// string (for example "apis/"+url.PathEscape(apiID) or "api-keys?apiId=x").
+// ResourcePath builds a Developer Portal resource path of the form
+// /api/{version}/{resource}. Every devportal endpoint — including the
+// organization lifecycle endpoints (organizations, organizations/{orgId}) — is
+// served under this /api/{version} prefix.
 //
-// Only organization-management endpoints (under /organizations) live outside
-// this prefix; every other devportal endpoint should be built through here so
-// the /o/{orgId}/devportal/{version} prefix is defined in a single place.
-func OrgScopedPath(orgID, resource string) string {
-	return fmt.Sprintf("/o/%s/devportal/%s/%s",
-		url.PathEscape(orgID), APIVersion, strings.TrimPrefix(resource, "/"))
+// The organization that scopes a request is resolved server-side from the
+// caller's credentials, so it is no longer part of the path (only the
+// organization's own id remains, as the {orgId} segment of organizations/{orgId}).
+// The resource is appended as-is, so callers escape any path segments they
+// interpolate (for example "apis/"+url.PathEscape(apiID)) and may include a
+// trailing query string (for example "api-keys?apiId=x").
+func ResourcePath(resource string) string {
+	return fmt.Sprintf("/api/%s/%s", APIVersion, strings.TrimPrefix(resource, "/"))
 }
 
 // ResolveDevPortal resolves the DevPortal to use from either explicit flags

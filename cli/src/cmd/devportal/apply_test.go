@@ -31,14 +31,12 @@ func TestResolveApplyTarget(t *testing.T) {
 	cases := []struct {
 		kind           string
 		wantField      string
-		wantOrgScoped  bool
 		wantSupportsUp bool
 		wantEndpoint   string
 	}{
-		{kindOrganization, "organization", false, true, "/organizations"},
-		{kindSubscriptionPolicy, "subscriptionPolicy", true, false, internaldevportal.OrgScopedPath("org-1", "subscription-policies")},
-		{kindSubscriptionPolicyList, "subscriptionPolicy", true, false, internaldevportal.OrgScopedPath("org-1", "subscription-policies")},
-		{kindRestAPI, "artifact", true, true, internaldevportal.OrgScopedPath("org-1", "apis")},
+		{kindSubscriptionPolicy, "subscriptionPolicy", false, internaldevportal.ResourcePath("subscription-plans")},
+		{kindSubscriptionPolicyList, "subscriptionPolicy", false, internaldevportal.ResourcePath("subscription-plans")},
+		{kindRestAPI, "artifact", true, internaldevportal.ResourcePath("apis")},
 	}
 	for _, tc := range cases {
 		target, err := resolveApplyTarget(tc.kind)
@@ -48,14 +46,11 @@ func TestResolveApplyTarget(t *testing.T) {
 		if target.multipartField != tc.wantField {
 			t.Errorf("%s: field = %q, want %q", tc.kind, target.multipartField, tc.wantField)
 		}
-		if target.orgScoped != tc.wantOrgScoped {
-			t.Errorf("%s: orgScoped = %v, want %v", tc.kind, target.orgScoped, tc.wantOrgScoped)
-		}
 		if target.supportsUpdate != tc.wantSupportsUp {
 			t.Errorf("%s: supportsUpdate = %v, want %v", tc.kind, target.supportsUpdate, tc.wantSupportsUp)
 		}
-		if got := target.collection("org-1"); got != tc.wantEndpoint {
-			t.Errorf("%s: collection = %q, want %q", tc.kind, got, tc.wantEndpoint)
+		if target.collection != tc.wantEndpoint {
+			t.Errorf("%s: collection = %q, want %q", tc.kind, target.collection, tc.wantEndpoint)
 		}
 	}
 }
@@ -74,7 +69,6 @@ func TestDetectApplyResource_YAMLCRKinds(t *testing.T) {
 		wantKind   string
 		wantHandle string
 	}{
-		{"org.yaml", "kind: Organization\nmetadata:\n  name: acme\n", kindOrganization, "acme"},
 		{"plan.yaml", "kind: SubscriptionPolicy\nmetadata:\n  name: Gold\n", kindSubscriptionPolicy, "Gold"},
 		{"plans.yaml", "kind: SubscriptionPolicyList\nitems:\n  - metadata:\n      name: Gold\n", kindSubscriptionPolicyList, ""},
 	}

@@ -215,10 +215,10 @@ This bundles `api.yaml`, the API definition, docs, and content into `build/devpo
 ### 6. Publish the API to the DevPortal
 
 ```shell
-ap devportal apply -f build/devportal.zip --org <org-id>
+ap devportal apply -f build/devportal.zip
 ```
 
-This uploads the built artifact to the DevPortal organization; `apply` reads the kind (`RestApi`) from the zip's `devportal.yaml` and routes it accordingly. See [`ap devportal apply`](../devportal/README.md#ap-devportal-apply).
+This uploads the built artifact to the DevPortal; `apply` reads the kind (`RestApi`) from the zip's `devportal.yaml` and routes it accordingly. The target organization is resolved from the DevPortal credentials (no `--org` flag). See [`ap devportal apply`](../devportal/README.md#ap-devportal-apply).
 
 > **Tip:** Before steps 3–6, make sure you have selected the target gateway and DevPortal (`ap gateway use`, `ap devportal use`). The CLI uses the active gateway/DevPortal of the active platform unless you pass `--gateway` / `--display-name` and `--platform`.
 

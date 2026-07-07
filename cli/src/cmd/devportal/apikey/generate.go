@@ -35,10 +35,10 @@ import (
 const (
 	GenerateCmdLiteral = "generate"
 	GenerateCmdExample = `# Generate an API key
-ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key
+ap devportal api-key generate --api-id api_1 --name weather_prod_key
 
 # Generate an API key with an expiry
-ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key --expires-at 2026-12-31T23:59:59Z
+ap devportal api-key generate --api-id api_1 --name weather_prod_key --expires-at 2026-12-31T23:59:59Z
 
 # Generate an API key interactively (prompts for any missing value)
 ap devportal api-key generate`
@@ -50,7 +50,6 @@ ap devportal api-key generate`
 var keyNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,127}$`)
 
 var (
-	generateOrgID         string
 	generateAPIID         string
 	generateName          string
 	generateExpiresAt     string
@@ -84,7 +83,6 @@ var generateCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(generateCmd, utils.FlagOrgID, &generateOrgID, "", "Organization ID")
 	utils.AddStringFlag(generateCmd, utils.FlagAPIID, &generateAPIID, "", "Developer Portal API ID")
 	utils.AddStringFlag(generateCmd, utils.FlagPropertyName, &generateName, "", "API key name (lowercase letters, numbers, '_' and '-'; matches ^[a-z0-9][a-z0-9_-]{0,127}$)")
 	utils.AddStringFlag(generateCmd, utils.FlagExpiresAt, &generateExpiresAt, "", "Optional expiry: ISO-8601 datetime with timezone (e.g. 2026-12-31T23:59:59Z), epoch seconds, or epoch milliseconds")
@@ -106,11 +104,6 @@ func runGenerateCommand() error {
 		return err
 	}
 
-	orgID := strings.TrimSpace(generateOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required (provide --%s or use interactive mode)", utils.FlagOrgID)
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -122,7 +115,7 @@ func runGenerateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, generateInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "api-keys/generate")
+	path := internaldevportal.ResourcePath("api-keys/generate")
 	resp, err := client.PostJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("generate API key", err, generateInsecure)
@@ -139,11 +132,6 @@ func runGenerateCommand() error {
 // supplied through a flag.
 func promptForGenerateInputs() error {
 	var err error
-	if strings.TrimSpace(generateOrgID) == "" {
-		if generateOrgID, err = utils.PromptInput("Enter organization ID: "); err != nil {
-			return err
-		}
-	}
 	if strings.TrimSpace(generateAPIID) == "" {
 		if generateAPIID, err = utils.PromptInput("Enter Developer Portal API ID: "); err != nil {
 			return err

@@ -35,14 +35,13 @@ import (
 const (
 	EditCmdLiteral = "edit"
 	EditCmdExample = `# Update a platform subscription status
-ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE
+ap devportal subscription edit --sub-id sub_1 --status ACTIVE
 
 # Update using a specific devportal
-ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu`
+ap devportal subscription edit --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu`
 )
 
 var (
-	editOrgID        string
 	editSubscription string
 	editStatus       string
 	editName         string
@@ -64,13 +63,11 @@ var editCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(editCmd, utils.FlagOrgID, &editOrgID, "", "Organization ID")
 	utils.AddStringFlag(editCmd, utils.FlagSubID, &editSubscription, "", "Subscription ID")
 	utils.AddStringFlag(editCmd, utils.FlagStatus, &editStatus, "", "Subscription status")
 	utils.AddStringFlag(editCmd, utils.FlagName, &editName, "", "DevPortal display name")
 	utils.AddStringFlag(editCmd, utils.FlagPlatform, &editPlatform, "", "Platform name")
 	editCmd.Flags().BoolVar(&editInsecure, utils.FlagInsecure, false, "Skip TLS certificate verification")
-	_ = editCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = editCmd.MarkFlagRequired(utils.FlagSubID)
 	_ = editCmd.MarkFlagRequired(utils.FlagStatus)
 }
@@ -97,7 +94,7 @@ func runEditCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, editInsecure)
-	path := internaldevportal.OrgScopedPath(editOrgID, "subscriptions/"+url.PathEscape(subscriptionID))
+	path := internaldevportal.ResourcePath("subscriptions/" + url.PathEscape(subscriptionID))
 	resp, err := client.PutJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("update platform subscription", err, editInsecure)

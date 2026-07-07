@@ -40,10 +40,10 @@ const (
 ap devportal apply -f org.yaml
 
 # Apply subscription plan(s) from a YAML CR file (kind: SubscriptionPolicy / SubscriptionPolicyList)
-ap devportal apply -f sub_plan.yaml --org org_1
+ap devportal apply -f sub_plan.yaml
 
 # Apply a REST API from a built artifact zip (devportal.yaml -> kind: RestApi)
-ap devportal apply -f build/devportal.zip --org org_1
+ap devportal apply -f build/devportal.zip
 
 # Apply using a specific devportal without relying on the active devportal
 ap devportal apply -f org.yaml --display-name my-portal --platform eu`
@@ -52,7 +52,6 @@ ap devportal apply -f org.yaml --display-name my-portal --platform eu`
 // DevPortal CR kinds that `apply` routes. The kind (read from the YAML CR or from
 // the artifact zip's devportal.yaml) selects the create/update endpoint.
 const (
-	kindOrganization           = "Organization"
 	kindSubscriptionPolicy     = "SubscriptionPolicy"
 	kindSubscriptionPolicyList = "SubscriptionPolicyList"
 	kindRestAPI                = "RestApi"
@@ -60,7 +59,6 @@ const (
 
 var (
 	applyFilePath string
-	applyOrgID    string
 	applyName     string
 	applyPlatform string
 	applyInsecure bool
@@ -73,8 +71,8 @@ var applyCmd = &cobra.Command{
 		"(kind: Organization, SubscriptionPolicy, or SubscriptionPolicyList) or a built REST API artifact " +
 		"zip (whose devportal.yaml declares kind: RestApi). The kind selects the target endpoint, and — for " +
 		"kinds that support it (Organization, RestApi) — apply checks whether the resource already exists and " +
-		"updates it (PUT) or creates it (POST) accordingly. --org is required for org-scoped kinds " +
-		"(RestApi, SubscriptionPolicy/SubscriptionPolicyList).",
+		"updates it (PUT) or creates it (POST) accordingly. The target organization is resolved from the " +
+		"DevPortal credentials.",
 	Example: ApplyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runApplyCommand(); err != nil {
@@ -86,7 +84,6 @@ var applyCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(applyCmd, utils.FlagFile, &applyFilePath, "", "Path to the resource file: a YAML CR file or a REST API .zip artifact")
-	utils.AddStringFlag(applyCmd, utils.FlagOrgID, &applyOrgID, "", "Organization ID (required for RestApi and SubscriptionPolicy kinds)")
 	utils.AddStringFlag(applyCmd, utils.FlagName, &applyName, "", "DevPortal display name")
 	utils.AddStringFlag(applyCmd, utils.FlagPlatform, &applyPlatform, "", "Platform name")
 	applyCmd.Flags().BoolVar(&applyInsecure, "insecure", false, "Skip TLS certificate verification")
@@ -94,19 +91,18 @@ func init() {
 }
 
 // applyTarget describes how a resolved kind maps to its DevPortal endpoint: the
-// multipart field the file is uploaded in, whether the endpoint is
-// organization-scoped (so --org is required), whether the resource supports an
-// existence check + update (create-or-update), and how to build the collection
-// path.
+// multipart field the file is uploaded in, whether the resource supports an
+// existence check + update (create-or-update), and the collection path. The
+// organization is resolved server-side from the credentials, so it is not part
+// of the path.
 type applyTarget struct {
 	multipartField string
-	orgScoped      bool
 	// supportsUpdate is true for resources addressable by handle with a PUT
 	// endpoint (Organization, RestApi): apply probes existence and PUTs an update
 	// or POSTs a create. Subscription plans have no per-plan PUT — their publish
 	// endpoint upserts — so they are always POSTed.
 	supportsUpdate bool
-	collection     func(orgID string) string
+	collection     string
 }
 
 func runApplyCommand() error {
@@ -125,11 +121,6 @@ func runApplyCommand() error {
 		return err
 	}
 
-	orgID := strings.TrimSpace(applyOrgID)
-	if target.orgScoped && orgID == "" {
-		return fmt.Errorf("organization ID is required for kind %q (use --org)", kind)
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -141,7 +132,7 @@ func runApplyCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, applyInsecure)
-	collection := target.collection(orgID)
+	collection := target.collection
 
 	resp, action, err := applyResource(client, target, collection, handle, filePath, kind)
 	if err != nil {
@@ -202,35 +193,24 @@ func resourceExists(client *internaldevportal.Client, endpoint string) (bool, er
 // resolveApplyTarget maps a CR kind to its DevPortal endpoint.
 func resolveApplyTarget(kind string) (applyTarget, error) {
 	switch kind {
-	case kindOrganization:
-		// Organization management lives outside the org-scoped prefix and is
-		// addressable by handle (metadata.name), so it supports create-or-update.
-		return applyTarget{
-			multipartField: "organization",
-			orgScoped:      false,
-			supportsUpdate: true,
-			collection:     func(string) string { return "/organizations" },
-		}, nil
 	case kindSubscriptionPolicy, kindSubscriptionPolicyList:
 		// Subscription plans have no per-plan PUT; the publish endpoint upserts
 		// (and SubscriptionPolicyList is a bulk upload), so always POST.
 		return applyTarget{
 			multipartField: "subscriptionPolicy",
-			orgScoped:      true,
 			supportsUpdate: false,
-			collection:     func(orgID string) string { return internaldevportal.OrgScopedPath(orgID, "subscription-policies") },
+			collection:     internaldevportal.ResourcePath("subscription-plans"),
 		}, nil
 	case kindRestAPI:
 		// APIs are addressable by handle (metadata.name) with a PUT endpoint.
 		return applyTarget{
 			multipartField: "artifact",
-			orgScoped:      true,
 			supportsUpdate: true,
-			collection:     func(orgID string) string { return internaldevportal.OrgScopedPath(orgID, "apis") },
+			collection:     internaldevportal.ResourcePath("apis"),
 		}, nil
 	default:
-		return applyTarget{}, fmt.Errorf("unsupported kind %q (supported: %s, %s, %s, %s)",
-			kind, kindOrganization, kindSubscriptionPolicy, kindSubscriptionPolicyList, kindRestAPI)
+		return applyTarget{}, fmt.Errorf("unsupported kind %q (supported: %s, %s, %s)",
+			kind, kindSubscriptionPolicy, kindSubscriptionPolicyList, kindRestAPI)
 	}
 }
 

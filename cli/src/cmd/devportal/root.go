@@ -22,7 +22,6 @@ import (
 	"github.com/spf13/cobra"
 	devportalapikey "github.com/wso2/api-platform/cli/cmd/devportal/apikey"
 	devportalapplication "github.com/wso2/api-platform/cli/cmd/devportal/application"
-	devportalorg "github.com/wso2/api-platform/cli/cmd/devportal/org"
 	"github.com/wso2/api-platform/cli/cmd/devportal/restapi"
 	devportalsubplan "github.com/wso2/api-platform/cli/cmd/devportal/subplan"
 	devportalsubscription "github.com/wso2/api-platform/cli/cmd/devportal/subscription"
@@ -55,7 +54,6 @@ func init() {
 	DevPortalCmd.AddCommand(buildCmd)
 	DevPortalCmd.AddCommand(genCmd)
 	DevPortalCmd.AddCommand(applyCmd)
-	DevPortalCmd.AddCommand(devportalorg.OrgCmd)
 	DevPortalCmd.AddCommand(devportalapikey.APIKeyCmd)
 	DevPortalCmd.AddCommand(devportalapplication.ApplicationCmd)
 	DevPortalCmd.AddCommand(devportalsubscription.SubscriptionCmd)

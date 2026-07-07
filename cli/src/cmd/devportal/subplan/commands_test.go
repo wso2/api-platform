@@ -39,7 +39,7 @@ func TestRunGetCommand_GetsPlanByPolicyID(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies/plan-1" {
+		if req.URL.Path != "/api/v0.9/subscription-plans/plan-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -49,7 +49,6 @@ func TestRunGetCommand_GetsPlanByPolicyID(t *testing.T) {
 	writeSubPlanConfig(t, server.URL)
 
 	getPolicyID = "plan-1"
-	getOrgID = "org-1"
 	getName = ""
 	getPlatform = ""
 	getInsecure = false
@@ -63,7 +62,6 @@ func TestRunGetCommand_MissingPolicyID(t *testing.T) {
 	testutil.WithTempHome(t)
 
 	getPolicyID = ""
-	getOrgID = "org-1"
 
 	if err := runGetCommand(); err == nil || !strings.Contains(err.Error(), "policy ID is required") {
 		t.Fatalf("expected policy ID validation error, got %v", err)
@@ -77,7 +75,7 @@ func TestRunListCommand_ListsPlans(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies" {
+		if req.URL.Path != "/api/v0.9/subscription-plans" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -86,23 +84,12 @@ func TestRunListCommand_ListsPlans(t *testing.T) {
 
 	writeSubPlanConfig(t, server.URL)
 
-	listOrgID = "org-1"
 	listName = ""
 	listPlatform = ""
 	listInsecure = false
 
 	if err := runListCommand(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunListCommand_MissingOrgID(t *testing.T) {
-	testutil.WithTempHome(t)
-
-	listOrgID = ""
-
-	if err := runListCommand(); err == nil || !strings.Contains(err.Error(), "organization ID is required") {
-		t.Fatalf("expected organization ID validation error, got %v", err)
 	}
 }
 
@@ -113,7 +100,7 @@ func TestRunDeleteCommand_DeletesPlanByPolicyID(t *testing.T) {
 		if req.Method != http.MethodDelete {
 			t.Fatalf("expected DELETE request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies/plan-1" {
+		if req.URL.Path != "/api/v0.9/subscription-plans/plan-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -122,7 +109,6 @@ func TestRunDeleteCommand_DeletesPlanByPolicyID(t *testing.T) {
 	writeSubPlanConfig(t, server.URL)
 
 	deletePolicyID = "plan-1"
-	deleteOrgID = "org-1"
 	deleteName = ""
 	deletePlatform = ""
 	deleteInsecure = false
@@ -136,7 +122,6 @@ func TestRunDeleteCommand_MissingPolicyID(t *testing.T) {
 	testutil.WithTempHome(t)
 
 	deletePolicyID = ""
-	deleteOrgID = "org-1"
 
 	if err := runDeleteCommand(); err == nil || !strings.Contains(err.Error(), "policy ID is required") {
 		t.Fatalf("expected policy ID validation error, got %v", err)

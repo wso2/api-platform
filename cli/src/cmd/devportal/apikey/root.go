@@ -23,19 +23,19 @@ import "github.com/spf13/cobra"
 const (
 	APIKeyCmdLiteral = "api-key"
 	APIKeyCmdExample = `# Generate an API key
-ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key
+ap devportal api-key generate --api-id api_1 --name weather_prod_key
 
 # Generate an API key interactively
 ap devportal api-key generate
 
 # List API keys for an API
-ap devportal api-key get --org org_1 --api-id api_1
+ap devportal api-key get --api-id api_1
 
 # Regenerate an API key
-ap devportal api-key regenerate --org org_1 --api-key-id key_1
+ap devportal api-key regenerate --api-key-id key_1
 
 # Revoke an API key
-ap devportal api-key revoke --org org_1 --api-key-id key_1`
+ap devportal api-key revoke --api-key-id key_1`
 )
 
 // APIKeyCmd represents the DevPortal API key command group.
