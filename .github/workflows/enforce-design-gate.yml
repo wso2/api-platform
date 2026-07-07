@@ -1,10 +1,10 @@
 name: Enforce Design Gate
 
-# Fires when a label is added or removed from an issue.
-# Used to warn when required design labels are missing.
+# "field_added" fires when a project field value is set or updated on an issue,
+# including status column changes on the project board.
 on:
   issues:
-    types: [labeled, unlabeled]
+    types: [field_added]
 
 jobs:
   enforce-design-gate:
@@ -13,37 +13,62 @@ jobs:
       issues: write  # Required to post a comment on the issue.
 
     steps:
-      - name: Warn if design gate labels are incomplete
+      - name: Warn if a feature issue moves to Development without design labels
         uses: actions/github-script@v7
         with:
           script: |
-            const REQUIRED_LABELS = ['Design Done', 'Mail Sent'];
-            const GATE_LABEL      = 'Design Done';   // Only warn when a required label is removed.
+            const FIELD_NAME      = 'Design and Development Status';
+            const TO_STATUS       = 'Development';
+            const GATE_TRIGGER_TYPE = 'feature';    // Only enforce for issues with this label/type.
+            const REQUIRED_LABELS   = ['Design Done', 'Mail Sent'];
 
-            // Only act when a required label is removed.
-            const removedLabel = context.payload.label?.name;
+            const changes = context.payload.changes;
+
+            // Only act when the "Design and Development Status" field is set to "Development".
             if (
-              context.payload.action !== 'unlabeled' ||
-              !REQUIRED_LABELS.includes(removedLabel)
+              !changes?.field_value ||
+              changes.field_value.field_name !== FIELD_NAME ||
+              changes.field_value.value       !== TO_STATUS
             ) {
-              console.log('Not a relevant label change — skipping.');
+              console.log('Not a relevant status change — skipping.');
               return;
             }
 
-            console.log(`Label "${removedLabel}" removed. Posting design gate warning...`);
+            const issue = context.payload.issue;
+            const issueLabels = issue.labels.map(l => l.name);
+
+            // Only enforce for issues that carry the "feature" label.
+            if (!issueLabels.includes(GATE_TRIGGER_TYPE)) {
+              console.log(`Issue #${issue.number} is not a feature issue — skipping gate.`);
+              return;
+            }
+
+            console.log(`Feature issue #${issue.number} moved to "${TO_STATUS}". Checking design gate...`);
+
+            const missingLabels = REQUIRED_LABELS.filter(l => !issueLabels.includes(l));
+
+            if (missingLabels.length === 0) {
+              console.log('Design gate passed — no comment needed.');
+              return;
+            }
+
+            console.log(`Gate failed. Missing: ${missingLabels.join(', ')}. Posting warning...`);
 
             await github.rest.issues.createComment({
               owner:        context.repo.owner,
               repo:         context.repo.repo,
-              issue_number: context.payload.issue.number,
+              issue_number: issue.number,
               body: [
                 '> [!WARNING]',
-                `> **Design gate incomplete.** The \`${removedLabel}\` label was removed from this issue.`,
+                `> **Design gate not met.** This feature issue was moved to **${TO_STATUS}** but the following labels are still missing:`,
                 '>',
-                `> This issue should **not** be moved to the **Development** phase until both of the following labels are present:`,
+                ...REQUIRED_LABELS.map(l => {
+                  const present = issueLabels.includes(l);
+                  return `> - ${present ? '✅' : '❌'} \`${l}\``;
+                }),
                 '>',
-                ...REQUIRED_LABELS.map(l => `> - \`${l}\``),
+                `> Please complete the design phase before progressing to **${TO_STATUS}**.`,
               ].join('\n'),
             });
 
-            console.log(`Warning comment posted on issue #${context.payload.issue.number}.`);
+            console.log(`Warning comment posted on issue #${issue.number}.`);
