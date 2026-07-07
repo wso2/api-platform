@@ -11,7 +11,7 @@ jobs:
     if: github.event.issue != null
     runs-on: ubuntu-latest
     permissions:
-      issues: write  # Required to add labels and create them if missing.
+      issues: write  # Required to add/remove labels.
 
     steps:
       - name: Check checklist item and apply label
@@ -30,40 +30,117 @@ jobs:
             const escapedItem = CHECKLIST_ITEM.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const checkedPattern = /^[\s]*[-*]\s+\[x\]\s+.*\*{0,2}Design Document\*{0,2}.*$/im;
 
-            if (!checkedPattern.test(body)) {
-              console.log('Checklist item is not checked — nothing to do.');
-              return;
-            }
+            if (checkedPattern.test(body)) {
+              console.log('Checklist item is checked. Ensuring label exists...');
 
-            console.log('Checklist item is checked. Ensuring label exists...');
+              // Ensure the "Design Done" label exists in this repository.
+              // If it already exists this call will throw a 422; we catch and ignore that.
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: LABEL_NAME,
+                  color: '0075ca',  // Blue — feel free to change.
+                  description: 'Design document has been created and reviewed.',
+                });
+                console.log(`Label "${LABEL_NAME}" created.`);
+              } catch (err) {
+                if (err.status === 422) {
+                  // Label already exists — that is fine.
+                  console.log(`Label "${LABEL_NAME}" already exists.`);
+                } else {
+                  throw err;
+                }
+              }
 
-            // Ensure the "Design Done" label exists in this repository.
-            // If it already exists this call will throw a 422; we catch and ignore that.
-            try {
-              await github.rest.issues.createLabel({
+              // Add the label to the issue. GitHub ignores duplicates, so this is
+              // idempotent — applying it again will not cause an error.
+              await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                name: LABEL_NAME,
-                color: '0075ca',  // Blue — feel free to change.
-                description: 'Design document has been created and reviewed.',
+                issue_number: context.payload.issue.number,
+                labels: [LABEL_NAME],
               });
-              console.log(`Label "${LABEL_NAME}" created.`);
-            } catch (err) {
-              if (err.status === 422) {
-                // Label already exists — that is fine.
-                console.log(`Label "${LABEL_NAME}" already exists.`);
-              } else {
-                throw err;
+
+              console.log(`Label "${LABEL_NAME}" added to issue #${context.payload.issue.number}.`);
+            } else {
+              console.log('Checklist item is not checked. Removing label if present...');
+
+              // Remove the label from the issue if it exists.
+              // GitHub returns 404 if the label is not on the issue; we catch and ignore that.
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  name: LABEL_NAME,
+                });
+                console.log(`Label "${LABEL_NAME}" removed from issue #${context.payload.issue.number}.`);
+              } catch (err) {
+                if (err.status === 404) {
+                  // Label was not on the issue — nothing to remove.
+                  console.log(`Label "${LABEL_NAME}" was not present on issue #${context.payload.issue.number}.`);
+                } else {
+                  throw err;
+                }
               }
             }
+      - name: Check "Design Mail" checklist item and apply "Mail Sent" label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const LABEL_NAME = 'Mail Sent';
 
-            // Add the label to the issue. GitHub ignores duplicates, so this is
-            // idempotent — applying it again will not cause an error.
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              labels: [LABEL_NAME],
-            });
+            const body = context.payload.issue.body || '';
 
-            console.log(`Label "${LABEL_NAME}" added to issue #${context.payload.issue.number}.`);
+            // Matches a checked GFM checkbox line containing "Design Mail"
+            const checkedPattern = /^[\s]*[-*]\s+\[x\]\s+.*Design Mail.*$/im;
+
+            if (checkedPattern.test(body)) {
+              console.log('"Design Mail" checklist item is checked. Ensuring label exists...');
+
+              // Ensure the "Mail Sent" label exists in this repository.
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: LABEL_NAME,
+                  color: 'e4e669',  // Yellow — feel free to change.
+                  description: 'Design mail has been sent.',
+                });
+                console.log(`Label "${LABEL_NAME}" created.`);
+              } catch (err) {
+                if (err.status === 422) {
+                  console.log(`Label "${LABEL_NAME}" already exists.`);
+                } else {
+                  throw err;
+                }
+              }
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: [LABEL_NAME],
+              });
+
+              console.log(`Label "${LABEL_NAME}" added to issue #${context.payload.issue.number}.`);
+            } else {
+              console.log('"Design Mail" checklist item is not checked. Removing label if present...');
+
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  name: LABEL_NAME,
+                });
+                console.log(`Label "${LABEL_NAME}" removed from issue #${context.payload.issue.number}.`);
+              } catch (err) {
+                if (err.status === 404) {
+                  console.log(`Label "${LABEL_NAME}" was not present on issue #${context.payload.issue.number}.`);
+                } else {
+                  throw err;
+                }
+              }
+            }
