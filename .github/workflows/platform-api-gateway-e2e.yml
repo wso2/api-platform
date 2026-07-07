@@ -53,5 +53,13 @@ jobs:
         working-directory: samples/sample-service
 
       - name: Run combined e2e (${{ matrix.db }})
-        run: E2E_DB=${{ matrix.db }} go test -run TestFeatures -count=1 -v -timeout 25m ./...
+        # The developer-portal scenarios (@devportal / @lifecycle) need the devportal
+        # image, which only platform-api-devportal-e2e.yml builds — exclude them here.
+        # On the postgres stack the suite would otherwise pull them in by default; on
+        # the other databases they are auto-skipped, but setting E2E_TAGS bypasses that
+        # auto-skip, so the postgres-only @multigateway scenario must be excluded too.
+        env:
+          E2E_DB: ${{ matrix.db }}
+          E2E_TAGS: ${{ matrix.db == 'postgres' && '~@devportal' || '~@multigateway && ~@devportal' }}
+        run: go test -run TestFeatures -count=1 -v -timeout 25m ./...
         working-directory: tests/integration-e2e
