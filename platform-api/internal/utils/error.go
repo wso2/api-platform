@@ -40,6 +40,10 @@ type ErrorResponse struct {
 	Message string       `json:"message"`
 	Errors  []FieldError `json:"errors,omitempty"`
 	Details any          `json:"details,omitempty"`
+	// TrackingID correlates a 5xx response with its server-side log line (a
+	// bare UUID, no source markers). Set only for 5xx responses — 4xx
+	// responses already tell the client exactly what was wrong.
+	TrackingID string `json:"trackingId,omitempty"`
 }
 
 // FieldError describes a single field-level validation failure.

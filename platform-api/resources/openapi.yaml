@@ -6573,6 +6573,14 @@ components:
             (e.g. the resources referencing a secret that blocked its
             deletion). Shape varies by `code`; absent when not applicable.
           additionalProperties: true
+        trackingId:
+          type: string
+          format: uuid
+          description: >-
+            Correlation ID for server-side failures. Present only on 5xx
+            responses; quote it when reporting the error so operators can
+            find the corresponding server log entry.
+          example: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
     FieldError:
       title: Field-level validation error
@@ -8446,7 +8454,8 @@ components:
           example:
             status: error
             code: COMMON_INTERNAL_ERROR
-            message: The server encountered an internal error. Please contact the administrator.
+            message: An unexpected error occurred.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
     ServiceUnavailable:
       description: Service Unavailable. The secrets management feature is not configured.
       content:

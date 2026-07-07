@@ -18,11 +18,13 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/middleware"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/go-httpkit/httputil"
@@ -41,28 +43,27 @@ type loginResponse struct {
 
 // AuthLoginHandler issues JWT tokens for locally-configured users (file-based auth mode).
 type AuthLoginHandler struct {
-	cfg *config.Server
+	cfg     *config.Server
+	slogger *slog.Logger
 }
 
 func NewAuthLoginHandler(cfg *config.Server) *AuthLoginHandler {
-	return &AuthLoginHandler{cfg: cfg}
+	return &AuthLoginHandler{cfg: cfg, slogger: slog.Default()}
 }
 
 func (h *AuthLoginHandler) RegisterPublicRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/portal/v0.9/auth/login", h.Login)
+	mux.HandleFunc("POST /api/portal/v0.9/auth/login", middleware.MapErrors(h.slogger, h.Login))
 }
 
-func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	var req loginRequest
 	if err := r.ParseForm(); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(utils.CodeCommonValidationFailed, "username and password are required"))
-		return
+		return apperror.ValidationFailed.New("username and password are required")
 	}
 	req.Username = r.PostForm.Get("username")
 	req.Password = r.PostForm.Get("password")
 	if req.Username == "" || req.Password == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(utils.CodeCommonValidationFailed, "username and password are required"))
-		return
+		return apperror.ValidationFailed.New("username and password are required")
 	}
 
 	fileBasedAuth := &h.cfg.Auth.FileBased
@@ -78,13 +79,11 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// timing-based username enumeration.
 	if matched == nil {
 		_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$notarealhashjustpadding000000000000000000000000000"), []byte(req.Password))
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(utils.CodeCommonUnauthorized, "Invalid or expired credentials."))
-		return
+		return apperror.Unauthorized.New().WithLogMessage("login failed: user not found")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(matched.PasswordHash), []byte(req.Password)); err != nil {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(utils.CodeCommonUnauthorized, "Invalid or expired credentials."))
-		return
+		return apperror.Unauthorized.New().WithLogMessage("login failed: password mismatch")
 	}
 
 	expiry := time.Now().Add(8 * time.Hour)
@@ -103,12 +102,12 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(h.cfg.Auth.JWT.SecretKey))
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(utils.CodeCommonInternalError, "Failed to issue token."))
-		return
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to issue token")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, loginResponse{
 		Token:     signed,
 		ExpiresAt: expiry.Unix(),
 	})
+	return nil
 }

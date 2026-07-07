@@ -24,11 +24,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -45,25 +45,24 @@ func NewSecretHandler(secretService *service.SecretService, identity *service.Id
 
 func (h *SecretHandler) RegisterRoutes(mux *http.ServeMux) {
 	for _, version := range []string{"/api/v0.9", "/api/v1"} {
-		mux.HandleFunc("POST "+version+"/secrets", h.CreateSecret)
-		mux.HandleFunc("GET "+version+"/secrets", h.ListSecrets)
-		mux.HandleFunc("GET "+version+"/secrets/{secretId}", h.GetSecret)
-		mux.HandleFunc("PUT "+version+"/secrets/{secretId}", h.UpdateSecret)
-		mux.HandleFunc("DELETE "+version+"/secrets/{secretId}", h.DeleteSecret)
+		mux.HandleFunc("POST "+version+"/secrets", middleware.MapErrors(h.slogger, h.CreateSecret))
+		mux.HandleFunc("GET "+version+"/secrets", middleware.MapErrors(h.slogger, h.ListSecrets))
+		mux.HandleFunc("GET "+version+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.GetSecret))
+		mux.HandleFunc("PUT "+version+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.UpdateSecret))
+		mux.HandleFunc("DELETE "+version+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.DeleteSecret))
 	}
 }
 
-func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
+func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
-	userID, ok := resolveActor(w, r, h.identity, h.slogger, "create secret")
-	if !ok {
-		return
+	userID, err := resolveActorErr(r, h.identity, "create secret")
+	if err != nil {
+		return err
 	}
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -77,38 +76,29 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		Type:        r.FormValue("type"),
 	}
 	if req.Handle == "" || req.DisplayName == "" || req.Value == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "id, displayName and value are required"))
-		return
+		return apperror.ValidationFailed.New("id, displayName and value are required")
 	}
 
 	resp, err := h.secretService.Create(orgID, userID, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretAlreadyExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeSecretExists, "A secret with this name already exists in this scope"))
-			return
+			return apperror.SecretExists.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrInvalidSecretType) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, err.Error()))
-			return
+			return apperror.ValidationFailed.Wrap(err, err.Error())
 		}
-		h.slogger.Error("failed to create secret", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to create secret"))
-		return
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to create secret")
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, resp)
+	return nil
 }
 
-func (h *SecretHandler) ListSecrets(w http.ResponseWriter, r *http.Request) {
+func (h *SecretHandler) ListSecrets(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	limit := 25
@@ -131,73 +121,59 @@ func (h *SecretHandler) ListSecrets(w http.ResponseWriter, r *http.Request) {
 	if ua := r.URL.Query().Get("updatedAfter"); ua != "" {
 		t, err := time.Parse(time.RFC3339, ua)
 		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "updatedAfter must be an RFC3339 timestamp"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "updatedAfter must be an RFC3339 timestamp")
 		}
 		updatedAfter = &t
 	}
 
 	resp, err := h.secretService.List(orgID, limit, offset, updatedAfter)
 	if err != nil {
-		h.slogger.Error("failed to list secrets", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to list secrets"))
-		return
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to list secrets")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
+func (h *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	handle := r.PathValue("secretId")
 	if handle == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Secret name is required"))
-		return
+		return apperror.ValidationFailed.New("Secret name is required")
 	}
 
 	summary, err := h.secretService.Get(orgID, handle)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeSecretNotFound, "Secret not found"))
-			return
+			return apperror.SecretNotFound.Wrap(err)
 		}
-		h.slogger.Error("failed to get secret", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to get secret"))
-		return
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to get secret")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, summary)
+	return nil
 }
 
-func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
+func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	handle := r.PathValue("secretId")
 	if handle == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Secret name is required"))
-		return
+		return apperror.ValidationFailed.New("Secret name is required")
 	}
 
-	userID, ok := resolveActor(w, r, h.identity, h.slogger, "update secret")
-	if !ok {
-		return
+	userID, err := resolveActorErr(r, h.identity, "update secret")
+	if err != nil {
+		return err
 	}
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -209,53 +185,42 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		Value:       r.FormValue("value"),
 	}
 	if req.Value == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "value is required"))
-		return
+		return apperror.ValidationFailed.New("value is required")
 	}
 
 	resp, err := h.secretService.Update(orgID, handle, userID, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeSecretNotFound, "Secret not found"))
-			return
+			return apperror.SecretNotFound.Wrap(err)
 		}
-		h.slogger.Error("failed to update secret", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to update secret"))
-		return
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to update secret")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
+func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	handle := r.PathValue("secretId")
 	if handle == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Secret name is required"))
-		return
+		return apperror.ValidationFailed.New("Secret name is required")
 	}
 
-	userID, ok := resolveActor(w, r, h.identity, h.slogger, "delete secret")
-	if !ok {
-		return
+	userID, err := resolveActorErr(r, h.identity, "delete secret")
+	if err != nil {
+		return err
 	}
 
-	err := h.secretService.Delete(orgID, handle, userID)
+	err = h.secretService.Delete(orgID, handle, userID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeSecretNotFound, "Secret not found"))
-			return
+			return apperror.SecretNotFound.Wrap(err)
 		}
 
 		var inUseErr *service.SecretInUseError
@@ -264,17 +229,12 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 			for _, ref := range inUseErr.References {
 				refs = append(refs, dto.SecretReferenceDTO{Type: ref.Type, Handle: ref.Handle, Name: ref.Name})
 			}
-			resp := utils.NewErrorResponseWithCode(utils.CodeSecretInUse, "The secret is referenced by one or more active resources.")
-			resp.Details = dto.SecretInUseDetails{References: refs}
-			httputil.WriteJSON(w, http.StatusConflict, resp)
-			return
+			return apperror.SecretInUse.New().WithDetails(dto.SecretInUseDetails{References: refs})
 		}
 
-		h.slogger.Error("failed to delete secret", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to delete secret"))
-		return
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to delete secret")
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	return nil
 }

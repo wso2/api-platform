@@ -33,6 +33,7 @@ const (
 	CodeCommonUnprocessableEntity = "COMMON_UNPROCESSABLE_ENTITY"
 	CodeCommonInternalError       = "COMMON_INTERNAL_ERROR"
 	CodeCommonServiceUnavailable  = "COMMON_SERVICE_UNAVAILABLE"
+	CodeCommonTooManyRequests     = "COMMON_TOO_MANY_REQUESTS"
 )
 
 // commonCodeByStatus maps an HTTP status code to its fallback catalog code.
@@ -49,6 +50,7 @@ var commonCodeByStatus = map[int]string{
 	http.StatusUnprocessableEntity: CodeCommonUnprocessableEntity,
 	http.StatusInternalServerError: CodeCommonInternalError,
 	http.StatusServiceUnavailable:  CodeCommonServiceUnavailable,
+	http.StatusTooManyRequests:     CodeCommonTooManyRequests,
 }
 
 // codeForStatus returns the fallback catalog code for an HTTP status,
@@ -72,15 +74,23 @@ const (
 	CodeLLMProxyExists                        = "LLM_PROXY_EXISTS"
 	CodeLLMProxyLimitReached                  = "LLM_PROXY_LIMIT_REACHED"
 	CodeLLMProxyAPIKeyNotFound                = "LLM_PROXY_API_KEY_NOT_FOUND"
+	CodeLLMProviderRefNotFound                = "LLM_PROVIDER_REF_NOT_FOUND"
 	CodeLLMProxyDeploymentValidationFailed    = "LLM_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 	CodeLLMProviderAPIKeyForbidden            = "LLM_PROVIDER_API_KEY_FORBIDDEN"
 	CodeLLMProxyAPIKeyForbidden               = "LLM_PROXY_API_KEY_FORBIDDEN"
 )
 
-// LLM provider template domain codes.
+// LLM provider template domain codes. The *_VERSION_* and *_REF_* codes keep
+// one HTTP status per code in the apperror catalog: NOT_FOUND codes are 404s
+// for the resource targeted by the URL, REF_NOT_FOUND codes are 400s for a
+// resource referenced in the request body, and VERSION codes distinguish a
+// missing/duplicate version from a missing/duplicate template.
 const (
 	CodeLLMProviderTemplateNotFound          = "LLM_PROVIDER_TEMPLATE_NOT_FOUND"
+	CodeLLMProviderTemplateVersionNotFound   = "LLM_PROVIDER_TEMPLATE_VERSION_NOT_FOUND"
+	CodeLLMProviderTemplateRefNotFound       = "LLM_PROVIDER_TEMPLATE_REF_NOT_FOUND"
 	CodeLLMProviderTemplateExists            = "LLM_PROVIDER_TEMPLATE_EXISTS"
+	CodeLLMProviderTemplateVersionExists     = "LLM_PROVIDER_TEMPLATE_VERSION_EXISTS"
 	CodeLLMProviderTemplateManagedByReserved = "LLM_PROVIDER_TEMPLATE_MANAGED_BY_RESERVED"
 	CodeLLMProviderTemplateInUse             = "LLM_PROVIDER_TEMPLATE_IN_USE"
 	CodeLLMProviderTemplateReadOnly          = "LLM_PROVIDER_TEMPLATE_READ_ONLY"
@@ -130,10 +140,13 @@ const (
 	CodeOrganizationExists   = "ORGANIZATION_EXISTS"
 )
 
-// Project domain codes.
+// Project domain codes. PROJECT_REF_NOT_FOUND is the 400 counterpart of
+// PROJECT_NOT_FOUND for a project referenced in a request body (e.g. the
+// projectId in a create request) rather than targeted by the URL.
 const (
-	CodeProjectNotFound = "PROJECT_NOT_FOUND"
-	CodeProjectExists   = "PROJECT_EXISTS"
+	CodeProjectNotFound    = "PROJECT_NOT_FOUND"
+	CodeProjectRefNotFound = "PROJECT_REF_NOT_FOUND"
+	CodeProjectExists      = "PROJECT_EXISTS"
 )
 
 // Application domain codes.

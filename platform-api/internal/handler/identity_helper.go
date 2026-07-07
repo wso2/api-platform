@@ -18,28 +18,24 @@
 package handler
 
 import (
-	"log/slog"
 	"net/http"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
-
-	"github.com/wso2/go-httpkit/httputil"
 )
 
-// resolveActor resolves the internal platform UUID for the actor behind r via
-// identity, for use in audit columns (created_by/updated_by/revoked_by/
+// resolveActorErr resolves the internal platform UUID for the actor behind r
+// via identity, for use in audit columns (created_by/updated_by/revoked_by/
 // performed_by). Identity is always resolved from the token claim (sub,
 // falling back to the configured claim / user_id) — a missing identity mints
 // an anonymous UUID rather than failing (see IdentityService.InternalUserID),
-// so this only fails (500) on a genuine DB error.
-func resolveActor(w http.ResponseWriter, r *http.Request, identity *service.IdentityService, slogger *slog.Logger, action string) (actor string, ok bool) {
+// so this only fails (500) on a genuine DB error. Returns an *apperror.Error
+// for the mapper to log and serialize.
+func resolveActorErr(r *http.Request, identity *service.IdentityService, action string) (string, error) {
 	actor, err := identity.InternalUserID(r)
 	if err != nil {
-		slogger.Error("Failed to resolve user identity", "action", action, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(utils.CodeCommonInternalError,
-			"Failed to resolve user identity"))
-		return "", false
+		return "", apperror.Internal.Wrap(err).
+			WithLogMessage("failed to resolve user identity for action: " + action)
 	}
-	return actor, true
+	return actor, nil
 }

@@ -20,6 +20,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -27,10 +28,10 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -55,28 +56,28 @@ func NewLLMHandler(
 
 func (h *LLMHandler) RegisterRoutes(mux *http.ServeMux) {
 	// LLM Provider Templates
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates", h.CreateLLMProviderTemplate)
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates/copy", h.CopyLLMProviderTemplateVersion)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates", h.ListLLMProviderTemplates)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.GetLLMProviderTemplate)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.UpdateLLMProviderTemplate)
-	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.SetLLMProviderTemplateVersionEnabled)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", h.DeleteLLMProviderTemplateVersion)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates", middleware.MapErrors(h.slogger, h.CreateLLMProviderTemplate))
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates/copy", middleware.MapErrors(h.slogger, h.CopyLLMProviderTemplateVersion))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates", middleware.MapErrors(h.slogger, h.ListLLMProviderTemplates))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", middleware.MapErrors(h.slogger, h.GetLLMProviderTemplate))
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", middleware.MapErrors(h.slogger, h.UpdateLLMProviderTemplate))
+	mux.HandleFunc("PATCH "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", middleware.MapErrors(h.slogger, h.SetLLMProviderTemplateVersionEnabled))
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-provider-templates/{llmProviderTemplateId}", middleware.MapErrors(h.slogger, h.DeleteLLMProviderTemplateVersion))
 
 	// LLM Providers
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers", h.CreateLLMProvider)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers", h.ListLLMProviders)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.GetLLMProvider)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}/llm-proxies", h.ListLLMProxiesByProvider)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.UpdateLLMProvider)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{llmProviderId}", h.DeleteLLMProvider)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers", middleware.MapErrors(h.slogger, h.CreateLLMProvider))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers", middleware.MapErrors(h.slogger, h.ListLLMProviders))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}", middleware.MapErrors(h.slogger, h.GetLLMProvider))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}/llm-proxies", middleware.MapErrors(h.slogger, h.ListLLMProxiesByProvider))
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-providers/{llmProviderId}", middleware.MapErrors(h.slogger, h.UpdateLLMProvider))
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{llmProviderId}", middleware.MapErrors(h.slogger, h.DeleteLLMProvider))
 
 	// LLM Proxies
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies", h.CreateLLMProxy)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies", h.ListLLMProxies)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.GetLLMProxy)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.UpdateLLMProxy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", h.DeleteLLMProxy)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies", middleware.MapErrors(h.slogger, h.CreateLLMProxy))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies", middleware.MapErrors(h.slogger, h.ListLLMProxies))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", middleware.MapErrors(h.slogger, h.GetLLMProxy))
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", middleware.MapErrors(h.slogger, h.UpdateLLMProxy))
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{llmProxyId}", middleware.MapErrors(h.slogger, h.DeleteLLMProxy))
 }
 
 // templateQuery holds the fields parsed from the ?query= search DSL used by the
@@ -106,50 +107,40 @@ func parseTemplateQuery(raw string) (q templateQuery, found bool) {
 	return q, found
 }
 
-func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	var req api.LLMProviderTemplate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
 
-	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM provider template")
-	if !ok {
-		return
+	createdBy, err := resolveActorErr(r, h.identity, "create LLM provider template")
+	if err != nil {
+		return err
 	}
 
 	created, err := h.templateService.Create(orgID, createdBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateExists):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateExists, "An LLM provider template with this ID already exists."))
-			return
+			return apperror.LLMProviderTemplateExists.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateManagedByReserved, "'wso2' is reserved and cannot be used as managedBy on custom templates."))
-			return
+			return apperror.LLMProviderTemplateManagedByReserved.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid input"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
-			h.slogger.Error("Failed to create LLM provider template", "organizationId", orgID, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to create LLM provider template"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to create LLM provider template in org %s", orgID))
 		}
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, created)
+	return nil
 }
 
 // CopyLLMProviderTemplateVersion creates a new version within a family by
@@ -157,26 +148,23 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 // handle and the new version are given as query params
 // (fromTemplateId, toTemplateId, toVersion); an optional body overrides fields
 // on top of the copied config.
-func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
-	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "copy LLM provider template version")
-	if !ok {
-		return
+	createdBy, err := resolveActorErr(r, h.identity, "copy LLM provider template version")
+	if err != nil {
+		return err
 	}
 
 	fromTemplateID := strings.TrimSpace(r.URL.Query().Get("fromTemplateId"))
 	toTemplateID := strings.TrimSpace(r.URL.Query().Get("toTemplateId"))
 	toVersion := strings.TrimSpace(r.URL.Query().Get("toVersion"))
 	if fromTemplateID == "" || toVersion == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "fromTemplateId and toVersion are required"))
-		return
+		return apperror.ValidationFailed.New("fromTemplateId and toVersion are required")
 	}
 
 	// The body is optional; only decode overrides when one is present.
@@ -184,9 +172,7 @@ func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *ht
 	if r.Body != nil && r.ContentLength != 0 {
 		var vreq api.CreateLLMProviderTemplateVersionRequest
 		if err := json.NewDecoder(r.Body).Decode(&vreq); err != nil && !errors.Is(err, io.EOF) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid request body"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 		}
 		overrides = &vreq
 	}
@@ -195,38 +181,28 @@ func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *ht
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotFound, "The source LLM provider template version could not be found."))
-			return
+			return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateExists, "This template version already exists."))
-			return
+			return apperror.LLMProviderTemplateVersionExists.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateManagedByReserved, "'wso2' is reserved and cannot be used as managedBy on custom templates."))
-			return
+			return apperror.LLMProviderTemplateManagedByReserved.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid input. toVersion must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0), and toTemplateId must match the family"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid input. toVersion must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0), and toTemplateId must match the family")
 		default:
-			h.slogger.Error("Failed to copy LLM provider template version", "organizationId", orgID, "fromTemplateId", fromTemplateID, "toVersion", toVersion, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to copy LLM provider template version"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to copy LLM provider template version from %s to version %s in org %s", fromTemplateID, toVersion, orgID))
 		}
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, created)
+	return nil
 }
 
-func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	limitStr := r.URL.Query().Get("limit")
@@ -255,9 +231,7 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 	if familyScoped {
 		groupID := q.GroupID
 		if groupID == "" {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid groupId"))
-			return
+			return apperror.ValidationFailed.New("Invalid groupId")
 		}
 		version := q.Version
 		if version != "" {
@@ -265,63 +239,49 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 			if err != nil {
 				switch {
 				case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-					httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-						utils.CodeLLMProviderTemplateNotFound, "The specified LLM provider template version could not be found."))
-					return
+					return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
 				case errors.Is(err, constants.ErrInvalidInput):
-					httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-						utils.CodeCommonValidationFailed, "Invalid version. Version must match the v<major>.<minor> pattern (e.g. v1.0)"))
-					return
+					return apperror.ValidationFailed.Wrap(err, "Invalid version. Version must match the v<major>.<minor> pattern (e.g. v1.0)")
 				default:
-					h.slogger.Error("Failed to get LLM provider template version", "organizationId", orgID, "groupId", groupID, "version", version, "error", err)
-					httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-						utils.CodeCommonInternalError, "Failed to get LLM provider template version"))
-					return
+					return apperror.Internal.Wrap(err).
+						WithLogMessage(fmt.Sprintf("failed to get LLM provider template version %s of group %s in org %s", version, groupID, orgID))
 				}
 			}
 			httputil.WriteJSON(w, http.StatusOK, resp)
-			return
+			return nil
 		}
 		resp, err := h.templateService.ListVersions(orgID, groupID, limit, offset)
 		if err != nil {
 			switch {
 			case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-				httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-					utils.CodeLLMProviderTemplateNotFound, "The specified LLM provider template could not be found."))
-				return
+				return apperror.LLMProviderTemplateNotFound.Wrap(err)
 			case errors.Is(err, constants.ErrInvalidInput):
-				httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-					utils.CodeCommonValidationFailed, "Invalid groupId"))
-				return
+				return apperror.ValidationFailed.Wrap(err, "Invalid groupId")
 			default:
-				h.slogger.Error("Failed to list LLM provider template versions", "organizationId", orgID, "groupId", groupID, "error", err)
-				httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-					utils.CodeCommonInternalError, "Failed to list LLM provider template versions"))
-				return
+				return apperror.Internal.Wrap(err).
+					WithLogMessage(fmt.Sprintf("failed to list LLM provider template versions of group %s in org %s", groupID, orgID))
 			}
 		}
 		httputil.WriteJSON(w, http.StatusOK, resp)
-		return
+		return nil
 	}
 
 	latestOnly := q.Latest
 
 	resp, err := h.templateService.List(orgID, limit, offset, latestOnly)
 	if err != nil {
-		h.slogger.Error("Failed to list LLM provider templates", "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to list LLM provider templates"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to list LLM provider templates in org %s", orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) GetLLMProviderTemplate(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) GetLLMProviderTemplate(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProviderTemplateId")
 
@@ -329,29 +289,23 @@ func (h *LLMHandler) GetLLMProviderTemplate(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotFound, "The specified LLM provider template could not be found."))
-			return
+			return apperror.LLMProviderTemplateNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid template id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid template id")
 		default:
-			h.slogger.Error("Failed to get LLM provider template", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to get LLM provider template"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to get LLM provider template %s in org %s", id, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProviderTemplateId")
 
@@ -359,195 +313,145 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter,
 		Enabled *bool `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Enabled == nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Request body must include a boolean 'enabled' field"))
-		return
+		return apperror.ValidationFailed.New("Request body must include a boolean 'enabled' field")
 	}
 
 	resp, err := h.templateService.SetEnabledByHandle(orgID, id, *body.Enabled)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotFound, "The specified LLM provider template version could not be found."))
-			return
+			return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid template id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid template id")
 		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateInUse, "Cannot disable this template version while providers are using it."))
-			return
+			return apperror.LLMProviderTemplateInUse.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotToggleable):
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotToggleable, "Only built-in templates can be enabled or disabled."))
-			return
+			return apperror.LLMProviderTemplateNotToggleable.Wrap(err)
 		default:
-			h.slogger.Error("Failed to set LLM provider template version enabled", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to update template version"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to set LLM provider template version enabled for template %s in org %s", id, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProviderTemplateId")
 
 	var req api.LLMProviderTemplate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
 
-	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update LLM provider template")
-	if !ok {
-		return
+	updatedBy, err := resolveActorErr(r, h.identity, "update LLM provider template")
+	if err != nil {
+		return err
 	}
 	resp, err := h.templateService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotFound, "The specified LLM provider template could not be found."))
-			return
+			return apperror.LLMProviderTemplateNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateReadOnly):
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateReadOnly, "Built-in templates are read-only and cannot be edited."))
-			return
+			return apperror.LLMProviderTemplateReadOnly.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateManagedByReserved, "'wso2' is reserved and cannot be used as managedBy on custom templates."))
-			return
+			return apperror.LLMProviderTemplateManagedByReserved.Wrap(err)
 		case errors.Is(err, constants.ErrHandleImmutable):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, err.Error()))
-			return
+			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid input"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
-			h.slogger.Error("Failed to update LLM provider template", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to update LLM provider template"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to update LLM provider template %s in org %s", id, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
 // DeleteLLMProviderTemplateVersion removes a single version of a template.
-func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProviderTemplateId")
 
 	if err := h.templateService.DeleteByHandle(orgID, id); err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotFound, "The specified LLM provider template version could not be found."))
-			return
+			return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateInUse, "This template version cannot be deleted while providers are using it."))
-			return
+			return apperror.LLMProviderTemplateInUse.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateReadOnly):
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateReadOnly, "Built-in template versions are read-only and cannot be deleted."))
-			return
+			return apperror.LLMProviderTemplateReadOnly.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid template id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid template id")
 		default:
-			h.slogger.Error("Failed to delete LLM provider template version", "organizationId", orgID, "templateId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to delete template version"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to delete LLM provider template version %s in org %s", id, orgID))
 		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 // ---- Providers ----
 
-func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	var req api.LLMProvider
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
-	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM provider")
-	if !ok {
-		return
+	createdBy, err := resolveActorErr(r, h.identity, "create LLM provider")
+	if err != nil {
+		return err
 	}
 
 	created, err := h.providerService.Create(orgID, createdBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderLimitReached):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderLimitReached, "LLM provider limit reached for the organization."))
-			return
+			return apperror.LLMProviderLimitReached.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderExists):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderExists, "An LLM provider with this ID already exists."))
-			return
+			return apperror.LLMProviderExists.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotFound, "The referenced LLM provider template could not be found."))
-			return
+			return apperror.LLMProviderTemplateRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrSecretRefMissing):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, err.Error()))
-			return
+			return apperror.ValidationFailed.Wrap(err, err.Error())
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid input"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
-			h.slogger.Error("Failed to create LLM provider", "organizationId", orgID, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to create LLM provider"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to create LLM provider in org %s", orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusCreated, created)
+	return nil
 }
 
-func (h *LLMHandler) ListLLMProviders(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) ListLLMProviders(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	limitStr := r.URL.Query().Get("limit")
@@ -574,20 +478,18 @@ func (h *LLMHandler) ListLLMProviders(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.providerService.List(orgID, limit, offset)
 	if err != nil {
-		h.slogger.Error("Failed to list LLM providers", "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to list LLM providers"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to list LLM providers in org %s", orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProviderId")
 
@@ -595,186 +497,142 @@ func (h *LLMHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
-			return
+			return apperror.LLMProviderNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid provider id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid provider id")
 		default:
-			h.slogger.Error("Failed to get LLM provider", "organizationId", orgID, "providerId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to get LLM provider"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to get LLM provider %s in org %s", id, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProviderId")
 
 	var req api.LLMProvider
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
 
-	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update LLM provider")
-	if !ok {
-		return
+	updatedBy, err := resolveActorErr(r, h.identity, "update LLM provider")
+	if err != nil {
+		return err
 	}
 	resp, err := h.providerService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
-			return
+			return apperror.LLMProviderNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderTemplateNotFound, "The referenced LLM provider template could not be found."))
-			return
+			return apperror.LLMProviderTemplateRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrSecretRefMissing):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, err.Error()))
-			return
+			return apperror.ValidationFailed.Wrap(err, err.Error())
 		case errors.Is(err, constants.ErrHandleImmutable):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, err.Error()))
-			return
+			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid input"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
-			h.slogger.Error("Failed to update LLM provider", "organizationId", orgID, "providerId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to update LLM provider"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to update LLM provider %s in org %s", id, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProviderId")
-	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM provider")
-	if !ok {
-		return
+	deletedBy, err := resolveActorErr(r, h.identity, "delete LLM provider")
+	if err != nil {
+		return err
 	}
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
-			return
+			return apperror.LLMProviderNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid provider id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid provider id")
 		default:
-			h.slogger.Error("Failed to delete LLM provider", "organizationId", orgID, "providerId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to delete LLM provider"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to delete LLM provider %s in org %s", id, orgID))
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 // ---- Proxies ----
 
-func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	var req api.LLMProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
 	if req.ProjectId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Project ID is required"))
-		return
+		return apperror.ValidationFailed.New("Project ID is required")
 	}
-	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM proxy")
-	if !ok {
-		return
+	createdBy, err := resolveActorErr(r, h.identity, "create LLM proxy")
+	if err != nil {
+		return err
 	}
 
 	created, err := h.proxyService.Create(orgID, createdBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyLimitReached):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyLimitReached, "LLM proxy limit reached for the organization."))
-			return
+			return apperror.LLMProxyLimitReached.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProxyExists):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyExists, "An LLM proxy with this ID already exists."))
-			return
+			return apperror.LLMProxyExists.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The referenced LLM provider could not be found."))
-			return
+			return apperror.LLMProviderRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrProjectNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeProjectNotFound, "The specified project could not be found."))
-			return
+			return apperror.ProjectNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid input"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
-			h.slogger.Error("Failed to create LLM proxy", "organizationId", orgID, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to create LLM proxy"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to create LLM proxy in org %s", orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusCreated, created)
+	return nil
 }
 
-func (h *LLMHandler) ListLLMProxies(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) ListLLMProxies(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	projectID := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "projectId query parameter is required"))
-		return
+		return apperror.ValidationFailed.New("projectId query parameter is required")
 	}
 
 	limitStr := r.URL.Query().Get("limit")
@@ -802,24 +660,20 @@ func (h *LLMHandler) ListLLMProxies(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.proxyService.List(orgID, &projectID, limit, offset)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeProjectNotFound, "The specified project could not be found."))
-			return
+			return apperror.ProjectNotFound.Wrap(err)
 		}
-		h.slogger.Error("Failed to list LLM proxies", "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to list LLM proxies"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to list LLM proxies in org %s", orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) ListLLMProxiesByProvider(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) ListLLMProxiesByProvider(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	providerID := r.PathValue("llmProviderId")
 
@@ -849,29 +703,23 @@ func (h *LLMHandler) ListLLMProxiesByProvider(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
-			return
+			return apperror.LLMProviderNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid provider id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid provider id")
 		default:
-			h.slogger.Error("Failed to list LLM proxies by provider", "organizationId", orgID, "providerId", providerID, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to list LLM proxies"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to list LLM proxies by provider %s in org %s", providerID, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProxyId")
 
@@ -879,107 +727,84 @@ func (h *LLMHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
-			return
+			return apperror.LLMProxyNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid proxy id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid proxy id")
 		default:
-			h.slogger.Error("Failed to get LLM proxy", "organizationId", orgID, "proxyId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to get LLM proxy"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to get LLM proxy %s in org %s", id, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProxyId")
 
 	var req api.LLMProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
 
-	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update LLM proxy")
-	if !ok {
-		return
+	updatedBy, err := resolveActorErr(r, h.identity, "update LLM proxy")
+	if err != nil {
+		return err
 	}
 	resp, err := h.proxyService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
-			return
+			return apperror.LLMProxyNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The referenced LLM provider could not be found."))
-			return
+			return apperror.LLMProviderRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrHandleImmutable):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, err.Error()))
-			return
+			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid input"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
-			h.slogger.Error("Failed to update LLM proxy", "organizationId", orgID, "proxyId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to update LLM proxy"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to update LLM proxy %s in org %s", id, orgID))
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
-func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) {
+func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
-			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	id := r.PathValue("llmProxyId")
-	deletedBy, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM proxy")
-	if !ok {
-		return
+	deletedBy, err := resolveActorErr(r, h.identity, "delete LLM proxy")
+	if err != nil {
+		return err
 	}
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
-			return
+			return apperror.LLMProxyNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-				utils.CodeCommonValidationFailed, "Invalid proxy id"))
-			return
+			return apperror.ValidationFailed.Wrap(err, "Invalid proxy id")
 		default:
-			h.slogger.Error("Failed to delete LLM proxy", "organizationId", orgID, "proxyId", id, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-				utils.CodeCommonInternalError, "Failed to delete LLM proxy"))
-			return
+			return apperror.Internal.Wrap(err).
+				WithLogMessage(fmt.Sprintf("failed to delete LLM proxy %s in org %s", id, orgID))
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+	return nil
 }

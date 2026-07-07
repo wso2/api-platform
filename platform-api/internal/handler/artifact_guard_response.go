@@ -19,37 +19,29 @@ package handler
 
 import (
 	"errors"
-	"net/http"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
-
-	"github.com/wso2/go-httpkit/httputil"
 )
 
-// respondArtifactGuardError writes the appropriate HTTP response for read-only /
-// deletion-guard errors raised when a mutating operation targets a
-// data-plane-originated (origin=DP) artifact. It returns true when it handled the
-// error (and wrote a response), so callers can simply `return`.
+// mapArtifactGuardError maps read-only / deletion-guard errors raised when a
+// mutating operation targets a data-plane-originated (origin=DP) artifact to
+// the corresponding *apperror.Error, for the MapErrors middleware to log and
+// serialize. It returns nil when err is not a guard error, so callers can
+// `if guardErr := mapArtifactGuardError(err); guardErr != nil { return guardErr }`.
 //
 //   - ErrArtifactReadOnly        -> 403 Forbidden (update/deploy of a DP artifact)
 //   - ErrArtifactRuntimeImmutable -> 403 Forbidden (edit that would change a DP artifact's runtime config)
 //   - ErrArtifactDeployed        -> 409 Conflict  (delete of a still-deployed DP artifact)
-func respondArtifactGuardError(w http.ResponseWriter, err error) bool {
+func mapArtifactGuardError(err error) error {
 	switch {
 	case errors.Is(err, constants.ErrArtifactReadOnly):
-		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-			utils.CodeArtifactReadOnly, err.Error()))
-		return true
+		return apperror.ArtifactReadOnly.Wrap(err, err.Error())
 	case errors.Is(err, constants.ErrArtifactRuntimeImmutable):
-		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-			utils.CodeArtifactRuntimeImmutable, err.Error()))
-		return true
+		return apperror.ArtifactRuntimeImmutable.Wrap(err, err.Error())
 	case errors.Is(err, constants.ErrArtifactDeployed):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-			utils.CodeArtifactDeployed, err.Error()))
-		return true
+		return apperror.ArtifactDeployed.Wrap(err, err.Error())
 	default:
-		return false
+		return nil
 	}
 }

@@ -20,12 +20,14 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -49,33 +51,26 @@ func NewOrganizationHandler(orgService *service.OrganizationService, identity *s
 }
 
 // RegisterOrganization handles POST /api/v0.9/organizations
-func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *http.Request) {
+func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *http.Request) error {
 	var req api.Organization
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
 
 	// Validate required fields
 	if req.DisplayName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "displayName is required"))
-		return
+		return apperror.ValidationFailed.New("displayName is required")
 	}
 	if req.Region == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
-			utils.CodeCommonValidationFailed, "Region is required"))
-		return
+		return apperror.ValidationFailed.New("Region is required")
 	}
 
 	// UUID is always server-generated
 	id, genErr := utils.GenerateUUID()
 	if genErr != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to generate organization ID"))
-		return
+		return apperror.Internal.Wrap(genErr).
+			WithLogMessage("failed to generate organization ID")
 	}
 
 	// Extract handle from id field (optional — auto-generated from displayName if absent)
@@ -84,9 +79,9 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 		handle = *req.Id
 	}
 
-	performedBy, ok := resolveActor(w, r, h.identity, h.slogger, "register organization")
-	if !ok {
-		return
+	performedBy, err := resolveActorErr(r, h.identity, "register organization")
+	if err != nil {
+		return err
 	}
 	// The IDP's organization UUID is derived server-side from the token's raw
 	// organization claim (the IDP org id), never client-supplied. This uses the
@@ -96,30 +91,25 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, idpOrgRefUUID, performedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeOrganizationExists, "An organization with this handle already exists."))
-			return
+			return apperror.OrganizationExists.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrOrganizationExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeOrganizationExists, "An organization with the given ID already exists."))
-			return
+			return apperror.OrganizationExists.Wrap(err)
 		}
-		h.slogger.Error("Failed to create organization", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to create organization"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage("failed to create organization")
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, org)
+	return nil
 }
 
 // HeadOrganization handles HEAD /api/v0.9/organizations/{organizationId}
-func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Request) {
+func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Request) error {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 	handle := r.PathValue("organizationId")
 
@@ -127,46 +117,42 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 	// to do: enable this check after finalizing authentication method
 
 	// if orgID != organizationIdFromContext {
-	// 	httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-	// 		utils.CodeCommonForbidden, "Organization ID in token does not match the requested organization ID"))
-	// 	return
+	// 	return apperror.Forbidden.New().
+	// 		WithLogMessage("Organization ID in token does not match the requested organization ID")
 	// }
 
 	_, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
+			return apperror.OrganizationNotFound.Wrap(err)
 		}
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to get organization by handle %s", handle))
 	}
 
 	w.WriteHeader(http.StatusOK)
+	return nil
 }
 
 // GetOrganizationByID handles GET /api/v0.9/organizations/{organizationId}
-func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http.Request) {
+func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http.Request) error {
 	handle := r.PathValue("organizationId")
 
 	org, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeOrganizationNotFound, "The specified organization could not be found."))
-			return
+			return apperror.OrganizationNotFound.Wrap(err)
 		}
-		h.slogger.Error("Failed to get organization by handle", "handle", handle, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to get organization"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to get organization by handle %s", handle))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, org)
+	return nil
 }
 
 // ListOrganizations handles GET /api/v0.9/organizations
-func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) error {
 	limit := 20
 	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
@@ -186,10 +172,8 @@ func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.R
 
 	orgs, total, err := h.orgService.ListOrganizations(limit, offset)
 	if err != nil {
-		h.slogger.Error("Failed to list organizations", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
-			utils.CodeCommonInternalError, "Failed to list organizations"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage("failed to list organizations")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, api.OrganizationListResponse{
@@ -201,11 +185,12 @@ func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.R
 			Limit:  limit,
 		},
 	})
+	return nil
 }
 
 func (h *OrganizationHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/organizations", h.RegisterOrganization)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", h.ListOrganizations)
-	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{organizationId}", h.HeadOrganization)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{organizationId}", h.GetOrganizationByID)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/organizations", middleware.MapErrors(h.slogger, h.RegisterOrganization))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations", middleware.MapErrors(h.slogger, h.ListOrganizations))
+	mux.HandleFunc("HEAD "+constants.APIBasePath+"/organizations/{organizationId}", middleware.MapErrors(h.slogger, h.HeadOrganization))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/organizations/{organizationId}", middleware.MapErrors(h.slogger, h.GetOrganizationByID))
 }
