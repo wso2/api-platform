@@ -353,6 +353,193 @@ func TestArtifactImport_DPArtifactMetadataNotUpdatedOnStalePush(t *testing.T) {
 	}
 }
 
+// failOnceImporter wraps a real importer and returns a synthetic unique-constraint violation
+// on its first Import call, delegating to the real importer thereafter. It deterministically
+// simulates the TOCTOU race in which a concurrent same-handle push wins the create and this
+// push's INSERT is rejected by the (organization_uuid, handle) unique index.
+type failOnceImporter struct {
+	delegate GatewayArtifactImporter
+	calls    int
+}
+
+func (f *failOnceImporter) Kind() string          { return f.delegate.Kind() }
+func (f *failOnceImporter) RequiresProject() bool { return f.delegate.RequiresProject() }
+func (f *failOnceImporter) Import(ctx *ImportContext) (*ImportResult, error) {
+	f.calls++
+	if f.calls == 1 {
+		// A representative SQLite unique-violation string; IsUniqueViolation matches it.
+		return nil, errors.New("insert failed: UNIQUE constraint failed: rest_apis.organization_uuid, rest_apis.handle")
+	}
+	return f.delegate.Import(ctx)
+}
+
+// TestArtifactImport_RetriesAsUpdateOnHandleConflict verifies the TOCTOU fix: when the per-kind
+// importer's create loses a concurrent same-handle race (unique violation), the service
+// re-resolves by handle and retries as an Update — and last-in-wins still applies (the newer
+// push wins the working copy).
+func TestArtifactImport_RetriesAsUpdateOnHandleConflict(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id1 = "99999999-9999-9999-9999-999999999991"
+	// The "winning" gateway creates and imports the handle first.
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id1, "shared-handle", "First Name"), baseDeployedAt))
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	cpID := resp.ID
+
+	// Force the second (newer) push's first importer call to fail with a unique violation,
+	// as if its INSERT lost the create race.
+	real := d.svc.importers[constants.RestApi]
+	fake := &failOnceImporter{delegate: real}
+	d.svc.importers[constants.RestApi] = fake
+	t.Cleanup(func() { d.svc.importers[constants.RestApi] = real })
+
+	const id2 = "99999999-9999-9999-9999-999999999992"
+	resp2, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id2, "shared-handle", "Second Name"), newerDeployedAt))
+	if err != nil {
+		t.Fatalf("second import should recover via retry, got error: %v", err)
+	}
+	if fake.calls < 2 {
+		t.Fatalf("importer was not retried after the unique violation: calls = %d, want >= 2", fake.calls)
+	}
+	// The retry re-resolved to the existing artifact (same CP UUID, no duplicate minted).
+	if resp2.ID != cpID {
+		t.Errorf("retry returned a different artifact: got %q, want existing %q", resp2.ID, cpID)
+	}
+	// Last-in-wins preserved on the retry's Update path: the newer push wins the working copy.
+	art, _ := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if art == nil || art.Name != "Second Name" {
+		t.Errorf("artifact name = %v, want 'Second Name' (newer push wins on retry)", art)
+	}
+}
+
+// TestArtifactImport_RetryPreservesLastInWinsForStalePush verifies that when the losing push
+// is stale (older DeployedAt), the retry re-runs the last-in-wins decision and leaves the
+// working copy untouched (SkipWorkingCopy) rather than clobbering the newer winner.
+func TestArtifactImport_RetryPreservesLastInWinsForStalePush(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"
+	// The winner imports with the NEWER deployment time.
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id1, "stale-handle", "Winner Name"), newerDeployedAt))
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	cpID := resp.ID
+
+	real := d.svc.importers[constants.RestApi]
+	fake := &failOnceImporter{delegate: real}
+	d.svc.importers[constants.RestApi] = fake
+	t.Cleanup(func() { d.svc.importers[constants.RestApi] = real })
+
+	const id2 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"
+	// The loser pushes with an OLDER deployment time; after the forced conflict + retry it
+	// must be treated as stale and NOT overwrite the winner's metadata.
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id2, "stale-handle", "Loser Name"), olderDeployedAt)); err != nil {
+		t.Fatalf("second import should recover via retry, got error: %v", err)
+	}
+	if fake.calls < 2 {
+		t.Fatalf("importer was not retried after the unique violation: calls = %d, want >= 2", fake.calls)
+	}
+	art, _ := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if art == nil || art.Name != "Winner Name" {
+		t.Errorf("artifact name = %v, want unchanged 'Winner Name' (stale loser must not win on retry)", art)
+	}
+}
+
+// TestImportersReturnUniqueViolationOnDuplicateHandle verifies the load-bearing assumption of
+// the TOCTOU retry: for EVERY artifact kind, a duplicate (organization_uuid, handle) create
+// surfaces an error that repository.IsUniqueViolation detects — so importValidated actually
+// retries as an update. It runs against the real SQLite driver.
+//
+// Deployable kinds are exercised through importer.Import with ctx.Existing == nil (the losing
+// push's view of the race) after the row already exists, so the importer takes its Create branch
+// and hits the child table's UNIQUE(organization_uuid, handle) index. LLM provider templates are
+// org-level and the template importer re-resolves existence internally (GetByID) on every call,
+// so a duplicate create is only reachable under a true concurrent race; the violation therefore
+// originates in templateRepo.Create — which the importer propagates verbatim via %w — and is
+// verified at the repo layer here.
+func TestImportersReturnUniqueViolationOnDuplicateHandle(t *testing.T) {
+	// createCtx builds the losing push's context: Existing == nil (it read before the winner
+	// committed) forces the importer's Create branch even though the row now exists.
+	createCtx := func(req dto.ImportGatewayArtifactRequest, projectID string) *ImportContext {
+		return &ImportContext{
+			OrgID:         importTestOrgID,
+			GatewayID:     importTestGatewayID,
+			DPID:          req.DPID,
+			Configuration: req.Configuration,
+			Status:        req.Status,
+			ProjectID:     projectID,
+			ID:            "cp-" + req.DPID,
+			Existing:      nil,
+		}
+	}
+	assertViolation := func(t *testing.T, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatal("expected a unique-constraint violation, got nil")
+		}
+		if !repository.IsUniqueViolation(err) {
+			t.Fatalf("error is not detected as a unique violation by repository.IsUniqueViolation: %v", err)
+		}
+	}
+
+	t.Run("RestApi", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, restImportRequest("dp-rest-w", "dup-rest", "Rest Winner"))
+		imp := d.svc.importers[constants.RestApi]
+		_, err := imp.Import(createCtx(restImportRequest("dp-rest-l", "dup-rest", "Rest Loser"), importTestProjectID))
+		assertViolation(t, err)
+	})
+
+	t.Run("LLMProvider", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpTemplateReq("dp-tmpl", "dup-tmpl", "Tmpl"))
+		mustImport(t, d, dpProviderReq("dp-prov-w", "dup-prov", "Prov Winner", "dup-tmpl"))
+		imp := d.svc.importers[constants.LLMProvider]
+		_, err := imp.Import(createCtx(dpProviderReq("dp-prov-l", "dup-prov", "Prov Loser", "dup-tmpl"), ""))
+		assertViolation(t, err)
+	})
+
+	t.Run("LLMProxy", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpTemplateReq("dp-tmpl2", "dup-tmpl2", "Tmpl"))
+		mustImport(t, d, dpProviderReq("dp-prov2", "dup-prov2", "Prov", "dup-tmpl2"))
+		mustImport(t, d, dpProxyReq("dp-proxy-w", "dup-proxy", "Proxy Winner", "dup-prov2"))
+		imp := d.svc.importers[constants.LLMProxy]
+		_, err := imp.Import(createCtx(dpProxyReq("dp-proxy-l", "dup-proxy", "Proxy Loser", "dup-prov2"), importTestProjectID))
+		assertViolation(t, err)
+	})
+
+	t.Run("MCPProxy", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpMCPReq("dp-mcp-w", "dup-mcp", "Mcp Winner"))
+		imp := d.svc.importers[constants.MCPProxy]
+		_, err := imp.Import(createCtx(dpMCPReq("dp-mcp-l", "dup-mcp", "Mcp Loser"), importTestProjectID))
+		assertViolation(t, err)
+	})
+
+	t.Run("LLMProviderTemplate", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpTemplateReq("dp-tmpl-t", "dup-tmpl-t", "Tmpl Winner"))
+		// The template importer re-resolves by handle internally, so a single-threaded second
+		// Import would take the Update branch. Drive the duplicate at the repo layer — this is
+		// exactly the error importer.Import wraps and returns under a genuine concurrent race.
+		err := d.templateRepo.Create(&model.LLMProviderTemplate{
+			ID:               "dup-tmpl-t",
+			OrganizationUUID: importTestOrgID,
+			Name:             "Tmpl Loser",
+			Origin:           constants.OriginDP,
+		})
+		assertViolation(t, err)
+	})
+}
+
 func TestArtifactImport_UndeployedStatus(t *testing.T) {
 	d := setupImportTest(t)
 
