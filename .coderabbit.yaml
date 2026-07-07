@@ -14,3 +14,7 @@ reviews:
     drafts: false
 chat:
   auto_reply: true
+knowledge_base:
+  code_guidelines:
+    filePatterns:
+      - "**/.claude/rules/*"
