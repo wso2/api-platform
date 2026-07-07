@@ -5378,6 +5378,15 @@ components:
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: >
+            API-level backend/route timeout configuration. Applies to the traffic-forwarding
+            routes generated for this MCP proxy (GET/POST/DELETE on the MCP resource path).
+            Supported at the API level only. Because MCP transports are long-lived streams,
+            the route timeout defaults to disabled ("0s") for MCP unless a timeout is set here
+            (unlike REST/LLM, which fall back to the gateway's global route timeout); the idle
+            timeout remains the liveness guard.
 
     MCPTool:
       type: object

@@ -154,6 +154,10 @@ func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationEr
 	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
 	errors = append(errors, v.validateUpstream("spec.upstream", &spec.Upstream, spec.UpstreamDefinitions)...)
 
+	// Validate API-level resilience (timeout / idleTimeout). MCP supports resilience at the API
+	// level only; the route timeout defaults to disabled for MCP when unset (see mcp-timeout-divergence.md).
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
+
 	return errors
 }
 

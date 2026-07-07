@@ -122,6 +122,22 @@ spec:
                   - name
                   type: object
                 type: array
+              resilience:
+                description: |-
+                  Resilience configures API-level backend/route timeouts applied to the traffic-forwarding
+                  routes generated for this MCP proxy. Supported at the API level only. Because MCP transports
+                  are long-lived streams, the route timeout defaults to disabled ("0s") for MCP when unset.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
               resources:
                 description: Resources lists optional MCP resources exposed by this
                   proxy.
