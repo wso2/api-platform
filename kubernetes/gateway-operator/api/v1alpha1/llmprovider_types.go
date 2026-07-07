@@ -107,6 +107,11 @@ type LLMProviderConfigData struct {
 	// +kubebuilder:validation:Required
 	AccessControl LLMAccessControl `json:"accessControl"`
 
+	// UpstreamDefinitions is the list of reusable upstream definitions (with optional
+	// connect timeout) that upstream.ref can reference.
+	// +optional
+	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
+
 	// Upstream configures the LLM upstream.
 	// +kubebuilder:validation:Required
 	Upstream LLMProviderUpstream `json:"upstream"`

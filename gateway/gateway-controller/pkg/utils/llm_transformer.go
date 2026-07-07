@@ -344,11 +344,19 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		spec.Context = *provider.Spec.Context
 	}
 
-	// Step 2) Upstreams: map provider.Spec.Upstreams to api.Upstreams
-	// Map provider upstream and vhost to API main upstream and vhost
-	spec.Upstream.Main = api.Upstream{
-		Url: provider.Spec.Upstream.Url,
+	// Step 2) Upstreams: map provider upstream (direct url or upstreamDefinition ref) and vhost
+	// to the API main upstream. When a ref is used, carry the upstreamDefinitions through so the
+	// per-upstream connect timeout resolves the same way it does for RestApi.
+	if provider.Spec.Upstream.Ref != nil && strings.TrimSpace(*provider.Spec.Upstream.Ref) != "" {
+		spec.Upstream.Main = api.Upstream{
+			Ref: provider.Spec.Upstream.Ref,
+		}
+	} else {
+		spec.Upstream.Main = api.Upstream{
+			Url: provider.Spec.Upstream.Url,
+		}
 	}
+	spec.UpstreamDefinitions = provider.Spec.UpstreamDefinitions
 	if provider.Spec.Vhost != nil {
 		spec.Vhosts = &struct {
 			Main    string  `json:"main" yaml:"main"`

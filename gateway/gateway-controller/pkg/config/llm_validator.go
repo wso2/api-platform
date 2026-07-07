@@ -378,8 +378,10 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 		})
 	}
 
-	// Validate upstreams
-	errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("spec.upstream"), &spec.Upstream)...)
+	// Validate upstream definitions (name/url/connect timeout), then the upstream itself (which
+	// may reference one of them via `ref`).
+	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
+	errors = append(errors, v.validateUpstreamWithAuth("spec.upstream", &spec.Upstream, spec.UpstreamDefinitions)...)
 
 	// Validate access control
 	errors = append(errors, v.validateAccessControl("spec.accessControl", &spec.AccessControl)...)
@@ -416,9 +418,10 @@ func (v *LLMValidator) validatePolicyListExclusivity(globalPolicies *[]api.Polic
 	return nil
 }
 
-// validateUpstreamWithAuth validates an UpstreamWithAuth configuration
+// validateUpstreamWithAuth validates an UpstreamWithAuth configuration. The upstream may specify
+// either a direct `url` or a `ref` to one of the provided upstream definitions (exactly one).
 func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
-	upstream *api.LLMProviderConfigData_Upstream) []ValidationError {
+	upstream *api.LLMProviderConfigData_Upstream, definitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
 	if upstream == nil {
@@ -429,13 +432,21 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 		return errors
 	}
 
-	// Validate URL
-	if upstream.Url == nil || *upstream.Url == "" {
+	// Validate url XOR ref
+	hasURL := upstream.Url != nil && strings.TrimSpace(*upstream.Url) != ""
+	hasRef := upstream.Ref != nil && strings.TrimSpace(*upstream.Ref) != ""
+	switch {
+	case hasURL && hasRef:
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix,
+			Message: "Specify exactly one of 'url' or 'ref'",
+		})
+	case !hasURL && !hasRef:
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.url", fieldPrefix),
 			Message: "Upstream URL is required",
 		})
-	} else {
+	case hasURL:
 		parsedURL, err := url.Parse(*upstream.Url)
 		if err != nil {
 			errors = append(errors, ValidationError{
@@ -451,6 +462,13 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.url", fieldPrefix),
 				Message: "Upstream URL must include a host",
+			})
+		}
+	case hasRef:
+		if !upstreamRefResolves(*upstream.Ref, definitions) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.ref", fieldPrefix),
+				Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", strings.TrimSpace(*upstream.Ref)),
 			})
 		}
 	}

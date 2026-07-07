@@ -5345,6 +5345,11 @@ components:
           minLength: 1
           maxLength: 253
           example: "mcp1.example.com"
+        upstreamDefinitions:
+          type: array
+          description: List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.
+          items:
+            $ref: "#/components/schemas/UpstreamDefinition"
         upstream:
           description: The backend MCP server url and auth configurations
           allOf:
@@ -5813,6 +5818,11 @@ components:
           type: string
           description: Template name to use for this LLM Provider
           example: openai
+        upstreamDefinitions:
+          type: array
+          description: List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.
+          items:
+            $ref: "#/components/schemas/UpstreamDefinition"
         upstream:
           allOf:
             - $ref: "#/components/schemas/Upstream"

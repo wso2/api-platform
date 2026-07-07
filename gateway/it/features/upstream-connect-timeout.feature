@@ -140,3 +140,78 @@ Feature: Timeouts
     When I delete the API "headers-timeout-api-v1.0"
     Then the response should be successful
 
+  # LLM Provider connect_timeout via upstreamDefinitions ref: the provider's upstream references a
+  # definition whose only target is unreachable (192.0.2.1). The connect attempt hangs until the
+  # per-upstream connect timeout (6s), then the gateway returns 503. Proves the ref -> upstreamDefinition
+  # connect timeout works for LLM providers exactly as it does for RestApi.
+  Scenario: LLM provider backend connect timeout using upstreamDefinitions ref
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: llm-connect-timeout-provider
+      spec:
+        displayName: LLM Connect Timeout Provider
+        version: v1.0
+        template: openai
+        context: /llm-connect-timeout
+        upstreamDefinitions:
+          - name: llm-unreachable-upstream
+            timeout:
+              connect: 6000ms
+            upstreams:
+              - url: http://192.0.2.1:8080
+        upstream:
+          ref: llm-unreachable-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+    And I record the current time as "request_start"
+    When I send a GET request to "http://localhost:8080/llm-connect-timeout/get"
+    Then the response status code should be 503
+    And the request should have taken at least "6" seconds since "request_start"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-connect-timeout-provider"
+    Then the response should be successful
+
+  # MCP connect_timeout via upstreamDefinitions ref: the MCP backend reference is unreachable, so the
+  # synthesized /mcp route's connect attempt hangs until the per-upstream connect timeout (6s) -> 503.
+  Scenario: MCP backend connect timeout using upstreamDefinitions ref
+    Given I authenticate using basic auth as "admin"
+    When I deploy this MCP configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Mcp
+      metadata:
+        name: mcp-connect-timeout
+      spec:
+        displayName: MCP Connect Timeout
+        version: v1.0
+        context: /mcp-connect-timeout
+        specVersion: "2025-06-18"
+        upstreamDefinitions:
+          - name: mcp-unreachable-upstream
+            timeout:
+              connect: 6000ms
+            upstreams:
+              - url: http://192.0.2.1:3001
+        upstream:
+          ref: mcp-unreachable-upstream
+        tools: []
+        resources: []
+        prompts: []
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+    And I record the current time as "request_start"
+    When I send a GET request to "http://localhost:8080/mcp-connect-timeout/mcp"
+    Then the response status code should be 503
+    And the request should have taken at least "6" seconds since "request_start"
+    Given I authenticate using basic auth as "admin"
+    When I delete the MCP proxy "mcp-connect-timeout"
+    Then the response should be successful
+

@@ -246,6 +246,65 @@ spec:
                     description: Url is the direct backend URL.
                     type: string
                 type: object
+              upstreamDefinitions:
+                description: |-
+                  UpstreamDefinitions is the list of reusable upstream definitions (with optional
+                  connect timeout) that upstream.ref can reference.
+                items:
+                  description: |-
+                    UpstreamDefinition is a reusable upstream configuration with an optional connect
+                    timeout and load-balancing targets. Referenced from an upstream via its `ref` field.
+                    Mirrors the management-API UpstreamDefinition schema.
+                  properties:
+                    basePath:
+                      description: BasePath Base path prefix prepended to all requests
+                        routed through this upstream (e.g. /api/v2).
+                      type: string
+                    name:
+                      description: Name Unique identifier for this upstream definition
+                        (referenced by upstream.ref).
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[a-zA-Z0-9\-_]+$
+                      type: string
+                    timeout:
+                      description: Timeout Optional timeout configuration for this
+                        upstream (connect timeout).
+                      properties:
+                        connect:
+                          description: Connect Connection-establishment timeout duration
+                            (e.g. "5s", "500ms"). "0s" disables.
+                          pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                          type: string
+                      type: object
+                    upstreams:
+                      description: Upstreams List of backend targets with optional
+                        weights for load balancing.
+                      items:
+                        description: UpstreamTarget is a single backend target within
+                          an UpstreamDefinition.
+                        properties:
+                          url:
+                            description: Url Backend URL (host and port only; path
+                              comes from the definition's basePath).
+                            pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
+                            type: string
+                          weight:
+                            description: Weight Weight for load balancing (optional,
+                              default 100).
+                            maximum: 100
+                            minimum: 0
+                            type: integer
+                        required:
+                        - url
+                        type: object
+                      minItems: 1
+                      type: array
+                  required:
+                  - name
+                  - upstreams
+                  type: object
+                type: array
               version:
                 description: Version is the semantic version of the LLM provider.
                 pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$

@@ -114,9 +114,18 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 		apiData.Context = *mcpConfig.Spec.Context
 	}
 
-	apiData.Upstream.Main = api.Upstream{
-		Url: mcpConfig.Spec.Upstream.Url,
+	// Map the MCP backend (direct url or upstreamDefinition ref). When a ref is used, carry the
+	// upstreamDefinitions through so the per-upstream connect timeout resolves like it does for RestApi.
+	if mcpConfig.Spec.Upstream.Ref != nil && strings.TrimSpace(*mcpConfig.Spec.Upstream.Ref) != "" {
+		apiData.Upstream.Main = api.Upstream{
+			Ref: mcpConfig.Spec.Upstream.Ref,
+		}
+	} else {
+		apiData.Upstream.Main = api.Upstream{
+			Url: mcpConfig.Spec.Upstream.Url,
+		}
 	}
+	apiData.UpstreamDefinitions = mcpConfig.Spec.UpstreamDefinitions
 
 	// Process policies
 	var policies []api.Policy

@@ -156,6 +156,11 @@ type MCPProxyConfigData struct {
 	// +kubebuilder:validation:Pattern=`^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`
 	Version string `json:"version"`
 
+	// UpstreamDefinitions is the list of reusable upstream definitions (with optional
+	// connect timeout) that upstream.ref can reference.
+	// +optional
+	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
+
 	// Upstream is the MCP backend.
 	// +kubebuilder:validation:Required
 	Upstream MCPUpstream `json:"upstream"`
