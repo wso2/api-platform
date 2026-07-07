@@ -20,7 +20,6 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
 	"math"
 	"net/url"
 	"strings"
@@ -31,6 +30,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/wso2/api-platform/common/collector"
 )
 
 const (
@@ -618,29 +618,22 @@ func (c *Config) validateCollectorConfig() error {
 // implicit: it is active whenever any consumer of the collected data is enabled
 // (analytics or stdout traffic logging), and off otherwise.
 func (c *Config) IsCollectorEnabled() bool {
-	return c.Analytics.Enabled || c.TrafficLogging.Enabled
+	return collector.IsEnabled(c.Analytics.Enabled, c.TrafficLogging.Enabled)
 }
 
 // migrateDeprecatedAnalyticsTransport maps a deprecated [analytics].access_logs_service
 // override onto the collector when the collector's receiver tuning is still at its
 // default, so existing configs keep working after the transport moved to [collector].
-// This is analytics's own deprecated field, so it is only honored while analytics is
-// enabled — otherwise a stale value left over from a disabled analytics setup could
-// silently reconfigure the transport for an unrelated consumer (e.g. traffic_logging)
-// enabled later.
+// See collector.MigrateDeprecatedTransport for the shared (with the gateway-controller)
+// migration logic and its guarding-while-analytics-enabled rationale.
 func (c *Config) migrateDeprecatedAnalyticsTransport() {
-	if !c.Analytics.Enabled {
-		return
-	}
-	def := defaultAccessLogsServiceConfig()
-	if c.Analytics.AccessLogsServiceCfg != def {
-		if c.Collector.AccessLogsServiceCfg == def {
-			slog.Warn("analytics.access_logs_service is deprecated; migrating it to collector.als")
-			c.Collector.AccessLogsServiceCfg = c.Analytics.AccessLogsServiceCfg
-		} else {
-			slog.Warn("analytics.access_logs_service is deprecated and collector.als is already configured; ignoring the analytics.access_logs_service override")
-		}
-	}
+	collector.MigrateDeprecatedTransport(
+		c.Analytics.Enabled,
+		c.Analytics.AccessLogsServiceCfg,
+		&c.Collector.AccessLogsServiceCfg,
+		defaultAccessLogsServiceConfig(),
+		"analytics.access_logs_service",
+	)
 }
 
 // validateAccessLogsServiceConfig validates the policy-engine ALS receiver tuning.
@@ -672,33 +665,21 @@ func validateAccessLogsServiceConfig(als AccessLogsServiceConfig) error {
 
 // migrateDeprecatedAnalyticsCapture maps the deprecated analytics.allow_payloads /
 // analytics.send_request_body / analytics.send_response_body onto the collector's
-// body-capture flags (when the collector flag is not already set), so existing
-// configs keep working after capture settings moved under [collector]. These are
-// analytics's own deprecated flags, so they are only honored while analytics is
-// enabled — otherwise a stale value left over from a disabled analytics setup
-// could silently turn on body capture for an unrelated consumer (e.g.
-// traffic_logging) enabled later.
+// body-capture flags, so existing configs keep working after capture settings
+// moved under [collector]. See collector.MigrateDeprecatedCapture for the shared
+// (with the gateway-controller) migration logic and its guarding-while-analytics-
+// enabled rationale.
 func (c *Config) migrateDeprecatedAnalyticsCapture() {
-	if !c.Analytics.Enabled {
-		return
-	}
-	// Directional aliases take precedence over allow_payloads.
-	if c.Analytics.SendRequestBody && !c.Collector.SendRequestBody {
-		slog.Warn("analytics.send_request_body is deprecated; use collector.send_request_body instead")
-		c.Collector.SendRequestBody = true
-	}
-	if c.Analytics.SendResponseBody && !c.Collector.SendResponseBody {
-		slog.Warn("analytics.send_response_body is deprecated; use collector.send_response_body instead")
-		c.Collector.SendResponseBody = true
-	}
-	// allow_payloads only fills in when no directional body capture is configured.
-	if c.Analytics.AllowPayloads {
-		slog.Warn("analytics.allow_payloads is deprecated; use collector.send_request_body and collector.send_response_body instead")
-		if !c.Collector.SendRequestBody && !c.Collector.SendResponseBody {
-			c.Collector.SendRequestBody = true
-			c.Collector.SendResponseBody = true
-		}
-	}
+	collector.MigrateDeprecatedCapture(
+		c.Analytics.Enabled,
+		collector.CaptureFlags{
+			SendRequestBody:  c.Analytics.SendRequestBody,
+			SendResponseBody: c.Analytics.SendResponseBody,
+			AllowPayloads:    c.Analytics.AllowPayloads,
+		},
+		&c.Collector.SendRequestBody,
+		&c.Collector.SendResponseBody,
+	)
 }
 
 // validateAnalyticsConfig validates the analytics consumer configuration (publishers).
