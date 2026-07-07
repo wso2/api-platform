@@ -130,7 +130,7 @@ const loadViewSettingsPage = async (req, res) => {
             logger.warn('Failed to load key managers for settings page', { error: err.message });
         }
         templateContent.keyManagers = keyManagers;
-        templateContent.keyManagerTypes = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
+        templateContent.keyManagerTypes = ['ASGARDEO', 'WSO2IS', 'GENERIC_OIDC'];
 
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG

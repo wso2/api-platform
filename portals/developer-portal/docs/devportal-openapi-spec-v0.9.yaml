@@ -5048,7 +5048,6 @@ components:
           enum:
             - ASGARDEO
             - WSO2IS
-            - KEYCLOAK
             - GENERIC_OIDC
           example: ASGARDEO
         enabled:
@@ -5081,7 +5080,6 @@ components:
           enum:
             - ASGARDEO
             - WSO2IS
-            - KEYCLOAK
             - GENERIC_OIDC
           example: ASGARDEO
         enabled:
@@ -5112,7 +5110,6 @@ components:
           enum:
             - ASGARDEO
             - WSO2IS
-            - KEYCLOAK
             - GENERIC_OIDC
           example: ASGARDEO
         enabled:
@@ -5157,7 +5154,6 @@ components:
           enum:
             - ASGARDEO
             - WSO2IS
-            - KEYCLOAK
             - GENERIC_OIDC
           example: ASGARDEO
         tokenEndpoint:

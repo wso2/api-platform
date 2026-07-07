@@ -39,7 +39,7 @@ curl -k -X POST https://localhost:3000/api/v0.9/key-managers \
 | Field | Required | Description |
 |---|---|---|
 | `metadata.name` | Yes | Unique display name shown to developers |
-| `spec.type` | Yes | Key manager type: `ASGARDEO`, `WSO2IS`, `KEYCLOAK`, or `GENERIC_OIDC` |
+| `spec.type` | Yes | Key manager type: `ASGARDEO`, `WSO2IS`, or `GENERIC_OIDC` |
 | `spec.tokenEndpoint` | Yes | OAuth2 token endpoint. The portal proxies `client_credentials` token requests here using the client ID/secret the developer supplies |
 | `spec.enabled` | No | Whether the key manager is active. Defaults to `true` |
 

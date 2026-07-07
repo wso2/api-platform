@@ -1417,7 +1417,6 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 |---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
 
 <h2 id="tocS_KeyManagerUpdateRequest">KeyManagerUpdateRequest</h2>
@@ -1456,7 +1455,6 @@ Partial update payload for a key manager. All fields are optional; only supplied
 |---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
 
 <h2 id="tocS_KeyManagerResponseSchema">KeyManagerResponseSchema</h2>
@@ -1505,7 +1503,6 @@ Key manager configuration.
 |---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
 
 <h2 id="tocS_KeyManagerPublicResponseSchema">KeyManagerPublicResponseSchema</h2>
@@ -1542,7 +1539,6 @@ Minimal developer-facing key manager view.
 |---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
 
 <h2 id="tocS_WebhookSubscriberRequest">WebhookSubscriberRequest</h2>

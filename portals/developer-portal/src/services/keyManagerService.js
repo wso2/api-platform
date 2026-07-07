@@ -30,7 +30,7 @@ const { logUserAction } = require('../middlewares/auditLogger');
  * (a standard OAuth2 client_credentials request), so this list exists purely
  * to validate the `type` field when an admin configures a key manager.
  */
-const SUPPORTED_KM_TYPES = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
+const SUPPORTED_KM_TYPES = ['ASGARDEO', 'WSO2IS', 'GENERIC_OIDC'];
 
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)

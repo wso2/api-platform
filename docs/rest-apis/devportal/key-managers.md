@@ -276,11 +276,9 @@ Status Code **200**
 |---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
 |type|ASGARDEO|
 |type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
 
 ## Get a key manager
