@@ -60,6 +60,6 @@ body:
         - label: "**Design Document** — A detailed design document has been created and reviewed, covering architecture, data flow, and edge cases."
         - label: "**Design Mail** — A design summary email has been sent to relevant stakeholders for awareness and feedback."
         - label: "**Code Review** — All code changes have been peer-reviewed and approved according to the project's review standards."
-        - label: "**Testing** — Adequate unit, integration, and/or end-to-end tests have been written and are passing."
-        - label: "**Documentation** — User-facing and/or developer documentation has been updated to reflect the new feature."
+        - label: "**Testing Complete** — Adequate unit, integration, and/or end-to-end tests have been written and are passing."
+        - label: "**Documentation Review** — User-facing and/or developer documentation has been updated to reflect the new feature and reviewed."
         - label: "**Feature Complete** — The feature is fully implemented, all checklist items above are done, and it is ready for release."
