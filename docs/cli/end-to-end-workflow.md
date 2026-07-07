@@ -19,7 +19,7 @@ flowchart LR
 
     subgraph DP["Developer Portal"]
         direction LR
-        F["<b>3a · Generate</b><br/>ap devportal gen"] --> G["<b>4a · Build</b><br/>ap devportal build"] --> H["<b>5a · Publish</b><br/>ap devportal rest-api publish"]
+        F["<b>3a · Generate</b><br/>ap devportal gen"] --> G["<b>4a · Build</b><br/>ap devportal build"] --> H["<b>5a · Apply</b><br/>ap devportal apply"]
     end
 
     subgraph AW["AI Workspace"]
@@ -81,10 +81,10 @@ Pick the destination for the deployed API.
 # Set spec.referenceID in metadata.yaml to the gateway API ID from step 2, then:
 ap devportal gen                                                    # generate ./devportal (devportal.yaml, definition, docs, content)
 ap devportal build                                                  # package ./devportal → build/devportal.zip
-ap devportal rest-api publish -f build/devportal.zip --org <org-id>
+ap devportal apply -f build/devportal.zip --org <org-id>            # kind read from the zip's devportal.yaml -> RestApi
 ```
 
-`gen` generates the devportal artifact source and registers it in the project config; edit `./devportal/devportal.yaml` to customize before `build`. `build` only packages the generated folder (run `gen` first). Follow-ups once published: `ap devportal sub-plan publish`, `ap devportal api-key generate`, `ap devportal subscription create`.
+`gen` generates the devportal artifact source and registers it in the project config; edit `./devportal/devportal.yaml` to customize before `build`. `build` only packages the generated folder (run `gen` first). `apply` routes by the artifact **kind** (a `.zip` → REST API; a YAML CR → its kind). Follow-ups once published: `ap devportal apply -f sub_plan.yaml --org <org-id>`, `ap devportal api-key generate`, `ap devportal subscription create`.
 
 #### AI Workspace
 

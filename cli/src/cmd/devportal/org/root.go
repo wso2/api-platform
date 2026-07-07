@@ -41,7 +41,6 @@ var OrgCmd = &cobra.Command{
 }
 
 func init() {
-	OrgCmd.AddCommand(addCmd)
 	OrgCmd.AddCommand(deleteCmd)
 	OrgCmd.AddCommand(editCmd)
 	OrgCmd.AddCommand(listCmd)

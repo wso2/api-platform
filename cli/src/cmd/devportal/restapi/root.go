@@ -46,5 +46,4 @@ func init() {
 	APICmd.AddCommand(getCmd)
 	APICmd.AddCommand(editCmd)
 	APICmd.AddCommand(deleteCmd)
-	APICmd.AddCommand(publishCmd)
 }

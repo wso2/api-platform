@@ -178,6 +178,50 @@ Generated artifact names:
 - `default` DevPortal config: `build/devportal.zip`
 - named DevPortal config: `build/devportal_<name>.zip`
 
+## Apply Command
+
+### `ap devportal apply`
+
+**Creates** or **updates** a DevPortal resource from a **single file**, aligning with `ap gateway apply` and `ap ai-workspace apply`. Because a project can contain multiple DevPortal resources, you point `-f` at the **exact file** — a YAML CR or a built REST API artifact zip — not at the project directory.
+
+```shell
+ap devportal apply -f <file> [--org <org-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+The target endpoint is selected from the resource **kind**. For a YAML CR the top-level `kind` is read directly; for a `.zip` the `kind` is read from the artifact's `devportal.yaml`.
+
+For kinds that are addressable by their handle (`metadata.name`) and expose a `PUT` — `Organization` and `RestApi` — apply first **checks whether the resource exists** (`GET {resource}/{handle}`, like `ap gateway apply`) and then **updates** it (`PUT`, reported as `updated`) or **creates** it (`POST`, reported as `applied`). Subscription plans have no per-plan `PUT` — their publish endpoint upserts, and `SubscriptionPolicyList` is a bulk upload — so they are always `POST`ed.
+
+| Kind (source) | Input | Create / update | `--org` |
+| --- | --- | --- | --- |
+| `Organization` (YAML CR) | `.yaml` | `GET /organizations/{name}` → `PUT /organizations/{name}` or `POST /organizations` | not required |
+| `SubscriptionPolicy` / `SubscriptionPolicyList` (YAML CR) | `.yaml` | `POST .../subscription-policies` (server upsert) | **required** |
+| `RestApi` (artifact `devportal.yaml`) | `.zip` | `GET .../apis/{name}` → `PUT .../apis/{name}` or `POST .../apis` | **required** |
+
+Examples:
+
+```shell
+# Organization (no --org; the file itself identifies the org handle)
+ap devportal apply -f org.yaml
+
+# Subscription plan(s) — single (kind: SubscriptionPolicy) or bulk (kind: SubscriptionPolicyList)
+ap devportal apply -f sub_plan.yaml --org org_1
+
+# REST API from a built artifact zip (kind: RestApi read from devportal.yaml)
+ap devportal apply -f build/devportal.zip --org org_1
+
+# Target a specific devportal without relying on the active one
+ap devportal apply -f org.yaml --display-name my-portal --platform eu
+```
+
+Notes:
+
+- `--file` is required and must be an **exact file** (a `.yaml`/`.yml` CR or a `.zip` artifact), not a directory.
+- `--org` is required for the org-scoped kinds (`RestApi`, `SubscriptionPolicy`/`SubscriptionPolicyList`) and is not needed for `Organization`.
+- A `RestApi` must be supplied as a built `.zip` (from `ap devportal build`); a CR must be supplied as YAML.
+- On success it prints a `Status`/`Message`/`ID` summary — the message reports `applied` (created) or `updated` — followed by the server response body.
+- This replaces the former `ap devportal org add`, `ap devportal sub-plan publish`, and `ap devportal rest-api publish` commands (which were create/publish-only).
+
 ## Organization Commands
 
 These commands manage DevPortal organizations using the `/devportal/organizations` endpoints.
@@ -216,19 +260,12 @@ ap devportal org get --org org_1
 ap devportal org get --org org_1 --display-name my-portal --platform eu
 ```
 
-### `ap devportal org add`
+### Creating an organization
 
-Creates an organization by uploading a YAML CR file as multipart form data using the `organization` field.
-
-```shell
-ap devportal org add --file <org.yaml> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
+Organizations are created with the unified [`ap devportal apply`](#ap-devportal-apply) command from a `kind: Organization` YAML CR:
 
 ```shell
-ap devportal org add -f org.yaml
-ap devportal org add -f org.yaml --display-name my-portal --platform eu
+ap devportal apply -f org.yaml
 ```
 
 Expected CR shape (`org.yaml`):
@@ -238,10 +275,10 @@ apiVersion: devportal.api-platform.wso2.com/v1
 kind: Organization
 
 metadata:
-  name: ACME
+  name: ACME        # read as the organization handle
 
 spec:
-  displayName: acme
+  displayName: acme # read as the organization display name; all other fields are read from spec
   organizationIdentifier: acme
   adminRole: admin
   subscriberRole: subscriber
@@ -256,18 +293,6 @@ spec:
       displayName: Default View
       labels:
         - default
-```
-
-Notes:
-
-- `metadata.name` is read as the organization handle.
-- `spec.displayName` is read as the organization display name.
-- All other organization fields are read from `spec`.
-
-Equivalent request shape:
-
-```shell
-curl -X POST /devportal/organizations -F "organization=@org.yaml"
 ```
 
 ### `ap devportal org edit`
@@ -518,31 +543,15 @@ ap devportal rest-api get --org org_1 --id api_1
 ap devportal rest-api get --org org_1 --id api_1 --display-name my-portal --platform eu
 ```
 
-### `ap devportal rest-api publish`
+### Publishing a REST API
 
-Publishes a DevPortal artifact zip to a DevPortal organization.
-
-```shell
-ap devportal rest-api publish [--file <zip-path>] --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
+A built REST API artifact zip is published with the unified [`ap devportal apply`](#ap-devportal-apply) command — `apply` reads `kind: RestApi` from the zip's `devportal.yaml` and routes it to the organization's `apis` endpoint:
 
 ```shell
-ap devportal rest-api publish --org org_1
-ap devportal rest-api publish -f fooapi/build/devportal.zip --org org_1
-ap devportal rest-api publish -f fooapi/build/devportal.zip --org org_1 --display-name my-portal --platform eu
-ap devportal rest-api publish -f fooapi/build/devportal.zip --org org_1 --insecure
+ap devportal apply -f build/devportal.zip --org org_1
 ```
 
-Behavior:
-
-- If `--file` is omitted, the command looks for `./devportal.zip` in the current directory.
-- If neither `--file` nor `./devportal.zip` is available, the command returns an error.
-- If `--display-name` is provided, the named DevPortal is used.
-- If `--display-name` is provided without `--platform`, the command looks in the `default` platform.
-- If `--display-name` is not provided, the command uses the active DevPortal of the resolved platform.
-- `--insecure` skips TLS certificate verification for local or self-signed HTTPS endpoints.
+Build the zip first with [`ap devportal build`](#ap-devportal-build). Use `ap devportal rest-api get`/`list`/`edit`/`delete` (below) to manage an already-published API.
 
 ### `ap devportal rest-api edit`
 
@@ -667,21 +676,16 @@ ap devportal api-key revoke --org org_1 --api-key-id key_1 --display-name my-por
 
 These commands manage subscription plans using the `/devportal/organizations/{orgId}/subscription-policies` endpoint.
 
-### `ap devportal sub-plan publish`
+### Publishing subscription plans
 
-Publishes one or more subscription plans by uploading a YAML CR file as multipart form data using the `subscriptionPolicy` field. Both a single plan (`kind: SubscriptionPolicy`) and a bulk list (`kind: SubscriptionPolicyList` with an `items` array) are accepted.
-
-```shell
-ap devportal sub-plan publish --file <plan.yaml> --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
+Subscription plans are published with the unified [`ap devportal apply`](#ap-devportal-apply) command from a YAML CR — either a single plan (`kind: SubscriptionPolicy`) or a bulk list (`kind: SubscriptionPolicyList` with an `items` array). `--org` is required.
 
 ```shell
-ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1
-ap devportal sub-plan publish -f sub_plans.yaml --org org_1
-ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1 --display-name my-portal --platform eu
+ap devportal apply -f sub_plan_gold.yaml --org org_1     # single plan
+ap devportal apply -f sub_plans.yaml --org org_1         # bulk list
 ```
+
+The CLI validates the CR locally before upload: `kind` must be `SubscriptionPolicy` or `SubscriptionPolicyList`, and each plan must have `metadata.name`.
 
 Single plan CR shape (`sub_plan_gold.yaml`):
 
@@ -723,9 +727,7 @@ items:
 
 Notes:
 
-- The CLI validates the CR locally before upload: `kind` must be `SubscriptionPolicy` or `SubscriptionPolicyList`, and each plan must have `metadata.name`.
 - `type` accepts `requestcount` or `eventcount`. Use `-1` for an unlimited request/event count.
-- Equivalent request shape: `curl -X POST /devportal/organizations/<org-id>/subscription-policies -F "subscriptionPolicy=@sub_plan_gold.yaml"`.
 
 ### `ap devportal sub-plan list`
 

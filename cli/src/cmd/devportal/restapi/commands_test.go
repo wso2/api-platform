@@ -163,61 +163,6 @@ func TestRunGetCommand_PrintsJSON(t *testing.T) {
 	}
 }
 
-func TestRunPublishCommand_DefaultArtifactAndMultipartUpload(t *testing.T) {
-	testutil.WithTempHome(t)
-
-	workDir := t.TempDir()
-	testutil.WithWorkingDir(t, workDir)
-	testutil.WriteZipFixture(t, workDir, "devportal.zip")
-
-	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost {
-			t.Fatalf("expected POST request, got %s", req.Method)
-		}
-		if req.URL.Path != "/o/org-1/devportal/v1/apis" {
-			t.Fatalf("unexpected request path %s", req.URL.Path)
-		}
-		assertMultipartArtifact(t, req, "devportal.zip")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"apiID":"api-1"}`))
-	})
-
-	writeSingleActivePortalConfig(t, server.URL)
-
-	publishFilePath = ""
-	publishOrgID = "org-1"
-	publishName = ""
-	publishPlatform = ""
-	publishInsecure = false
-
-	out := testutil.CaptureStdout(t, func() {
-		if err := runPublishCommand(); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-	if !strings.Contains(out, "API artifact published") {
-		t.Fatalf("expected publish message, got %q", out)
-	}
-}
-
-func TestRunPublishCommand_MissingDefaultArtifact(t *testing.T) {
-	testutil.WithTempHome(t)
-	workDir := t.TempDir()
-	testutil.WithWorkingDir(t, workDir)
-	writeSingleActivePortalConfig(t, "http://example.com")
-
-	publishFilePath = ""
-	publishOrgID = "org-1"
-	publishName = ""
-	publishPlatform = ""
-	publishInsecure = false
-
-	err := runPublishCommand()
-	if err == nil || !strings.Contains(err.Error(), "Provide --file or place devportal.zip in the current directory") {
-		t.Fatalf("expected missing artifact guidance error, got %v", err)
-	}
-}
-
 func TestRunEditCommand_UploadsArtifact(t *testing.T) {
 	testutil.WithTempHome(t)
 

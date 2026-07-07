@@ -43,7 +43,6 @@ var SubPlanCmd = &cobra.Command{
 }
 
 func init() {
-	SubPlanCmd.AddCommand(publishCmd)
 	SubPlanCmd.AddCommand(listCmd)
 	SubPlanCmd.AddCommand(getCmd)
 	SubPlanCmd.AddCommand(deleteCmd)
