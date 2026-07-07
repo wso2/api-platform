@@ -22,7 +22,7 @@ jobs:
       - name: Revert invalid Projects v2 items to Design
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PROJECT_TOKEN }}
           script: |
             const PROJECT_OWNER = 'wso2';
             const PROJECT_NUMBER = 144;
@@ -69,9 +69,24 @@ jobs:
               return result.organization?.projectV2;
             }
 
-            const project = await getProject();
+            let project;
+            try {
+              project = await getProject();
+            } catch (err) {
+              core.setFailed([
+                `Could not access https://github.com/orgs/${PROJECT_OWNER}/projects/${PROJECT_NUMBER}.`,
+                'The token used by this workflow must have access to the org Project v2.',
+                'Use a PROJECT_TOKEN secret with org Projects read/write access and issue comment access.',
+                `Original error: ${err.message}`,
+              ].join('\n'));
+              return;
+            }
+
             if (!project) {
-              core.setFailed(`Could not find Projects v2 project ${PROJECT_OWNER}/${PROJECT_NUMBER}.`);
+              core.setFailed([
+                `Could not resolve https://github.com/orgs/${PROJECT_OWNER}/projects/${PROJECT_NUMBER}.`,
+                'If the project URL is correct, the PROJECT_TOKEN secret cannot see this org Project v2.',
+              ].join('\n'));
               return;
             }
 
