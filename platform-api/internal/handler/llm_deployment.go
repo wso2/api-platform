@@ -59,37 +59,38 @@ func NewLLMProxyDeploymentHandler(deploymentService *service.LLMProxyDeploymentS
 func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	providerId := r.PathValue("llmProviderId")
 	if providerId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 
 	var req api.DeployRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, err.Error()))
 		return
 	}
 
 	if req.Name == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeLLMProviderDeploymentValidationFailed, "name is required"))
 		return
 	}
 	if req.Base == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"base is required (use 'current' or a deploymentId)"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeLLMProviderDeploymentValidationFailed, "base is required (use 'current' or a deploymentId)"))
 		return
 	}
 	if strings.TrimSpace(req.GatewayId) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeLLMProviderDeploymentValidationFailed, "gatewayId is required"))
 		return
 	}
 
@@ -100,41 +101,41 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, 
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		case errors.Is(err, constants.ErrBaseDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Base deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentBaseNotFound, "The specified base deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNameRequired):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment name is required"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderDeploymentValidationFailed, "Deployment name is required"))
 			return
 		case errors.Is(err, constants.ErrDeploymentBaseRequired):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Base is required (use 'current' or a deploymentId)"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderDeploymentValidationFailed, "Base is required (use 'current' or a deploymentId)"))
 			return
 		case errors.Is(err, constants.ErrDeploymentGatewayIDRequired):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Gateway ID is required"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderDeploymentValidationFailed, "Gateway ID is required"))
 			return
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Referenced template not found"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderDeploymentValidationFailed, "Referenced template not found"))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid input"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderDeploymentValidationFailed, "Invalid input"))
 			return
 		default:
 			h.slogger.Error("Failed to deploy LLM provider", "providerId", providerId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Failed to deploy LLM provider"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to deploy LLM provider"))
 			return
 		}
 	}
@@ -146,8 +147,8 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, 
 func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -156,8 +157,8 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.Resp
 	gatewayId := r.URL.Query().Get("gatewayId")
 
 	if providerId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 	deployment, err := h.deploymentService.UndeployLLMProviderDeployment(providerId, deploymentId, gatewayId, orgId)
@@ -168,28 +169,29 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.Resp
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotActive):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"No active deployment found for this LLM provider on the gateway"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotActive, "No active deployment found for this LLM provider on the gateway."))
 			return
 		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentGatewayMismatch, "Deployment is bound to a different gateway."))
 			return
 		default:
 			h.slogger.Error("Failed to undeploy LLM provider", "providerId", providerId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to undeploy deployment"))
 			return
 		}
 	}
@@ -201,8 +203,8 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.Resp
 func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -211,8 +213,8 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.Respo
 	gatewayId := r.URL.Query().Get("gatewayId")
 
 	if providerId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 	deployment, err := h.deploymentService.RestoreLLMProviderDeployment(providerId, deploymentId, gatewayId, orgId)
@@ -223,28 +225,29 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.Respo
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentAlreadyDeployed):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot restore currently deployed deployment"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentRestoreConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid."))
 			return
 		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentGatewayMismatch, "Deployment is bound to a different gateway."))
 			return
 		default:
 			h.slogger.Error("Failed to restore LLM provider deployment", "providerId", providerId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to restore deployment"))
 			return
 		}
 	}
@@ -256,8 +259,8 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.Respo
 func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -265,13 +268,13 @@ func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.Respon
 	deploymentId := r.PathValue("deploymentId")
 
 	if providerId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Deployment ID is required"))
 		return
 	}
 
@@ -279,20 +282,21 @@ func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.Respon
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentIsDeployed):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot delete an active deployment - undeploy it first"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentActive, "Cannot delete an active deployment - undeploy it first."))
 			return
 		default:
 			h.slogger.Error("Failed to delete LLM provider deployment", "providerId", providerId, "deploymentId", deploymentId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to delete deployment"))
 			return
 		}
 	}
@@ -304,8 +308,8 @@ func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.Respon
 func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -313,13 +317,13 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployment(w http.ResponseW
 	deploymentId := r.PathValue("deploymentId")
 
 	if providerId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Deployment ID is required"))
 		return
 	}
 
@@ -327,17 +331,17 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployment(w http.ResponseW
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		default:
 			h.slogger.Error("Failed to get LLM provider deployment", "providerId", providerId, "deploymentId", deploymentId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Failed to retrieve deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to retrieve deployment"))
 			return
 		}
 	}
@@ -349,15 +353,15 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployment(w http.ResponseW
 func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	providerId := r.PathValue("llmProviderId")
 	if providerId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 
@@ -374,17 +378,17 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.Response
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		case errors.Is(err, constants.ErrInvalidDeploymentStatus):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid deployment status"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentInvalidStatus, "The specified deployment status filter is invalid."))
 			return
 		default:
 			h.slogger.Error("Failed to get LLM provider deployments", "providerId", providerId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Failed to retrieve deployments"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to retrieve deployments"))
 			return
 		}
 	}
@@ -407,37 +411,38 @@ func (h *LLMProviderDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
 func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	proxyId := r.PathValue("llmProxyId")
 	if proxyId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM proxy ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM proxy ID is required"))
 		return
 	}
 
 	var req api.DeployRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, err.Error()))
 		return
 	}
 
 	if req.Name == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeLLMProxyDeploymentValidationFailed, "name is required"))
 		return
 	}
 	if req.Base == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"base is required (use 'current' or a deploymentId)"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeLLMProxyDeploymentValidationFailed, "base is required (use 'current' or a deploymentId)"))
 		return
 	}
 	if strings.TrimSpace(req.GatewayId) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeLLMProxyDeploymentValidationFailed, "gatewayId is required"))
 		return
 	}
 
@@ -448,37 +453,37 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *htt
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM proxy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		case errors.Is(err, constants.ErrBaseDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Base deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentBaseNotFound, "The specified base deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNameRequired):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment name is required"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyDeploymentValidationFailed, "Deployment name is required"))
 			return
 		case errors.Is(err, constants.ErrDeploymentBaseRequired):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Base is required (use 'current' or a deploymentId)"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyDeploymentValidationFailed, "Base is required (use 'current' or a deploymentId)"))
 			return
 		case errors.Is(err, constants.ErrDeploymentGatewayIDRequired):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Gateway ID is required"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyDeploymentValidationFailed, "Gateway ID is required"))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid input"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyDeploymentValidationFailed, "Invalid input"))
 			return
 		default:
 			h.slogger.Error("Failed to deploy LLM proxy", "proxyId", proxyId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Failed to deploy LLM proxy"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to deploy LLM proxy"))
 			return
 		}
 	}
@@ -490,8 +495,8 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *htt
 func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -500,8 +505,8 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWr
 	gatewayId := r.URL.Query().Get("gatewayId")
 
 	if proxyId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM proxy ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM proxy ID is required"))
 		return
 	}
 	deployment, err := h.deploymentService.UndeployLLMProxyDeployment(proxyId, deploymentId, gatewayId, orgId)
@@ -512,28 +517,29 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWr
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM proxy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotActive):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"No active deployment found for this LLM proxy on the gateway"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotActive, "No active deployment found for this LLM proxy on the gateway."))
 			return
 		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentGatewayMismatch, "Deployment is bound to a different gateway."))
 			return
 		default:
 			h.slogger.Error("Failed to undeploy LLM proxy", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to undeploy deployment"))
 			return
 		}
 	}
@@ -545,8 +551,8 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWr
 func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -555,8 +561,8 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWri
 	gatewayId := r.URL.Query().Get("gatewayId")
 
 	if proxyId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM proxy ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM proxy ID is required"))
 		return
 	}
 	deployment, err := h.deploymentService.RestoreLLMProxyDeployment(proxyId, deploymentId, gatewayId, orgId)
@@ -567,28 +573,29 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWri
 		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM proxy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrGatewayNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentAlreadyDeployed):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot restore currently deployed deployment"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentRestoreConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid."))
 			return
 		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentGatewayMismatch, "Deployment is bound to a different gateway."))
 			return
 		default:
 			h.slogger.Error("Failed to restore LLM proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to restore deployment"))
 			return
 		}
 	}
@@ -600,8 +607,8 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWri
 func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -609,13 +616,13 @@ func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWrit
 	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM proxy ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM proxy ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Deployment ID is required"))
 		return
 	}
 
@@ -623,20 +630,21 @@ func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWrit
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM proxy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentIsDeployed):
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot delete an active deployment - undeploy it first"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentActive, "Cannot delete an active deployment - undeploy it first."))
 			return
 		default:
 			h.slogger.Error("Failed to delete LLM proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to delete deployment"))
 			return
 		}
 	}
@@ -648,8 +656,8 @@ func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWrit
 func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -657,13 +665,13 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployment(w http.ResponseWriter,
 	deploymentId := r.PathValue("deploymentId")
 
 	if proxyId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM proxy ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM proxy ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Deployment ID is required"))
 		return
 	}
 
@@ -671,17 +679,17 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployment(w http.ResponseWriter,
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM proxy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
 			return
 		case errors.Is(err, constants.ErrDeploymentNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		default:
 			h.slogger.Error("Failed to get LLM proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Failed to retrieve deployment"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to retrieve deployment"))
 			return
 		}
 	}
@@ -693,15 +701,15 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployment(w http.ResponseWriter,
 func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	proxyId := r.PathValue("llmProxyId")
 	if proxyId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM proxy ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM proxy ID is required"))
 		return
 	}
 
@@ -718,17 +726,17 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM proxy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
 			return
 		case errors.Is(err, constants.ErrInvalidDeploymentStatus):
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid deployment status"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentInvalidStatus, "The specified deployment status filter is invalid."))
 			return
 		default:
 			h.slogger.Error("Failed to get LLM proxy deployments", "proxyId", proxyId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-				"Failed to retrieve deployments"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to retrieve deployments"))
 			return
 		}
 	}

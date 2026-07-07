@@ -50,8 +50,8 @@ func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, identity
 func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -68,8 +68,8 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Reque
 	response, err := h.apiKeyUserService.ListAPIKeysByUser(r.Context(), orgID, callerUserID, types)
 	if err != nil {
 		h.slogger.Error("Failed to list API keys for user", "orgId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to list API keys"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list API keys"))
 		return
 	}
 

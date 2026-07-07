@@ -37,7 +37,7 @@ func resolveActor(w http.ResponseWriter, r *http.Request, identity *service.Iden
 	actor, err := identity.InternalUserID(r)
 	if err != nil {
 		slogger.Error("Failed to resolve user identity", "action", action, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(utils.CodeCommonInternalError,
 			"Failed to resolve user identity"))
 		return "", false
 	}

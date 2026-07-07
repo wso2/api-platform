@@ -47,7 +47,8 @@ func NewApplicationHandler(applicationService *service.ApplicationService, ident
 func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -58,15 +59,18 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 	}
 
 	if strings.TrimSpace(req.DisplayName) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "displayName is required"))
 		return
 	}
 	if strings.TrimSpace(req.ProjectId) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Project ID is required"))
 		return
 	}
 	if strings.TrimSpace(string(req.Type)) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application type is required"))
 		return
 	}
 
@@ -86,13 +90,15 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 func (h *ApplicationHandler) GetApplication(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 
@@ -108,13 +114,15 @@ func (h *ApplicationHandler) GetApplication(w http.ResponseWriter, r *http.Reque
 func (h *ApplicationHandler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	projectID := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Project ID is required"))
 		return
 	}
 
@@ -156,13 +164,15 @@ func (h *ApplicationHandler) ListApplications(w http.ResponseWriter, r *http.Req
 func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 	userID, ok := resolveActor(w, r, h.identity, h.slogger, "update application")
@@ -188,13 +198,15 @@ func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Re
 func (h *ApplicationHandler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 	userID, ok := resolveActor(w, r, h.identity, h.slogger, "delete application")
@@ -213,13 +225,15 @@ func (h *ApplicationHandler) DeleteApplication(w http.ResponseWriter, r *http.Re
 func (h *ApplicationHandler) ListApplicationAssociations(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 
@@ -254,13 +268,15 @@ func (h *ApplicationHandler) ListApplicationAssociations(w http.ResponseWriter, 
 func (h *ApplicationHandler) AddApplicationAssociations(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 
@@ -270,7 +286,8 @@ func (h *ApplicationHandler) AddApplicationAssociations(w http.ResponseWriter, r
 		return
 	}
 	if len(req.Associations) == 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one association is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "At least one association is required"))
 		return
 	}
 
@@ -286,18 +303,21 @@ func (h *ApplicationHandler) AddApplicationAssociations(w http.ResponseWriter, r
 func (h *ApplicationHandler) RemoveApplicationAssociation(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	associationID := r.PathValue("associationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 	if strings.TrimSpace(associationID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Association ID is required"))
 		return
 	}
 
@@ -312,13 +332,15 @@ func (h *ApplicationHandler) RemoveApplicationAssociation(w http.ResponseWriter,
 func (h *ApplicationHandler) ListApplicationAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 
@@ -353,18 +375,21 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(w http.ResponseWriter, r *ht
 func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	appID := r.PathValue("applicationId")
 	associationID := r.PathValue("associationId")
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 	if strings.TrimSpace(associationID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Association ID is required"))
 		return
 	}
 
@@ -399,7 +424,8 @@ func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(w http.ResponseWr
 func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -409,7 +435,8 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 		return
 	}
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 
@@ -419,7 +446,8 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 		return
 	}
 	if len(req.ApiKeys) == 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one API key mapping is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "At least one API key mapping is required"))
 		return
 	}
 
@@ -435,7 +463,8 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -447,15 +476,18 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *h
 		return
 	}
 	if strings.TrimSpace(appID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application ID is required"))
 		return
 	}
 	if strings.TrimSpace(keyID) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API key id is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API key id is required"))
 		return
 	}
 	if entityID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Entity ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Entity ID is required"))
 		return
 	}
 
@@ -496,41 +528,58 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 
 	switch {
 	case errors.Is(err, constants.ErrApplicationNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Application not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+			utils.CodeApplicationNotFound, "The specified application could not be found."))
 	case errors.Is(err, constants.ErrProjectNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+			utils.CodeProjectNotFound, "The specified project could not be found."))
 	case errors.Is(err, constants.ErrOrganizationNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Organization not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+			utils.CodeOrganizationNotFound, "The specified organization could not be found."))
 	case errors.Is(err, constants.ErrApplicationExists):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Application already exists in project"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+			utils.CodeApplicationExists, "An application already exists in this project."))
 	case errors.Is(err, constants.ErrHandleExists):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Application handle already exists in organization"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+			utils.CodeApplicationExists, "An application with this handle already exists in the organization."))
 	case errors.Is(err, constants.ErrAPIKeyNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API key not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+			utils.CodeCommonNotFound, "API key not found"))
 	case errors.Is(err, constants.ErrAPIKeyForbidden):
-		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only the key creator can perform this action"))
+		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
+			utils.CodeCommonForbidden, "Only the key creator can perform this action"))
 	case errors.Is(err, constants.ErrInvalidApplicationName):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "displayName is required"))
 	case errors.Is(err, constants.ErrInvalidApplicationType):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Application type is required"))
 	case errors.Is(err, constants.ErrUnsupportedApplicationType):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application type. Only 'genai' is supported"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid application type. Only 'genai' is supported"))
 	case errors.Is(err, constants.ErrInvalidHandle):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application handle format"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid application handle format"))
 	case errors.Is(err, constants.ErrInvalidApplicationID):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application id"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid application id"))
 	case errors.Is(err, constants.ErrInvalidAPIKey):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API key id"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid API key id"))
 	case errors.Is(err, constants.ErrArtifactNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Association target not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+			utils.CodeCommonNotFound, "Association target not found"))
 	case errors.Is(err, constants.ErrArtifactInvalidKind):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid association kind. Only LlmProvider and LlmProxy are supported"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid association kind. Only LlmProvider and LlmProxy are supported"))
 	case errors.Is(err, constants.ErrInvalidInput):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application association input"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid application association input"))
 	case errors.Is(err, constants.ErrHandleImmutable):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"The id is immutable and must match the application being updated"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "The id is immutable and must match the application being updated"))
 	default:
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", fallback))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, fallback))
 	}
 }

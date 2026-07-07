@@ -53,26 +53,28 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	var req api.Organization
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid request body"))
 		return
 	}
 
 	// Validate required fields
 	if req.DisplayName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"displayName is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "displayName is required"))
 		return
 	}
 	if req.Region == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Region is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Region is required"))
 		return
 	}
 
 	// UUID is always server-generated
 	id, genErr := utils.GenerateUUID()
 	if genErr != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to generate organization ID"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to generate organization ID"))
 		return
 	}
 
@@ -94,18 +96,18 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, idpOrgRefUUID, performedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Organization already exists"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeOrganizationExists, "An organization with this handle already exists."))
 			return
 		}
 		if errors.Is(err, constants.ErrOrganizationExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Organization with the given ID already exists"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeOrganizationExists, "An organization with the given ID already exists."))
 			return
 		}
 		h.slogger.Error("Failed to create organization", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to create organization"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to create organization"))
 		return
 	}
 
@@ -125,8 +127,8 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 	// to do: enable this check after finalizing authentication method
 
 	// if orgID != organizationIdFromContext {
-	// 	httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
-	// 		"Organization ID in token does not match the requested organization ID"))
+	// 	httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
+	// 		utils.CodeCommonForbidden, "Organization ID in token does not match the requested organization ID"))
 	// 	return
 	// }
 
@@ -150,13 +152,13 @@ func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http
 	org, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Organization not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeOrganizationNotFound, "The specified organization could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to get organization by handle", "handle", handle, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get organization"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get organization"))
 		return
 	}
 
@@ -185,8 +187,8 @@ func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.R
 	orgs, total, err := h.orgService.ListOrganizations(limit, offset)
 	if err != nil {
 		h.slogger.Error("Failed to list organizations", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to list organizations"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list organizations"))
 		return
 	}
 

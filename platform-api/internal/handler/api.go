@@ -50,8 +50,8 @@ func NewAPIHandler(apiService *service.APIService, identity *service.IdentitySer
 func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -63,29 +63,29 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 
 	// Validate required fields
 	if req.DisplayName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API name is required"))
 		return
 	}
 	if req.Context == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API context is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API context is required"))
 		return
 	}
 	if req.Version == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API version is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API version is required"))
 		return
 	}
 	if strings.TrimSpace(req.ProjectId) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Project ID is required"))
 		return
 	}
 	if isEmptyUpstreamDefinition(req.Upstream.Main) && (req.Upstream.Sandbox == nil || isEmptyUpstreamDefinition(*req.Upstream.Sandbox)) {
 		h.slogger.Error("Validation failed: No upstream endpoints provided", "organizationId", orgId)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"At least one upstream endpoint (main or sandbox) is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "At least one upstream endpoint (main or sandbox) is required"))
 		return
 	}
 
@@ -97,73 +97,73 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			h.slogger.Error("API handle already exists", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"API handle already exists"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPIExists, "An API with this handle already exists."))
 			return
 		}
 		if errors.Is(err, constants.ErrAPINameVersionAlreadyExists) {
 			h.slogger.Error("API with same name and version already exists", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"API with same name and version already exists in the organization"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPIExists, "An API with the same name and version already exists in the organization."))
 			return
 		}
 		if errors.Is(err, constants.ErrAPIAlreadyExists) {
 			h.slogger.Error("API already exists in the project", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"API already exists in the project"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPIExists, "An API already exists in the project."))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			h.slogger.Error("Project not found", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Project not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeProjectNotFound, "The specified project could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIName) {
 			h.slogger.Error("Invalid API name format", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid API name format"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid API name format"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIContext) {
 			h.slogger.Error("Invalid API context format", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid API context format"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid API context format"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIVersion) {
 			h.slogger.Error("Invalid API version format", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid API version format"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid API version format"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidLifecycleState) {
 			h.slogger.Error("Invalid lifecycle status", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid lifecycle status"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid lifecycle status"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIType) {
 			h.slogger.Error("Invalid API type", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid API type"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid API type"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidTransport) {
 			h.slogger.Error("Invalid transport protocol", "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid transport protocol"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid transport protocol"))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
 			h.slogger.Error("Subscription plan not found or not active", "organizationId", orgId, "error", err)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				err.Error()))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, err.Error()))
 			return
 		}
 		h.slogger.Error("Failed to create API", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to create API"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to create API"))
 		return
 	}
 
@@ -174,15 +174,15 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) GetAPI(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 
@@ -190,13 +190,13 @@ func (h *APIHandler) GetAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to get API", "apiId", apiId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get API"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get API"))
 		return
 	}
 
@@ -208,14 +208,15 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) {
 	// Get organization from JWT token
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	projectId := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "projectId query parameter is required"))
 		return
 	}
 
@@ -223,13 +224,13 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			h.slogger.Error("Project not found", "organizationId", orgId, "projectId", projectId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Project not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeProjectNotFound, "The specified project could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to get APIs", "organizationId", orgId, "projectId", projectId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get APIs"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get APIs"))
 		return
 	}
 
@@ -250,29 +251,28 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 
 	var req api.RESTAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			err.Error()))
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 
 	// Validate upstream configuration if provided
 	if isEmptyUpstreamDefinition(req.Upstream.Main) && (req.Upstream.Sandbox == nil || isEmptyUpstreamDefinition(*req.Upstream.Sandbox)) {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"At least one upstream endpoint (main or sandbox) is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "At least one upstream endpoint (main or sandbox) is required"))
 		return
 	}
 
@@ -287,41 +287,42 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrHandleImmutable) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, err.Error()))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidLifecycleState) {
 			h.slogger.Error("Invalid lifecycle status", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid lifecycle status"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid lifecycle status"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIType) {
 			h.slogger.Error("Invalid API type", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid API type"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid API type"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidTransport) {
 			h.slogger.Error("Invalid transport protocol", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid transport protocol"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid transport protocol"))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
 			h.slogger.Error("Subscription plan not found or not active", "apiId", apiId, "organizationId", orgId, "error", err)
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				err.Error()))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, err.Error()))
 			return
 		}
 		h.slogger.Error("Failed to update API", "apiId", apiId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to update API"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to update API"))
 		return
 	}
 
@@ -332,15 +333,15 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 
@@ -355,13 +356,13 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to delete API", "apiId", apiId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to delete API"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to delete API"))
 		return
 	}
 
@@ -372,27 +373,27 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 
 	var req []api.AddGatewayToRESTAPIRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 
 	if len(req) == 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"At least one gateway ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "At least one gateway ID is required"))
 		return
 	}
 
@@ -406,19 +407,19 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("One or more gateways not found", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"One or more gateways not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "One or more of the specified gateways could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to associate gateways with API", "apiId", apiId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to associate gateways with API"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to associate gateways with API"))
 		return
 	}
 
@@ -429,15 +430,15 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 
@@ -445,13 +446,13 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to get API gateways", "apiId", apiId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get API gateways"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get API gateways"))
 		return
 	}
 

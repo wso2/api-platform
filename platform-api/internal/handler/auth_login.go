@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/go-httpkit/httputil"
@@ -54,13 +55,13 @@ func (h *AuthLoginHandler) RegisterPublicRoutes(mux *http.ServeMux) {
 func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := r.ParseForm(); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "username and password are required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(utils.CodeCommonValidationFailed, "username and password are required"))
 		return
 	}
 	req.Username = r.PostForm.Get("username")
 	req.Password = r.PostForm.Get("password")
 	if req.Username == "" || req.Password == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "username and password are required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(utils.CodeCommonValidationFailed, "username and password are required"))
 		return
 	}
 
@@ -77,12 +78,12 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// timing-based username enumeration.
 	if matched == nil {
 		_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$notarealhashjustpadding000000000000000000000000000"), []byte(req.Password))
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(utils.CodeCommonUnauthorized, "Invalid or expired credentials."))
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(matched.PasswordHash), []byte(req.Password)); err != nil {
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(utils.CodeCommonUnauthorized, "Invalid or expired credentials."))
 		return
 	}
 
@@ -102,7 +103,7 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(h.cfg.Auth.JWT.SecretKey))
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to issue token"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(utils.CodeCommonInternalError, "Failed to issue token."))
 		return
 	}
 

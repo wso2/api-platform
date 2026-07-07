@@ -71,36 +71,42 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
 		h.slogger.Error("Organization claim not found in token when creating subscription")
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 	var req CreateSubscriptionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid create subscription request body", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid request body"))
 		return
 	}
 	if req.APIID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 	if req.SubscriberID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "subscriberId is required"))
 		return
 	}
 	if req.Kind == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "kind is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "kind is required"))
 		return
 	}
 	if !constants.ValidArtifactKinds[req.Kind] {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid kind value"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid kind value"))
 		return
 	}
 	switch req.Status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid status value"))
 		return
 	}
 	actor, ok := resolveActor(w, r, h.identity, h.slogger, "create subscription")
@@ -110,21 +116,25 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionAlreadyExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Subscription already exists for this API"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionExists, "A subscription already exists for this API."))
 			return
 		}
 		h.slogger.Error("Failed to create subscription", "apiId", req.APIID, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to create subscription"))
 		return
 	}
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
 		h.slogger.Error("Failed to resolve subscription identity", "apiId", req.APIID, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to create subscription"))
 		return
 	}
 	httputil.WriteJSON(w, http.StatusCreated, resp)
@@ -139,8 +149,8 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -158,7 +168,8 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 		switch status {
 		case "ACTIVE", "INACTIVE", "REVOKED":
 		default:
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid status value"))
 			return
 		}
 		statusPtr = &status
@@ -189,11 +200,13 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr, limit, offset)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to list subscriptions", "apiId", apiId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list subscriptions"))
 		return
 	}
 	// Bulk fetch API handles and plan names to avoid N+1 queries
@@ -218,13 +231,15 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	artifactMetaMap, err := h.subscriptionService.GetArtifactMetadataMap(apiUUIDs, orgId)
 	if err != nil {
 		h.slogger.Error("Failed to bulk fetch artifact metadata for list", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list subscriptions"))
 		return
 	}
 	planNameMap, err := h.subscriptionPlanService.GetPlanNameMap(planIDs, orgId)
 	if err != nil {
 		h.slogger.Error("Failed to bulk fetch plan names for list", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list subscriptions"))
 		return
 	}
 	// Bulk-resolve createdBy UUIDs to their raw identity to avoid N+1 lookups.
@@ -235,7 +250,8 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	createdByMap, err := h.identity.SubsForUUIDs(createdByUUIDs)
 	if err != nil {
 		h.slogger.Error("Failed to resolve subscription creator identities", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list subscriptions"))
 		return
 	}
 	items := make([]map[string]any, 0, len(list))
@@ -257,29 +273,33 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 	subscriptionId := r.PathValue("subscriptionId")
 	if subscriptionId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Subscription ID is required"))
 		return
 	}
 	sub, err := h.subscriptionService.GetSubscription(subscriptionId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionNotFound, "The specified subscription could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to get subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get subscription"))
 		return
 	}
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
 		h.slogger.Error("Failed to resolve subscription identity", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get subscription"))
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
@@ -289,18 +309,20 @@ func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Req
 func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 	subscriptionId := r.PathValue("subscriptionId")
 	if subscriptionId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Subscription ID is required"))
 		return
 	}
 	var req api.Subscription
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid request body"))
 		return
 	}
 	var status string
@@ -310,7 +332,8 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	switch status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid subscription status"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid subscription status"))
 		return
 	}
 	subscriberID, ok := requireSubscriptionSubscriberQuery(w, r)
@@ -324,21 +347,25 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, status, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionNotFound, "The specified subscription could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
+				utils.CodeCommonForbidden, "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to update subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to update subscription"))
 		return
 	}
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
 		h.slogger.Error("Failed to resolve subscription identity", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to update subscription"))
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
@@ -348,13 +375,14 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 	subscriptionId := r.PathValue("subscriptionId")
 	if subscriptionId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Subscription ID is required"))
 		return
 	}
 	subscriberID, ok := requireSubscriptionSubscriberQuery(w, r)
@@ -368,15 +396,18 @@ func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.
 	err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId, subscriberID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionNotFound, "The specified subscription could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
+				utils.CodeCommonForbidden, "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to delete subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete subscription"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to delete subscription"))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -385,7 +416,8 @@ func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.
 func requireSubscriptionSubscriberQuery(w http.ResponseWriter, r *http.Request) (string, bool) {
 	q := strings.TrimSpace(r.URL.Query().Get("subscriberId"))
 	if q == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId query parameter is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "subscriberId query parameter is required"))
 		return "", false
 	}
 	return q, true

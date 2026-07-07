@@ -144,14 +144,16 @@ type CreateSubscriptionPlanRequest struct {
 func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	var req CreateSubscriptionPlanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid create subscription plan request body", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid request body"))
 		return
 	}
 
@@ -159,7 +161,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		switch req.Status {
 		case "ACTIVE", "INACTIVE":
 		default:
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value; must be ACTIVE or INACTIVE"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid status value; must be ACTIVE or INACTIVE"))
 			return
 		}
 	}
@@ -172,7 +175,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 	}
 	if limit := firstLimit(req.Limits); limit != nil {
 		if errMsg := normalizeAndValidateLimit(limit); errMsg != "" {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, errMsg))
 			return
 		}
 		count := limit.LimitCount
@@ -185,7 +189,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 	if req.ExpiryTime != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiryTime)
 		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid expiryTime format; use RFC3339"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid expiryTime format; use RFC3339"))
 			return
 		}
 		plan.ExpiryTime = &t
@@ -193,29 +198,34 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 
 	rawActor, ok := middleware.GetActorIdentityFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "User ID claim not found in token"))
 		return
 	}
 	actor, err := h.identity.ToInternalUUID(rawActor)
 	if err != nil {
 		h.slogger.Error("Failed to resolve user identity", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to resolve user identity"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to resolve user identity"))
 		return
 	}
 	created, err := h.planService.CreatePlan(orgId, actor, plan)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionPlanExists, "A subscription plan with this name already exists for the organization."))
 			return
 		}
 		h.slogger.Error("Failed to create subscription plan", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to create subscription plan"))
 		return
 	}
 	resp, err := h.toSubscriptionPlanResponse(created, true)
 	if err != nil {
 		h.slogger.Error("Failed to resolve subscription plan identity", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to create subscription plan"))
 		return
 	}
 	httputil.WriteJSON(w, http.StatusCreated, resp)
@@ -225,7 +235,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -256,7 +267,8 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 	list, err := h.planService.ListPlans(orgId, limit, offset)
 	if err != nil {
 		h.slogger.Error("Failed to list subscription plans", "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscription plans"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list subscription plans"))
 		return
 	}
 	items := make([]map[string]any, 0, len(list))
@@ -264,7 +276,8 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 		item, err := h.toSubscriptionPlanResponse(p, false)
 		if err != nil {
 			h.slogger.Error("Failed to resolve subscription plan identity", "organizationId", orgId, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscription plans"))
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+				utils.CodeCommonInternalError, "Failed to list subscription plans"))
 			return
 		}
 		items = append(items, item)
@@ -276,30 +289,35 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	planId := r.PathValue("subscriptionPlanId")
 	if planId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Plan ID is required"))
 		return
 	}
 
 	plan, err := h.planService.GetPlan(planId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionPlanNotFound, "The specified subscription plan could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to get subscription plan", "planId", planId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get subscription plan"))
 		return
 	}
 	resp, err := h.toSubscriptionPlanResponse(plan, true)
 	if err != nil {
 		h.slogger.Error("Failed to resolve subscription plan identity", "planId", planId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to get subscription plan"))
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
@@ -309,32 +327,36 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	planId := r.PathValue("subscriptionPlanId")
 	if planId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Plan ID is required"))
 		return
 	}
 
 	var req api.SubscriptionPlan
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid request body"))
 		return
 	}
 
 	if req.Id != nil && *req.Id != "" && *req.Id != planId {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"The plan id is immutable and cannot be changed"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "The plan id is immutable and cannot be changed"))
 		return
 	}
 
 	displayName := req.DisplayName
 	if displayName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "displayName is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "displayName is required"))
 		return
 	}
 	update := &model.SubscriptionPlanUpdate{
@@ -344,7 +366,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	if req.Limits != nil {
 		if limit := firstLimit(apiLimitsToRequests(*req.Limits)); limit != nil {
 			if errMsg := normalizeAndValidateLimit(limit); errMsg != "" {
-				httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+				httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+					utils.CodeCommonValidationFailed, errMsg))
 				return
 			}
 			count := limit.LimitCount
@@ -365,45 +388,52 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 			st := model.SubscriptionPlanStatus(*req.Status)
 			update.Status = &st
 		default:
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value; must be ACTIVE or INACTIVE"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "Invalid status value; must be ACTIVE or INACTIVE"))
 			return
 		}
 	}
 
 	rawActor, ok := middleware.GetActorIdentityFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "User ID claim not found in token"))
 		return
 	}
 	actor, err := h.identity.ToInternalUUID(rawActor)
 	if err != nil {
 		h.slogger.Error("Failed to resolve user identity", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to resolve user identity"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to resolve user identity"))
 		return
 	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleImmutable) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"The plan id is immutable and cannot be changed"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeCommonValidationFailed, "The plan id is immutable and cannot be changed"))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionPlanNotFound, "The specified subscription plan could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionPlanExists, "A subscription plan with this name already exists for the organization."))
 			return
 		}
 		h.slogger.Error("Failed to update subscription plan", "planId", planId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to update subscription plan"))
 		return
 	}
 	resp, err := h.toSubscriptionPlanResponse(updated, true)
 	if err != nil {
 		h.slogger.Error("Failed to resolve subscription plan identity", "planId", planId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to update subscription plan"))
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
@@ -413,35 +443,41 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	planId := r.PathValue("subscriptionPlanId")
 	if planId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Plan ID is required"))
 		return
 	}
 
 	rawActor, ok := middleware.GetActorIdentityFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "User ID claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "User ID claim not found in token"))
 		return
 	}
 	actor, err := h.identity.ToInternalUUID(rawActor)
 	if err != nil {
 		h.slogger.Error("Failed to resolve user identity", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to resolve user identity"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to resolve user identity"))
 		return
 	}
 	err = h.planService.DeletePlan(planId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeSubscriptionPlanNotFound, "The specified subscription plan could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to delete subscription plan", "planId", planId, "organizationId", orgId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to delete subscription plan"))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

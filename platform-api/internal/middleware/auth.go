@@ -21,10 +21,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -83,11 +85,12 @@ type PlatformClaimNames struct {
 	RoleScopeMap      map[string][]string
 }
 
-// writeJSONError is a helper to write a JSON error body without depending on httputil.
+// writeJSONError is a helper to write a standard-shape JSON error body
+// ({status, code, message}) without depending on httputil.
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	_ = json.NewEncoder(w).Encode(utils.NewErrorResponse(status, http.StatusText(status), msg))
 }
 
 // LocalJWTAuthMiddleware returns a middleware for locally-issued JWT validation.
@@ -116,7 +119,8 @@ func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
 
 			enriched, err := validateLocalJWT(r, tokenString, config)
 			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, err.Error())
+				slog.Warn("local JWT validation failed", "reason", err.Error())
+				writeJSONError(w, http.StatusUnauthorized, "Invalid or expired credentials.")
 				return
 			}
 

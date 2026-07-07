@@ -52,38 +52,39 @@ func NewDeploymentHandler(deploymentService *service.DeploymentService, identity
 func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 
 	var req api.DeployRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, err.Error()))
 		return
 	}
 
 	// Validate required fields
 	if req.Name == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeRESTAPIDeploymentValidationFailed, "name is required"))
 		return
 	}
 	if req.Base == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"base is required (use 'current' or a deploymentId)"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeRESTAPIDeploymentValidationFailed, "base is required (use 'current' or a deploymentId)"))
 		return
 	}
 	if strings.TrimSpace(req.GatewayId) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeRESTAPIDeploymentValidationFailed, "gatewayId is required"))
 		return
 	}
 
@@ -97,43 +98,43 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrBaseDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Base deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentBaseNotFound, "The specified base deployment could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNameRequired) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment name is required"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPIDeploymentValidationFailed, "Deployment name is required"))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentBaseRequired) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Base is required (use 'current' or a deploymentId)"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPIDeploymentValidationFailed, "Base is required (use 'current' or a deploymentId)"))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentGatewayIDRequired) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Gateway ID is required"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPIDeploymentValidationFailed, "Gateway ID is required"))
 			return
 		}
 		if errors.Is(err, constants.ErrAPINoBackendServices) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"API must have at least one backend service attached before deployment"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPIDeploymentValidationFailed, "API must have at least one backend service attached before deployment"))
 			return
 		}
 		h.slogger.Error("Failed to deploy API", "apiId", apiId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to deploy API"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to deploy API"))
 		return
 	}
 
@@ -144,8 +145,8 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -153,24 +154,24 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "gatewayId is required"))
 		return
 	}
 	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId/gatewayId cannot be zero-value UUID"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "deploymentId/gatewayId cannot be zero-value UUID"))
 		return
 	}
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 	actor, ok := resolveActor(w, r, h.identity, h.slogger, "undeploy API")
@@ -184,32 +185,33 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"No active deployment found for this API on the gateway"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotActive, "No active deployment found for this API on the gateway."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayIDMismatch) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentGatewayMismatch, "Deployment is bound to a different gateway."))
 			return
 		}
 		h.slogger.Error("Failed to undeploy", "apiId", apiId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to undeploy deployment"))
 		return
 	}
 
@@ -220,8 +222,8 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -229,24 +231,24 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "gatewayId is required"))
 		return
 	}
 	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId/gatewayId cannot be zero-value UUID"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "deploymentId/gatewayId cannot be zero-value UUID"))
 		return
 	}
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 	actor, ok := resolveActor(w, r, h.identity, h.slogger, "restore API deployment")
@@ -260,32 +262,33 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 			return
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayNotFound, "The specified gateway could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentAlreadyDeployed) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot restore currently deployed deployment"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentRestoreConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayIDMismatch) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentGatewayMismatch, "Deployment is bound to a different gateway."))
 			return
 		}
 		h.slogger.Error("Failed to restore deployment", "apiId", apiId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to restore deployment"))
 		return
 	}
 
@@ -297,8 +300,8 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -306,13 +309,13 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Deployment ID is required"))
 		return
 	}
 
@@ -323,25 +326,26 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 	err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentIsDeployed) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot delete an active deployment - undeploy it first"))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentActive, "Cannot delete an active deployment - undeploy it first."))
 			return
 		}
 		if respondArtifactGuardError(w, err) {
 			return
 		}
 		h.slogger.Error("Failed to delete deployment", "apiId", apiId, "deploymentId", deploymentId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete deployment"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to delete deployment"))
 		return
 	}
 
@@ -353,8 +357,8 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
@@ -362,31 +366,31 @@ func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Deployment ID is required"))
 		return
 	}
 
 	deployment, err := h.deploymentService.GetDeploymentByHandle(apiId, deploymentId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentNotFound, "The specified deployment could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to get deployment", "apiId", apiId, "deploymentId", deploymentId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to retrieve deployment"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to retrieve deployment"))
 		return
 	}
 
@@ -398,15 +402,15 @@ func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request
 func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API ID is required"))
 		return
 	}
 
@@ -431,18 +435,18 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 	deployments, err := h.deploymentService.GetDeploymentsByHandle(apiId, gatewayId, status, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidDeploymentStatus) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid deployment status"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+				utils.CodeDeploymentInvalidStatus, "The specified deployment status filter is invalid."))
 			return
 		}
 		h.slogger.Error("Failed to get deployments", "apiId", apiId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to retrieve deployments"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to retrieve deployments"))
 		return
 	}
 

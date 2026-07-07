@@ -53,15 +53,15 @@ func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService
 func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 
@@ -73,13 +73,13 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to list LLM provider API keys", "providerId", providerID, "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to list API keys"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to list API keys"))
 		return
 	}
 
@@ -90,22 +90,22 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 
 	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API key name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "API key name is required"))
 		return
 	}
 
@@ -117,23 +117,23 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 	err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrAPIKeyNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API key not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderAPIKeyNotFound, "The specified API key could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrAPIKeyForbidden) {
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
-				"Only the key creator can delete this API key"))
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
+				utils.CodeCommonForbidden, "Only the key creator can delete this API key"))
 			return
 		}
 		h.slogger.Error("Failed to delete LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to delete API key"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to delete API key"))
 		return
 	}
 
@@ -145,31 +145,31 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponseWithCode(
+			utils.CodeCommonUnauthorized, "Organization claim not found in token"))
 		return
 	}
 
 	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "LLM provider ID is required"))
 		return
 	}
 
 	var req api.CreateLLMProviderAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid LLM provider API key creation request", "providerId", providerID, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "Invalid request body"))
 		return
 	}
 
 	// Validate that displayName is provided (name is optional; auto-generated from displayName if absent)
 	req.DisplayName = strings.TrimSpace(req.DisplayName)
 	if req.DisplayName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"'displayName' is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
+			utils.CodeCommonValidationFailed, "'displayName' is required"))
 		return
 	}
 
@@ -181,19 +181,19 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 	response, err := h.apiKeyService.CreateLLMProviderAPIKey(r.Context(), providerID, orgID, userID, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
+				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"No gateway connections available"))
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponseWithCode(
+				utils.CodeGatewayConnectionUnavailable, "No gateway connections are currently available."))
 			return
 		}
 
 		h.slogger.Error("Failed to create LLM provider API key", "providerId", providerID, "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to create API key"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponseWithCode(
+			utils.CodeCommonInternalError, "Failed to create API key"))
 		return
 	}
 
