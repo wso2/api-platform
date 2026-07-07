@@ -566,7 +566,7 @@ func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request
 		}
 		if strings.Contains(msg, "not found in gateway manifest") {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "The specified policy version could not be found in the gateway manifest."))
+				utils.CodeCustomPolicyVersionNotFound, "The specified policy version could not be found in the gateway manifest."))
 			return
 		}
 		if strings.Contains(msg, "not a custom policy") || strings.Contains(msg, "manifest is not available") {
@@ -609,12 +609,12 @@ func (h *GatewayHandler) GetCustomPolicy(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "Custom policy not found."))
+				utils.CodeCustomPolicyNotFound, "Custom policy not found."))
 			return
 		}
 		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "Custom policy not found with the specified version."))
+				utils.CodeCustomPolicyVersionNotFound, "Custom policy not found with the specified version."))
 			return
 		}
 		h.slogger.Error("Failed to get custom policy", "error", err)
@@ -647,12 +647,12 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "Custom policy not found."))
+				utils.CodeCustomPolicyNotFound, "Custom policy not found."))
 			return
 		}
 		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "Custom policy not found with the specified version."))
+				utils.CodeCustomPolicyVersionNotFound, "Custom policy not found with the specified version."))
 			return
 		}
 		if errors.Is(err, constants.ErrCustomPolicyInUse) {

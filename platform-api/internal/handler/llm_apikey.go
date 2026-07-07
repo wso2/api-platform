@@ -74,7 +74,7 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to list LLM provider API keys", "providerId", providerID, "organizationId", orgID, "error", err)
@@ -118,7 +118,7 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrAPIKeyNotFound) {
@@ -128,7 +128,7 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 		}
 		if errors.Is(err, constants.ErrAPIKeyForbidden) {
 			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-				utils.CodeCommonForbidden, "Only the key creator can delete this API key"))
+				utils.CodeLLMProviderAPIKeyForbidden, "Only the key creator can delete this API key"))
 			return
 		}
 		h.slogger.Error("Failed to delete LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID, "error", err)
@@ -182,7 +182,7 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProviderNotFound, "The specified LLM provider could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {

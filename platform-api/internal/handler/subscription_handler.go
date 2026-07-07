@@ -117,7 +117,7 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionAlreadyExists) {
@@ -201,7 +201,7 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to list subscriptions", "apiId", apiId, "organizationId", orgId, "error", err)
@@ -353,7 +353,7 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 		}
 		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
 			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-				utils.CodeCommonForbidden, "subscriberId does not match this subscription"))
+				utils.CodeSubscriptionForbidden, "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to update subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
@@ -402,7 +402,7 @@ func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.
 		}
 		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
 			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-				utils.CodeCommonForbidden, "subscriberId does not match this subscription"))
+				utils.CodeSubscriptionForbidden, "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to delete subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)

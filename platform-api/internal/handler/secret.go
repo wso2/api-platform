@@ -86,7 +86,7 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretAlreadyExists) {
 			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-				utils.CodeCommonConflict, "A secret with this name already exists in this scope"))
+				utils.CodeSecretExists, "A secret with this name already exists in this scope"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidSecretType) {
@@ -168,7 +168,7 @@ func (h *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "Secret not found"))
+				utils.CodeSecretNotFound, "Secret not found"))
 			return
 		}
 		h.slogger.Error("failed to get secret", "error", err)
@@ -218,7 +218,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "Secret not found"))
+				utils.CodeSecretNotFound, "Secret not found"))
 			return
 		}
 		h.slogger.Error("failed to update secret", "error", err)
@@ -254,7 +254,7 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeCommonNotFound, "Secret not found"))
+				utils.CodeSecretNotFound, "Secret not found"))
 			return
 		}
 

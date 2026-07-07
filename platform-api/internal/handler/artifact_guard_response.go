@@ -39,15 +39,15 @@ func respondArtifactGuardError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, constants.ErrArtifactReadOnly):
 		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-			utils.CodeCommonForbidden, err.Error()))
+			utils.CodeArtifactReadOnly, err.Error()))
 		return true
 	case errors.Is(err, constants.ErrArtifactRuntimeImmutable):
 		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-			utils.CodeCommonForbidden, err.Error()))
+			utils.CodeArtifactRuntimeImmutable, err.Error()))
 		return true
 	case errors.Is(err, constants.ErrArtifactDeployed):
 		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponseWithCode(
-			utils.CodeCommonConflict, err.Error()))
+			utils.CodeArtifactDeployed, err.Error()))
 		return true
 	default:
 		return false

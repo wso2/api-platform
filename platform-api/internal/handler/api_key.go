@@ -109,7 +109,7 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {
@@ -203,7 +203,7 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {
@@ -265,7 +265,7 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeRESTAPINotFound, "The specified REST API could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {

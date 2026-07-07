@@ -74,7 +74,7 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		h.slogger.Error("Failed to list LLM proxy API keys", "proxyId", proxyID, "organizationId", orgID, "error", err)
@@ -118,7 +118,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrAPIKeyNotFound) {
@@ -128,7 +128,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Requ
 		}
 		if errors.Is(err, constants.ErrAPIKeyForbidden) {
 			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-				utils.CodeCommonForbidden, "Only the key creator can delete this API key"))
+				utils.CodeLLMProxyAPIKeyForbidden, "Only the key creator can delete this API key"))
 			return
 		}
 		h.slogger.Error("Failed to delete LLM proxy API key", "proxyId", proxyID, "keyName", keyName, "organizationId", orgID, "error", err)
@@ -182,7 +182,7 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-				utils.CodeLLMProxyNotFound, "The specified LLM proxy could not be found."))
+				utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {

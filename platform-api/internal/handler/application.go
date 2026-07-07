@@ -544,10 +544,10 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 			utils.CodeApplicationExists, "An application with this handle already exists in the organization."))
 	case errors.Is(err, constants.ErrAPIKeyNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-			utils.CodeCommonNotFound, "API key not found"))
+			utils.CodeApplicationAPIKeyNotFound, "API key not found"))
 	case errors.Is(err, constants.ErrAPIKeyForbidden):
 		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponseWithCode(
-			utils.CodeCommonForbidden, "Only the key creator can perform this action"))
+			utils.CodeApplicationAPIKeyForbidden, "Only the key creator can perform this action"))
 	case errors.Is(err, constants.ErrInvalidApplicationName):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
 			utils.CodeCommonValidationFailed, "displayName is required"))
@@ -568,7 +568,7 @@ func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *htt
 			utils.CodeCommonValidationFailed, "Invalid API key id"))
 	case errors.Is(err, constants.ErrArtifactNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponseWithCode(
-			utils.CodeCommonNotFound, "Association target not found"))
+			utils.CodeArtifactNotFound, "The specified artifact could not be found."))
 	case errors.Is(err, constants.ErrArtifactInvalidKind):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponseWithCode(
 			utils.CodeCommonValidationFailed, "Invalid association kind. Only LlmProvider and LlmProxy are supported"))

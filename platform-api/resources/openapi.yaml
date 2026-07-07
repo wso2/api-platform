@@ -69,7 +69,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
-            $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/Conflict'
         '500':
             $ref: '#/components/responses/InternalServerError'
 
@@ -174,7 +174,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Organization not found
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -635,11 +635,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          description: Service Unavailable - No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -691,11 +687,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          description: Service Unavailable - No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -735,11 +727,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          description: Service Unavailable - No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -777,21 +765,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or API has no backend services)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found. API, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1002,11 +982,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1636,21 +1612,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or invalid input)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found. LLM provider, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1880,11 +1848,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1981,17 +1945,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM provider not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -2024,11 +1980,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM provider not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2067,17 +2019,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM provider or API key not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2112,6 +2056,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':
@@ -2299,21 +2245,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or invalid input)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found. LLM proxy, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2543,11 +2481,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2593,17 +2527,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM proxy not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -2636,11 +2562,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM proxy not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2679,17 +2601,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM proxy or API key not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2911,19 +2825,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or MCP proxy has no backend services)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Not Found. MCP proxy, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3153,11 +3059,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3231,17 +3133,9 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Organization not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Gateway name already exists within organization
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3368,22 +3262,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Gateway has active deployments or connections
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                activeDeployments:
-                  value:
-                    code: 409
-                    message: Conflict
-                    description: Cannot delete gateway - 3 active API deployment(s) exist
-                activeConnections:
-                  value:
-                    code: 409
-                    message: Conflict
-                    description: Cannot delete gateway - 2 active connection(s) exist
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3441,11 +3320,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRotationResponse'
         '400':
-          description: Bad request (e.g., maximum active tokens reached)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3490,11 +3365,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Gateway or token not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3612,17 +3483,17 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Policy already exists, patch version update, or downgrade is not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '422':
           description: Policy is not a custom policy or manifest is unavailable
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: POLICY_INVALID_STATE
+                message: "The policy is not a custom policy, or its manifest is unavailable."
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3703,11 +3574,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Custom policy is in use by one or more APIs
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4430,6 +4297,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4807,11 +4676,20 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Secret is referenced by active resources
+          description: Conflict. The secret is referenced by one or more active resources.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SecretDeleteConflict'
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: SECRET_IN_USE
+                message: The secret is referenced by one or more active resources.
+                details:
+                  references:
+                    - type: llm_provider
+                      handle: wso2-openai-provider
+                      name: WSO2 OpenAI Provider
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -6661,26 +6539,56 @@ components:
           $ref: '#/components/schemas/Pagination'
 
     Error:
-      title: Error object returned
+      title: Standard error response
+      description: The single error shape returned by every failed request across the API.
       required:
+        - status
         - code
-        - title
+        - message
       type: object
       properties:
+        status:
+          type: string
+          enum: [error]
+          description: Always the literal "error".
+          example: error
         code:
-          type: integer
-          format: int64
-        title:
           type: string
-          description: Error message
-        details:
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: "Stable, machine-readable error code from the error catalog, in the form `<DOMAIN>_<REASON>` (e.g. `REST_API_NOT_FOUND`). Clients and agents should branch on this, not on the HTTP status."
+          example: REST_API_NOT_FOUND
+        message:
           type: string
-          description: A detailed description about the error message
+          description: Human-readable description of the error.
+          example: The requested REST API could not be found.
         errors:
           type: array
-          description: List of specific errors (useful for validation errors)
+          description: Per-field validation failures. Present when the error is a validation failure.
           items:
-            type: object
+            $ref: '#/components/schemas/FieldError'
+        details:
+          type: object
+          description: >-
+            Optional structured metadata specific to this error condition
+            (e.g. the resources referencing a secret that blocked its
+            deletion). Shape varies by `code`; absent when not applicable.
+          additionalProperties: true
+
+    FieldError:
+      title: Field-level validation error
+      required:
+        - field
+        - message
+      type: object
+      properties:
+        field:
+          type: string
+          description: Path of the offending field.
+          example: spec.context
+        message:
+          type: string
+          description: Why the field failed validation.
+          example: must start with /
 
     DeployRequest:
       type: object
@@ -8474,27 +8382,6 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    SecretDeleteConflict:
-      type: object
-      properties:
-        error:
-          type: string
-          example: secret is referenced by active resources
-        references:
-          type: array
-          items:
-            type: object
-            properties:
-              type:
-                type: string
-                example: llm_provider
-              handle:
-                type: string
-                example: wso2-openai-provider
-              name:
-                type: string
-                example: WSO2 OpenAI Provider
-
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -8503,9 +8390,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 401
-            message: Unauthorized
-            description: Authorization header is required or token is invalid
+            status: error
+            code: COMMON_UNAUTHORIZED
+            message: Authorization header is required, or the token is invalid or expired.
 
     BadRequest:
       description: Bad Request. Invalid request or validation error.
@@ -8514,9 +8401,12 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 400
-            message: Bad Request
-            description: Invalid request or validation error
+            status: error
+            code: COMMON_VALIDATION_FAILED
+            message: The request failed validation.
+            errors:
+              - field: spec.context
+                message: must start with /
     Forbidden:
       description: Forbidden. The authenticated user does not have permission to access this resource.
       content:
@@ -8524,9 +8414,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 403
-            title: Forbidden
-            details: You do not have permission to perform this action
+            status: error
+            code: COMMON_FORBIDDEN
+            message: You do not have permission to perform this action.
     NotFound:
       description: Not Found. The specified resource does not exist.
       content:
@@ -8534,9 +8424,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 404
-            message: Not Found
-            description: The specified resource does not exist
+            status: error
+            code: COMMON_NOT_FOUND
+            message: The specified resource does not exist.
     Conflict:
       description: Conflict. Specified resource already exists.
       content:
@@ -8544,9 +8434,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 409
-            message: Conflict
-            description: Specified resource already exists
+            status: error
+            code: COMMON_CONFLICT
+            message: The specified resource already exists.
     InternalServerError:
       description: Internal Server Error.
       content:
@@ -8554,10 +8444,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 500
-            message: Internal Server Error
-            description: The server encountered an internal error. Please contact
-              administrator.
+            status: error
+            code: COMMON_INTERNAL_ERROR
+            message: The server encountered an internal error. Please contact the administrator.
     ServiceUnavailable:
       description: Service Unavailable. The secrets management feature is not configured.
       content:
@@ -8565,9 +8454,32 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 503
-            message: Service Unavailable
-            description: Secrets management is not configured — set PLATFORM_SECRET_ENCRYPTION_KEY
+            status: error
+            code: COMMON_SERVICE_UNAVAILABLE
+            message: Secrets management is not configured. Set PLATFORM_SECRET_ENCRYPTION_KEY.
+
+    GatewayConnectionUnavailable:
+      description: Service Unavailable. No gateway connections are currently available to service this request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: GATEWAY_CONNECTION_UNAVAILABLE
+            message: No gateway connections are currently available.
+
+  examples:
+    GatewayNotFoundExample:
+      value:
+        status: error
+        code: GATEWAY_NOT_FOUND
+        message: "The specified gateway could not be found."
+    DeploymentBaseNotFoundExample:
+      value:
+        status: error
+        code: DEPLOYMENT_BASE_NOT_FOUND
+        message: "The specified base deployment could not be found."
   parameters:
     projectId:
       name: projectId

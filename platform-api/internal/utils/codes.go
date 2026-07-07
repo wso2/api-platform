@@ -73,6 +73,8 @@ const (
 	CodeLLMProxyLimitReached                  = "LLM_PROXY_LIMIT_REACHED"
 	CodeLLMProxyAPIKeyNotFound                = "LLM_PROXY_API_KEY_NOT_FOUND"
 	CodeLLMProxyDeploymentValidationFailed    = "LLM_PROXY_DEPLOYMENT_VALIDATION_FAILED"
+	CodeLLMProviderAPIKeyForbidden            = "LLM_PROVIDER_API_KEY_FORBIDDEN"
+	CodeLLMProxyAPIKeyForbidden               = "LLM_PROXY_API_KEY_FORBIDDEN"
 )
 
 // LLM provider template domain codes.
@@ -144,6 +146,7 @@ const (
 const (
 	CodeSubscriptionNotFound     = "SUBSCRIPTION_NOT_FOUND"
 	CodeSubscriptionExists       = "SUBSCRIPTION_EXISTS"
+	CodeSubscriptionForbidden    = "SUBSCRIPTION_FORBIDDEN"
 	CodeSubscriptionPlanNotFound = "SUBSCRIPTION_PLAN_NOT_FOUND"
 	CodeSubscriptionPlanExists   = "SUBSCRIPTION_PLAN_EXISTS"
 )
@@ -157,5 +160,34 @@ const (
 
 // Secret domain codes.
 const (
-	CodeSecretInUse = "SECRET_IN_USE"
+	CodeSecretNotFound = "SECRET_NOT_FOUND"
+	CodeSecretExists   = "SECRET_EXISTS"
+	CodeSecretInUse    = "SECRET_IN_USE"
+)
+
+// Artifact domain codes. Used by flows that operate on a generic artifact
+// reference (REST API / LLM provider / LLM proxy / MCP proxy) — API keys,
+// subscriptions, and application associations — where the caller shouldn't
+// need to know which concrete artifact kind was targeted, and by the
+// data-plane-origin guard that protects DP-originated artifacts from
+// control-plane mutation.
+const (
+	CodeArtifactNotFound         = "ARTIFACT_NOT_FOUND"
+	CodeArtifactExists           = "ARTIFACT_EXISTS"
+	CodeArtifactReadOnly         = "ARTIFACT_READ_ONLY"
+	CodeArtifactRuntimeImmutable = "ARTIFACT_RUNTIME_IMMUTABLE"
+	CodeArtifactDeployed         = "ARTIFACT_DEPLOYED"
+)
+
+// Custom policy domain codes.
+const (
+	CodeCustomPolicyNotFound        = "CUSTOM_POLICY_NOT_FOUND"
+	CodeCustomPolicyVersionNotFound = "CUSTOM_POLICY_VERSION_NOT_FOUND"
+)
+
+// Application API key domain codes (application-scoped API key mappings,
+// distinct from the LLM provider/proxy API key codes above).
+const (
+	CodeApplicationAPIKeyNotFound  = "APPLICATION_API_KEY_NOT_FOUND"
+	CodeApplicationAPIKeyForbidden = "APPLICATION_API_KEY_FORBIDDEN"
 )
