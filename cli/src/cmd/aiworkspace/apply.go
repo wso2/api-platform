@@ -20,6 +20,7 @@ package aiws
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -30,14 +31,14 @@ import (
 
 const (
 	ApplyCmdLiteral = "apply"
-	ApplyCmdExample = `# Generate and apply the AI workspace artifact from the current project
+	ApplyCmdExample = `# Create or update the AI workspace artifact from the current project
 ap ai-workspace apply
 
 # Apply a proxy or MCP artifact (--project-id is required for those kinds)
 ap ai-workspace apply --project-id <project-id>
 
 # Resolve ENV_CLI_* placeholders from a specific env file (defaults to .env in the project root)
-ap ai-workspace apply --env-file ./secrets.env
+ap ai-workspace apply --env-file ./values.env
 
 # Apply from a specific project directory using a specific AI workspace
 ap ai-workspace apply -f /path/to/project --project-id <project-id> --display-name my-workspace --platform eu`
@@ -55,11 +56,13 @@ var (
 
 var applyCmd = &cobra.Command{
 	Use:   ApplyCmdLiteral,
-	Short: "Generate and apply an AI workspace artifact",
-	Long: "Generate the creation payload from the project's metadata.yaml, runtime.yaml and definition.yaml, " +
-		"then create the artifact on the WSO2 API Platform AI workspace. The target endpoint is selected by the " +
-		"artifact kind declared in the project (LlmProvider, LlmProxy, Mcp). For the LlmProxy and Mcp kinds " +
-		"--project-id is required.",
+	Short: "Create or update an AI workspace artifact",
+	Long: "Generate the payload from the project's metadata.yaml, runtime.yaml and definition.yaml, then " +
+		"create or update the artifact on the WSO2 API Platform AI workspace. The artifact is identified by " +
+		"metadata.name: apply looks it up first and updates it (PUT) when it already exists, otherwise it " +
+		"creates it (POST) — mirroring `ap gateway apply`. The target endpoint is selected by the artifact kind " +
+		"declared in the project (LlmProvider, LlmProxy, Mcp). For the LlmProxy and Mcp kinds --project-id is " +
+		"required.",
 	Example: ApplyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runApplyCommand(); err != nil {
@@ -113,10 +116,39 @@ func runApplyCommand() error {
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, applyInsecure)
-	resp, err := client.PostJSON(aiWorkspaceCreatePath(artifact.BaseKind), body)
+
+	resp, action, err := applyAIWorkspaceArtifact(client, artifact, body)
 	if err != nil {
-		return aiworkspace.WrapRequestError(fmt.Sprintf("apply %s", artifact.BaseKind), err, applyInsecure)
+		return err
 	}
 
-	return aiworkspace.PrintApplyResult(resp, applyOutput, artifact.BaseKind, "applied", artifact.ResourceName, projectID)
+	return aiworkspace.PrintApplyResult(resp, applyOutput, artifact.BaseKind, action, artifact.ResourceName, projectID)
+}
+
+// applyAIWorkspaceArtifact creates or updates the artifact on the AI workspace,
+// choosing the verb the way `ap gateway apply` does: it probes for an existing
+// artifact by metadata.name (the resource id) and PUTs an update when one is
+// found, otherwise POSTs a create. It returns the server response and the
+// past-tense action ("updated" or "applied") for the result summary.
+func applyAIWorkspaceArtifact(client *aiworkspace.Client, artifact *aiWorkspaceArtifact, body []byte) (*http.Response, string, error) {
+	updatePath := aiWorkspaceUpdatePath(artifact.BaseKind, artifact.ResourceName)
+
+	exists, err := client.Exists(updatePath)
+	if err != nil {
+		return nil, "", aiworkspace.WrapRequestError(fmt.Sprintf("check %s existence", artifact.BaseKind), err, applyInsecure)
+	}
+
+	if exists {
+		resp, err := client.PutJSON(updatePath, body)
+		if err != nil {
+			return nil, "", aiworkspace.WrapRequestError(fmt.Sprintf("update %s", artifact.BaseKind), err, applyInsecure)
+		}
+		return resp, "updated", nil
+	}
+
+	resp, err := client.PostJSON(aiWorkspaceCreatePath(artifact.BaseKind), body)
+	if err != nil {
+		return nil, "", aiworkspace.WrapRequestError(fmt.Sprintf("apply %s", artifact.BaseKind), err, applyInsecure)
+	}
+	return resp, "applied", nil
 }

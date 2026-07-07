@@ -201,38 +201,38 @@ spec:
 
 `configurations` is a free-form object — the supported keys depend on the artifact type.
 
-## `ap ai-workspace apply` / `ap ai-workspace edit`
+## `ap ai-workspace apply`
 
-These commands run the same validation as `build`, then **generate** the creation payload from the project artifacts and send it to the AI workspace. `apply` **creates** the artifact (`POST`); `edit` **updates** an existing one (`PUT /{resource}/{id}`, where `id` is `metadata.name`). Both live at the root of `ap ai-workspace` (not under a per-kind group) and select the endpoint from the artifact **kind**:
+`apply` runs the same validation as `build`, then **generates** the payload from the project artifacts and **creates or updates** the artifact on the AI workspace — a single command for both, exactly like [`ap gateway apply`](../gateway/README.md#ap-gateway-apply). It identifies the artifact by `metadata.name`: it probes for an existing one (`GET /{resource}/{name}`) and **updates** it (`PUT`) when found, otherwise **creates** it (`POST`). It lives at the root of `ap ai-workspace` (not under a per-kind group) and selects the endpoint from the artifact **kind**:
 
-| Kind | `apply` endpoint | `edit` endpoint |
-| --- | --- | --- |
-| `LlmProvider` | `POST /llm-providers` | `PUT /llm-providers/{id}` |
-| `LlmProxy` | `POST /llm-proxies` | `PUT /llm-proxies/{id}` |
-| `Mcp` | `POST /mcp-proxies` | `PUT /mcp-proxies/{id}` |
+| Kind | Existence probe (by `metadata.name`) | Create (absent) | Update (present) |
+| --- | --- | --- | --- |
+| `LlmProvider` | `GET /llm-providers/{name}` | `POST /llm-providers` | `PUT /llm-providers/{name}` |
+| `LlmProxy` | `GET /llm-proxies/{name}` | `POST /llm-proxies` | `PUT /llm-proxies/{name}` |
+| `Mcp` | `GET /mcp-proxies/{name}` | `POST /mcp-proxies` | `PUT /mcp-proxies/{name}` |
+
+The result message reflects which happened: `... applied successfully` for a create, `... updated successfully` for an update.
 
 ```shell
 ap ai-workspace apply [-f <project-directory>] [--project-id <id>] [--env-file <path>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
-ap ai-workspace edit [-f <project-directory>] [--project-id <id>] [--env-file <path>] [--display-name <name>] [--platform <platform>] [--insecure] [-o json]
 ```
 
 Examples:
 
 ```shell
-# Create/update a provider (no project scoping)
+# Create or update a provider (no project scoping)
 ap ai-workspace apply
-ap ai-workspace edit
 
-# Create/update a proxy or MCP proxy (project-scoped)
+# Create or update a proxy or MCP proxy (project-scoped)
 ap ai-workspace apply --project-id <project-id>
-ap ai-workspace edit --project-id <project-id>
 
 # Resolve ENV_CLI_* placeholders from a specific env file
-ap ai-workspace apply --env-file ./secrets.env
+ap ai-workspace apply --env-file ./values.env
 ```
 
 Notes:
 
+- Create vs. update is decided automatically from `metadata.name` — there is no separate `edit` command. Re-running `apply` after a change updates the existing artifact in place.
 - `-f` is the **project directory** (defaults to the current directory), not a payload file — the payload is generated in-memory and never written to disk.
 - `--project-id` is **required** for the `LlmProxy` and `Mcp` kinds (they are project-scoped) and is injected into the payload; providers are not project-scoped and ignore it.
 - The organization is derived from the auth token, so there is **no `--org` flag**. The AI workspace connection and credentials resolve like the other commands (`--display-name`/`--platform` or the active workspace; see [Authentication](#authentication)).
@@ -252,7 +252,7 @@ spec:
     url: ${ENV_CLI_UPSTREAM_URL}
 ```
 
-`apply`/`edit` resolve the placeholders in the **generated payload** just before it is sent, looking up each variable in this order:
+`apply` resolves the placeholders in the **generated payload** just before it is sent, looking up each variable in this order:
 
 1. **`--env-file <path>`** — when given, values come from that env file (a missing file is an error).
 2. **`.env` in the project root** — used by default when `--env-file` is not given.
@@ -260,7 +260,7 @@ spec:
 
 The env file format is one `KEY=VALUE` per line; blank lines and `#` comments are ignored, an `export ` prefix is allowed, and single/double quotes around the value are stripped.
 
-**Apply/edit fail if a referenced variable has no value** at apply time — the command errors and names every unresolved variable, and nothing is sent to the server. Define the missing variables in an env file (`--env-file` or the project's `.env`) or in the environment and retry. `build` does not resolve placeholders — it only validates the project files.
+**Apply fails if a referenced variable has no value** at apply time — the command errors and names every unresolved variable, and nothing is sent to the server. Define the missing variables in an env file (`--env-file` or the project's `.env`) or in the environment and retry. `build` does not resolve placeholders — it only validates the project files.
 
 ### Generated payload
 

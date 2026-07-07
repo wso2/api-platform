@@ -28,8 +28,7 @@ const (
 ap ai-workspace app-llm-proxy list --project-id <project-id>
 
 # Create or update a proxy from a project with:
-#   ap ai-workspace apply --project-id <project-id>
-#   ap ai-workspace edit --project-id <project-id>`
+#   ap ai-workspace apply --project-id <project-id>`
 )
 
 // LLMProxyCmd is the parent command for LLM proxy operations.

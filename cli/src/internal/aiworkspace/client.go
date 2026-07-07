@@ -25,6 +25,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -72,7 +73,10 @@ func (c *Client) PostJSON(path string, body []byte) (*http.Response, error) {
 	return c.sendJSON(http.MethodPost, path, body)
 }
 
-// Get sends a GET request and returns the response when it is a 2xx.
+// Get sends a GET request and returns the response when it is a 2xx. A 404 (and
+// any other non-2xx) is surfaced as an error, so callers that expect a resource
+// to be present are never handed a not-found body. Use Exists for a probe that
+// treats a 404 as a normal "absent" answer instead.
 func (c *Client) Get(path string) (*http.Response, error) {
 	return c.sendNoBody(http.MethodGet, path)
 }
@@ -82,22 +86,54 @@ func (c *Client) Delete(path string) (*http.Response, error) {
 	return c.sendNoBody(http.MethodDelete, path)
 }
 
-func (c *Client) sendNoBody(method, path string) (*http.Response, error) {
+// Exists reports whether a resource exists at path by issuing a GET and mapping
+// the status code: a 2xx means it exists, a 404 means it does not, and any other
+// status is returned as an error. This is the create-or-update probe used by
+// `ap ai-workspace apply`, mirroring gateway.Client.Get's behaviour. It is kept
+// separate from Get so that the get/list commands keep their strict
+// "404 is a failure" contract while apply can branch on presence.
+func (c *Client) Exists(path string) (bool, error) {
+	resp, err := c.send(http.MethodGet, path, nil, "")
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	return false, c.formatHTTPError(fmt.Sprintf("GET %s", path), resp)
+}
+
+// send builds and executes a request to path with the given method, optional
+// body and content type, returning the raw response without interpreting its
+// status code. Callers layer their own status handling on top.
+func (c *Client) send(method, path string, body io.Reader, contentType string) (*http.Response, error) {
 	baseURL := strings.TrimSuffix(c.aiWorkspace.URL, "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 
-	req, err := http.NewRequest(method, baseURL+path, nil)
+	req, err := http.NewRequest(method, baseURL+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	req.Header.Set("Accept", "application/json")
 	if baseURL != "" {
 		req.Header.Set("Origin", baseURL)
 	}
 
-	resp, err := c.Do(req)
+	return c.Do(req)
+}
+
+func (c *Client) sendNoBody(method, path string) (*http.Response, error) {
+	resp, err := c.send(method, path, nil, "")
 	if err != nil {
 		return nil, err
 	}
@@ -109,22 +145,7 @@ func (c *Client) sendNoBody(method, path string) (*http.Response, error) {
 }
 
 func (c *Client) sendJSON(method, path string, body []byte) (*http.Response, error) {
-	baseURL := strings.TrimSuffix(c.aiWorkspace.URL, "/")
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-
-	req, err := http.NewRequest(method, baseURL+path, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	if baseURL != "" {
-		req.Header.Set("Origin", baseURL)
-	}
-
-	resp, err := c.Do(req)
+	resp, err := c.send(method, path, bytes.NewReader(body), "application/json")
 	if err != nil {
 		return nil, err
 	}

@@ -49,7 +49,6 @@ func init() {
 	AiWSCmd.AddCommand(currentCmd)
 	AiWSCmd.AddCommand(buildCmd)
 	AiWSCmd.AddCommand(applyCmd)
-	AiWSCmd.AddCommand(editCmd)
 	AiWSCmd.AddCommand(llmprovider.LLMProviderCmd)
 	AiWSCmd.AddCommand(llmproxy.LLMProxyCmd)
 	AiWSCmd.AddCommand(mcpproxy.MCPProxyCmd)
