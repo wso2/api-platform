@@ -112,6 +112,7 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) er
 			WithLogMessage(fmt.Sprintf("failed to deploy API %s", apiId))
 	}
 
+	setLocation(w, "rest-apis", apiId, "deployments", deployment.DeploymentId.String())
 	httputil.WriteJSON(w, http.StatusCreated, deployment)
 	return nil
 }

@@ -116,6 +116,7 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 	h.slogger.Info("Successfully created API key", "userId", userId, "apiHandle", apiHandle, "orgId", orgId, "keyName", keyName)
 
 	// Return success response
+	setLocation(w, "rest-apis", apiHandle, "api-keys", name)
 	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
 		Status:  api.CreateAPIKeyResponseStatusSuccess,
 		KeyId:   req.Id,

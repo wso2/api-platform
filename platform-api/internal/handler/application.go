@@ -77,6 +77,7 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 			WithLogMessage(fmt.Sprintf("failed to create application in project %s for org %s by user %s", req.ProjectId, orgID, createdBy))
 	}
 
+	setLocation(w, "applications", app.Id)
 	httputil.WriteJSON(w, http.StatusCreated, app)
 	return nil
 }

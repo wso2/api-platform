@@ -140,6 +140,7 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	setLocation(w, "llm-provider-templates", strOrEmpty(created.Id))
 	httputil.WriteJSON(w, http.StatusCreated, created)
 	return nil
 }
@@ -195,6 +196,7 @@ func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *ht
 		}
 	}
 
+	setLocation(w, "llm-provider-templates", strOrEmpty(created.Id))
 	httputil.WriteJSON(w, http.StatusCreated, created)
 	return nil
 }
@@ -448,6 +450,7 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) e
 				WithLogMessage(fmt.Sprintf("failed to create LLM provider in org %s", orgID))
 		}
 	}
+	setLocation(w, "llm-providers", strOrEmpty(created.Id))
 	httputil.WriteJSON(w, http.StatusCreated, created)
 	return nil
 }
@@ -629,6 +632,7 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 				WithLogMessage(fmt.Sprintf("failed to create LLM proxy in org %s", orgID))
 		}
 	}
+	setLocation(w, "llm-proxies", strOrEmpty(created.Id))
 	httputil.WriteJSON(w, http.StatusCreated, created)
 	return nil
 }

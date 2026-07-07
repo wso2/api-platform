@@ -168,6 +168,7 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 
 	h.slogger.Info("Successfully created LLM proxy API key", "proxyId", proxyID, "organizationId", orgID, "keyId", response.Id)
 
+	setLocation(w, "llm-proxies", proxyID, "api-keys", response.Id)
 	httputil.WriteJSON(w, http.StatusCreated, response)
 	return nil
 }

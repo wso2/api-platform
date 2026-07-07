@@ -116,6 +116,7 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to resolve subscription identity for api %s in org %s", req.APIID, orgId))
 	}
+	setLocation(w, "subscriptions", sub.UUID)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }

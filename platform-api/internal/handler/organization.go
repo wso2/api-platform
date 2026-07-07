@@ -100,6 +100,7 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 			WithLogMessage("failed to create organization")
 	}
 
+	setLocation(w, "organizations", strOrEmpty(org.Id))
 	httputil.WriteJSON(w, http.StatusCreated, org)
 	return nil
 }

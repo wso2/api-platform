@@ -219,6 +219,7 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to resolve subscription plan identity for org %s", orgId))
 	}
+	setLocation(w, "subscription-plans", created.Handle)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }

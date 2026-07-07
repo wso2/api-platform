@@ -134,6 +134,7 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) e
 	}
 
 	// Return 201 Created with response
+	setLocation(w, "gateways", strOrEmpty(gateway.Id))
 	httputil.WriteJSON(w, http.StatusCreated, gateway)
 	return nil
 }
@@ -357,6 +358,11 @@ func (h *GatewayHandler) RotateToken(w http.ResponseWriter, r *http.Request) err
 	}
 
 	// Return 201 Created with response
+	tokenId := ""
+	if response.Id != nil {
+		tokenId = response.Id.String()
+	}
+	setLocation(w, "gateways", gatewayId, "tokens", tokenId)
 	httputil.WriteJSON(w, http.StatusCreated, response)
 	return nil
 }

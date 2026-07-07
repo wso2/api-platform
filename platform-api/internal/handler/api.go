@@ -133,6 +133,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 			WithLogMessage(fmt.Sprintf("failed to create API in org %s", orgId))
 	}
 
+	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
 	httputil.WriteJSON(w, http.StatusCreated, apiResponse)
 	return nil
 }

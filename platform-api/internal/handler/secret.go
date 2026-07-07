@@ -90,6 +90,7 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) err
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to create secret")
 	}
 
+	setLocation(w, "secrets", resp.Handle)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }

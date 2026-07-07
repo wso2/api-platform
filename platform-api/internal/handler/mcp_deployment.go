@@ -121,6 +121,7 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *htt
 		}
 	}
 
+	setLocation(w, "mcp-proxies", proxyId, "deployments", deployment.DeploymentId.String())
 	httputil.WriteJSON(w, http.StatusCreated, deployment)
 	return nil
 }

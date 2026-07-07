@@ -84,6 +84,7 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) e
 			WithLogMessage(fmt.Sprintf("failed to create project in org %s", organizationID))
 	}
 
+	setLocation(w, "projects", strOrEmpty(project.Id))
 	httputil.WriteJSON(w, http.StatusCreated, project)
 	return nil
 }

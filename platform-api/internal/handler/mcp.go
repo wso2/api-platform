@@ -87,6 +87,7 @@ func (h *MCPProxyHandler) CreateMCPProxy(w http.ResponseWriter, r *http.Request)
 		return h.mapServiceError(err)
 	}
 
+	setLocation(w, "mcp-proxies", strOrEmpty(resp.Id))
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }

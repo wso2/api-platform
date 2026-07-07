@@ -113,6 +113,7 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, 
 		}
 	}
 
+	setLocation(w, "llm-providers", providerId, "deployments", deployment.DeploymentId.String())
 	httputil.WriteJSON(w, http.StatusCreated, deployment)
 	return nil
 }
@@ -378,6 +379,7 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *htt
 		}
 	}
 
+	setLocation(w, "llm-proxies", proxyId, "deployments", deployment.DeploymentId.String())
 	httputil.WriteJSON(w, http.StatusCreated, deployment)
 	return nil
 }

@@ -168,6 +168,7 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 
 	h.slogger.Info("Successfully created LLM provider API key", "providerId", providerID, "organizationId", orgID, "keyId", response.Id)
 
+	setLocation(w, "llm-providers", providerID, "api-keys", response.Id)
 	httputil.WriteJSON(w, http.StatusCreated, response)
 	return nil
 }
