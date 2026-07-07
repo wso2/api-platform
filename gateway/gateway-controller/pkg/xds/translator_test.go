@@ -2624,3 +2624,40 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		assert.Equal(t, core.SocketAddress_TCP, listener.GetAddress().GetSocketAddress().GetProtocol())
 	})
 }
+
+// parseDurationAllowZero must accept exactly what the CRD admission controller accepts
+// (constants.ResilienceDurationPattern): single-unit durations including "0s" to disable, while
+// rejecting compound, negative, and unitless values.
+func TestParseDurationAllowZero_MatchesCRDPattern(t *testing.T) {
+	ptr := func(s string) *string { return &s }
+
+	t.Run("accepts single-unit and zero", func(t *testing.T) {
+		for _, in := range []string{"30s", "500ms", "1m", "2h", "1.5s", "0s", "0ms"} {
+			d, err := parseDurationAllowZero(ptr(in))
+			if err != nil {
+				t.Errorf("expected %q to be accepted, got error: %v", in, err)
+				continue
+			}
+			if d == nil {
+				t.Errorf("expected %q to yield a non-nil duration", in)
+			}
+		}
+	})
+
+	t.Run("nil and empty yield nil without error", func(t *testing.T) {
+		for _, in := range []*string{nil, ptr(""), ptr("  ")} {
+			d, err := parseDurationAllowZero(in)
+			if err != nil || d != nil {
+				t.Errorf("expected nil,nil for empty input, got %v,%v", d, err)
+			}
+		}
+	})
+
+	t.Run("rejects compound, negative, and unitless", func(t *testing.T) {
+		for _, in := range []string{"1h30m", "1m30s", "-30s", "-5s", "30", "0", "15seconds", "abc"} {
+			if _, err := parseDurationAllowZero(ptr(in)); err == nil {
+				t.Errorf("expected %q to be rejected, but it was accepted", in)
+			}
+		}
+	})
+}

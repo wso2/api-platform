@@ -19,7 +19,10 @@
 package utils
 
 import (
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -8219,4 +8222,277 @@ func findOperation(ops []api.Operation, path string, method string) *api.Operati
 		}
 	}
 	return nil
+}
+
+// ============================================================================
+// Resilience route-mapping tests
+// ============================================================================
+
+// These tests pin the LLM resilience route-mapping rule: API-level resilience is attached to every
+// traffic-forwarding route and never to the access-control deny routes.
+
+// In allow_all mode, the catch-all (and any policy-derived routes) carry the resilience block while
+// the exception/deny routes (which only return a 404) are left untouched.
+func TestTransformProvider_AllowAll_ResilienceSkipsDenyRoutes(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	exceptions := []api.RouteException{
+		{Path: "/admin", Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET, api.RouteExceptionMethodsPOST}},
+	}
+	timeout := "30s"
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "test",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream:    api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
+			AccessControl: api.LLMAccessControl{
+				Mode:       api.AllowAll,
+				Exceptions: &exceptions,
+			},
+			Resilience: &api.Resilience{Timeout: &timeout},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+
+	sawCatchAll := false
+	sawDeny := false
+	for _, op := range result.Spec.Operations {
+		if op.Path == "/admin" { // the deny/exception routes
+			sawDeny = true
+			assert.Nil(t, op.Resilience, "deny route %s %s must not carry resilience", op.Method, op.Path)
+			continue
+		}
+		// catch-all (traffic-forwarding) routes
+		sawCatchAll = true
+		require.NotNil(t, op.Resilience, "traffic route %s %s should carry resilience", op.Method, op.Path)
+		require.NotNil(t, op.Resilience.Timeout)
+		assert.Equal(t, "30s", *op.Resilience.Timeout)
+	}
+	assert.True(t, sawCatchAll, "expected at least one traffic-forwarding route")
+	assert.True(t, sawDeny, "expected at least one deny route")
+}
+
+// In deny_all mode every created route is an allow-listed forwarding route, so all of them carry the
+// resilience block.
+func TestTransformProvider_DenyAll_ResilienceOnAllRoutes(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	exceptions := []api.RouteException{
+		{Path: "/chat/completions", Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST}},
+		{Path: "/models", Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET}},
+	}
+	timeout := "45s"
+	idle := "0s"
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "test",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream:    api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
+			AccessControl: api.LLMAccessControl{
+				Mode:       api.DenyAll,
+				Exceptions: &exceptions,
+			},
+			Resilience: &api.Resilience{Timeout: &timeout, IdleTimeout: &idle},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Spec.Operations)
+
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Resilience, "route %s %s should carry resilience", op.Method, op.Path)
+		require.NotNil(t, op.Resilience.Timeout)
+		assert.Equal(t, "45s", *op.Resilience.Timeout)
+		require.NotNil(t, op.Resilience.IdleTimeout)
+		assert.Equal(t, "0s", *op.Resilience.IdleTimeout)
+	}
+}
+
+// With no resilience block on the source provider, no operation gets a resilience block (unchanged
+// behavior — routes fall back to the gateway's global default timeout).
+func TestTransformProvider_NoResilience_NotAttached(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "test",
+			Version:       "v1.0",
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Spec.Operations)
+
+	for _, op := range result.Spec.Operations {
+		assert.Nil(t, op.Resilience, "route %s %s should not carry resilience", op.Method, op.Path)
+	}
+}
+
+// A proxy is always allow-all with no access control, so every generated route carries the
+// resilience block.
+func TestTransformProxy_ResilienceOnAllRoutes(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000001",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	now := time.Now()
+	provider := &models.StoredConfig{
+		UUID:        "0000-db-provider-id-0000-000000000000",
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:      "db-provider",
+		DisplayName: "db-provider",
+		Version:     "v1.0",
+		Configuration: api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.RestAPIKindRestApi,
+			Metadata:   api.Metadata{Name: "db-provider"},
+			Spec: api.APIConfigData{
+				DisplayName: "db-provider",
+				Version:     "v1.0",
+				Context:     "/db-provider",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{Main: api.Upstream{Url: stringPtr("https://api.openai.com")}},
+			},
+		},
+		SourceConfiguration: api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: "db-provider"},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   "db-provider",
+				Version:       "v1.0",
+				Context:       stringPtr("/db-provider"),
+				Template:      "openai",
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	require.NoError(t, db.SaveConfig(provider))
+
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	timeout := "75s"
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "db-proxy"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "db-proxy",
+			Version:     "v1.0",
+			Provider:    api.LLMProxyProvider{Id: "db-provider"},
+			Resilience:  &api.Resilience{Timeout: &timeout},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Spec.Operations)
+
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Resilience, "proxy route %s %s should carry resilience", op.Method, op.Path)
+		require.NotNil(t, op.Resilience.Timeout)
+		assert.Equal(t, "75s", *op.Resilience.Timeout)
+	}
+}
+
+// ============================================================================
+// Upstream ref / connect-timeout threading tests
+// ============================================================================
+
+// The provider converter maps an upstream `ref` onto the derived RestAPI (instead of a direct url)
+// and threads the upstreamDefinitions through, so the per-upstream connect timeout resolves the same
+// way it does for RestApi.
+func TestTransform_Provider_UpstreamRef_ThreadsDefinitions(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	defs := &[]api.UpstreamDefinition{{
+		Name:    "openai-backend",
+		Timeout: &api.UpstreamTimeout{Connect: stringPtr("6s")},
+	}}
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:         "ref-provider",
+			Version:             "v1.0",
+			Template:            "openai",
+			UpstreamDefinitions: defs,
+			Upstream:            api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")},
+			AccessControl:       api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	res, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+
+	require.NotNil(t, res.Spec.Upstream.Main.Ref, "ref should be mapped onto the derived upstream")
+	assert.Equal(t, "openai-backend", *res.Spec.Upstream.Main.Ref)
+	assert.Nil(t, res.Spec.Upstream.Main.Url, "ref-based upstream must not also set url")
+
+	require.NotNil(t, res.Spec.UpstreamDefinitions, "upstreamDefinitions must be threaded through")
+	require.Len(t, *res.Spec.UpstreamDefinitions, 1)
+	require.NotNil(t, (*res.Spec.UpstreamDefinitions)[0].Timeout)
+	assert.Equal(t, "6s", *(*res.Spec.UpstreamDefinitions)[0].Timeout.Connect)
+}
+
+func TestTransform_Provider_UpstreamUrl_Unchanged(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "url-provider",
+			Version:       "v1.0",
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	res, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+
+	require.NotNil(t, res.Spec.Upstream.Main.Url)
+	assert.Equal(t, "https://api.openai.com", *res.Spec.Upstream.Main.Url)
+	assert.Nil(t, res.Spec.Upstream.Main.Ref)
+	assert.Nil(t, res.Spec.UpstreamDefinitions)
 }

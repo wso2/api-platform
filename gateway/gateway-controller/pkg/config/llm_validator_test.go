@@ -1902,3 +1902,190 @@ func TestValidate_UnsupportedConfigType(t *testing.T) {
 	assert.Equal(t, "config", errors[0].Field)
 	assert.Contains(t, errors[0].Message, "Unsupported configuration type")
 }
+
+// assertHasFieldError fails unless errs contains a validation error on the given field. Shared by
+// the resilience and upstream-ref tests across the LLM and MCP validators (same package).
+func assertHasFieldError(t *testing.T, errs []ValidationError, field string) {
+	t.Helper()
+	for _, e := range errs {
+		if e.Field == field {
+			return
+		}
+	}
+	t.Fatalf("expected a validation error on field %q, got %+v", field, errs)
+}
+
+// upstreamDef builds a valid upstream definition (one host-only target) with an optional connect
+// timeout. connect == "" leaves the timeout unset. Shared by the LLM and MCP upstream-ref tests.
+func upstreamDef(name, connect string) api.UpstreamDefinition {
+	def := api.UpstreamDefinition{
+		Name: name,
+		Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{
+			{Url: "http://backend:8080"},
+		},
+	}
+	if connect != "" {
+		def.Timeout = &api.UpstreamTimeout{Connect: stringPtr(connect)}
+	}
+	return def
+}
+
+// ============================================================================
+// Resilience validation
+// ============================================================================
+
+func validProviderWithResilience(r *api.Resilience) api.LLMProviderConfiguration {
+	return api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
+		Metadata:   api.Metadata{Name: "openai"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "my-provider",
+			Version:       "v1.0",
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			Resilience:    r,
+		},
+	}
+}
+
+func validProxyWithResilience(r *api.Resilience) api.LLMProxyConfiguration {
+	return api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "openai-proxy"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "my-proxy",
+			Version:     "v1.0",
+			Provider:    api.LLMProxyProvider{Id: "openai"},
+			Resilience:  r,
+		},
+	}
+}
+
+func TestValidateLLMProvider_Resilience(t *testing.T) {
+	validator := NewLLMValidator()
+
+	t.Run("valid timeout and idleTimeout", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{
+			Timeout:     stringPtr("30s"),
+			IdleTimeout: stringPtr("0s"),
+		}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("nil resilience is fine", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(nil))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("malformed timeout is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{Timeout: stringPtr("30")}))
+		assertHasFieldError(t, errs, "spec.resilience.timeout")
+	})
+
+	t.Run("compound timeout is rejected (must match CRD pattern)", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{Timeout: stringPtr("1h30m")}))
+		assertHasFieldError(t, errs, "spec.resilience.timeout")
+	})
+
+	t.Run("0s is accepted (disables)", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{Timeout: stringPtr("0s")}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("negative timeout is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{Timeout: stringPtr("-5s")}))
+		assertHasFieldError(t, errs, "spec.resilience.timeout")
+	})
+
+	t.Run("malformed idleTimeout is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{IdleTimeout: stringPtr("abc")}))
+		assertHasFieldError(t, errs, "spec.resilience.idleTimeout")
+	})
+}
+
+func TestValidateLLMProxy_Resilience(t *testing.T) {
+	validator := NewLLMValidator()
+
+	t.Run("valid timeout", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithResilience(&api.Resilience{Timeout: stringPtr("75s")}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("nil resilience is fine", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithResilience(nil))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("malformed timeout is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithResilience(&api.Resilience{Timeout: stringPtr("fast")}))
+		assertHasFieldError(t, errs, "spec.resilience.timeout")
+	})
+
+	t.Run("negative idleTimeout is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithResilience(&api.Resilience{IdleTimeout: stringPtr("-1s")}))
+		assertHasFieldError(t, errs, "spec.resilience.idleTimeout")
+	})
+}
+
+// ============================================================================
+// Upstream ref validation
+// ============================================================================
+
+func providerWithUpstream(defs *[]api.UpstreamDefinition, up api.LLMProviderConfigData_Upstream) api.LLMProviderConfiguration {
+	return api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
+		Metadata:   api.Metadata{Name: "openai"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:         "my-provider",
+			Version:             "v1.0",
+			Template:            "openai",
+			UpstreamDefinitions: defs,
+			Upstream:            up,
+			AccessControl:       api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+}
+
+func TestValidateLLMProvider_UpstreamRef(t *testing.T) {
+	validator := NewLLMValidator()
+
+	t.Run("valid ref resolves to a definition", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("openai-backend", "6s")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("ref not found in definitions", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("other", "6s")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("missing")}))
+		assertHasFieldError(t, errs, "spec.upstream.ref")
+	})
+
+	t.Run("both url and ref rejected", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("openai-backend", "6s")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{
+			Url: stringPtr("https://api.openai.com"),
+			Ref: stringPtr("openai-backend"),
+		}))
+		assertHasFieldError(t, errs, "spec.upstream")
+	})
+
+	t.Run("malformed connect timeout rejected (must match CRD pattern)", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("openai-backend", "1h30m")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assertHasFieldError(t, errs, "spec.upstreamDefinitions[0].timeout.connect")
+	})
+
+	t.Run("valid fractional connect timeout accepted", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("openai-backend", "500ms")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assert.Empty(t, errs)
+	})
+}
