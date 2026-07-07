@@ -126,6 +126,7 @@ jobs:
                             content {
                               ... on Issue {
                                 number
+                                state
                                 title
                                 repository {
                                   name
@@ -182,6 +183,11 @@ jobs:
               for (const item of items) {
                 const issue = item.content;
                 if (!issue?.number || !issue?.repository) {
+                  continue;
+                }
+
+                if (issue.state !== 'OPEN') {
+                  console.log(`#${issue.number} is not open. Skipping.`);
                   continue;
                 }
 
