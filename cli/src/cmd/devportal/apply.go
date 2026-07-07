@@ -36,17 +36,14 @@ import (
 
 const (
 	ApplyCmdLiteral = "apply"
-	ApplyCmdExample = `# Apply an organization from a YAML CR file (kind: Organization)
-ap devportal apply -f org.yaml
-
-# Apply subscription plan(s) from a YAML CR file (kind: SubscriptionPolicy / SubscriptionPolicyList)
+	ApplyCmdExample = `# Apply subscription plan(s) from a YAML CR file (kind: SubscriptionPolicy / SubscriptionPolicyList)
 ap devportal apply -f sub_plan.yaml
 
 # Apply a REST API from a built artifact zip (devportal.yaml -> kind: RestApi)
 ap devportal apply -f build/devportal.zip
 
 # Apply using a specific devportal without relying on the active devportal
-ap devportal apply -f org.yaml --display-name my-portal --platform eu`
+ap devportal apply -f build/devportal.zip --display-name my-portal --platform eu`
 )
 
 // DevPortal CR kinds that `apply` routes. The kind (read from the YAML CR or from

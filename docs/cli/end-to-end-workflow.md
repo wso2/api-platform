@@ -166,7 +166,7 @@ Developer Portal now follows the same build and apply model.
 ```shell
 ap devportal gen
 ap devportal build
-ap devportal apply -f build/devportal.zip --org <org-id>
+ap devportal apply -f build/devportal.zip
 ```
 
 What each command does:
@@ -240,8 +240,7 @@ ap devportal build
 
 # Apply the built artifact
 ap devportal apply \
-  -f build/devportal.zip \
-  --org "$ORG_ID"
+  -f build/devportal.zip
 ```
 
 ### AI Workspace artifact

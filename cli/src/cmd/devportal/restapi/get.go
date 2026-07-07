@@ -36,7 +36,7 @@ const (
 ap devportal rest-api get --api-id api_1
 
 # Get an API artifact using a specific devportal
-ap devportal rest-api get --id api_1 --display-name my-portal --platform eu`
+ap devportal rest-api get --api-id api_1 --display-name my-portal --platform eu`
 )
 
 var (
