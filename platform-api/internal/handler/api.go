@@ -126,7 +126,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 				WithLogMessage(fmt.Sprintf("invalid transport protocol in org %s", orgId))
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
-			return apperror.ValidationFailed.Wrap(err, err.Error()).
+			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").
 				WithLogMessage(fmt.Sprintf("subscription plan not found or not active in org %s", orgId))
 		}
 		return apperror.Internal.Wrap(err).
@@ -254,7 +254,7 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 				WithLogMessage(fmt.Sprintf("invalid transport protocol for API %s in org %s", apiId, orgId))
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
-			return apperror.ValidationFailed.Wrap(err, err.Error()).
+			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").
 				WithLogMessage(fmt.Sprintf("subscription plan not found or not active for API %s in org %s", apiId, orgId))
 		}
 		return apperror.Internal.Wrap(err).

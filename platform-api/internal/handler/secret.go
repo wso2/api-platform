@@ -85,7 +85,7 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) err
 			return apperror.SecretExists.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrInvalidSecretType) {
-			return apperror.ValidationFailed.Wrap(err, err.Error())
+			return apperror.ValidationFailed.Wrap(err, "Invalid secret type: must be GENERIC or CERTIFICATE")
 		}
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to create secret")
 	}

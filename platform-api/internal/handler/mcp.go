@@ -225,10 +225,10 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(w http.ResponseWriter, r *http
 		}
 		switch {
 		case errors.Is(err, constants.ErrInvalidURL):
-			return apperror.ValidationFailed.Wrap(err, err.Error()).
+			return apperror.ValidationFailed.Wrap(err, "Invalid URL provided").
 				WithLogMessage(fmt.Sprintf("invalid URL provided for MCP server info fetch: %s", reqURL))
 		case errors.Is(err, constants.ErrURLUnreachable):
-			return apperror.ValidationFailed.Wrap(err, strings.Split(err.Error(), ":")[0]).
+			return apperror.ValidationFailed.Wrap(err, "URL is unreachable").
 				WithLogMessage(fmt.Sprintf("MCP server URL is unreachable: %s", reqURL))
 		case errors.Is(err, constants.ErrMCPServerUnauthorized):
 			return apperror.ValidationFailed.Wrap(err, "MCP server returned 401 Unauthorized. Check the provided credentials.").
@@ -249,15 +249,15 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(w http.ResponseWriter, r *http
 func (h *MCPProxyHandler) mapServiceError(err error) error {
 	switch {
 	case errors.Is(err, constants.ErrArtifactReadOnly):
-		return apperror.ArtifactReadOnly.Wrap(err, err.Error())
+		return apperror.ArtifactReadOnly.Wrap(err, "Artifact is read-only: it originated from a data-plane gateway")
 	case errors.Is(err, constants.ErrArtifactRuntimeImmutable):
-		return apperror.ArtifactRuntimeImmutable.Wrap(err, err.Error())
+		return apperror.ArtifactRuntimeImmutable.Wrap(err, "Runtime configuration of this artifact cannot be changed")
 	case errors.Is(err, constants.ErrArtifactDeployed):
-		return apperror.ArtifactDeployed.Wrap(err, err.Error())
+		return apperror.ArtifactDeployed.Wrap(err, "Artifact is still deployed on a gateway and cannot be deleted")
 	case errors.Is(err, constants.ErrHandleImmutable):
 		return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
 	case errors.Is(err, constants.ErrInvalidInput):
-		return apperror.ValidationFailed.Wrap(err, err.Error())
+		return apperror.ValidationFailed.Wrap(err, "Invalid input parameters")
 	case errors.Is(err, constants.ErrMCPProxyNotFound):
 		return apperror.MCPProxyNotFound.Wrap(err)
 	case errors.Is(err, constants.ErrMCPProxyExists):
@@ -267,7 +267,7 @@ func (h *MCPProxyHandler) mapServiceError(err error) error {
 	case errors.Is(err, constants.ErrMCPProxyLimitReached):
 		return apperror.MCPProxyLimitReached.Wrap(err)
 	case errors.Is(err, constants.ErrSecretRefMissing):
-		return apperror.ValidationFailed.Wrap(err, err.Error())
+		return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
 	default:
 		return apperror.Internal.Wrap(err)
 	}

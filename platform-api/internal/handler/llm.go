@@ -435,7 +435,7 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) e
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			return apperror.LLMProviderTemplateRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrSecretRefMissing):
-			return apperror.ValidationFailed.Wrap(err, err.Error())
+			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
 		case errors.Is(err, constants.ErrInvalidInput):
 			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
@@ -537,7 +537,7 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) e
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			return apperror.LLMProviderTemplateRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrSecretRefMissing):
-			return apperror.ValidationFailed.Wrap(err, err.Error())
+			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
 		case errors.Is(err, constants.ErrHandleImmutable):
 			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
 		case errors.Is(err, constants.ErrInvalidInput):

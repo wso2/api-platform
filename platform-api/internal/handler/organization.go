@@ -114,12 +114,11 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 	handle := r.PathValue("organizationId")
 
 	h.slogger.Debug("Organization from token", "organizationId", organizationIdFromContext)
-	// to do: enable this check after finalizing authentication method
 
-	// if orgID != organizationIdFromContext {
-	// 	return apperror.Forbidden.New().
-	// 		WithLogMessage("Organization ID in token does not match the requested organization ID")
-	// }
+	if handle != organizationIdFromContext {
+		return apperror.Forbidden.New().
+			WithLogMessage("Organization ID in token does not match the requested organization ID")
+	}
 
 	_, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
