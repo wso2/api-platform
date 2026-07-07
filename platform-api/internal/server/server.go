@@ -817,17 +817,13 @@ func (s *Server) Start(port string, certDir string) error {
 		errCh <- httpServer.ListenAndServeTLS("", "")
 	}()
 
-	mode := "Production"
+	mode := "PRODUCTION"
 	if demoMode() {
-		mode = "Demo"
+		mode = "DEMO"
 	}
-	const termWidth = 80
-	msg := fmt.Sprintf("=== Platform API started [%s] ===", mode)
-	pad := (termWidth - len(msg)) / 2
-	if pad < 0 {
-		pad = 0
-	}
-	fmt.Printf("\n%*s%s\n\n", pad, "", msg)
+	s.logger.Info("Platform API started", "mode", mode)
+
+	printStartedMarker(mode)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -862,6 +858,20 @@ func (s *Server) Start(port string, certDir string) error {
 		teardown()
 		return nil
 	}
+}
+
+// printStartedMarker writes a large, prominent banner for humans watching
+// the console, matching the gateway controller's startup banner style. It's
+// purely decorative — the structured "Platform API started" slog line is the
+// source of truth for log parsing.
+func printStartedMarker(mode string) {
+	fmt.Print("\n\n" +
+		"========================================================================\n" +
+		"\n" +
+		"                    Platform API Started mode=" + mode + "\n" +
+		"\n" +
+		"========================================================================\n" +
+		"\n\n")
 }
 
 // GetMux returns the raw ServeMux for testing purposes.

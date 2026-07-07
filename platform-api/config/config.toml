@@ -28,7 +28,7 @@ port       = "9243"
 # Database
 # ---------------------------------------------------------------------------
 [database]
-# driver = "sqlite3"          # "sqlite3" or "postgres"
+driver = "sqlite3"          # "sqlite3" or "postgres"
 # path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
 # PostgreSQL — uncomment when driver = "postgres"
