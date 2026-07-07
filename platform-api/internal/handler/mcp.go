@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -167,6 +168,10 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
 			WithLogMessage(fmt.Sprintf("invalid MCP proxy update request body for proxy %s in org %s", id, orgID))
+	}
+
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "MCP proxy id is immutable and cannot be changed")
 	}
 
 	updatedBy, err := resolveActorErr(r, h.identity, "update MCP proxy")

@@ -84,7 +84,7 @@ func runAddCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, addInsecure)
-	resp, err := client.PostMultipartFile("/devportal/organizations", "organization", organizationPath)
+	resp, err := client.PostMultipartFile("/organizations", "organization", organizationPath)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create organization", err, addInsecure)
 	}

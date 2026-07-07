@@ -727,6 +727,25 @@ Notes:
 - `type` accepts `requestcount` or `eventcount`. Use `-1` for an unlimited request/event count.
 - Equivalent request shape: `curl -X POST /devportal/organizations/<org-id>/subscription-policies -F "subscriptionPolicy=@sub_plan_gold.yaml"`.
 
+### `ap devportal sub-plan list`
+
+Lists all subscription plans in an organization.
+
+```shell
+ap devportal sub-plan list --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-plan list --org org_1
+ap devportal sub-plan list --org org_1 --display-name my-portal --platform eu
+```
+
+Notes:
+
+- Calls `GET /o/<org-id>/devportal/v1/subscription-policies` (operationId `listSubscriptionPolicies`).
+
 ### `ap devportal sub-plan get`
 
 Gets a single subscription plan by its policy ID.

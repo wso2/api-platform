@@ -39,6 +39,8 @@ const (
 	FlagFormat                 = "format"
 	FlagVersion                = "version"
 	FlagID                     = "id"
+	FlagLimit                  = "limit"
+	FlagOffset                 = "offset"
 	FlagAPIID                  = "api-id"
 	FlagSubID                  = "sub-id"
 	FlagConfirm                = "confirm"
@@ -50,6 +52,7 @@ const (
 	FlagHeader                 = "header"
 	FlagPolicyId               = "policy-id"
 	FlagOrgID                  = "org"
+	FlagView                   = "view"
 	FlagRequestCount           = "request-count"
 	FlagEventCount             = "event-count"
 	FlagPricingModel           = "pricing-model"
@@ -78,6 +81,10 @@ const (
 	FlagSubscriptionToken      = "subscription-token"
 	FlagBillingCustomerID      = "billing-customer-id"
 	FlagBillingSubscriptionID  = "billing-subscription-id"
+	FlagReferenceID            = "reference-id"
+	FlagGatewayType            = "gateway-type"
+	FlagProjectID              = "project-id"
+	FlagEnvFile                = "env-file"
 )
 
 var shortFlags = map[string]string{

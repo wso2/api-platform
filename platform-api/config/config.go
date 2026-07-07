@@ -36,6 +36,8 @@ import (
 	kenv "github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+
+	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
 // FileBasedUser represents a built-in user for file-based auth mode.
@@ -90,6 +92,7 @@ type Server struct {
 	Deployments      Deployments      `koanf:"deployments"`
 	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
 	TLS              TLS              `koanf:"tls"`
+	CORS             CORS             `koanf:"cors"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
@@ -168,6 +171,14 @@ type Gateway struct {
 // TLS holds TLS certificate configuration.
 type TLS struct {
 	CertDir string `koanf:"cert_dir"`
+}
+
+// CORS holds cross-origin resource sharing configuration.
+type CORS struct {
+	// AllowedOrigins lists the exact origins permitted to make credentialed
+	// cross-origin requests. Must not be ["*"] outside demo mode — wildcard
+	// origins cannot be combined with credentialed requests.
+	AllowedOrigins []string `koanf:"allowed_origins"`
 }
 
 // JWT holds configuration for local HMAC JWT authentication.
@@ -330,6 +341,11 @@ func LoadConfig(configPath string) (*Server, error) {
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Install the configured logger as the slog default so the warnings/info logs
+	// emitted below (and any package-level slog.* call in this file) use the same
+	// format as the rest of the application, instead of slog's default handler.
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
 
 	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
 		return nil, err
@@ -705,6 +721,10 @@ func envToKoanfKey(s string) string {
 	// TLS
 	case "tls_cert_dir":
 		return "tls.cert_dir"
+
+	// CORS
+	case "cors_allowed_origins":
+		return "cors.allowed_origins"
 
 	// API Key
 	case "api_key_hashing_algorithms":

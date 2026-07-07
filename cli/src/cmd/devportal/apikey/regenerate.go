@@ -95,7 +95,7 @@ func runRegenerateCommand() error {
 
 	client := internaldevportal.NewClientWithOptions(devPortal, regenerateInsecure)
 	baseURL := strings.TrimSuffix(devPortal.URL, "/")
-	path := fmt.Sprintf("/devportal/organizations/%s/api-keys/%s/regenerate", url.PathEscape(orgID), url.PathEscape(apiKeyID))
+	path := internaldevportal.OrgScopedPath(orgID, "api-keys/"+url.PathEscape(apiKeyID)+"/regenerate")
 	req, err := http.NewRequest(http.MethodPost, baseURL+path, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

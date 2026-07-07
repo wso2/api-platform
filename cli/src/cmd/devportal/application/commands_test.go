@@ -37,7 +37,7 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/applications" {
+		if req.URL.Path != "/o/org-1/devportal/v1/applications" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		body, err := io.ReadAll(req.Body)
@@ -109,7 +109,7 @@ func TestRunUpdateCommand_SendsJSONPayload(t *testing.T) {
 		if req.Method != http.MethodPut {
 			t.Fatalf("expected PUT request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/applications/app-1" {
+		if req.URL.Path != "/o/org-1/devportal/v1/applications/app-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		body, err := io.ReadAll(req.Body)
@@ -145,13 +145,13 @@ func TestRunGetCommand_ListAllAndSingle(t *testing.T) {
 
 	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
-		case "/devportal/organizations/org-1/applications":
+		case "/o/org-1/devportal/v1/applications":
 			if req.Method != http.MethodGet {
 				t.Fatalf("expected GET request, got %s", req.Method)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[{"applicationId":"app-1"}]`))
-		case "/devportal/organizations/org-1/applications/app-1":
+		case "/o/org-1/devportal/v1/applications/app-1":
 			if req.Method != http.MethodGet {
 				t.Fatalf("expected GET request, got %s", req.Method)
 			}
@@ -197,7 +197,7 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 		if req.Method != http.MethodDelete {
 			t.Fatalf("expected DELETE request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/applications/app-1" {
+		if req.URL.Path != "/o/org-1/devportal/v1/applications/app-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")

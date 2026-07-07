@@ -36,7 +36,7 @@ func TestRunGenerateCommand_SendsPayload(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/api-keys/generate" {
+		if req.URL.Path != "/o/org-1/devportal/v1/api-keys/generate" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		body, err := io.ReadAll(req.Body)
@@ -75,7 +75,7 @@ func TestRunGetCommand_ListsAPIKeys(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/api-keys" {
+		if req.URL.Path != "/o/org-1/devportal/v1/api-keys" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		if got := req.URL.Query().Get("apiId"); got != "api-1" {
@@ -105,7 +105,7 @@ func TestRunRegenerateCommand_PostsToRegenerate(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/api-keys/key-1/regenerate" {
+		if req.URL.Path != "/o/org-1/devportal/v1/api-keys/key-1/regenerate" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -132,7 +132,7 @@ func TestRunRevokeCommand_PostsToRevoke(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/api-keys/key-1/revoke" {
+		if req.URL.Path != "/o/org-1/devportal/v1/api-keys/key-1/revoke" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)

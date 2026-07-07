@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -321,8 +322,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 			WithLogMessage(fmt.Sprintf("invalid update subscription plan request body for plan %s in org %s", planId, orgId))
 	}
 
-	if req.Id != nil && *req.Id != "" && *req.Id != planId {
-		return apperror.ValidationFailed.New("The plan id is immutable and cannot be changed")
+	if err := utils.ValidateHandleImmutable(planId, req.Id); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "The plan id is immutable and cannot be changed")
 	}
 
 	displayName := req.DisplayName

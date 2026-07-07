@@ -9,7 +9,9 @@ services:
       - DATABASE_DRIVER=sqlite3
       - DATABASE_PATH=/app/data/platform.db
       - DATABASE_EXECUTE_SCHEMA_DDL=true
-      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+      # Must be 32 bytes (64 hex chars); the subscription-token encryption path
+      # (exercised by the @secured subscription-create handler) rejects shorter keys.
+      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       - AUTH_FILE_BASED_ENABLED=true
       - AUTH_FILE_BASED_ORGANIZATION_ID=default
       - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295

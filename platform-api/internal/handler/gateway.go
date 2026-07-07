@@ -32,6 +32,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -231,8 +232,8 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) e
 		return apperror.NewValidation(err)
 	}
 
-	if req.Id != nil && *req.Id != gatewayId {
-		return apperror.ValidationFailed.New("Gateway id is immutable and cannot be changed")
+	if err := utils.ValidateHandleImmutable(gatewayId, req.Id); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "Gateway id is immutable and cannot be changed")
 	}
 
 	if req.DisplayName == "" {

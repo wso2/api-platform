@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -349,6 +350,10 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
 	}
 
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "LLM provider template id is immutable and cannot be changed")
+	}
+
 	updatedBy, err := resolveActorErr(r, h.identity, "update LLM provider template")
 	if err != nil {
 		return err
@@ -520,6 +525,10 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) e
 	var req api.LLMProvider
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
+	}
+
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "LLM provider id is immutable and cannot be changed")
 	}
 
 	updatedBy, err := resolveActorErr(r, h.identity, "update LLM provider")
@@ -750,6 +759,10 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 	var req api.LLMProxy
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body")
+	}
+
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "LLM proxy id is immutable and cannot be changed")
 	}
 
 	updatedBy, err := resolveActorErr(r, h.identity, "update LLM proxy")

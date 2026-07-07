@@ -93,7 +93,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/subscriptions/%s", url.PathEscape(orgID), url.PathEscape(subscriptionID))
+	path := internaldevportal.OrgScopedPath(orgID, "subscriptions/"+url.PathEscape(subscriptionID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete platform subscription", err, deleteInsecure)
@@ -104,4 +104,3 @@ func runDeleteCommand() error {
 	fmt.Printf("Platform subscription deleted from devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
 }
-

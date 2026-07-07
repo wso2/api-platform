@@ -37,7 +37,7 @@ func TestRunListCommand_PrintsOrganizationTable(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations" {
+		if req.URL.Path != "/organizations" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -70,7 +70,7 @@ func TestRunGetCommand_PrintsJSON(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1" {
+		if req.URL.Path != "/organizations/org-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -101,7 +101,7 @@ func TestRunAddCommand_SendsOrganizationYAMLMultipart(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations" {
+		if req.URL.Path != "/organizations" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		assertMultipartOrganization(t, req, "org.yaml", "apiVersion: devportal.api-platform.wso2.com/v1\nkind: Organization\n")
@@ -170,7 +170,7 @@ func TestRunEditCommand_SendsJSONPayload(t *testing.T) {
 		if req.Method != http.MethodPut {
 			t.Fatalf("expected PUT request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1" {
+		if req.URL.Path != "/organizations/org-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		body, err := io.ReadAll(req.Body)
@@ -228,7 +228,7 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 		if req.Method != http.MethodDelete {
 			t.Fatalf("expected DELETE request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1" {
+		if req.URL.Path != "/organizations/org-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")

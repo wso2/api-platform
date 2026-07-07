@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -96,7 +95,7 @@ func runCreateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, createInsecure)
-	resp, err := client.PostJSON(fmt.Sprintf("/devportal/organizations/%s/subscriptions", url.PathEscape(orgID)), payload)
+	resp, err := client.PostJSON(internaldevportal.OrgScopedPath(orgID, "subscriptions"), payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create platform subscription", err, createInsecure)
 	}

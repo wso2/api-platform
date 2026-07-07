@@ -20,7 +20,6 @@ package restapi
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 
@@ -96,7 +95,7 @@ func runPublishCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, publishInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/apis", url.PathEscape(orgID))
+	path := internaldevportal.OrgScopedPath(orgID, "apis")
 	resp, err := client.PostMultipartFile(path, "artifact", artifactPath)
 	if err != nil {
 		return internaldevportal.WrapRequestError("publish api artifact", err, publishInsecure)

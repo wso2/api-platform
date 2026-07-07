@@ -34,6 +34,10 @@ type Config struct {
 	Addr      string // host:port to listen on, e.g. ":5380"
 	StaticDir string // directory containing the built SPA (index.html + assets)
 
+	// Logging
+	LogLevel  string // "debug" | "info" | "warn" | "error" (default "info")
+	LogFormat string // "text" | "json" (default "text")
+
 	// TLS for the BFF listener
 	TLS TLSConfig
 
@@ -201,6 +205,8 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Addr:      getenv("BFF_ADDR", ":5380"),
 		StaticDir: getenv("STATIC_DIR", "/app"),
+		LogLevel:  strings.ToLower(getenv("LOG_LEVEL", "info")),
+		LogFormat: strings.ToLower(getenv("LOG_FORMAT", "text")),
 		TLS: TLSConfig{
 			SelfSigned: selfSigned,
 			// Convention matches the legacy entrypoint.sh mount path. buildTLS

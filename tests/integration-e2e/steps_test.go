@@ -35,6 +35,22 @@ type world struct {
 	apiContext string // e.g. /e2e-ab12cd34
 	depGw1     string
 	depGw2     string
+
+	// Secured-API scenario state (see steps_secured_test.go).
+	planID   string // subscription plan handle offered by the secured API
+	appID    string // application handle subscribed to the API
+	subToken string // subscription token (Subscription-Key value)
+	apiKey   string // plaintext API key (API-Key value)
+
+	// Developer-portal scenario state (see steps_devportal_test.go). In that flow
+	// subToken/apiKey above are the credentials issued by the portal.
+	dpApiID string // the API's handle inside the developer portal
+
+	// Developer-portal credential-lifecycle state (see steps_devportal_lifecycle_test.go).
+	dpSubID      string // the subscription id (UUID) in the developer portal
+	dpKeyHandle  string // the API key's handle (its `id`) in the developer portal
+	prevSubToken string // a superseded subscription token, kept for negative checks
+	plan2ID      string // a second subscription plan handle (for the plan-change check)
 }
 
 // initializeScenario is invoked by godog for each scenario; it binds a fresh
@@ -58,6 +74,13 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the second gateway serves the API$`, w.secondGatewayServes)
 	sc.Step(`^I undeploy the API from the second gateway$`, w.undeployFromSecondGateway)
 	sc.Step(`^the second gateway stops serving the API$`, w.secondGatewayStopsServing)
+
+	// Secured-API scenario (API key + subscription validation), defined in
+	// steps_secured_test.go so the deploy/ingress helpers above can be reused.
+	w.registerSecuredSteps(sc)
+
+	// Developer-portal webhook scenario, defined in steps_devportal_test.go.
+	w.registerDevportalSteps(sc)
 }
 
 // --- Background steps ------------------------------------------------------
@@ -82,12 +105,12 @@ func (w *world) aRestAPI() error {
 	// Name/displayName must be URL-friendly (no slash); the context is the path.
 	suffix := randHex()
 	w.apiContext = "/e2e-" + suffix
-	st, body, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis", suite.token, map[string]any{
+	st, body, err := apiCall(http.MethodPost, "/rest-apis", suite.token, map[string]any{
 		"displayName": "e2e-api-" + suffix,
-		"context":   w.apiContext,
-		"version":   "v1",
-		"projectId": suite.projectID,
-		"upstream":  map[string]any{"main": map[string]any{"url": "http://sample-backend:9080"}},
+		"context":     w.apiContext,
+		"version":     "v1",
+		"projectId":   suite.projectID,
+		"upstream":    map[string]any{"main": map[string]any{"url": "http://sample-backend:9080"}},
 	})
 	if err != nil {
 		return err
@@ -117,13 +140,13 @@ func (w *world) deployedAndServed() error {
 // re-runs that one-time sync, which is the data-plane equivalent of "the
 // controller noticed the new deployment". Returns the deployment id.
 func deploy(apiID, gatewayID, controllerService string) (string, error) {
-	if st, body, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis/"+apiID+"/gateways", suite.token,
+	if st, body, err := apiCall(http.MethodPost, "/rest-apis/"+apiID+"/gateways", suite.token,
 		[]map[string]string{{"gatewayId": gatewayID}}); err != nil {
 		return "", err
 	} else if st >= 300 {
 		return "", fmt.Errorf("attach gateway failed (%d): %s", st, body)
 	}
-	st, body, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis/"+apiID+"/deployments", suite.token,
+	st, body, err := apiCall(http.MethodPost, "/rest-apis/"+apiID+"/deployments", suite.token,
 		map[string]any{"base": "current", "gatewayId": gatewayID, "name": "dep-" + randHex()})
 	if err != nil {
 		return "", err
@@ -140,7 +163,7 @@ func deploy(apiID, gatewayID, controllerService string) (string, error) {
 
 func undeploy(apiID, deploymentID, gatewayID string) error {
 	st, body, err := apiCall(http.MethodPost,
-		"/api/v0.9/rest-apis/"+apiID+"/deployments/"+deploymentID+"/undeploy?gatewayId="+gatewayID, suite.token, nil)
+		"/rest-apis/"+apiID+"/deployments/"+deploymentID+"/undeploy?gatewayId="+gatewayID, suite.token, nil)
 	if err != nil {
 		return err
 	}
@@ -173,9 +196,9 @@ func (w *world) undeployFromSecondGateway() error { return undeploy(w.apiID, w.d
 
 // --- Then (data-plane assertions) ------------------------------------------
 
-func (w *world) gatewayServes() error          { return waitIngress(ingressGw1, w.apiContext, 200) }
-func (w *world) gatewayStopsServing() error    { return waitIngress(ingressGw1, w.apiContext, 404) }
-func (w *world) secondGatewayServes() error    { return waitIngress(ingressGw2, w.apiContext, 200) }
+func (w *world) gatewayServes() error       { return waitIngress(ingressGw1, w.apiContext, 200) }
+func (w *world) gatewayStopsServing() error { return waitIngress(ingressGw1, w.apiContext, 404) }
+func (w *world) secondGatewayServes() error { return waitIngress(ingressGw2, w.apiContext, 200) }
 func (w *world) secondGatewayStopsServing() error {
 	return waitIngress(ingressGw2, w.apiContext, 404)
 }

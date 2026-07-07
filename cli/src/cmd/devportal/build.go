@@ -18,6 +18,7 @@
 package devportal
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -25,27 +26,44 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/internal/project"
 	"github.com/wso2/api-platform/cli/utils"
 	"gopkg.in/yaml.v3"
 )
 
+// Standard names every devportal artifact takes inside the archive, regardless
+// of the source paths configured in .api-platform/config.yaml. Standardizing
+// here gives the published zip a predictable layout for the devportal to
+// unpack, while letting authors keep arbitrary on-disk filenames.
+const (
+	archiveMetadataFileName   = "devportal.yaml"
+	archiveDefinitionFileName = "definition.yaml"
+	archiveDocsDirName        = "docs"
+	archiveContentDirName     = "content"
+)
+
 const (
 	BuildCmdLiteral = "build"
-	BuildCmdExample = `# Build the api project for devportal
-ap devportal build           #Build the project in current directory
+	BuildCmdExample = `# Build the project in the current directory for devportal
+ap devportal build
 
-# Build the project in a specified directory
-ap devportal build -f /path/to/project`
+# Build a project in a specified directory
+ap devportal build -f /path/to/project
+
+# Build and stamp a reference ID into each devportal manifest (declarative mode)
+ap devportal build -f /path/to/project --reference-id 1ba42a09-45c0-40f8-a1bf-e4aa7cde1575 --gateway-type wso2/api-platform`
 )
 
 var (
-	buildProjectDir string
+	buildProjectDir  string
+	buildReferenceID string
+	buildGatewayType string
 )
 
 var buildCmd = &cobra.Command{
 	Use:     BuildCmdLiteral,
-	Short:   "Build the API project for devportal",
-	Long:    "Build the API project located in the specified directory (or current directory if not specified) for deployment to the devportal.",
+	Short:   "Build the project for devportal",
+	Long:    "Build the project located in the specified directory (or current directory if not specified) for deployment to the devportal.",
 	Example: BuildCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runBuildCommand(); err != nil {
@@ -56,7 +74,9 @@ var buildCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(buildCmd, utils.FlagFile, &buildProjectDir, "", "Path to the API project directory (defaults to current directory)")
+	utils.AddStringFlag(buildCmd, utils.FlagFile, &buildProjectDir, "", "Path to the project directory (defaults to current directory)")
+	utils.AddStringFlag(buildCmd, utils.FlagReferenceID, &buildReferenceID, "", "Reference ID to set under spec.referenceID in every devportal manifest")
+	utils.AddStringFlag(buildCmd, utils.FlagGatewayType, &buildGatewayType, "", "Gateway type to set under spec.gatewayType in every devportal manifest")
 }
 
 func runBuildCommand() error {
@@ -71,34 +91,41 @@ func runBuildCommand() error {
 
 	projectConfigDir := filepath.Join(projectRoot, ".api-platform")
 	if _, err := os.Stat(projectConfigDir); os.IsNotExist(err) {
-		return fmt.Errorf("unable to find api project directory, please execute this command inside api project")
+		return fmt.Errorf("unable to find project directory, please execute this command inside a project")
 	} else if err != nil {
-		return fmt.Errorf("failed to inspect api project directory: %w", err)
+		return fmt.Errorf("failed to inspect project directory: %w", err)
 	}
 
 	projectConfigPath := filepath.Join(projectConfigDir, "config.yaml")
 	if _, err := os.Stat(projectConfigPath); os.IsNotExist(err) {
-		return fmt.Errorf("unable to find api project directory, please execute this command inside api project")
+		return fmt.Errorf("unable to find project directory, please execute this command inside a project")
 	} else if err != nil {
 		return fmt.Errorf("failed to inspect project config: %w", err)
 	}
 
-	projectConfig, err := loadProjectConfig(projectConfigPath)
+	projectConfig, err := project.Load(projectConfigPath)
 	if err != nil {
 		return err
 	}
 
-	isDevportalConfigExists := projectConfig.isDevportalConfigExists()
-	// create default devportal config if not exists and add to project config
-	if !isDevportalConfigExists {
-		portalConfig, err := projectConfig.createDefaultDevPortalConfig(projectRoot)
+	// Build only zips devportal folders; it never generates their contents
+	// (that is `ap devportal gen`'s job, which also registers the config). As a
+	// fallback, if the project config carries no devportal configs but the
+	// default ./devportal folder exists, register it here and persist it so the
+	// build can proceed.
+	if len(projectConfig.DevPortals) == 0 {
+		portalConfig, err := registerDefaultDevPortalConfig(projectRoot)
 		if err != nil {
 			return err
 		}
 		projectConfig.DevPortals = append(projectConfig.DevPortals, *portalConfig)
-		if err := saveProjectConfig(projectConfigPath, projectConfig); err != nil {
+		if err := project.Save(projectConfigPath, projectConfig); err != nil {
 			return err
 		}
+	}
+
+	for i := range projectConfig.DevPortals {
+		normalizeDevPortalProjectConfig(&projectConfig.DevPortals[i])
 	}
 
 	buildDir := filepath.Join(projectRoot, "build")
@@ -109,7 +136,7 @@ func runBuildCommand() error {
 		return fmt.Errorf("failed to recreate build directory: %w", err)
 	}
 
-	zipPaths, err := buildDevPortalArchives(projectRoot, buildDir, projectConfig.DevPortals)
+	zipPaths, failures, err := buildDevPortalArchives(projectRoot, buildDir, projectConfig.DevPortals)
 	if err != nil {
 		return err
 	}
@@ -117,268 +144,65 @@ func runBuildCommand() error {
 	for _, zipPath := range zipPaths {
 		fmt.Printf("DevPortal build created at %s\n", zipPath)
 	}
-	return nil
-}
 
-type apiProjectConfig struct {
-	Version            string                   `yaml:"version,omitempty"`
-	FilePaths          apiProjectFilePaths      `yaml:"filePaths,omitempty"`
-	GovernanceRulesets []string                 `yaml:"governanceRulesets,omitempty"`
-	AutoSync           map[string]interface{}   `yaml:"autoSync,omitempty"`
-	DevPortals         []devPortalProjectConfig `yaml:"devportals,omitempty"`
-}
-
-type apiProjectFilePaths struct {
-	DeploymentArtifact string `yaml:"deploymentArtifact,omitempty"`
-	APIMetadata        string `yaml:"apiMetadata,omitempty"`
-	APIDefinition      string `yaml:"apiDefinition,omitempty"`
-	Docs               string `yaml:"docs,omitempty"`
-	Tests              string `yaml:"tests,omitempty"`
-}
-
-type devPortalProjectConfig struct {
-	Name       string                `yaml:"name,omitempty"`
-	PortalRoot string                `yaml:"portalRoot,omitempty"`
-	FilePaths  devPortalProjectPaths `yaml:"filePaths,omitempty"`
-}
-
-type devPortalProjectPaths struct {
-	APIMetadata   string `yaml:"apiMetadata,omitempty"`
-	APIDefinition string `yaml:"apiDefinition,omitempty"`
-	Docs          string `yaml:"docs,omitempty"`
-	Content       string `yaml:"content,omitempty"`
-}
-
-type projectAPIResource struct {
-	Metadata struct {
-		Name string `yaml:"name"`
-	} `yaml:"metadata"`
-	Spec struct {
-		Description         string                       `yaml:"description"`
-		ReferenceID         string                       `yaml:"referenceID"`
-		GatewayType         string                       `yaml:"gatewayType"`
-		Status              string                       `yaml:"status"`
-		Tags                []string                     `yaml:"tags"`
-		Labels              []string                     `yaml:"labels"`
-		BusinessInformation devPortalBusinessInformation `yaml:"businessInformation"`
-		Endpoints           devPortalEndpoints           `yaml:"endpoints"`
-	} `yaml:"spec"`
-}
-
-type gatewayResource struct {
-	Spec struct {
-		DisplayName       string   `yaml:"displayName"`
-		Version           string   `yaml:"version"`
-		SubscriptionPlans []string `yaml:"subscriptionPlans"`
-	} `yaml:"spec"`
-}
-
-type devPortalManifest struct {
-	APIVersion string                `yaml:"apiVersion"`
-	Kind       string                `yaml:"kind"`
-	Metadata   devPortalManifestMeta `yaml:"metadata"`
-	Spec       devPortalManifestSpec `yaml:"spec"`
-}
-
-type devPortalManifestMeta struct {
-	Name string `yaml:"name"`
-}
-
-type devPortalManifestSpec struct {
-	DisplayName          string                       `yaml:"displayName"`
-	Version              string                       `yaml:"version"`
-	Description          string                       `yaml:"description"`
-	Provider             string                       `yaml:"provider"`
-	GatewayType          string                       `yaml:"gatewayType"`
-	Status               string                       `yaml:"status"`
-	ReferenceID          string                       `yaml:"referenceID"`
-	Tags                 []string                     `yaml:"tags"`
-	Labels               []string                     `yaml:"labels"`
-	SubscriptionPolicies []string                     `yaml:"subscriptionPolicies"`
-	Visibility           string                       `yaml:"visibility"`
-	VisibleGroups        []string                     `yaml:"visibleGroups"`
-	BusinessInformation  devPortalBusinessInformation `yaml:"businessInformation"`
-	Endpoints            devPortalEndpoints           `yaml:"endpoints"`
-}
-
-type devPortalBusinessInformation struct {
-	BusinessOwner       string `yaml:"businessOwner"`
-	BusinessOwnerEmail  string `yaml:"businessOwnerEmail"`
-	TechnicalOwner      string `yaml:"technicalOwner"`
-	TechnicalOwnerEmail string `yaml:"technicalOwnerEmail"`
-}
-
-type devPortalEndpoints struct {
-	SandboxURL    string `yaml:"sandboxUrl"`
-	ProductionURL string `yaml:"productionUrl"`
-}
-
-func loadProjectConfig(configPath string) (*apiProjectConfig, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read project config: %w", err)
-	}
-
-	var config apiProjectConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse project config: %w", err)
-	}
-
-	normalizeAPIProjectConfig(&config)
-	return &config, nil
-}
-
-func saveProjectConfig(configPath string, config *apiProjectConfig) error {
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal project config: %w", err)
-	}
-
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to save project config: %w", err)
+	if len(failures) > 0 {
+		messages := make([]string, 0, len(failures))
+		for _, failure := range failures {
+			fmt.Fprintf(os.Stderr, "DevPortal build failed for %q: %v\n", failure.name, failure.err)
+			messages = append(messages, failure.err.Error())
+		}
+		return fmt.Errorf("failed to build %d of %d devportal configuration(s): %s",
+			len(failures), len(projectConfig.DevPortals), strings.Join(messages, "; "))
 	}
 
 	return nil
 }
 
-func (c *apiProjectConfig) isDevportalConfigExists() bool {
-	if len(c.DevPortals) == 0 {
-		return false
-	}
-	return true
+// failedPortal records a devportal config that could not be built so the others
+// can still be archived and the failures reported together.
+type failedPortal struct {
+	name string
+	err  error
 }
 
-func (c *apiProjectConfig) createDefaultDevPortalConfig(projectRoot string) (*devPortalProjectConfig, error) {
-	portalConfig := &devPortalProjectConfig{
+// defaultDevPortalConfig returns the portal config describing a project's
+// default ./devportal folder. Both `gen` (when generating the folder) and
+// `build` (as a fallback when no config is registered) use it so the layout
+// stays in one place.
+func defaultDevPortalConfig() project.PortalConfig {
+	return project.PortalConfig{
 		Name:       "default",
 		PortalRoot: "./devportal",
-		FilePaths: devPortalProjectPaths{
-			APIMetadata:   "./devportal.yaml",
-			APIDefinition: "./definition.yaml",
-			Docs:          "./docs",
-			Content:       "./content",
+		FilePaths: project.PortalFilePaths{
+			MetadataFile: "./devportal.yaml",
+			Definition:   "./definition.yaml",
+			Docs:         "./docs",
+			Content:      "./content",
 		},
 	}
-
-	portalRoot := resolveProjectPath(projectRoot, portalConfig.PortalRoot)
-	if err := os.MkdirAll(portalRoot, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create devportal directory: %w", err)
-	}
-
-	definitionSource := resolveProjectPath(projectRoot, c.FilePaths.APIDefinition)
-	if err := ensureWithinProjectRoot(projectRoot, definitionSource, portalConfig.Name, "apiDefinition"); err != nil {
-		return nil, err
-	}
-	definitionTarget := filepath.Join(portalRoot, "definition.yaml")
-	if err := copyFile(definitionSource, definitionTarget); err != nil {
-		return nil, err
-	}
-
-	docsSource := resolveProjectPath(projectRoot, c.FilePaths.Docs)
-	if err := ensureWithinProjectRoot(projectRoot, docsSource, portalConfig.Name, "docs"); err != nil {
-		return nil, err
-	}
-	docsTarget := filepath.Join(portalRoot, "docs")
-	if err := copyDirectory(docsSource, docsTarget); err != nil {
-		return nil, err
-	}
-
-	contentDir := filepath.Join(portalRoot, "content")
-	if err := os.MkdirAll(contentDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create devportal content directory: %w", err)
-	}
-
-	manifest, err := buildDefaultDevPortalManifest(projectRoot, c)
-	if err != nil {
-		return nil, err
-	}
-
-	manifestData, err := yaml.Marshal(manifest)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal devportal manifest: %w", err)
-	}
-
-	manifestPath := filepath.Join(portalRoot, "devportal.yaml")
-	if err := os.WriteFile(manifestPath, manifestData, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write devportal manifest: %w", err)
-	}
-
-	return portalConfig, nil
 }
 
-func buildDefaultDevPortalManifest(projectRoot string, projectConfig *apiProjectConfig) (*devPortalManifest, error) {
-	apiMetadataPath := resolveProjectPath(projectRoot, projectConfig.FilePaths.APIMetadata)
-	if err := ensureWithinProjectRoot(projectRoot, apiMetadataPath, "default", "apiMetadata"); err != nil {
-		return nil, err
-	}
-	gatewayPath := resolveProjectPath(projectRoot, projectConfig.FilePaths.DeploymentArtifact)
-	if err := ensureWithinProjectRoot(projectRoot, gatewayPath, "default", "deploymentArtifact"); err != nil {
-		return nil, err
-	}
+// registerDefaultDevPortalConfig is build's fallback path: when the project
+// config carries no devportal configs but the default ./devportal folder
+// exists on disk, it returns the config describing that folder so build can
+// archive it. The folder's contents are produced by `ap devportal gen`; build
+// never generates them. It errors if the folder is missing.
+func registerDefaultDevPortalConfig(projectRoot string) (*project.PortalConfig, error) {
+	portalConfig := defaultDevPortalConfig()
 
-	apiMetadataData, err := os.ReadFile(apiMetadataPath)
+	portalRoot := resolveProjectPath(projectRoot, portalConfig.PortalRoot)
+	info, err := os.Stat(portalRoot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read api metadata: %w", err)
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("no devportal artifact found at %s; run 'ap devportal gen' to generate one", portalRoot)
+		}
+		return nil, fmt.Errorf("failed to inspect devportal directory: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("expected devportal artifact directory but found a file at %s", portalRoot)
 	}
 
-	var apiMetadata projectAPIResource
-	if err := yaml.Unmarshal(apiMetadataData, &apiMetadata); err != nil {
-		return nil, fmt.Errorf("failed to parse api metadata: %w", err)
-	}
-
-	gatewayData, err := os.ReadFile(gatewayPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read gateway artifact: %w", err)
-	}
-
-	var gateway gatewayResource
-	if err := yaml.Unmarshal(gatewayData, &gateway); err != nil {
-		return nil, fmt.Errorf("failed to parse gateway artifact: %w", err)
-	}
-
-	tags := apiMetadata.Spec.Tags
-	if len(tags) == 0 {
-		tags = []string{"default"}
-	}
-
-	labels := apiMetadata.Spec.Labels
-	if len(labels) == 0 {
-		labels = []string{"default"}
-	}
-
-	gatewayType := apiMetadata.Spec.GatewayType
-	if gatewayType == "" {
-		gatewayType = "wso2/api-platform"
-	}
-
-	status := strings.TrimSpace(apiMetadata.Spec.Status)
-	if status == "" {
-		status = "PUBLISHED"
-	}
-
-	return &devPortalManifest{
-		APIVersion: "devportal.api-platform.wso2.com/v1",
-		Kind:       "RestApi",
-		Metadata: devPortalManifestMeta{
-			Name: strings.TrimSpace(apiMetadata.Metadata.Name),
-		},
-		Spec: devPortalManifestSpec{
-			DisplayName:          strings.TrimSpace(gateway.Spec.DisplayName),
-			Version:              strings.TrimSpace(gateway.Spec.Version),
-			Description:          strings.TrimSpace(apiMetadata.Spec.Description),
-			Provider:             "WSO2",
-			GatewayType:          gatewayType,
-			Status:               status,
-			ReferenceID:          strings.TrimSpace(apiMetadata.Spec.ReferenceID),
-			Tags:                 tags,
-			Labels:               labels,
-			SubscriptionPolicies: gateway.Spec.SubscriptionPlans,
-			Visibility:           "PUBLIC",
-			VisibleGroups:        []string{},
-			BusinessInformation:  apiMetadata.Spec.BusinessInformation,
-			Endpoints:            apiMetadata.Spec.Endpoints,
-		},
-	}, nil
+	return &portalConfig, nil
 }
 
 func resolveProjectPath(projectRoot, pathValue string) string {
@@ -391,36 +215,18 @@ func resolveProjectPath(projectRoot, pathValue string) string {
 	return filepath.Join(projectRoot, filepath.Clean(trimmed))
 }
 
-func normalizeAPIProjectConfig(config *apiProjectConfig) {
-	if strings.TrimSpace(config.FilePaths.DeploymentArtifact) == "" {
-		config.FilePaths.DeploymentArtifact = "./gateway.yaml"
-	}
-	if strings.TrimSpace(config.FilePaths.APIMetadata) == "" {
-		config.FilePaths.APIMetadata = "./api.yaml"
-	}
-	if strings.TrimSpace(config.FilePaths.APIDefinition) == "" {
-		config.FilePaths.APIDefinition = "./definition.yaml"
-	}
-	if strings.TrimSpace(config.FilePaths.Docs) == "" {
-		config.FilePaths.Docs = "./docs"
-	}
-	if strings.TrimSpace(config.FilePaths.Tests) == "" {
-		config.FilePaths.Tests = "./tests"
-	}
-}
-
-func normalizeDevPortalProjectConfig(config *devPortalProjectConfig) {
+func normalizeDevPortalProjectConfig(config *project.PortalConfig) {
 	if strings.TrimSpace(config.Name) == "" {
 		config.Name = "default"
 	}
 	if strings.TrimSpace(config.PortalRoot) == "" {
 		config.PortalRoot = "./devportal"
 	}
-	if strings.TrimSpace(config.FilePaths.APIMetadata) == "" {
-		config.FilePaths.APIMetadata = "./devportal.yaml"
+	if strings.TrimSpace(config.FilePaths.MetadataFile) == "" {
+		config.FilePaths.MetadataFile = "./devportal.yaml"
 	}
-	if strings.TrimSpace(config.FilePaths.APIDefinition) == "" {
-		config.FilePaths.APIDefinition = "./definition.yaml"
+	if strings.TrimSpace(config.FilePaths.Definition) == "" {
+		config.FilePaths.Definition = "./definition.yaml"
 	}
 	if strings.TrimSpace(config.FilePaths.Docs) == "" {
 		config.FilePaths.Docs = "./docs"
@@ -430,41 +236,118 @@ func normalizeDevPortalProjectConfig(config *devPortalProjectConfig) {
 	}
 }
 
-func buildDevPortalArchives(projectRoot, buildDir string, portalConfigs []devPortalProjectConfig) ([]string, error) {
+func buildDevPortalArchives(projectRoot, buildDir string, portalConfigs []project.PortalConfig) ([]string, []failedPortal, error) {
 	if err := ensureUniqueDevPortalZipNames(portalConfigs); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	zipPaths := make([]string, 0, len(portalConfigs))
+	failures := make([]failedPortal, 0)
 
 	for i := range portalConfigs {
-		normalizeDevPortalProjectConfig(&portalConfigs[i])
-
-		if err := validateDevPortalConfig(projectRoot, &portalConfigs[i]); err != nil {
-			return nil, err
-		}
-
-		stagingDir, err := createDevPortalArchiveStagingDir(projectRoot, buildDir, &portalConfigs[i])
+		zipPath, err := buildSingleDevPortalArchive(projectRoot, buildDir, &portalConfigs[i])
 		if err != nil {
-			return nil, err
+			failures = append(failures, failedPortal{name: portalConfigs[i].Name, err: err})
+			continue
 		}
-
-		zipPath := filepath.Join(buildDir, buildDevPortalZipFileName(portalConfigs[i].Name))
-		if err := utils.ZipDirectory(stagingDir, zipPath); err != nil {
-			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("failed to build devportal archive for %s: %w", portalConfigs[i].Name, err)
-		}
-		if err := os.RemoveAll(stagingDir); err != nil {
-			return nil, fmt.Errorf("failed to clean staging directory for devportal config %q: %w", portalConfigs[i].Name, err)
-		}
-
 		zipPaths = append(zipPaths, zipPath)
 	}
 
-	return zipPaths, nil
+	return zipPaths, failures, nil
 }
 
-func validateDevPortalConfig(projectRoot string, portalConfig *devPortalProjectConfig) error {
+// buildSingleDevPortalArchive validates one devportal config, stamps any
+// --reference-id / --gateway-type overrides into its manifest, and zips it.
+// Returning an error here drops only this config; the caller keeps building the
+// rest.
+func buildSingleDevPortalArchive(projectRoot, buildDir string, portalConfig *project.PortalConfig) (string, error) {
+	if err := validateDevPortalConfig(projectRoot, portalConfig); err != nil {
+		return "", err
+	}
+
+	stagingDir, err := createDevPortalArchiveStagingDir(projectRoot, buildDir, portalConfig)
+	if err != nil {
+		return "", err
+	}
+
+	// Stamp any --reference-id / --gateway-type overrides into the *staged*
+	// manifest, never the project's source manifest, so build flags do not leak
+	// back into the workspace.
+	stagedManifest := filepath.Join(stagingDir, archiveMetadataFileName)
+	if err := applyManifestOverrides(stagedManifest, portalConfig.Name); err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return "", err
+	}
+
+	zipPath := filepath.Join(buildDir, buildDevPortalZipFileName(portalConfig.Name))
+	if err := utils.ZipDirectory(stagingDir, zipPath); err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return "", fmt.Errorf("failed to build devportal archive for %s: %w", portalConfig.Name, err)
+	}
+	if err := os.RemoveAll(stagingDir); err != nil {
+		return "", fmt.Errorf("failed to clean staging directory for devportal config %q: %w", portalConfig.Name, err)
+	}
+
+	return zipPath, nil
+}
+
+// applyManifestOverrides stamps the build-time --reference-id / --gateway-type
+// flags into the staged devportal manifest at manifestPath, under
+// spec.referenceID / spec.gatewayType. It operates on the archive's staged copy,
+// never the project's source manifest, so the flags do not leak back into the
+// workspace. The manifest carries no reference ID by default; supplying one at
+// build time lets the same artifact be published to different devportals (each
+// wired to a different gateway). Existing manifest fields and ordering are
+// preserved.
+func applyManifestOverrides(manifestPath, portalName string) error {
+	referenceID := strings.TrimSpace(buildReferenceID)
+	gatewayType := strings.TrimSpace(buildGatewayType)
+	if referenceID == "" && gatewayType == "" {
+		return nil
+	}
+
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to read devportal manifest for config %q: %w", portalName, err)
+	}
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("failed to parse devportal manifest for config %q: %w", portalName, err)
+	}
+
+	root := &doc
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("devportal manifest for config %q is not a mapping", portalName)
+	}
+
+	spec := mappingValueNode(root, "spec")
+	if spec == nil {
+		spec = &yaml.Node{Kind: yaml.MappingNode}
+		setMappingChild(root, "spec", spec)
+	}
+	if referenceID != "" {
+		setMappingScalar(spec, "referenceID", referenceID)
+	}
+	if gatewayType != "" {
+		setMappingScalar(spec, "gatewayType", gatewayType)
+	}
+
+	out, err := marshalNode(&doc)
+	if err != nil {
+		return fmt.Errorf("failed to marshal devportal manifest for config %q: %w", portalName, err)
+	}
+	if err := os.WriteFile(manifestPath, out, 0644); err != nil {
+		return fmt.Errorf("failed to write devportal manifest for config %q: %w", portalName, err)
+	}
+
+	return nil
+}
+
+func validateDevPortalConfig(projectRoot string, portalConfig *project.PortalConfig) error {
 	portalRoot := resolveProjectPath(projectRoot, portalConfig.PortalRoot)
 	if err := ensureWithinProjectRoot(projectRoot, portalRoot, portalConfig.Name, "portalRoot"); err != nil {
 		return err
@@ -478,8 +361,8 @@ func validateDevPortalConfig(projectRoot string, portalConfig *devPortalProjectC
 		path  string
 		isDir bool
 	}{
-		{label: "apiMetadata", path: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.APIMetadata), isDir: false},
-		{label: "apiDefinition", path: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.APIDefinition), isDir: false},
+		{label: "metadataFile", path: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.MetadataFile), isDir: false},
+		{label: "definition", path: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Definition), isDir: false},
 		{label: "docs", path: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Docs), isDir: true},
 		{label: "content", path: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Content), isDir: true},
 	}
@@ -572,7 +455,7 @@ func ensurePathExists(path string, wantDir bool, portalName, fieldName string) e
 	return nil
 }
 
-func createDevPortalArchiveStagingDir(projectRoot, buildDir string, portalConfig *devPortalProjectConfig) (string, error) {
+func createDevPortalArchiveStagingDir(projectRoot, buildDir string, portalConfig *project.PortalConfig) (string, error) {
 	stagingRoot, err := os.MkdirTemp(buildDir, "devportal-build-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create staging directory for devportal config %q: %w", portalConfig.Name, err)
@@ -590,23 +473,23 @@ func createDevPortalArchiveStagingDir(projectRoot, buildDir string, portalConfig
 		isDir  bool
 	}{
 		{
-			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.APIMetadata),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.APIMetadata)),
+			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.MetadataFile),
+			target: filepath.Join(stagingRoot, archiveMetadataFileName),
 			isDir:  false,
 		},
 		{
-			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.APIDefinition),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.APIDefinition)),
+			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Definition),
+			target: filepath.Join(stagingRoot, archiveDefinitionFileName),
 			isDir:  false,
 		},
 		{
 			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Docs),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.Docs)),
+			target: filepath.Join(stagingRoot, archiveDocsDirName),
 			isDir:  true,
 		},
 		{
 			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Content),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.Content)),
+			target: filepath.Join(stagingRoot, archiveContentDirName),
 			isDir:  true,
 		},
 	}
@@ -628,7 +511,7 @@ func createDevPortalArchiveStagingDir(projectRoot, buildDir string, portalConfig
 	return stagingRoot, nil
 }
 
-func resolvePortalConfigPath(projectRoot string, portalConfig *devPortalProjectConfig, pathValue string) string {
+func resolvePortalConfigPath(projectRoot string, portalConfig *project.PortalConfig, pathValue string) string {
 	portalRoot := resolveProjectPath(projectRoot, portalConfig.PortalRoot)
 	trimmed := strings.TrimSpace(pathValue)
 	if trimmed == "" {
@@ -638,31 +521,10 @@ func resolvePortalConfigPath(projectRoot string, portalConfig *devPortalProjectC
 	return filepath.Clean(filepath.Join(portalRoot, trimmed))
 }
 
-func archiveRelativePath(pathValue string) string {
-	cleanPath := filepath.Clean(strings.TrimSpace(pathValue))
-	cleanPath = strings.TrimPrefix(cleanPath, "."+string(os.PathSeparator))
-	cleanPath = strings.TrimPrefix(cleanPath, "."+"/")
-
-	for strings.HasPrefix(cleanPath, ".."+string(os.PathSeparator)) || cleanPath == ".." {
-		cleanPath = strings.TrimPrefix(cleanPath, ".."+string(os.PathSeparator))
-		if cleanPath == ".." {
-			cleanPath = ""
-		}
-	}
-
-	cleanPath = strings.TrimPrefix(cleanPath, string(os.PathSeparator))
-	cleanPath = strings.TrimPrefix(cleanPath, "/")
-	if cleanPath == "" || cleanPath == "." {
-		return "content"
-	}
-
-	return cleanPath
-}
-
 // ensureUniqueDevPortalZipNames fails fast when two devportal configs sanitize
 // to the same archive filename, which would otherwise silently overwrite an
 // earlier artifact during the build loop.
-func ensureUniqueDevPortalZipNames(portalConfigs []devPortalProjectConfig) error {
+func ensureUniqueDevPortalZipNames(portalConfigs []project.PortalConfig) error {
 	seen := make(map[string]string, len(portalConfigs))
 	for i := range portalConfigs {
 		displayName := strings.TrimSpace(portalConfigs[i].Name)
@@ -749,4 +611,64 @@ func copyDirectory(sourceDir, targetDir string) error {
 
 		return copyFile(path, targetPath)
 	})
+}
+
+// marshalManifest renders a generated manifest with the 2-space indentation
+// used across the project's YAML artifacts.
+func marshalManifest(v interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(v); err != nil {
+		return nil, err
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// marshalNode renders an already-parsed YAML node, preserving its structure and
+// comments while applying the project's 2-space indentation.
+func marshalNode(node *yaml.Node) ([]byte, error) {
+	return marshalManifest(node)
+}
+
+// mappingValueNode returns the value node for key in a mapping node, or nil.
+func mappingValueNode(mapping *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// setMappingChild sets (or replaces) the value node for key in a mapping node.
+func setMappingChild(mapping *yaml.Node, key string, value *yaml.Node) {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			mapping.Content[i+1] = value
+			return
+		}
+	}
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		value)
+}
+
+// setMappingScalar sets a string-valued key in a mapping node, updating it in
+// place if present so surrounding fields and ordering are preserved.
+func setMappingScalar(mapping *yaml.Node, key, value string) {
+	if mapping.Kind != yaml.MappingNode {
+		mapping.Kind = yaml.MappingNode
+	}
+	if existing := mappingValueNode(mapping, key); existing != nil {
+		existing.Kind = yaml.ScalarNode
+		existing.Tag = "!!str"
+		existing.Value = value
+		existing.Style = 0
+		return
+	}
+	setMappingChild(mapping, key, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
 }

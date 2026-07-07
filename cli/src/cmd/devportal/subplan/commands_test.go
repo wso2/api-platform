@@ -70,7 +70,7 @@ func TestRunPublishCommand_UploadsSinglePlanMultipart(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/subscription-policies" {
+		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		assertMultipartPlan(t, req, "plan.yaml", singlePlanYAML)
@@ -100,7 +100,7 @@ func TestRunPublishCommand_UploadsPlanListMultipart(t *testing.T) {
 	testutil.WithTempHome(t)
 
 	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/devportal/organizations/org-1/subscription-policies" {
+		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		assertMultipartPlan(t, req, "plans.yaml", planListYAML)
@@ -177,7 +177,7 @@ func TestRunGetCommand_GetsPlanByPolicyID(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/subscription-policies/plan-1" {
+		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies/plan-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -208,6 +208,42 @@ func TestRunGetCommand_MissingPolicyID(t *testing.T) {
 	}
 }
 
+func TestRunListCommand_ListsPlans(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", req.Method)
+		}
+		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies" {
+			t.Fatalf("unexpected request path %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"policyId":"plan-1","policyName":"Gold"}]`))
+	})
+
+	writeSubPlanConfig(t, server.URL)
+
+	listOrgID = "org-1"
+	listName = ""
+	listPlatform = ""
+	listInsecure = false
+
+	if err := runListCommand(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunListCommand_MissingOrgID(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	listOrgID = ""
+
+	if err := runListCommand(); err == nil || !strings.Contains(err.Error(), "organization ID is required") {
+		t.Fatalf("expected organization ID validation error, got %v", err)
+	}
+}
+
 func TestRunDeleteCommand_DeletesPlanByPolicyID(t *testing.T) {
 	testutil.WithTempHome(t)
 
@@ -215,7 +251,7 @@ func TestRunDeleteCommand_DeletesPlanByPolicyID(t *testing.T) {
 		if req.Method != http.MethodDelete {
 			t.Fatalf("expected DELETE request, got %s", req.Method)
 		}
-		if req.URL.Path != "/devportal/organizations/org-1/subscription-policies/plan-1" {
+		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies/plan-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)

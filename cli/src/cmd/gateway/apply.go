@@ -49,7 +49,7 @@ var (
 var applyCmd = &cobra.Command{
 	Use:     ApplyCmdLiteral,
 	Short:   "Apply a resource to the gateway",
-	Long:    "Create or update a gateway resource (API, MCP proxy, etc.) from a YAML or JSON file.",
+	Long:    "Create or update a gateway resource (RestApi, Mcp, LlmProvider, LlmProxy) from a YAML or JSON file.",
 	Example: ApplyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runApplyCommand(cmd); err != nil {

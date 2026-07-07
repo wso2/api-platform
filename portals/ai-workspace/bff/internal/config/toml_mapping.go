@@ -57,6 +57,10 @@ var tomlKeyToEnv = map[string]string{
 	"tls_cert_file":   "BFF_TLS_CERT_FILE",
 	"tls_key_file":    "BFF_TLS_KEY_FILE",
 
+	// --- Logging ---
+	"log_level":  "LOG_LEVEL",
+	"log_format": "LOG_FORMAT",
+
 	// --- Upstream Platform API ---
 	"platform_api_url":             "PLATFORM_API_URL",
 	"platform_api_tls_skip_verify": "PLATFORM_API_TLS_SKIP_VERIFY",

@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -159,6 +160,14 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) e
 	var req api.Project
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return apperror.NewValidation(err)
+	}
+
+	var reqId string
+	if req.Id != nil {
+		reqId = *req.Id
+	}
+	if err := utils.ValidateHandleImmutableRequired(projectId, reqId); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "Project id is immutable and cannot be changed")
 	}
 
 	actor, err := resolveActorErr(r, h.identity, "update project")

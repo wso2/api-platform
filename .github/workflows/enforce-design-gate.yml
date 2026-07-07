@@ -1,49 +1,160 @@
 name: Enforce Design Gate
 
-# Fires when a label is added or removed from an issue.
-# Used to warn when required design labels are missing.
+# Token-free org Project v2 access is not available from GitHub Actions.
+# This workflow uses issue labels as the gate signal instead:
+# - "Development" means the issue is in/entering development.
+# - "feature" means the gate applies.
+# - Missing "Design Done" or "Mail Sent" adds "Design Gate Blocked" and a comment.
 on:
   issues:
-    types: [labeled, unlabeled]
+    types: [opened, edited, labeled, unlabeled, reopened]
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 jobs:
   enforce-design-gate:
     runs-on: ubuntu-latest
     permissions:
-      issues: write  # Required to post a comment on the issue.
+      issues: write
 
     steps:
-      - name: Warn if design gate labels are incomplete
+      - name: Mark development issues that fail the design gate
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const DEVELOPMENT_LABEL = 'Development';
+            const BLOCKED_LABEL = 'Design Gate Blocked';
             const REQUIRED_LABELS = ['Design Done', 'Mail Sent'];
-            const GATE_LABEL      = 'Design Done';   // Only warn when a required label is removed.
+            const GATE_TRIGGER_TYPE = 'feature';
+            const MARKER = '<!-- design-gate-blocked -->';
 
-            // Only act when a required label is removed.
-            const removedLabel = context.payload.label?.name;
-            if (
-              context.payload.action !== 'unlabeled' ||
-              !REQUIRED_LABELS.includes(removedLabel)
-            ) {
-              console.log('Not a relevant label change — skipping.');
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  color,
+                  description,
+                });
+              } catch (err) {
+                if (err.status !== 422) {
+                  throw err;
+                }
+              }
+            }
+
+            async function removeLabelIfPresent(issueNumber, label) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label,
+                });
+              } catch (err) {
+                if (err.status !== 404) {
+                  throw err;
+                }
+              }
+            }
+
+            async function hasDesignGateComment(issueNumber) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              });
+
+              return comments.some(comment => comment.body?.includes(MARKER));
+            }
+
+            async function enforceIssue(issue) {
+              const issueNumber = issue.number;
+              const labels = issue.labels.map(label => typeof label === 'string' ? label : label.name);
+
+              if (issue.state !== 'open') {
+                console.log(`#${issueNumber} is not open. Skipping.`);
+                return;
+              }
+
+              if (!labels.includes(GATE_TRIGGER_TYPE)) {
+                console.log(`#${issueNumber} is not a feature issue. Skipping.`);
+                await removeLabelIfPresent(issueNumber, BLOCKED_LABEL);
+                return;
+              }
+
+              if (!labels.includes(DEVELOPMENT_LABEL)) {
+                console.log(`#${issueNumber} is not marked as ${DEVELOPMENT_LABEL}. Skipping.`);
+                await removeLabelIfPresent(issueNumber, BLOCKED_LABEL);
+                return;
+              }
+
+              const missingLabels = REQUIRED_LABELS.filter(label => !labels.includes(label));
+              if (missingLabels.length === 0) {
+                console.log(`#${issueNumber} passed the design gate.`);
+                await removeLabelIfPresent(issueNumber, BLOCKED_LABEL);
+                return;
+              }
+
+              console.log(`#${issueNumber} is missing ${missingLabels.join(', ')}. Marking as blocked.`);
+
+              await ensureLabel(
+                BLOCKED_LABEL,
+                'd73a4a',
+                'Issue is in development but missing required design labels.',
+              );
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [BLOCKED_LABEL],
+              });
+
+              if (await hasDesignGateComment(issueNumber)) {
+                console.log(`#${issueNumber} already has a design gate comment.`);
+                return;
+              }
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: [
+                  MARKER,
+                  '> [!CAUTION]',
+                  `> **Design gate warning.** This feature issue is marked as **${DEVELOPMENT_LABEL}** but is missing required design labels.`,
+                  '>',
+                  '> Required labels before development:',
+                  '>',
+                  ...REQUIRED_LABELS.map(label => `> - ${labels.includes(label) ? 'Present' : 'Missing'}: \`${label}\``),
+                ].join('\n'),
+              });
+            }
+
+            if (context.payload.issue) {
+              await enforceIssue(context.payload.issue);
               return;
             }
 
-            console.log(`Label "${removedLabel}" removed. Posting design gate warning...`);
-
-            await github.rest.issues.createComment({
-              owner:        context.repo.owner,
-              repo:         context.repo.repo,
-              issue_number: context.payload.issue.number,
-              body: [
-                '> [!WARNING]',
-                `> **Design gate incomplete.** The \`${removedLabel}\` label was removed from this issue.`,
-                '>',
-                `> This issue should **not** be moved to the **Development** phase until both of the following labels are present:`,
-                '>',
-                ...REQUIRED_LABELS.map(l => `> - \`${l}\``),
-              ].join('\n'),
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: `${GATE_TRIGGER_TYPE},${DEVELOPMENT_LABEL}`,
+              per_page: 100,
             });
 
-            console.log(`Warning comment posted on issue #${context.payload.issue.number}.`);
+            for (const issue of issues) {
+              if (issue.pull_request) {
+                continue;
+              }
+
+              await enforceIssue(issue);
+            }
+
+            console.log(`Checked ${issues.length} open ${GATE_TRIGGER_TYPE} issues marked ${DEVELOPMENT_LABEL}.`);

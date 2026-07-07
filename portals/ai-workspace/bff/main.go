@@ -33,42 +33,35 @@ import (
 	"time"
 
 	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/logger"
 	"ai-workspace-bff/internal/server"
 	"ai-workspace-bff/internal/tlsutil"
 )
 
-// printBanner writes a multi-line startup banner horizontally centered in an
-// 80-column terminal, with blank-line padding above and below the title.
-func printBanner() {
-	const termWidth = 80
-	lines := []string{
-		"========================================",
-		"",
-		"",
-		"AI Workspace started",
-		"",
-		"",
-		"========================================",
-	}
-	fmt.Println()
-	for _, line := range lines {
-		pad := (termWidth - len(line)) / 2
-		if pad < 0 {
-			pad = 0
-		}
-		fmt.Printf("%*s%s\n", pad, "", line)
-	}
-	fmt.Println()
+// printStartedMarker writes a large, prominent banner for humans watching
+// the console, matching the gateway controller's startup banner style. It's
+// purely decorative — the structured "AI Workspace BFF started" slog.Info
+// line is the source of truth for log parsing.
+func printStartedMarker(mode string) {
+	fmt.Print("\n\n" +
+		"========================================================================\n" +
+		"\n" +
+		"\n" +
+		"                    AI Workspace Started mode=" + mode + "\n" +
+		"\n" +
+		"\n" +
+		"========================================================================\n" +
+		"\n\n")
 }
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
-
 	cfg, err := config.Load()
 	if err != nil {
+		slog.SetDefault(logger.NewLogger(logger.Config{Level: "info", Format: "text"}))
 		slog.Error("configuration error", "err", err)
 		os.Exit(1)
 	}
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -97,13 +90,18 @@ func main() {
 	httpServer.TLSConfig = tlsConfig
 
 	go func() {
-		printBanner()
+		mode := "PRODUCTION"
+		if cfg.DemoMode {
+			mode = "DEMO"
+		}
 		slog.Info("AI Workspace BFF started",
 			"addr", cfg.Addr,
+			"mode", mode,
 			"auth_mode", cfg.AuthMode,
 			"platform_api", cfg.PlatformAPIURL,
 			"oidc_enabled", cfg.OIDC.Enabled,
 		)
+		printStartedMarker(mode)
 		var serveErr error
 		if tlsConfig != nil {
 			serveErr = httpServer.ListenAndServeTLS("", "")
