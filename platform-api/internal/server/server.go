@@ -35,6 +35,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -86,6 +87,9 @@ func validateAuthConfig(cfg *config.Server) error {
 	}
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
 		return fmt.Errorf("JWT signature validation cannot be skipped (AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set AUTH_JWT_SKIP_VALIDATION=false for production")
+	}
+	if len(cfg.CORS.AllowedOrigins) == 0 || slices.Contains(cfg.CORS.AllowedOrigins, "*") {
+		return fmt.Errorf("CORS_ALLOWED_ORIGINS must be set to an explicit, non-wildcard list of origins when APIP_DEMO_MODE=false")
 	}
 	return nil
 }
@@ -487,11 +491,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Order: CORS → auth → scope enforcer → mux
 	var chain []func(http.Handler) http.Handler
 
+	// validateAuthConfig already rejected a missing/wildcard allowlist outside demo mode;
+	// this fallback only ever applies in demo mode, and never sends credentials alongside it.
+	corsOrigins := cfg.CORS.AllowedOrigins
+	allowCredentials := true
+	if len(corsOrigins) == 0 || slices.Contains(corsOrigins, "*") {
+		slogger.Warn("CORS_ALLOWED_ORIGINS not set to an explicit allowlist — allowing all origins without credentials [demo mode only]")
+		corsOrigins = []string{"*"}
+		allowCredentials = false
+	}
 	chain = append(chain, gohttpkit.CORSMiddleware(gohttpkit.CORSOptions{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowedHeaders:   []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
-		AllowCredentials: true,
+		AllowCredentials: allowCredentials,
 	}))
 
 	if cfg.Auth.FileBased.Enabled {

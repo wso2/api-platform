@@ -71,7 +71,11 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 	w.Header().Add("Vary", "Origin")
 	w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 
-	if opts.AllowCredentials {
+	// Never pair a wildcard origin with credentials: the combination is spec-invalid
+	// (browsers reject it for credentialed requests) and, if a browser ever did honor it,
+	// would let any site read authenticated responses. Only send the credentials header
+	// when the origin was resolved to a specific, allowlisted value.
+	if opts.AllowCredentials && allowedOrigin != "*" {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
 
