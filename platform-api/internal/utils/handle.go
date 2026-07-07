@@ -46,10 +46,10 @@ var (
 // the resource's path handle. A nil or empty body value is treated as "not provided"
 // and allowed; only a non-empty value that differs from the path handle is rejected.
 func ValidateHandleImmutable(pathHandle string, bodyHandle *string) error {
-	if bodyHandle != nil && *bodyHandle != "" && *bodyHandle != pathHandle {
-		return constants.ErrHandleImmutable
+	if bodyHandle == nil || *bodyHandle == "" {
+		return nil
 	}
-	return nil
+	return ValidateHandleImmutableRequired(pathHandle, *bodyHandle)
 }
 
 // ValidateHandleImmutableRequired is like ValidateHandleImmutable but requires the
