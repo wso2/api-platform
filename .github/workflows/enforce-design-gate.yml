@@ -1,74 +1,115 @@
 name: Enforce Design Gate
 
-# "field_added" fires when a project field value is set or updated on an issue,
-# including status column changes on the project board.
+# Fires immediately when any project card is moved to a different column.
+# Classic Projects (v1) support project_card as a workflow trigger.
+#
+# If a feature issue card is moved to the "Development" column without both
+# required design labels, the card is moved back to the "Design" column and
+# a comment is posted on the issue.
+#
+# Prerequisites: classic PAT with 'project' scope stored as PROJECT_TOKEN
+# (required to move cards in org-level projects).
 on:
-  issues:
-    types: [field_added]
+  project_card:
+    types: [moved]
 
 jobs:
   enforce-design-gate:
     runs-on: ubuntu-latest
     permissions:
-      issues: write  # Required to post a comment on the issue.
+      issues: write
 
     steps:
-      - name: Warn if a feature issue moves to Development without design labels
+      - name: Revert card to "Design" column if design gate is not met
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
           script: |
-            const FIELD_NAME      = 'Design and Development Status';
-            const TO_STATUS       = 'Development';
-            const GATE_TRIGGER_TYPE = 'feature';    // Only enforce for issues with this label/type.
-            const REQUIRED_LABELS   = ['Design Done', 'Mail Sent'];
+            const DESTINATION_COLUMN = 'Development';
+            const REVERT_COLUMN      = 'Design';
+            const REQUIRED_LABELS    = ['Design Done', 'Mail Sent'];
+            const GATE_TRIGGER_TYPE  = 'feature';
 
+            const card    = context.payload.project_card;
             const changes = context.payload.changes;
 
-            // Only act when the "Design and Development Status" field is set to "Development".
-            if (
-              !changes?.field_value ||
-              changes.field_value.field_name !== FIELD_NAME ||
-              changes.field_value.value       !== TO_STATUS
-            ) {
-              console.log('Not a relevant status change — skipping.');
+            // ── 1. Check if moved TO the "Development" column ──
+            const destColumn = await github.rest.projects.getColumn({
+              column_id: card.column_id,
+            });
+
+            if (destColumn.data.name !== DESTINATION_COLUMN) {
+              console.log(`Moved to "${destColumn.data.name}" — not "${DESTINATION_COLUMN}", skipping.`);
               return;
             }
 
-            const issue = context.payload.issue;
+            console.log(`Card moved to "${DESTINATION_COLUMN}". Checking design gate...`);
+
+            // ── 2. Resolve the linked issue from the card's content_url ──
+            // content_url looks like: https://api.github.com/repos/owner/repo/issues/123
+            const contentUrl = card.content_url;
+            if (!contentUrl || !contentUrl.includes('/issues/')) {
+              console.log('Card is not linked to an issue — skipping.');
+              return;
+            }
+
+            const issueNumber = parseInt(contentUrl.split('/issues/')[1], 10);
+            const { data: issue } = await github.rest.issues.get({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: issueNumber,
+            });
+
             const issueLabels = issue.labels.map(l => l.name);
 
-            // Only enforce for issues that carry the "feature" label.
+            // ── 3. Only enforce for "feature" issues ──
             if (!issueLabels.includes(GATE_TRIGGER_TYPE)) {
-              console.log(`Issue #${issue.number} is not a feature issue — skipping gate.`);
+              console.log(`Issue #${issueNumber} is not a feature issue — skipping gate.`);
               return;
             }
 
-            console.log(`Feature issue #${issue.number} moved to "${TO_STATUS}". Checking design gate...`);
-
+            // ── 4. Check required labels ──
             const missingLabels = REQUIRED_LABELS.filter(l => !issueLabels.includes(l));
-
             if (missingLabels.length === 0) {
-              console.log('Design gate passed — no comment needed.');
+              console.log('Design gate passed — no action needed.');
               return;
             }
 
-            console.log(`Gate failed. Missing: ${missingLabels.join(', ')}. Posting warning...`);
+            console.log(`Gate failed. Missing: ${missingLabels.join(', ')}. Reverting card...`);
 
+            // ── 5. Find the "Design" column in the same project ──
+            const { data: columns } = await github.rest.projects.listColumns({
+              project_id: context.payload.project.id,
+            });
+
+            const revertCol = columns.find(c => c.name === REVERT_COLUMN);
+            if (!revertCol) {
+              core.setFailed(`Column "${REVERT_COLUMN}" not found in project.`);
+              return;
+            }
+
+            // ── 6. Move card back to "Design" column ──
+            await github.rest.projects.moveCard({
+              card_id:   card.id,
+              position:  'top',
+              column_id: revertCol.id,
+            });
+
+            console.log(`Card moved back to "${REVERT_COLUMN}" column.`);
+
+            // ── 7. Post a comment on the issue ──
             await github.rest.issues.createComment({
               owner:        context.repo.owner,
               repo:         context.repo.repo,
-              issue_number: issue.number,
+              issue_number: issueNumber,
               body: [
-                '> [!WARNING]',
-                `> **Design gate not met.** This feature issue was moved to **${TO_STATUS}** but the following labels are still missing:`,
+                '> [!CAUTION]',
+                `> **Design gate enforced.** This feature issue was moved to **${DESTINATION_COLUMN}** but is missing required design labels. The card has been automatically moved back to **${REVERT_COLUMN}**.`,
                 '>',
-                ...REQUIRED_LABELS.map(l => {
-                  const present = issueLabels.includes(l);
-                  return `> - ${present ? '✅' : '❌'} \`${l}\``;
-                }),
+                '> The following labels must be present before this issue can progress to **Development**:',
                 '>',
-                `> Please complete the design phase before progressing to **${TO_STATUS}**.`,
+                ...REQUIRED_LABELS.map(l => `> - ${issueLabels.includes(l) ? '✅' : '❌'} \`${l}\``),
               ].join('\n'),
             });
 
-            console.log(`Warning comment posted on issue #${issue.number}.`);
+            console.log(`Revert comment posted on issue #${issueNumber}.`);
