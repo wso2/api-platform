@@ -23,17 +23,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/dto"
-	"github.com/wso2/api-platform/platform-api/internal/middleware"
-	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -83,60 +81,72 @@ func (h *GatewayInternalAPIHandler) authenticateGateway(apiKey string) (*model.G
 	return h.gatewayService.VerifyToken(apiKey)
 }
 
-// authenticateRequest extracts the API key from headers and authenticates the gateway. Per the
-// unified auth-failure rule, a missing/invalid key returns the identical generic 401; the
-// specific reason travels internally via WithLogMessage only.
-func (h *GatewayInternalAPIHandler) authenticateRequest(r *http.Request) (orgID, gatewayID string, err error) {
+// authenticateRequest extracts the API key from headers and authenticates the gateway.
+func (h *GatewayInternalAPIHandler) authenticateRequest(w http.ResponseWriter, r *http.Request) (orgID, gatewayID string, ok bool) {
 	clientIP := r.RemoteAddr
 	if i := strings.LastIndex(clientIP, ":"); i != -1 {
 		clientIP = clientIP[:i]
 	}
 	apiKey := r.Header.Get("api-key")
 
-	gateway, authErr := h.authenticateGateway(apiKey)
-	if authErr != nil {
-		if errors.Is(authErr, constants.ErrMissingAPIKey) {
-			return "", "", apperror.Unauthorized.New().
-				WithLogMessage(fmt.Sprintf("unauthorized access attempt - missing API key, clientIP=%s", clientIP))
+	gateway, err := h.authenticateGateway(apiKey)
+	if err != nil {
+		if errors.Is(err, constants.ErrMissingAPIKey) {
+			h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+			httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+				"API key is required. Provide 'api-key' header."))
+		} else if errors.Is(err, constants.ErrInvalidAPIToken) {
+			h.slogger.Warn("Authentication failed - Invalid API key", "clientIP", clientIP)
+			httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+				"Invalid or expired API key"))
+		} else {
+			h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+				"Error while validating API key"))
 		}
-		if errors.Is(authErr, constants.ErrInvalidAPIToken) {
-			return "", "", apperror.Unauthorized.Wrap(authErr).
-				WithLogMessage(fmt.Sprintf("authentication failed - invalid API key, clientIP=%s", clientIP))
-		}
-		return "", "", apperror.Internal.Wrap(authErr).
-			WithLogMessage(fmt.Sprintf("authentication failed, clientIP=%s", clientIP))
+		return "", "", false
 	}
-	return gateway.OrganizationID, gateway.ID, nil
+	return gateway.OrganizationID, gateway.ID, true
 }
 
 // GetAPI handles GET /api/internal/v1/apis/:apiId
-func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	apiID := r.PathValue("apiId")
 	if apiID == "" {
-		return apperror.ValidationFailed.New("API ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
 	}
 
 	api, err := h.gatewayInternalService.GetActiveDeploymentByGateway(apiID, orgID, gatewayID)
 	if err != nil {
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.DeploymentNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("no active deployment found for API %s on gateway %s", apiID, gatewayID))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this API on this gateway"))
+			return
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get API %s", apiID))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get API"))
+		return
 	}
 
 	// Create ZIP file from API YAML file
 	zipData, err := utils.CreateAPIYamlZip(api)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create ZIP file for API %s", apiID))
+		h.slogger.Error("Failed to create ZIP file", "apiID", apiID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create API package"))
+		return
 	}
 
 	// Set headers for ZIP file download
@@ -147,7 +157,6 @@ func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Reques
 	// Return ZIP file
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(zipData)
-	return nil
 }
 
 // ImportGatewayArtifacts handles POST /api/internal/v1/artifacts/import-gateway-artifacts.
@@ -158,10 +167,10 @@ func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Reques
 // continue-on-error: a failure on one artifact is recorded against its dpid and does not
 // abort the rest. The response maps each artifact's dpid to its result, with total/success/
 // failed counts. Only a malformed request (bad multipart/zip) returns a non-200.
-func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	reqs, err := utils.ParseGatewayArtifactsRequest(r)
@@ -170,8 +179,9 @@ func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(w http.ResponseWriter
 		if i := strings.LastIndex(clientIP, ":"); i != -1 {
 			clientIP = clientIP[:i]
 		}
-		return apperror.ValidationFailed.Wrap(err, err.Error()).
-			WithLogMessage(fmt.Sprintf("invalid import-gateway-artifacts request, clientIP=%s", clientIP))
+		h.slogger.Warn("Invalid import-gateway-artifacts request", "clientIP", clientIP, "error", err)
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
 	}
 	// 'total' is advisory: log a mismatch but proceed with what the zip actually contained.
 	if totalStr := r.FormValue("total"); totalStr != "" {
@@ -185,37 +195,46 @@ func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(w http.ResponseWriter
 	h.slogger.Info("Imported gateway artifacts batch",
 		"gatewayID", gatewayID, "total", resp.Total, "success", resp.Success, "failed", resp.Failed)
 	httputil.WriteJSON(w, http.StatusOK, resp)
-	return nil
 }
 
 // GetLLMProvider handles GET /api/internal/v1/llm-providers/:providerId
-func (h *GatewayInternalAPIHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	providerID := r.PathValue("providerId")
 	if providerID == "" {
-		return apperror.ValidationFailed.New("Provider ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Provider ID is required"))
+		return
 	}
 
 	provider, err := h.gatewayInternalService.GetActiveLLMProviderDeploymentByGateway(providerID, orgID, gatewayID)
 	if err != nil {
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.DeploymentNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("no active deployment found for LLM provider %s on gateway %s", providerID, gatewayID))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this LLM provider on this gateway"))
+			return
 		}
 		if errors.Is(err, constants.ErrLLMProviderNotFound) {
-			return apperror.LLMProviderNotFound.Wrap(err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"LLM provider not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get LLM provider %s", providerID))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get LLM provider"))
+		return
 	}
 
 	// Create ZIP file from LLM provider YAML file
 	zipData, err := utils.CreateLLMProviderYamlZip(provider)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create ZIP file for LLM provider %s", providerID))
+		h.slogger.Error("Failed to create ZIP file", "providerID", providerID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create LLM provider package"))
+		return
 	}
 
 	// Set headers for ZIP file download
@@ -226,37 +245,46 @@ func (h *GatewayInternalAPIHandler) GetLLMProvider(w http.ResponseWriter, r *htt
 	// Return ZIP file
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(zipData)
-	return nil
 }
 
 // GetLLMProxy handles GET /api/internal/v1/llm-proxies/:proxyId
-func (h *GatewayInternalAPIHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	proxyID := r.PathValue("proxyId")
 	if proxyID == "" {
-		return apperror.ValidationFailed.New("Proxy ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Proxy ID is required"))
+		return
 	}
 
 	proxy, err := h.gatewayInternalService.GetActiveLLMProxyDeploymentByGateway(proxyID, orgID, gatewayID)
 	if err != nil {
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.DeploymentNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("no active deployment found for LLM proxy %s on gateway %s", proxyID, gatewayID))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this LLM proxy on this gateway"))
+			return
 		}
 		if errors.Is(err, constants.ErrLLMProxyNotFound) {
-			return apperror.LLMProxyNotFound.Wrap(err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"LLM proxy not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get LLM proxy %s", proxyID))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get LLM proxy"))
+		return
 	}
 
 	// Create ZIP file from LLM proxy YAML file
 	zipData, err := utils.CreateLLMProxyYamlZip(proxy)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create ZIP file for LLM proxy %s", proxyID))
+		h.slogger.Error("Failed to create ZIP file", "proxyID", proxyID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create LLM proxy package"))
+		return
 	}
 
 	// Set headers for ZIP file download
@@ -267,25 +295,25 @@ func (h *GatewayInternalAPIHandler) GetLLMProxy(w http.ResponseWriter, r *http.R
 	// Return ZIP file
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(zipData)
-	return nil
 }
 
 // GetGatewayDeployments handles GET /api/internal/v1/deployments
 // Returns the list of deployments that should be active on a gateway for startup sync
-func (h *GatewayInternalAPIHandler) GetGatewayDeployments(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetGatewayDeployments(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	// Parse optional "since" query parameter for incremental sync
 	var since *time.Time
 	sinceStr := r.URL.Query().Get("since")
 	if sinceStr != "" {
-		parsedTime, parseErr := time.Parse(time.RFC3339, sinceStr)
-		if parseErr != nil {
-			return apperror.ValidationFailed.Wrap(parseErr,
-				"Invalid 'since' parameter. Expected ISO 8601 format (e.g., 2026-03-04T10:00:00Z)")
+		parsedTime, err := time.Parse(time.RFC3339, sinceStr)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid 'since' parameter. Expected ISO 8601 format (e.g., 2026-03-04T10:00:00Z)"))
+			return
 		}
 		since = &parsedTime
 	}
@@ -293,51 +321,69 @@ func (h *GatewayInternalAPIHandler) GetGatewayDeployments(w http.ResponseWriter,
 	deployments, err := h.gatewayInternalService.GetDeploymentsByGateway(orgID, gatewayID, since)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get gateway deployments for gateway %s", gatewayID))
+		h.slogger.Error("Failed to get gateway deployments", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get deployments"))
+		return
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployments)
-	return nil
 }
 
 // BatchFetchDeployments handles POST /api/internal/v1/deployments/fetch-batch
 // Fetches multiple deployment artifacts in a single request for gateway startup sync
-func (h *GatewayInternalAPIHandler) BatchFetchDeployments(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) BatchFetchDeployments(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	// Enforce Accept header - only application/x-tar+gzip is supported
 	if accept := r.Header.Get("Accept"); accept != "application/x-tar+gzip" {
-		return apperror.NotAcceptable.New()
+		httputil.WriteJSON(w, http.StatusNotAcceptable, utils.NewErrorResponse(406, "Not Acceptable",
+			"This endpoint only supports Accept: application/x-tar+gzip"))
+		return
 	}
 
 	// Parse request body
 	var req dto.DeploymentsBatchFetchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return apperror.ValidationFailed.Wrap(err, "Invalid request body: "+err.Error())
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Invalid request body: "+err.Error()))
+		return
 	}
 
 	if len(req.DeploymentIDs) == 0 {
-		return apperror.ValidationFailed.New("At least one deployment ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"At least one deployment ID is required"))
+		return
 	}
 
 	// Fetch deployment content
 	contentMap, err := h.gatewayInternalService.GetDeploymentContentBatch(orgID, gatewayID, req.DeploymentIDs)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get deployment content batch for gateway %s", gatewayID))
+		h.slogger.Error("Failed to get deployment content batch", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get deployment content"))
+		return
 	}
 
 	// Create TAR.GZ archive from deployment content
 	tarGzData, err := utils.CreateBatchDeploymentTarGz(contentMap)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create batch TAR.GZ archive for gateway %s", gatewayID))
+		h.slogger.Error("Failed to create batch TAR.GZ archive", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create deployment package"))
+		return
 	}
 
 	// Set headers for TAR.GZ download
@@ -348,92 +394,148 @@ func (h *GatewayInternalAPIHandler) BatchFetchDeployments(w http.ResponseWriter,
 	// Return TAR.GZ archive
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(tarGzData)
-	return nil
 }
 
 // GetSubscriptions handles GET /api/internal/v1/apis/:apiId/subscriptions
-func (h *GatewayInternalAPIHandler) GetSubscriptions(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetSubscriptions(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	apiID := r.PathValue("apiId")
 	if apiID == "" {
-		return apperror.ValidationFailed.New("API ID is required").
-			WithLogMessage(fmt.Sprintf("API ID is required for subscriptions request, orgID=%s", orgID))
+		clientIP := r.RemoteAddr
+		if i := strings.LastIndex(clientIP, ":"); i != -1 {
+			clientIP = clientIP[:i]
+		}
+		h.slogger.Error("API ID is required for subscriptions request",
+			"clientIP", clientIP,
+			"organizationId", orgID,
+			"apiId", apiID)
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
 	}
 
 	if err := h.gatewayInternalService.IsAPIDeployedOnGateway(apiID, gatewayID, orgID); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("API not found when listing subscriptions, apiId=%s, orgID=%s, gatewayID=%s", apiID, orgID, gatewayID))
+			h.slogger.Error("API not found when listing subscriptions",
+				"apiId", apiID,
+				"organizationId", orgID,
+				"gatewayId", gatewayID,
+				"error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.Forbidden.New().
-				WithLogMessage(fmt.Sprintf("subscription list denied - API has no active deployment status on gateway, apiId=%s, orgID=%s, gatewayID=%s", apiID, orgID, gatewayID))
+			h.slogger.Error("Subscription list denied - API has no active deployment status on gateway",
+				"apiId", apiID,
+				"organizationId", orgID,
+				"gatewayId", gatewayID)
+			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+				"API is not associated with this gateway"))
+			return
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to verify API deployment for subscriptions, apiId=%s, orgID=%s, gatewayID=%s", apiID, orgID, gatewayID))
+		h.slogger.Error("Failed to verify API deployment for subscriptions",
+			"apiId", apiID,
+			"organizationId", orgID,
+			"gatewayId", gatewayID,
+			"error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to verify API deployment"))
+		return
 	}
 
 	subs, err := h.gatewayInternalService.ListSubscriptionsForAPI(apiID, orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("API not found when listing subscriptions, apiId=%s, orgID=%s", apiID, orgID))
+			h.slogger.Error("API not found when listing subscriptions",
+				"apiId", apiID,
+				"organizationId", orgID,
+				"error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to list subscriptions for API, apiId=%s, orgID=%s", apiID, orgID))
+		h.slogger.Error("Failed to list subscriptions for API",
+			"apiId", apiID,
+			"organizationId", orgID,
+			"error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get subscriptions"))
+		return
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, subs)
-	return nil
 }
 
 // GetSubscriptionPlans handles GET /api/internal/v1/subscription-plans
-func (h *GatewayInternalAPIHandler) GetSubscriptionPlans(w http.ResponseWriter, r *http.Request) error {
-	orgID, _, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetSubscriptionPlans(w http.ResponseWriter, r *http.Request) {
+	orgID, _, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	plans, err := h.gatewayInternalService.ListSubscriptionPlansForOrg(orgID)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to list subscription plans, orgID=%s", orgID))
+		h.slogger.Error("Failed to list subscription plans",
+			"organizationId", orgID,
+			"error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get subscription plans"))
+		return
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, plans)
-	return nil
 }
 
 // GetMCPProxy handles GET /api/internal/v1/mcp-proxies/:proxyId
-func (h *GatewayInternalAPIHandler) GetMCPProxy(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetMCPProxy(w http.ResponseWriter, r *http.Request) {
+
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 	proxyID := r.PathValue("proxyId")
 	if proxyID == "" {
-		return apperror.ValidationFailed.New("Proxy ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Proxy ID is required"))
+		return
 	}
 
 	proxy, err := h.gatewayInternalService.GetActiveMCPProxyDeploymentByGateway(proxyID, orgID, gatewayID)
 	if err != nil {
+		clientIP := r.RemoteAddr
+		if i := strings.LastIndex(clientIP, ":"); i != -1 {
+			clientIP = clientIP[:i]
+		}
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.DeploymentNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("no active deployment found for MCP proxy %s on gateway %s", proxyID, gatewayID))
+			h.slogger.Error("No active deployment found for MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this MCP proxy on this gateway"))
+			return
 		}
 		if errors.Is(err, constants.ErrMCPProxyNotFound) {
-			return apperror.MCPProxyNotFound.Wrap(err)
+			h.slogger.Error("MCP proxy not found", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"MCP proxy not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get MCP proxy %s", proxyID))
+		h.slogger.Error("Failed to get MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get MCP proxy"))
+		return
 	}
 
 	// Create ZIP file from MCP proxy YAML file
 	zipData, err := utils.CreateMCPProxyYamlZip(proxy)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create ZIP file for MCP proxy %s", proxyID))
+		h.slogger.Error("Failed to create ZIP file", "proxyID", proxyID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create MCP proxy package"))
+		return
 	}
 
 	// Set headers for ZIP file download
@@ -444,37 +546,53 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(w http.ResponseWriter, r *http.R
 	// Return ZIP file
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(zipData)
-	return nil
 }
 
 // GetWebSubAPI handles GET /api/internal/v1/websub-apis/:apiId
-func (h *GatewayInternalAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	apiID := r.PathValue("apiId")
 	if apiID == "" {
-		return apperror.ValidationFailed.New("API ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
 	}
 
 	api, err := h.gatewayInternalService.GetActiveWebSubAPIDeploymentByGateway(apiID, orgID, gatewayID)
 	if err != nil {
+		clientIP := r.RemoteAddr
+		if i := strings.LastIndex(clientIP, ":"); i != -1 {
+			clientIP = clientIP[:i]
+		}
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.DeploymentNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("no active deployment found for WebSub API %s on gateway %s", apiID, gatewayID))
+			h.slogger.Error("No active deployment found for WebSub API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this WebSub API on this gateway"))
+			return
 		}
 		if errors.Is(err, constants.ErrWebSubAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err).WithLogMessage(fmt.Sprintf("WebSub API not found, apiID=%s", apiID))
+			h.slogger.Error("WebSub API not found", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"WebSub API not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get WebSub API %s", apiID))
+		h.slogger.Error("Failed to get WebSub API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get WebSub API"))
+		return
 	}
 
 	// Create ZIP file from WebSub API YAML file
 	zipData, err := utils.CreateWebSubAPIYamlZip(api)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create ZIP file for WebSub API %s", apiID))
+		h.slogger.Error("Failed to create ZIP file", "apiID", apiID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create WebSub API package"))
+		return
 	}
 
 	// Set headers for ZIP file download
@@ -485,37 +603,53 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.
 	// Return ZIP file
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(zipData)
-	return nil
 }
 
 // GetWebBrokerAPI handles GET /api/internal/v1/webbroker-apis/:apiId
-func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	apiID := r.PathValue("apiId")
 	if apiID == "" {
-		return apperror.ValidationFailed.New("API ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
 	}
 
 	api, err := h.gatewayInternalService.GetActiveWebBrokerAPIDeploymentByGateway(apiID, orgID, gatewayID)
 	if err != nil {
+		clientIP := r.RemoteAddr
+		if i := strings.LastIndex(clientIP, ":"); i != -1 {
+			clientIP = clientIP[:i]
+		}
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.DeploymentNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("no active deployment found for WebBroker API %s on gateway %s", apiID, gatewayID))
+			h.slogger.Error("No active deployment found for WebBroker API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this WebBroker API on this gateway"))
+			return
 		}
 		if errors.Is(err, constants.ErrWebBrokerAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err).WithLogMessage(fmt.Sprintf("WebBroker API not found, apiID=%s", apiID))
+			h.slogger.Error("WebBroker API not found", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"WebBroker API not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get WebBroker API %s", apiID))
+		h.slogger.Error("Failed to get WebBroker API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get WebBroker API"))
+		return
 	}
 
 	// Create ZIP file from WebBroker API YAML file
 	zipData, err := utils.CreateWebBrokerAPIYamlZip(api)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create ZIP file for WebBroker API %s", apiID))
+		h.slogger.Error("Failed to create ZIP file", "apiID", apiID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create WebBroker API package"))
+		return
 	}
 
 	// Set headers for ZIP file download
@@ -526,15 +660,14 @@ func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *ht
 	// Return ZIP file
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(zipData)
-	return nil
 }
 
 // ReceiveGatewayManifest handles POST /api/internal/v1/gateways/:gatewayId/manifest
 // Called by the gateway controller to post back its installed custom policy manifest.
-func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	var body struct {
@@ -543,119 +676,137 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(w http.ResponseWriter
 		Policies          []service.GatewayPolicyInput `json:"policies"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		return apperror.ValidationFailed.Wrap(err, err.Error())
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
 	}
 
 	if err := h.gatewayService.ReceiveGatewayManifest(orgID, gatewayID, body.Version, body.FunctionalityType, body.Policies); err != nil {
 		if errors.Is(err, constants.ErrGatewayVersionMismatch) {
-			return apperror.Conflict.Wrap(err).WithLogMessage(fmt.Sprintf("gateway manifest rejected: version mismatch, gatewayID=%s", gatewayID))
+			h.slogger.Warn("Gateway manifest rejected: version mismatch", "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			return
 		}
 		if errors.Is(err, constants.ErrGatewayFunctionalityTypeMismatch) {
-			return apperror.Conflict.Wrap(err).WithLogMessage(fmt.Sprintf("gateway manifest rejected: functionality type mismatch, gatewayID=%s", gatewayID))
+			h.slogger.Warn("Gateway manifest rejected: functionality type mismatch", "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			return
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", err.Error()))
+			return
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to store gateway manifest, gatewayID=%s", gatewayID))
+		h.slogger.Error("Failed to store gateway manifest", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to store gateway manifest"))
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return nil
 }
 
 // GetRestAPIAPIKeys handles GET /api/internal/v1/apis/api-keys
-func (h *GatewayInternalAPIHandler) GetRestAPIAPIKeys(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetRestAPIAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 	issuer := r.URL.Query().Get("issuer")
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.RestApi, issuer)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get API keys for REST APIs, gatewayID=%s", gatewayID))
+		h.slogger.Error("Failed to get API keys for REST APIs", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, keys)
-	return nil
 }
 
 // GetLLMProviderAPIKeys handles GET /api/internal/v1/llm-providers/api-keys
-func (h *GatewayInternalAPIHandler) GetLLMProviderAPIKeys(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetLLMProviderAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 	issuer := r.URL.Query().Get("issuer")
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.LLMProvider, issuer)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get API keys for LLM providers, gatewayID=%s", gatewayID))
+		h.slogger.Error("Failed to get API keys for LLM providers", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, keys)
-	return nil
 }
 
 // GetLLMProxyAPIKeys handles GET /api/internal/v1/llm-proxies/api-keys
-func (h *GatewayInternalAPIHandler) GetLLMProxyAPIKeys(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetLLMProxyAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 	issuer := r.URL.Query().Get("issuer")
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.LLMProxy, issuer)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get API keys for LLM proxies, gatewayID=%s", gatewayID))
+		h.slogger.Error("Failed to get API keys for LLM proxies", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, keys)
-	return nil
 }
 
 // GetWebSubAPIAPIKeys handles GET /api/internal/v1/websub-apis/api-keys
-func (h *GatewayInternalAPIHandler) GetWebSubAPIAPIKeys(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetWebSubAPIAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 	issuer := r.URL.Query().Get("issuer")
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.WebSubApi, issuer)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get API keys for WebSub APIs, gatewayID=%s", gatewayID))
+		h.slogger.Error("Failed to get API keys for WebSub APIs", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, keys)
-	return nil
 }
 
 // GetWebBrokerAPIAPIKeys handles GET /api/internal/v1/webbroker-apis/api-keys
-func (h *GatewayInternalAPIHandler) GetWebBrokerAPIAPIKeys(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetWebBrokerAPIAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 	issuer := r.URL.Query().Get("issuer")
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.WebBrokerApi, issuer)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get API keys for WebBroker APIs, gatewayID=%s", gatewayID))
+		h.slogger.Error("Failed to get API keys for WebBroker APIs", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, keys)
-	return nil
 }
 
 // CheckArtifactsExist handles POST /api/internal/v1/artifacts/exists
 // Returns the subset of provided artifact UUIDs that still exist on the platform.
 // Used by the gateway during sync to avoid deleting artifacts that still exist
 // but have no active deployment (e.g., after deployment deletion).
-func (h *GatewayInternalAPIHandler) CheckArtifactsExist(w http.ResponseWriter, r *http.Request) error {
-	orgID, _, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) CheckArtifactsExist(w http.ResponseWriter, r *http.Request) {
+	orgID, _, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	var req dto.ArtifactsExistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return apperror.ValidationFailed.Wrap(err, "Invalid request body: artifactIds is required and must be a non-empty array")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Invalid request body: artifactIds is required and must be a non-empty array"))
+		return
 	}
 
 	existingIDs, err := h.gatewayInternalService.CheckArtifactsExist(orgID, req.ArtifactIDs)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to check artifact existence")
+		h.slogger.Error("Failed to check artifact existence", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to check artifact existence"))
+		return
 	}
 
 	// Build a set of existing IDs for O(1) lookup
@@ -677,44 +828,47 @@ func (h *GatewayInternalAPIHandler) CheckArtifactsExist(w http.ResponseWriter, r
 	httputil.WriteJSON(w, http.StatusOK, dto.ArtifactsExistResponse{
 		Artifacts: artifacts,
 	})
-	return nil
 }
 
 // GetWebSubAPIHmacSecrets handles GET /api/internal/v1/websub-apis/:apiId/secrets
 // Returns decrypted plaintext HMAC secrets for the gateway-controller to load into its webhook secret store.
-func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(w http.ResponseWriter, r *http.Request) error {
-	_, _, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(w http.ResponseWriter, r *http.Request) {
+	_, _, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	apiID := r.PathValue("apiId")
 	if apiID == "" {
-		return apperror.ValidationFailed.New("API ID is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		return
 	}
 
 	if h.hmacSecretService == nil {
-		return apperror.ServiceUnavailable.New().
-			WithLogMessage(fmt.Sprintf("HMAC secret service not configured, apiID=%s", apiID))
+		h.slogger.Warn("HMAC secret service not configured", "apiID", apiID)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "HMAC secret management is not configured on this server"))
+		return
 	}
 
 	secrets, err := h.hmacSecretService.ListByArtifactUUID(apiID)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to list HMAC secrets for WebSub API %s", apiID))
+		h.slogger.Error("Failed to list HMAC secrets for WebSub API", "apiID", apiID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get HMAC secrets"))
+		return
 	}
 
 	items := make([]dto.GatewayHmacSecretInfo, 0, len(secrets))
 	for _, s := range secrets {
 		plaintext, err := h.hmacSecretService.DecryptSecret(s)
 		if err != nil {
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to decrypt HMAC secret, apiID=%s, secretName=%s", apiID, s.Handle))
+			h.slogger.Error("Failed to decrypt HMAC secret", "apiID", apiID, "secretName", s.Handle, "error", err)
+			httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to decrypt HMAC secret"))
+			return
 		}
 		items = append(items, dto.GatewayHmacSecretInfo{Name: s.Handle, Secret: plaintext})
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, dto.GatewayHmacSecretsResponse{ArtifactID: apiID, Secrets: items})
-	return nil
 }
 
 // GetGatewaySecrets handles GET /api/internal/v1/secrets
@@ -722,17 +876,19 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(w http.ResponseWrite
 // Supports ?updatedAfter=<RFC3339> for incremental sync.
 // Supports ?includeValues=true for startup bulk fetch — decrypts all secrets server-side
 // and returns plaintext values in a single response, avoiding N per-secret round trips.
-func (h *GatewayInternalAPIHandler) GetGatewaySecrets(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetGatewaySecrets(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	var updatedAfter *time.Time
 	if s := r.URL.Query().Get("updatedAfter"); s != "" {
-		t, parseErr := time.Parse(time.RFC3339, s)
-		if parseErr != nil {
-			return apperror.ValidationFailed.Wrap(parseErr, "Invalid 'updatedAfter' parameter. Expected RFC3339 format.")
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid 'updatedAfter' parameter. Expected RFC3339 format."))
+			return
 		}
 		updatedAfter = &t
 	}
@@ -741,8 +897,10 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(w http.ResponseWriter, r *
 
 	secrets, err := h.gatewayInternalService.GetSecretsByGateway(orgID, gatewayID, updatedAfter)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to list gateway secrets, orgID=%s, gatewayID=%s", orgID, gatewayID))
+		h.slogger.Error("Failed to list gateway secrets", "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to retrieve secrets"))
+		return
 	}
 
 	items := make([]dto.SecretSyncItem, 0, len(secrets))
@@ -761,75 +919,81 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(w http.ResponseWriter, r *
 		if includeValues && s.Status == model.SecretStatusActive {
 			plaintext, err := h.secretService.DecryptCiphertext(s.Ciphertext)
 			if err != nil {
-				return apperror.Internal.Wrap(err).
-					WithLogMessage(fmt.Sprintf("failed to decrypt secret for bulk fetch, orgID=%s, handle=%s", orgID, s.Handle))
+				h.slogger.Error("Failed to decrypt secret for bulk fetch", "orgID", orgID, "handle", s.Handle, "error", err)
+				httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+					"Failed to decrypt secret"))
+				return
 			}
 			item.Value = &plaintext
 		}
 		items = append(items, item)
 	}
 	httputil.WriteJSON(w, http.StatusOK, dto.SecretSyncListResponse{List: items, Count: len(items)})
-	return nil
 }
 
 // GetGatewaySecretValue handles GET /api/internal/v1/secrets/{handle}/value
 // Returns the decrypted plaintext value of a secret. Called by the GW controller
 // only when the secret's hash has changed, minimising decryption calls.
 // Authenticated via gateway api-key — no JWT required.
-func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(w http.ResponseWriter, r *http.Request) error {
-	orgID, gatewayID, err := h.authenticateRequest(r)
-	if err != nil {
-		return err
+func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
 	}
 
 	handle := r.PathValue("handle")
 	if handle == "" {
-		return apperror.ValidationFailed.New("Secret handle is required")
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret handle is required"))
+		return
 	}
 
 	// Only serve secrets that are referenced by artifacts deployed on this gateway.
 	deployed, err := h.gatewayInternalService.IsSecretDeployedOnGateway(orgID, gatewayID, handle)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to check secret deployment scope, orgID=%s, gatewayID=%s, handle=%s", orgID, gatewayID, handle))
+		h.slogger.Error("Failed to check secret deployment scope", "orgID", orgID, "gatewayID", gatewayID, "handle", handle, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to verify secret access"))
+		return
 	}
 	if !deployed {
-		return apperror.SecretNotFound.New()
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
+		return
 	}
 
 	plaintext, err := h.secretService.Decrypt(orgID, handle)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
-			return apperror.SecretNotFound.Wrap(err)
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
+			return
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to decrypt secret for gateway, orgID=%s, handle=%s", orgID, handle))
+		h.slogger.Error("Failed to decrypt secret for gateway", "orgID", orgID, "handle", handle, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to decrypt secret"))
+		return
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"value": plaintext})
-	return nil
 }
 
 func (h *GatewayInternalAPIHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/internal/v1/apis/api-keys", middleware.MapErrors(h.slogger, h.GetRestAPIAPIKeys))
-	mux.HandleFunc("GET /api/internal/v1/apis/{apiId}", middleware.MapErrors(h.slogger, h.GetAPI))
-	mux.HandleFunc("GET /api/internal/v1/apis/{apiId}/subscriptions", middleware.MapErrors(h.slogger, h.GetSubscriptions))
-	mux.HandleFunc("GET /api/internal/v1/subscription-plans", middleware.MapErrors(h.slogger, h.GetSubscriptionPlans))
-	mux.HandleFunc("GET /api/internal/v1/secrets", middleware.MapErrors(h.slogger, h.GetGatewaySecrets))
-	mux.HandleFunc("GET /api/internal/v1/secrets/{handle}/value", middleware.MapErrors(h.slogger, h.GetGatewaySecretValue))
-	mux.HandleFunc("GET /api/internal/v1/llm-providers/api-keys", middleware.MapErrors(h.slogger, h.GetLLMProviderAPIKeys))
-	mux.HandleFunc("GET /api/internal/v1/llm-providers/{providerId}", middleware.MapErrors(h.slogger, h.GetLLMProvider))
-	mux.HandleFunc("GET /api/internal/v1/llm-proxies/api-keys", middleware.MapErrors(h.slogger, h.GetLLMProxyAPIKeys))
-	mux.HandleFunc("GET /api/internal/v1/llm-proxies/{proxyId}", middleware.MapErrors(h.slogger, h.GetLLMProxy))
-	mux.HandleFunc("GET /api/internal/v1/deployments", middleware.MapErrors(h.slogger, h.GetGatewayDeployments))
-	mux.HandleFunc("POST /api/internal/v1/deployments/fetch-batch", middleware.MapErrors(h.slogger, h.BatchFetchDeployments))
-	mux.HandleFunc("GET /api/internal/v1/mcp-proxies/{proxyId}", middleware.MapErrors(h.slogger, h.GetMCPProxy))
-	mux.HandleFunc("GET /api/internal/v1/websub-apis/api-keys", middleware.MapErrors(h.slogger, h.GetWebSubAPIAPIKeys))
-	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}", middleware.MapErrors(h.slogger, h.GetWebSubAPI))
-	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}/secrets", middleware.MapErrors(h.slogger, h.GetWebSubAPIHmacSecrets))
-	mux.HandleFunc("GET /api/internal/v1/webbroker-apis/api-keys", middleware.MapErrors(h.slogger, h.GetWebBrokerAPIAPIKeys))
-	mux.HandleFunc("GET /api/internal/v1/webbroker-apis/{apiId}", middleware.MapErrors(h.slogger, h.GetWebBrokerAPI))
-	mux.HandleFunc("POST /api/internal/v1/gateways/{gatewayId}/manifest", middleware.MapErrors(h.slogger, h.ReceiveGatewayManifest))
-	mux.HandleFunc("POST /api/internal/v1/artifacts/exists", middleware.MapErrors(h.slogger, h.CheckArtifactsExist))
-	mux.HandleFunc("POST /api/internal/v1/artifacts/import-gateway-artifacts", middleware.MapErrors(h.slogger, h.ImportGatewayArtifacts))
+	mux.HandleFunc("GET /api/internal/v1/apis/api-keys", h.GetRestAPIAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/apis/{apiId}", h.GetAPI)
+	mux.HandleFunc("GET /api/internal/v1/apis/{apiId}/subscriptions", h.GetSubscriptions)
+	mux.HandleFunc("GET /api/internal/v1/subscription-plans", h.GetSubscriptionPlans)
+	mux.HandleFunc("GET /api/internal/v1/secrets", h.GetGatewaySecrets)
+	mux.HandleFunc("GET /api/internal/v1/secrets/{handle}/value", h.GetGatewaySecretValue)
+	mux.HandleFunc("GET /api/internal/v1/llm-providers/api-keys", h.GetLLMProviderAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/llm-providers/{providerId}", h.GetLLMProvider)
+	mux.HandleFunc("GET /api/internal/v1/llm-proxies/api-keys", h.GetLLMProxyAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/llm-proxies/{proxyId}", h.GetLLMProxy)
+	mux.HandleFunc("GET /api/internal/v1/deployments", h.GetGatewayDeployments)
+	mux.HandleFunc("POST /api/internal/v1/deployments/fetch-batch", h.BatchFetchDeployments)
+	mux.HandleFunc("GET /api/internal/v1/mcp-proxies/{proxyId}", h.GetMCPProxy)
+	mux.HandleFunc("GET /api/internal/v1/websub-apis/api-keys", h.GetWebSubAPIAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}", h.GetWebSubAPI)
+	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}/secrets", h.GetWebSubAPIHmacSecrets)
+	mux.HandleFunc("GET /api/internal/v1/webbroker-apis/api-keys", h.GetWebBrokerAPIAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/webbroker-apis/{apiId}", h.GetWebBrokerAPI)
+	mux.HandleFunc("POST /api/internal/v1/gateways/{gatewayId}/manifest", h.ReceiveGatewayManifest)
+	mux.HandleFunc("POST /api/internal/v1/artifacts/exists", h.CheckArtifactsExist)
+	mux.HandleFunc("POST /api/internal/v1/artifacts/import-gateway-artifacts", h.ImportGatewayArtifacts)
 }

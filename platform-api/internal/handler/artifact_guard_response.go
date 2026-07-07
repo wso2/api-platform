@@ -36,11 +36,11 @@ import (
 func mapArtifactGuardError(err error) error {
 	switch {
 	case errors.Is(err, constants.ErrArtifactReadOnly):
-		return apperror.ArtifactReadOnly.Wrap(err, err.Error())
+		return apperror.ArtifactReadOnly.Wrap(err, "Artifact is read-only: it originated from a data-plane gateway")
 	case errors.Is(err, constants.ErrArtifactRuntimeImmutable):
-		return apperror.ArtifactRuntimeImmutable.Wrap(err, err.Error())
+		return apperror.ArtifactRuntimeImmutable.Wrap(err, "Runtime configuration of this artifact cannot be changed")
 	case errors.Is(err, constants.ErrArtifactDeployed):
-		return apperror.ArtifactDeployed.Wrap(err, err.Error())
+		return apperror.ArtifactDeployed.Wrap(err, "Artifact is still deployed on a gateway and cannot be deleted")
 	default:
 		return nil
 	}
