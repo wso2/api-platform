@@ -1430,6 +1430,26 @@ func TestConfig_ValidateAnalyticsPayloadMigration_SkippedWhenAnalyticsDisabled(t
 	assert.False(t, cfg.Collector.SendResponseBody)
 }
 
+// TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled guards
+// against a stale analytics.grpc_event_server override left over from a disabled
+// analytics setup silently reconfiguring the transport for an unrelated consumer
+// (traffic logging) enabled later. The deprecated transport alias belongs to
+// analytics, so it must only be honored while analytics itself is enabled.
+func TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.Analytics.Enabled = false
+	cfg.TrafficLogging.Enabled = true // an unrelated consumer activates the collector
+	cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
+	cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
+	cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
+	cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
+	cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+
+	err := cfg.Validate()
+	require.NoError(t, err)
+	assert.Equal(t, defaultGRPCEventServerConfig(), cfg.Collector.GRPCEventServerCfg)
+}
+
 func TestConfig_ValidateAuthConfig(t *testing.T) {
 	tests := []struct {
 		name        string

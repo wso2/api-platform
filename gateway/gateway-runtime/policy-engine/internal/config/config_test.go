@@ -1191,6 +1191,27 @@ func TestValidate_AnalyticsPayloadMigration_SkippedWhenAnalyticsDisabled(t *test
 	assert.False(t, cfg.Collector.SendResponseBody)
 }
 
+// TestValidate_AnalyticsTransportMigration_SkippedWhenAnalyticsDisabled guards
+// against a stale analytics.access_logs_service override left over from a disabled
+// analytics setup silently reconfiguring the transport for an unrelated consumer
+// (traffic logging) enabled later. The deprecated transport alias belongs to
+// analytics, so it must only be honored while analytics itself is enabled.
+func TestValidate_AnalyticsTransportMigration_SkippedWhenAnalyticsDisabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.Analytics.Enabled = false
+	cfg.TrafficLogging.Enabled = true // an unrelated consumer activates the collector
+	cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+		Mode:                  "uds",
+		ShutdownTimeout:       600 * time.Second,
+		ExtProcMaxMessageSize: 1000000,
+		ExtProcMaxHeaderLimit: 8192,
+	}
+
+	err := cfg.Validate()
+	require.NoError(t, err)
+	assert.Equal(t, defaultAccessLogsServiceConfig(), cfg.Collector.AccessLogsServiceCfg)
+}
+
 // TestValidate_CollectorPrerequisite verifies that enabling a consumer (analytics,
 // traffic logging) without the collector auto-enables the collector (a
 // backward-compat soft prerequisite) rather than failing.

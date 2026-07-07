@@ -1778,7 +1778,14 @@ func (c *Config) IsCollectorEnabled() bool {
 // migrateDeprecatedAnalyticsTransport maps a deprecated [analytics].grpc_event_server
 // override onto the collector when the collector's transport tuning is still at its
 // default, so existing configs keep working after the transport moved to [collector].
+// This is analytics's own deprecated field, so it is only honored while analytics is
+// enabled — otherwise a stale value left over from a disabled analytics setup could
+// silently reconfigure the transport for an unrelated consumer (e.g. traffic_logging)
+// enabled later.
 func (c *Config) migrateDeprecatedAnalyticsTransport() {
+	if !c.Analytics.Enabled {
+		return
+	}
 	def := defaultGRPCEventServerConfig()
 	if c.Analytics.GRPCEventServerCfg != def {
 		if c.Collector.GRPCEventServerCfg == def {
