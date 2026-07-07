@@ -491,20 +491,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Order: CORS → auth → scope enforcer → mux
 	var chain []func(http.Handler) http.Handler
 
-	// validateAuthConfig already rejected a missing/wildcard allowlist outside demo mode;
-	// this fallback only ever applies in demo mode, and never sends credentials alongside it.
+	// validateAuthConfig already rejected a missing/wildcard allowlist outside demo mode.
+	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
+	// CORS middleware); operators must opt in explicitly via CORS_ALLOWED_ORIGINS.
 	corsOrigins := cfg.CORS.AllowedOrigins
-	allowCredentials := true
-	if len(corsOrigins) == 0 || slices.Contains(corsOrigins, "*") {
-		slogger.Warn("CORS_ALLOWED_ORIGINS not set to an explicit allowlist — allowing all origins without credentials [demo mode only]")
-		corsOrigins = []string{"*"}
-		allowCredentials = false
+	if len(corsOrigins) == 0 {
+		slogger.Warn("CORS_ALLOWED_ORIGINS not set — cross-origin requests are disabled")
+	} else if slices.Contains(corsOrigins, "*") {
+		slogger.Warn("CORS_ALLOWED_ORIGINS contains \"*\" — allowing all origins without credentials")
 	}
 	chain = append(chain, gohttpkit.CORSMiddleware(gohttpkit.CORSOptions{
 		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowedHeaders:   []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
-		AllowCredentials: allowCredentials,
+		AllowCredentials: !slices.Contains(corsOrigins, "*"),
 	}))
 
 	if cfg.Auth.FileBased.Enabled {
