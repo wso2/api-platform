@@ -24,6 +24,13 @@ import type {
   APIKeyListResponse,
 } from '../../utils/types';
 import * as llmProviderApis from '../../apis/llmProviderApis';
+import {
+  createSecret,
+  deleteSecret,
+  buildSecretPlaceholder,
+  generateSecretHandle,
+  extractSecretHandle,
+} from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
 import { logger } from '../../utils/logger';
@@ -114,14 +121,63 @@ export function LLMProviderProvider({ children, providerId }: LLMProviderProvide
       throw new Error('Provider ID or Organization ID is missing');
     }
     try {
-      const updatedProvider = await llmProviderApis.updateLLMProvider(providerId, updates, organizationId, PLATFORM_API_BASE_URL);
+      // If the upstream auth value is a new plain-text credential (not already a
+      // placeholder), create a new secret and substitute the placeholder before
+      // persisting. After a successful provider update the old secret is deleted
+      // best-effort so the gateway is not left with a dangling reference.
+      let updatesPayload = updates;
+      const authValue = updates.upstream?.main?.auth?.value;
+      const isAlreadyPlaceholder =
+        typeof authValue === 'string' && authValue.includes('{{ secret ');
+
+      if (authValue && !isAlreadyPlaceholder) {
+        const secretHandle = generateSecretHandle();
+        const secretResponse = await createSecret({
+          id: secretHandle,
+          displayName: `${providerId} API Key`,
+          description: `Auto-generated secret for LLM provider ${providerId}`,
+          value: authValue,
+          type: 'GENERIC',
+        });
+        logger.info('Created new secret for LLM provider update', { secretHandle, providerId });
+
+        updatesPayload = {
+          ...updates,
+          upstream: {
+            ...updates.upstream,
+            main: {
+              ...updates.upstream?.main,
+              url: updates.upstream?.main?.url ?? provider?.upstream?.main?.url ?? '',
+              auth: {
+                ...updates.upstream?.main?.auth,
+                value: buildSecretPlaceholder(secretResponse.id),
+              },
+            },
+          },
+        };
+      }
+
+      const updatedProvider = await llmProviderApis.updateLLMProvider(providerId, updatesPayload, organizationId, PLATFORM_API_BASE_URL);
       setProvider(updatedProvider);
+
+      // Best-effort: delete the old secret only after the provider update succeeds.
+      if (authValue && !isAlreadyPlaceholder) {
+        const oldHandle = provider?.upstream?.main?.auth?.value
+          ? extractSecretHandle(provider.upstream.main.auth.value)
+          : null;
+        if (oldHandle) {
+          deleteSecret(oldHandle).catch((err) => {
+            logger.warn('Could not delete old secret after provider update', { oldHandle, err });
+          });
+        }
+      }
+
       return updatedProvider;
     } catch (err) {
       logger.error('Failed to update LLM provider:', err);
       throw err;
     }
-  }, [providerId, organizationId, PLATFORM_API_BASE_URL]);
+  }, [providerId, organizationId, PLATFORM_API_BASE_URL, provider]);
 
   const deleteProvider = useCallback(async (): Promise<void> => {
     if (!providerId || !organizationId) {

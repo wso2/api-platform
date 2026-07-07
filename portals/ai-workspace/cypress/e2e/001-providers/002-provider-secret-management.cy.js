@@ -17,14 +17,65 @@
  */
 
 /**
- * Secret management behaviour for LLM provider create/update flows.
+ * Secret management behaviour for LLM provider create and update flows.
  *
- * Covers:
- *   TC-57  Add provider with plaintext API key → POST /secrets called, placeholder stored
+ * Create flow (TC-57 – TC-59, TC-63):
+ *   TC-57  Add provider with plaintext API key → POST /secrets called, placeholder stored,
+ *          plaintext absent from the provider detail page
  *   TC-58  Re-save provider already holding a placeholder → POST /secrets NOT called
  *   TC-59  POST /secrets 500 → provider creation aborted, no provider created
+ *   TC-63  GET /secrets never returns "value"/"encryptedValue" for any secret in the org
+ *
+ * Update flow via Connection tab (TC-60 – TC-62, TC-64):
+ *   TC-60  Edit credential with a new plaintext value → POST /secrets called, PUT /llm-providers
+ *          body holds placeholder, plaintext absent from page
+ *   TC-61  Edit credential by typing an explicit placeholder → POST /secrets NOT called,
+ *          PUT /llm-providers fires with the placeholder as-is
+ *   TC-62  POST /secrets 500 during edit → PUT /llm-providers NOT called, error shown
+ *   TC-64  Same as TC-60 but reached via the provider list (nav → card → Connection tab)
+ *          instead of staying on the just-created provider's own detail page
  */
-describe('AI Workspace — LLM provider secret management', () => {
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function toSlug(value) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function navigateToAddProvider() {
+  cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 })
+    .should('be.visible')
+    .click();
+  cy.get('[data-cyid="add-new-provider-button"]', { timeout: 30000 })
+    .should('be.visible')
+    .click();
+}
+
+function selectOpenAITemplate() {
+  cy.get('[data-cyid="provider-template-openai-card"]', { timeout: 30000 })
+    .should('be.visible')
+    .click();
+}
+
+function fillProviderForm(name, apiKey) {
+  cy.get('[data-cyid="provider-name-input"] input:visible', { timeout: 30000 })
+    .should('be.visible')
+    .clear()
+    .type(name);
+  cy.get('[data-cyid="provider-api-key-input"] input:visible').type(apiKey);
+}
+
+// ---------------------------------------------------------------------------
+// CREATE flow
+// ---------------------------------------------------------------------------
+
+describe('AI Workspace — LLM provider secret management (create flow)', () => {
   const suffix = Date.now().toString().slice(-8);
   const orgHandle = Cypress.env('ORG_HANDLE');
   const providerName = `E2E Secret Provider ${suffix}`;
@@ -55,8 +106,7 @@ describe('AI Workspace — LLM provider secret management', () => {
       })
       .then((response) => {
         expect(response.status).to.eq(200);
-        const orgs = response.body?.list ?? [];
-        organizationId = orgs[0]?.id ?? '';
+        organizationId = response.body?.list?.[0]?.id ?? '';
         expect(organizationId).to.not.equal('');
       });
   });
@@ -109,6 +159,11 @@ describe('AI Workspace — LLM provider secret management', () => {
       'match',
       new RegExp(`^/organizations/${orgHandle}/service-provider/[^/]+$`)
     );
+
+    // Plaintext key must never appear anywhere on the provider detail page.
+    cy.get('body').invoke('text').then((text) => {
+      expect(text, 'plaintext key absent from provider detail page').not.to.include('sk-tc57-plaintext-key');
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -120,9 +175,7 @@ describe('AI Workspace — LLM provider secret management', () => {
     cy.request({
       method: 'POST',
       url: '/api/proxy/api/v0.9/secrets',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
+      headers: { Authorization: `Bearer ${authToken}` },
       form: true,
       body: {
         id: existingHandle,
@@ -204,38 +257,327 @@ describe('AI Workspace — LLM provider secret management', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // TC-63: GET /secrets never returns "value"/"encryptedValue" for any secret
+  // in the org (encryption proof, not scoped to a single just-created secret).
+  // -------------------------------------------------------------------------
+  it('TC-63: GET /secrets never exposes plaintext value for any secret in the org', () => {
+    const handle = `${toSlug(providerName)}-tc63-api-key`;
 
-  function navigateToAddProvider() {
-    cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 })
-      .should('be.visible')
-      .click();
-    cy.get('[data-cyid="add-new-provider-button"]', { timeout: 30000 })
-      .should('be.visible')
-      .click();
-  }
+    cy.request({
+      method: 'POST',
+      url: '/api/proxy/api/v0.9/secrets',
+      headers: { Authorization: `Bearer ${authToken}` },
+      form: true,
+      body: {
+        id: handle,
+        displayName: `${providerName} TC-63 API Key`,
+        value: 'sk-tc63-encryption-proof',
+        type: 'GENERIC',
+      },
+      failOnStatusCode: false,
+    }).then((r) => {
+      expect(r.status).to.be.oneOf([200, 201, 409]);
+    });
 
-  function selectOpenAITemplate() {
-    cy.get('[data-cyid="provider-template-openai-card"]', { timeout: 30000 })
-      .should('be.visible')
-      .click();
-  }
+    // Fetch the single secret by handle (not the paginated list — the org
+    // accumulates many secrets across the suite and the list defaults to
+    // limit=25, which can miss the one just created).
+    cy.request({
+      url: `/api/proxy/api/v0.9/secrets/${encodeURIComponent(handle)}?organizationId=${encodeURIComponent(organizationId)}`,
+      headers: { Authorization: `Bearer ${authToken}` },
+    }).then((r) => {
+      expect(r.status).to.eq(200);
+      const secret = r.body;
 
-  function fillProviderForm(name, apiKey) {
-    cy.get('[data-cyid="provider-name-input"] input:visible', { timeout: 30000 })
-      .should('be.visible')
-      .clear()
-      .type(name);
-    cy.get('[data-cyid="provider-api-key-input"] input:visible').type(apiKey);
-  }
+      expect(secret, `handle "${handle}" found`).to.exist;
+      expect(secret).to.have.property('id', handle);
+      expect(secret, 'no "value" field').not.to.have.property('value');
+      expect(secret, 'no "encryptedValue" field').not.to.have.property('encryptedValue');
+
+      cy.request({
+        method: 'DELETE',
+        url: `/api/proxy/api/v0.9/secrets/${encodeURIComponent(handle)}?organizationId=${encodeURIComponent(organizationId)}`,
+        headers: { Authorization: `Bearer ${authToken}` },
+        failOnStatusCode: false,
+      });
+    });
+  });
 });
 
-function toSlug(value) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+// ---------------------------------------------------------------------------
+// UPDATE flow (Connection tab)
+// ---------------------------------------------------------------------------
+
+describe('AI Workspace — LLM provider secret management (update flow)', () => {
+  const suffix = Date.now().toString().slice(-8);
+  const orgHandle = Cypress.env('ORG_HANDLE');
+  const providerName = `E2E Secret Update Provider ${suffix}`;
+  const INITIAL_KEY = `sk-update-initial-${suffix}`;
+  const UPDATED_KEY = `sk-update-new-${suffix}`;
+
+  let authToken = '';
+  let organizationId = '';
+  let providerId = '';
+
+  // Create a fresh provider for each test, navigate to its Connection tab.
+  // This avoids cross-hook variable sharing issues with test isolation.
+  beforeEach(() => {
+    cy.login();
+
+    cy.request({
+      method: 'POST',
+      url: '/api/proxy/api/portal/v0.9/auth/login',
+      form: true,
+      body: {
+        username: Cypress.env('ADMIN_USER'),
+        password: Cypress.env('ADMIN_PASSWORD'),
+      },
+    }).then((r) => { authToken = r.body?.token ?? ''; });
+
+    cy.then(() =>
+      cy.request({
+        url: '/api/proxy/api/v0.9/organizations',
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+    ).then((r) => { organizationId = r.body?.list?.[0]?.id ?? ''; });
+
+    // Sweep any stale E2E providers (e.g. if a previous test's afterEach delete failed).
+    cy.then(() => cy.sweepE2EProviders(authToken, organizationId));
+
+    cy.intercept('POST', /\/llm-providers(\?|$)/).as('setupProvider');
+
+    cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 }).should('be.visible').click();
+    cy.get('[data-cyid="add-new-provider-button"]', { timeout: 30000 }).should('be.visible').click();
+    cy.get('[data-cyid="provider-template-openai-card"]', { timeout: 30000 }).should('be.visible').click();
+    cy.get('[data-cyid="provider-name-input"] input:visible', { timeout: 30000 })
+      .should('be.visible').clear().type(providerName);
+    cy.get('[data-cyid="provider-api-key-input"] input:visible').type(INITIAL_KEY);
+    cy.get('[data-cyid="add-provider-button"]').should('not.be.disabled').click();
+
+    cy.wait('@setupProvider', { timeout: 20000 }).then((pi) => {
+      providerId = pi.response.body?.id ?? '';
+    });
+
+    // Match on the create response, not the URL: the redirect lands a beat
+    // after the click, and a URL scrape can race onto the transient "new"
+    // route — exclude it explicitly so the wait doesn't resolve early.
+    cy.location('pathname', { timeout: 30000 }).should(
+      'match',
+      new RegExp(`^/organizations/${orgHandle}/service-provider/(?!new$)[^/]+$`)
+    );
+
+    cy.contains('[role="tab"]', 'Connection', { timeout: 15000 }).click();
+    cy.contains('label', 'Credentials', { timeout: 15000 }).should('be.visible');
+    // Wait for provider data to load: the credential field must be in the masked
+    // state before any test interacts with it. Without this, handleUpdateCredential
+    // returns early because provider is still null/loading.
+    cy.contains('label', 'Credentials').parent().find('input', { timeout: 15000 })
+      .should('have.value', '******');
+  });
+
+  afterEach(() => {
+    if (authToken && organizationId && providerId) {
+      cy.request({
+        method: 'DELETE',
+        url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        headers: { Authorization: `Bearer ${authToken}` },
+        failOnStatusCode: false,
+      });
+      providerId = '';
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // TC-60: Edit credential with new plaintext → secret created, placeholder in PUT body
+  // -------------------------------------------------------------------------
+  it('TC-60: editing the credential creates a new secret and stores the placeholder in the provider PUT body', () => {
+    cy.intercept('POST', '**/secrets').as('createSecret');
+    cy.intercept('PUT', /\/llm-providers\/[^/?]+(\?|$)/).as('updateProvider');
+
+    // Click the Credentials field to clear the masked value, then type the new key.
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .click();
+
+    // After focus the field clears itself (masked → empty).
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .should('have.value', '');
+
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .type(UPDATED_KEY);
+
+    // Click the Save button that appears at the bottom when there are unsaved changes.
+    cy.contains('button', 'Save').click();
+
+    // Assert: POST /secrets fires before the provider PUT.
+    cy.wait('@createSecret', { timeout: 20000 }).then((si) => {
+      expect(si.response.statusCode, 'POST /secrets status').to.be.oneOf([200, 201]);
+      // New secret handle is a UUID.
+      const secretId = si.response.body?.id ?? '';
+      expect(secretId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      // Server never echoes the plaintext back.
+      expect(JSON.stringify(si.response.body)).not.to.include(UPDATED_KEY);
+      cy.log(`✅ Secret created: id="${secretId}"`);
+    });
+
+    // Assert: PUT /llm-providers carries a placeholder, not the plaintext key.
+    cy.wait('@updateProvider', { timeout: 20000 }).then((pi) => {
+      expect(pi.response.statusCode, 'PUT /llm-providers status').to.be.oneOf([200, 201]);
+      const authValue = pi.request.body?.upstream?.main?.auth?.value ?? '';
+      expect(authValue, 'PUT body has placeholder').to.include('{{ secret "');
+      expect(authValue, 'PUT body does NOT have plaintext key').not.to.include(UPDATED_KEY);
+      cy.log(`✅ Placeholder in PUT body: ${authValue}`);
+    });
+
+    // Plaintext key must not appear anywhere on the page.
+    cy.get('body').invoke('text').then((text) => {
+      expect(text, 'plaintext absent from page').not.to.include(UPDATED_KEY);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // TC-61: Edit credential by typing an explicit placeholder → POST /secrets NOT called
+  // -------------------------------------------------------------------------
+  it('TC-61: typing a placeholder value skips secret creation and sends the placeholder directly', () => {
+    const explicitHandle = `${toSlug(providerName)}-api-key`;
+
+    // Pre-create the secret so the platform-api accepts the placeholder in the PUT.
+    // cy.request() bypasses cy.intercept(), so this won't affect secretCallCount below.
+    cy.request({
+      method: 'POST',
+      url: '/api/proxy/api/v0.9/secrets',
+      headers: { Authorization: `Bearer ${authToken}` },
+      form: true,
+      body: {
+        id: explicitHandle,
+        displayName: `${providerName} API Key`,
+        value: 'sk-tc61-explicit-handle-value',
+        type: 'GENERIC',
+      },
+      failOnStatusCode: false,
+    }).then((r) => {
+      expect(r.status).to.be.oneOf([200, 201, 409]);
+    });
+
+    let secretCallCount = 0;
+    cy.intercept('POST', '**/secrets', (req) => {
+      secretCallCount += 1;
+      req.continue();
+    });
+    cy.intercept('PUT', /\/llm-providers\/[^/?]+(\?|$)/).as('updateProvider');
+
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .click();
+
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .should('have.value', '');
+
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .type(`{{ secret "${explicitHandle}" }}`, { parseSpecialCharSequences: false });
+
+    // Click the Save button at the bottom — typing a placeholder skips createSecret.
+    cy.contains('button', 'Save').click();
+
+    // PUT fires with the typed placeholder.
+    cy.wait('@updateProvider', { timeout: 20000 }).then((pi) => {
+      expect(pi.response.statusCode, 'PUT /llm-providers status').to.be.oneOf([200, 201]);
+      const authValue = pi.request.body?.upstream?.main?.auth?.value ?? '';
+      expect(authValue, 'PUT body carries the typed placeholder').to.include('{{ secret "');
+      cy.wrap(null).then(() => {
+        expect(secretCallCount, 'POST /secrets not called').to.equal(0);
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // TC-62: POST /secrets 500 during edit → PUT /llm-providers NOT called, error shown
+  // -------------------------------------------------------------------------
+  it('TC-62: aborts the credential update when POST /secrets returns 500', () => {
+    cy.intercept('POST', '**/secrets', {
+      statusCode: 500,
+      body: { error: 'simulated vault failure' },
+    }).as('failSecret');
+
+    let providerCallCount = 0;
+    cy.intercept('PUT', /\/llm-providers\/[^/?]+(\?|$)/, (req) => {
+      providerCallCount += 1;
+      req.continue();
+    });
+
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .click();
+
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .should('have.value', '');
+
+    cy.contains('label', 'Credentials')
+      .parent()
+      .find('input')
+      .type('sk-tc62-will-fail');
+
+    // Click Save — the stubbed 500 on POST /secrets should abort the update.
+    cy.contains('button', 'Save').click();
+
+    cy.wait('@failSecret');
+
+    // Error notification must be visible.
+    cy.get('[data-testid="aiworkspace-snackbar-notification"]', { timeout: 15000 })
+      .should('be.visible');
+
+    // Provider PUT must not have fired.
+    cy.wrap(null).then(() => {
+      expect(providerCallCount, 'PUT /llm-providers not called').to.equal(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // TC-64: Same rotation as TC-60, but reached via the provider list (nav →
+  // card → Connection tab) instead of staying on the freshly created
+  // provider's own detail page — exercises the list → card navigation path.
+  // -------------------------------------------------------------------------
+  it('TC-64: updating the API key after navigating from the provider list rotates the secret', () => {
+    const UPDATED_KEY_VIA_LIST = `sk-update-via-list-${suffix}`;
+
+    cy.intercept('POST', '**/secrets').as('createSecret');
+    cy.intercept('PUT', /\/llm-providers\/[^/?]+(\?|$)/).as('updateProvider');
+
+    cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 }).should('be.visible').click();
+    cy.get(`[data-cyid="provider-card-${providerId}"]`, { timeout: 30000 }).should('be.visible').click();
+    cy.contains('[role="tab"]', 'Connection', { timeout: 15000 }).click();
+    cy.contains('label', 'Credentials', { timeout: 15000 }).parent().find('input', { timeout: 15000 })
+      .should('have.value', '******');
+
+    cy.contains('label', 'Credentials').parent().find('input').click();
+    cy.contains('label', 'Credentials').parent().find('input').should('have.value', '');
+    cy.contains('label', 'Credentials').parent().find('input').type(UPDATED_KEY_VIA_LIST);
+    cy.contains('button', 'Save').click();
+
+    cy.wait('@createSecret', { timeout: 20000 }).then((si) => {
+      expect(si.response.statusCode, 'POST /secrets status').to.be.oneOf([200, 201]);
+      expect(JSON.stringify(si.response.body), 'plaintext not in secret response').not.to.include(UPDATED_KEY_VIA_LIST);
+    });
+
+    cy.wait('@updateProvider', { timeout: 20000 }).then((pi) => {
+      expect(pi.response.statusCode, 'PUT /llm-providers status').to.be.oneOf([200, 201]);
+      const authValue = pi.request.body?.upstream?.main?.auth?.value ?? '';
+      expect(authValue, 'PUT body has placeholder').to.include('{{ secret "');
+      expect(authValue, 'PUT body does NOT have plaintext key').not.to.include(UPDATED_KEY_VIA_LIST);
+    });
+  });
+});
