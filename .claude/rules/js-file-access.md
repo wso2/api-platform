@@ -38,6 +38,13 @@ Apply this rule whenever writing, refactoring, or reviewing JavaScript (`.js`) c
 * **Externalize to the `DP_*` Config System:** Read the byte ceiling from the YAML config or `DP_MAX_UPLOAD_BYTES` / `DP_MAX_ZIP_ENTRIES` / `DP_MAX_ZIP_RATIO` environment variables. Apply a safe default when the key is absent.
 * **Return HTTP 413 on Overflow:** If multer or stream limits are exceeded, the error handler must respond with `HTTP 413 Request Entity Too Large` and a generic message. Do not echo the configured limit in the response body.
 
+### 6. Uploaded Content Type Allowlisting and No Dynamic Code Execution on User Input
+
+* **Content-Sniff Before Trusting `mimetype`:** `req.file.mimetype` is client-declared and trivially spoofable. Validate the actual buffer content (e.g. via `file-type`'s `fileTypeFromBuffer`) against an explicit allowlist before storing or serving an upload — never key any decision solely on `req.file.mimetype` or the filename extension.
+* **SVG Is Not "Just an Image":** SVG is XML and can carry `<script>` and event-handler attributes. If SVG upload is supported at all, it must go through the sanitization and serving hardening in `js-output-encoding-xss.md` (allowlist-based sanitization, `Content-Disposition: attachment` or a cookie-less origin) — never store and serve an uploaded SVG unmodified.
+* **Never `eval`/`vm`/Template-Render User-Supplied Code:** Do not pass user-supplied text to `eval()`, `new Function()`, `vm.runInThisContext()`, or a template engine's compile step (e.g. treating uploaded content as an EJS/Handlebars template) without an explicit sandbox — this is Server-Side Template Injection (SSTI) and is equivalent in impact to remote code execution.
+* **Authenticated Does Not Mean Safe:** A script/template/expression feature reachable only by an authenticated publisher or admin is still processing untrusted input for the purposes of this directive — authorization controls *who* can reach the feature, not whether execution of that input is safe.
+
 ---
 
 ## Code Examples for Enforcement
@@ -66,6 +73,20 @@ for (const entry of zip.files) {
 
 // BAD: multer with hardcoded 50 MB limit
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+// BAD: Trusts the client-declared mimetype with no byte-level check, and stores/serves
+// an SVG unmodified — the stored-XSS-via-SVG-upload pattern.
+app.post('/apis/:id/icon', upload.single('icon'), async (req, res) => {
+  await ApiIcon.create({ apiId: req.params.id, data: req.file.buffer, mimeType: req.file.mimetype });
+  res.status(201).send();
+});
+
+// BAD: Renders user-uploaded content as a template — Server-Side Template Injection.
+const ejs = require('ejs');
+app.post('/docs/preview', upload.single('doc'), (req, res) => {
+  const rendered = ejs.render(req.file.buffer.toString('utf8')); // Arbitrary code execution
+  res.send(rendered);
+});
 ```
 
 ### Best Practice (What to Generate)
@@ -213,6 +234,43 @@ async function extractSingleEntry(zipBuffer, targetEntryName, fileConfig) {
 
   return Buffer.concat(chunks);
 }
+
+// utils/uploadContentValidation.js — GOOD: content-sniffs the actual buffer
+// against an explicit allowlist, never trusting req.file.mimetype or the extension.
+const { fileTypeFromBuffer } = require('file-type');
+
+const ALLOWED_UPLOAD_TYPES = new Set(['image/png', 'image/jpeg']);
+// 'image/svg+xml' deliberately excluded here — see js-output-encoding-xss.md
+// for the sanitization + serving hardening required if SVG upload is added.
+
+async function validateUploadContent(buffer) {
+  const detected = await fileTypeFromBuffer(buffer);
+  if (!detected || !ALLOWED_UPLOAD_TYPES.has(detected.mime)) {
+    throw Object.assign(new Error('Unsupported upload content type'), { statusCode: 422 });
+  }
+  return detected.mime;
+}
+
+app.post('/apis/:id/icon', upload.single('icon'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'invalid_request', message: 'No file was uploaded.' });
+    }
+    const sniffedMime = await validateUploadContent(req.file.buffer); // Actual bytes, not the header
+    await ApiIcon.create({ apiId: req.params.id, data: req.file.buffer, mimeType: sniffedMime });
+    res.status(201).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GOOD: User-uploaded content is only ever displayed, never compiled/executed
+// as a template. If rendering is required, sanitize per js-output-encoding-xss.md
+// and pass the result through an escaping interpolation, not a template compile step.
+app.post('/docs/preview', upload.single('doc'), (req, res) => {
+  const rawText = req.file.buffer.toString('utf8');
+  res.render('docPreview', { content: sanitizeApiDocHtml(rawText) }); // <%= content %> in the view
+});
 ```
 
 ---
@@ -223,3 +281,6 @@ async function extractSingleEntry(zipBuffer, targetEntryName, fileConfig) {
 > * Is file processing done from `req.file.buffer` in memory without any `fs.writeFile` / `fs.mkdtemp` intermediate step? (If disk writes exist, remove them or wrap in a `finally` cleanup).
 > * Is every ZIP entry's `path` checked for `..`, absolute paths, and null bytes before any extraction? (If not, add checks and call `entry.autodrain()` on skipped entries).
 > * Are multer `limits.fileSize`, `maxZipEntries`, and `maxZipRatio` sourced from the `DP_*` config system rather than hardcoded? (If hardcoded, move to config with a safe default).
+> * Is an upload's actual content sniffed (`fileTypeFromBuffer`) against an allowlist, rather than trusting `req.file.mimetype` or the filename extension? (If trusted as-is, add content-sniffing.)
+> * Is a user-uploaded SVG stored/served without the sanitization and serving hardening from `js-output-encoding-xss.md`? (If yes, apply both — sanitize and serve as `attachment`/from a cookie-less origin.)
+> * Does any code path compile or execute user-supplied content as a template (`ejs.render`, `new Function`, `vm.runInThisContext`) rather than only ever displaying it through an escaping interpolation? (If yes, this is SSTI/RCE — remove the compile/execute step.)
