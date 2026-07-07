@@ -262,9 +262,6 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != nil && *req.Id != "" && *req.Id != handle {
-		return nil, constants.ErrHandleImmutable
-	}
 	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}

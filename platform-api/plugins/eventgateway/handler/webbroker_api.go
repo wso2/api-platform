@@ -170,6 +170,12 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"WebBroker API id is immutable and cannot be changed"))
+		return
+	}
+
 	updatedBy, ok := resolveActor(w, r, h.identity, h.slogger, "update WebBroker API")
 	if !ok {
 		return

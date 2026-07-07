@@ -165,10 +165,6 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 		return nil, constants.ErrSubscriptionPlanNotFound
 	}
 
-	// The handle (id) is immutable; reject any attempt to change it to a different value.
-	if update.Handle != nil && *update.Handle != "" && *update.Handle != existing.Handle {
-		return nil, constants.ErrHandleImmutable
-	}
 	if update.Name != nil {
 		if *update.Name == "" {
 			return nil, fmt.Errorf("name is required")

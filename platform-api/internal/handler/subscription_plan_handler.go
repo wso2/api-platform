@@ -326,7 +326,7 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return
 	}
 
-	if req.Id != nil && *req.Id != "" && *req.Id != planId {
+	if err := utils.ValidateHandleImmutable(planId, req.Id); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"The plan id is immutable and cannot be changed"))
 		return

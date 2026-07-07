@@ -419,8 +419,10 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 // UpdateAPIByHandle updates an existing API identified by handle
 func (s *APIService) UpdateAPIByHandle(handle string, req *api.RESTAPI, orgId, updatedBy string) (*api.RESTAPI, error) {
 	// The id (handle) is immutable: a body id must match the API being updated.
-	if req != nil && req.Id != nil && *req.Id != "" && *req.Id != handle {
-		return nil, constants.ErrHandleImmutable
+	if req != nil {
+		if err := utils.ValidateHandleImmutable(handle, req.Id); err != nil {
+			return nil, err
+		}
 	}
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {

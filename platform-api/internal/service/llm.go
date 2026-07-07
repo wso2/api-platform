@@ -325,9 +325,6 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != nil && *req.Id != "" && *req.Id != handle {
-		return nil, constants.ErrHandleImmutable
-	}
 	if req.DisplayName == "" {
 		return nil, constants.ErrInvalidInput
 	}
@@ -1030,9 +1027,6 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != nil && *req.Id != "" && *req.Id != handle {
-		return nil, constants.ErrHandleImmutable
-	}
 	// Fetch existing provider to preserve sensitive fields on update
 	existing, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
@@ -1481,9 +1475,6 @@ func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
-	}
-	if req.Id != nil && *req.Id != "" && *req.Id != handle {
-		return nil, constants.ErrHandleImmutable
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" {
 		return nil, constants.ErrInvalidInput

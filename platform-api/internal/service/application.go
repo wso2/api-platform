@@ -269,8 +269,8 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Ap
 	}
 
 	// The id (handle) is immutable: body id must be present and match the application being updated.
-	if req.Id == "" || req.Id != app.Handle {
-		return nil, constants.ErrHandleImmutable
+	if err := utils.ValidateHandleImmutableRequired(app.Handle, req.Id); err != nil {
+		return nil, err
 	}
 
 	name := strings.TrimSpace(req.DisplayName)

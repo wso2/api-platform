@@ -190,7 +190,7 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate that the name in the request body (if provided) matches the URL path parameter
-	if req.Name != nil && *req.Name != "" && *req.Name != keyName {
+	if err := utils.ValidateHandleImmutable(keyName, req.Name); err != nil {
 		h.slogger.Warn("API key name mismatch", "userId", userId, "orgId", orgId, "apiHandle", apiHandle, "urlKeyName", keyName, "bodyKeyName", *req.Name)
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			fmt.Sprintf("API key name mismatch: name in request body '%s' must match the key name in URL '%s'", *req.Name, keyName)))
