@@ -1239,6 +1239,59 @@ func TestLLMProviderServiceCreateMigratesLegacyPolicies(t *testing.T) {
 	}
 }
 
+func TestLLMProviderServiceCreateRejectsInvalidGlobalPolicyVersion(t *testing.T) {
+	service := NewLLMProviderService(&mockLLMProviderRepo{}, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProviderServiceCreateRejectsInvalidOperationPolicyVersion(t *testing.T) {
+	service := NewLLMProviderService(&mockLLMProviderRepo{}, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProviderServiceCreateRejectsInvalidLegacyPolicyVersion(t *testing.T) {
+	service := NewLLMProviderService(&mockLLMProviderRepo{}, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.Policies = &[]api.LLMPolicy{{Name: "basic-ratelimit", Version: "V1"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProviderServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "prov-uuid", ID: providerID, TemplateUUID: "tpl-openai"}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
+
+	_, err := service.Update("org-1", "provider-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
 func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 	providerRepo := &mockLLMProviderRepo{existsResult: true}
 	templateRepo := &mockLLMTemplateRepo{
@@ -1323,6 +1376,42 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if err != constants.ErrLLMProviderNotFound {
 		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
+
+	_, err := service.Update("org-1", "proxy-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
 

@@ -155,6 +155,12 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 				"Invalid transport protocol"))
 			return
 		}
+		if errors.Is(err, constants.ErrInvalidPolicyVersion) {
+			h.slogger.Error("Invalid policy version format", "organizationId", orgId, "error", err)
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				err.Error()))
+			return
+		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
 			h.slogger.Error("Subscription plan not found or not active", "organizationId", orgId, "error", err)
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -311,6 +317,12 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 			h.slogger.Error("Invalid transport protocol", "apiId", apiId, "organizationId", orgId)
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid transport protocol"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidPolicyVersion) {
+			h.slogger.Error("Invalid policy version format", "apiId", apiId, "organizationId", orgId, "error", err)
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				err.Error()))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
