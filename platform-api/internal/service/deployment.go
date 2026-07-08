@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/deploymenttransform"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -243,6 +244,14 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		apiDeployment, err := s.apiUtil.BuildAPIDeploymentYAML(apiModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
+		}
+		// Adapt the canonical artifact to the target gateway's capability.
+		// Notably, gateways < 1.2.0 only accept the legacy apiVersion
+		// (gateway.api-platform.wso2.com/v1alpha1), so the apiVersion is
+		// down-converted here based on the resolved gateway version.
+		target := deploymenttransform.ParseVersion(gateway.Version)
+		if err := deploymenttransform.Default().Transform(apiModel.Kind, target, apiDeployment); err != nil {
+			return nil, fmt.Errorf("failed to transform API deployment for gateway %s: %w", gateway.Version, err)
 		}
 		applyStructOverrides(apiDeployment, endpointURL, vhostMain, vhostSandbox)
 		contentBytes, err = yaml.Marshal(apiDeployment)

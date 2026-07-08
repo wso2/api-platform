@@ -6,6 +6,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -183,6 +184,84 @@ func TestTransform_Proxy_OldGateway_FlattensToLegacy(t *testing.T) {
 	assert.Nil(t, artifact.Spec.GlobalPolicies)
 	require.Len(t, artifact.Spec.Policies, 1)
 	assert.Equal(t, "/*", artifact.Spec.Policies[0].Paths[0].Path)
+}
+
+// ---------------------------------------------------------------------------
+// Registry.Transform — REST/WebSub apiVersion down-convert
+//
+// REST/WebSub artifacts carry no policy-list split, so the only conversion for
+// old gateways is the apiVersion field swap.
+// ---------------------------------------------------------------------------
+
+func newAPIArtifact(kind string) *dto.APIDeploymentYAML {
+	return &dto.APIDeploymentYAML{
+		ApiVersion: constants.GatewayApiVersion,
+		Kind:       kind,
+		Spec:       dto.APIYAMLData{DisplayName: "test"},
+	}
+}
+
+func TestTransform_RestAPI_NewGateway_ApiVersionPassthrough(t *testing.T) {
+	artifact := newAPIArtifact(constants.RestApi)
+	err := Default().Transform(constants.RestApi, ParseVersion(MinSplitPoliciesVersion), artifact)
+	require.NoError(t, err)
+	assert.Equal(t, constants.GatewayApiVersion, artifact.ApiVersion)
+}
+
+func TestTransform_RestAPI_OldGateway_DowngradesApiVersion(t *testing.T) {
+	artifact := newAPIArtifact(constants.RestApi)
+	err := Default().Transform(constants.RestApi, ParseVersion("1.1.0"), artifact)
+	require.NoError(t, err)
+	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+}
+
+func TestTransform_WebSubAPI_OldGateway_DowngradesApiVersion(t *testing.T) {
+	artifact := newAPIArtifact(constants.WebSubApi)
+	err := Default().Transform(constants.WebSubApi, ParseVersion(""), artifact)
+	require.NoError(t, err)
+	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+}
+
+func TestTransform_RestAPI_WrongPayloadType_ReturnsError(t *testing.T) {
+	// Passing a *dto.LLMProviderDeploymentYAML where an APIDeploymentYAML is
+	// expected triggers the type-assertion guard in Apply.
+	artifact := newProviderArtifact(sampleGlobal(), nil, nil)
+	err := Default().Transform(constants.RestApi, ParseVersion("1.1.0"), artifact)
+	assert.Error(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// Registry.Transform — MCP apiVersion down-convert (*model.MCPProxyDeploymentYAML)
+// ---------------------------------------------------------------------------
+
+func newMCPArtifact() *model.MCPProxyDeploymentYAML {
+	return &model.MCPProxyDeploymentYAML{
+		ApiVersion: constants.GatewayApiVersion,
+		Kind:       constants.MCPProxy,
+		Spec:       model.MCPProxyDeploymentSpec{DisplayName: "test"},
+	}
+}
+
+func TestTransform_MCP_NewGateway_ApiVersionPassthrough(t *testing.T) {
+	artifact := newMCPArtifact()
+	err := Default().Transform(constants.MCPProxy, ParseVersion(MinSplitPoliciesVersion), artifact)
+	require.NoError(t, err)
+	assert.Equal(t, constants.GatewayApiVersion, artifact.ApiVersion)
+}
+
+func TestTransform_MCP_OldGateway_DowngradesApiVersion(t *testing.T) {
+	artifact := newMCPArtifact()
+	err := Default().Transform(constants.MCPProxy, ParseVersion("1.1.0"), artifact)
+	require.NoError(t, err)
+	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+}
+
+func TestTransform_MCP_WrongPayloadType_ReturnsError(t *testing.T) {
+	// Passing a *dto.APIDeploymentYAML where an MCPProxyDeploymentYAML is
+	// expected triggers the type-assertion guard in Apply.
+	artifact := newAPIArtifact(constants.RestApi)
+	err := Default().Transform(constants.MCPProxy, ParseVersion("1.1.0"), artifact)
+	assert.Error(t, err)
 }
 
 // ---------------------------------------------------------------------------
