@@ -1174,9 +1174,15 @@ async function buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, config
     const agentVisibleAPIs = metaDataList.filter(api => api.agentVisibility !== 'HIDDEN');
     const hiddenAPICount = metaDataList.length - agentVisibleAPIs.length;
 
+    // api.type holds the stored constant (e.g. "RestApi", "Mcp", "WebSubApi" — see
+    // constants.API_TYPE), not the enum key used below — map it back or every
+    // REST/MCP/WebSub API silently drops out of the discovery index.
+    const typeConstantToEnum = Object.fromEntries(
+        Object.entries(constants.API_TYPE).map(([enumKey, storedValue]) => [storedValue, enumKey])
+    );
     const byType = { REST: [], MCP: [], GRAPHQL: [], WS: [], WEBSUB: [] };
     for (const api of agentVisibleAPIs) {
-        const type = api.type;
+        const type = typeConstantToEnum[api.type];
         if (byType[type]) byType[type].push(api);
     }
 

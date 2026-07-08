@@ -84,7 +84,9 @@ const createAPIMetadata = async (req, res) => {
             }
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
-            apiMetadata.type = util.resolveApiType(apiMetadata.type);
+            // Type is resolved centrally below, using this raw (possibly omitted) value —
+            // don't resolve here, or an omitted type on a /mcp-servers request can no
+            // longer be told apart from an explicit REST.
             if (apiMetadata.id) {
                 apiMetadata.handle = apiMetadata.id;
             }
@@ -96,13 +98,7 @@ const createAPIMetadata = async (req, res) => {
             }
         }
 
-        if (req.__forceApiType) {
-            apiMetadata.type = req.__forceApiType;
-        } else if (apiMetadata.type === constants.API_TYPE.MCP) {
-            throw new Sequelize.ValidationError(
-                "MCP servers must be created via /api/v0.9/mcp-servers"
-            );
-        }
+        apiMetadata.type = resolveTypeOrReject(apiMetadata.type, req.__forceApiType);
 
         // Validate input
         const hasGraphQLSchema = apiMetadata.type === constants.API_TYPE.GRAPHQL &&
@@ -316,6 +312,41 @@ async function resolveScopedApiId(req, orgId, apiHandle) {
         : apiDao.getIdExcludingType(orgId, apiHandle, constants.API_TYPE.MCP);
 }
 
+/**
+ * Resolves a caller-supplied `type` against the resource family the request came in on,
+ * requiring an explicit match rather than silently defaulting or coercing it — symmetric
+ * with resolveScopedApiId's read-side scoping. `forceType` is `req.__forceApiType`:
+ *  - /apis (forceType undefined): `type` is required; an explicit MCP type is rejected
+ *    (MCP records must go through /mcp-servers).
+ *  - /mcp-servers (forceType = 'MCP'): `type` is required and must resolve to MCP; any
+ *    other type is rejected (non-MCP records must go through /apis).
+ *
+ * Applies to the JSON `apiMetadata` field path only. YAML/ZIP uploads resolve `type`
+ * via mapDevportalYamlToApiMetadata before this ever runs, defaulting a missing one to
+ * REST — real usage always states `type: MCP` explicitly there (see the api.yaml files
+ * under samples/mcps), so this doesn't affect any current caller.
+ */
+function resolveTypeOrReject(rawType, forceType) {
+    if (!rawType) {
+        throw new Sequelize.ValidationError("Missing required field 'type'");
+    }
+    const resolved = util.resolveApiType(rawType);
+    if (forceType) {
+        if (resolved !== forceType) {
+            throw new Sequelize.ValidationError(
+                `Only type '${forceType}' is allowed via this endpoint — use /api/v0.9/apis for other API types`
+            );
+        }
+        return forceType;
+    }
+    if (resolved === constants.API_TYPE.MCP) {
+        throw new Sequelize.ValidationError(
+            "MCP servers must be created via /api/v0.9/mcp-servers"
+        );
+    }
+    return resolved;
+}
+
 const getAPIMetadata = async (req, res) => {
 
     const orgId = req.orgId;
@@ -363,9 +394,8 @@ const getAllAPIMetadata = async (req, res) => {
         const apiVersion = req.query.version;
         const tags = req.query.tags;
         const view = req.query.view;
-        const retrievedAPIs = await getMetadataListFromDB(orgId, searchTerm, tags, apiName, apiVersion, view);
-        const nonMcpAPIs = retrievedAPIs.filter((api) => api.type !== constants.API_TYPE.MCP);
-        res.status(200).json(util.toPaginatedList(nonMcpAPIs, req));
+        const retrievedAPIs = await getMetadataListFromDB(orgId, searchTerm, tags, apiName, apiVersion, view, { exclude: constants.API_TYPE.MCP });
+        res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
     } catch (error) {
         logger.error('API metadata list retrieval failed', {
             error: error.message,
@@ -381,7 +411,7 @@ const getAllAPIMetadata = async (req, res) => {
     }
 };
 
-const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersion, viewName) => {
+const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersion, viewName, typeFilter) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -391,11 +421,13 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
             if (apiName) condition.name = apiName;
             if (apiVersion) condition.version = apiVersion;
             condition.org_uuid = orgId;
+            if (typeFilter?.include) condition.type = typeFilter.include;
+            if (typeFilter?.exclude) condition.type = { [Sequelize.Op.ne]: typeFilter.exclude };
             retrievedAPIs = await apiDao.getByCondition(condition, t, tags);
         } else if (searchTerm) {
-            retrievedAPIs = await apiDao.search(orgId, searchTerm, viewName, t);
+            retrievedAPIs = await apiDao.search(orgId, searchTerm, viewName, t, typeFilter);
         } else if (viewName) {
-            retrievedAPIs = await apiDao.list(orgId, viewName, t);
+            retrievedAPIs = await apiDao.list(orgId, viewName, t, typeFilter);
         }
         // Create response object
         let apiCreationResponse = [];
@@ -426,6 +458,11 @@ const updateAPIMetadata = async (req, res) => {
         if (!apiId) {
             return res.status(404).send("API not found");
         }
+        // `type` is immutable after creation — resolveTypeOrReject below only enforces the
+        // /apis-vs-/mcp-servers family boundary, not that the value matches this specific
+        // record's existing type, so that has to be checked separately once it's resolved.
+        const [existingRecord] = await apiDao.getByCondition({ uuid: apiId, org_uuid: orgId });
+        const existingType = existingRecord ? existingRecord.type : undefined;
         logger.debug('MCP API Definition file', {
             apiFileName,
             hasApiDefinitionFile: !!apiDefinitionFile,
@@ -461,7 +498,9 @@ const updateAPIMetadata = async (req, res) => {
             }
         } else {
             apiMetadata = JSON.parse(req.body.apiMetadata);
-            apiMetadata.type = util.resolveApiType(apiMetadata.type);
+            // Type is resolved centrally below, using this raw (possibly omitted) value —
+            // don't resolve here, or an omitted type on a /mcp-servers request can no
+            // longer be told apart from an explicit REST.
             if (apiMetadata.id) {
                 apiMetadata.handle = apiMetadata.id;
             }
@@ -473,12 +512,9 @@ const updateAPIMetadata = async (req, res) => {
             }
         }
 
-        if (req.__forceApiType) {
-            apiMetadata.type = req.__forceApiType;
-        } else if (apiMetadata.type === constants.API_TYPE.MCP) {
-            throw new Sequelize.ValidationError(
-                "MCP servers must be updated via /api/v0.9/mcp-servers/{mcpServerId}"
-            );
+        apiMetadata.type = resolveTypeOrReject(apiMetadata.type, req.__forceApiType);
+        if (existingType && apiMetadata.type !== existingType) {
+            throw new CustomError(409, 'Conflict', `API type cannot be changed after creation (existing type is '${existingType}')`);
         }
 
         // Validate input — spec file is optional on update (already stored from create)
@@ -499,9 +535,13 @@ const updateAPIMetadata = async (req, res) => {
             apiMetadata.agentVisibility = normalizedUpdateAgentVisibility;
         }
 
-        // Compute added/removed labels diff for YAML and artifact paths
+        // Compute added/removed labels diff against the record's current labels —
+        // needed for every input format (JSON/YAML/artifact), not just YAML/artifact:
+        // apiDao.update() has no `labels` column of its own, so without this diff a
+        // `labels` array sent via the plain JSON apiMetadata field was silently a
+        // no-op (unlike tags/subscriptionPlans, which apply on every update path).
         let existingAPI;
-        if (orgId && apiId && Array.isArray(apiMetadata.labels) && (apiArtifactFile?.buffer || req.files?.api?.[0])) {
+        if (orgId && apiId && Array.isArray(apiMetadata.labels)) {
             existingAPI = await getMetadataFromDB(orgId, apiId);
         }
         if (Array.isArray(apiMetadata.labels) && !apiMetadata.addedLabels && existingAPI !== undefined) {
@@ -530,7 +570,11 @@ const updateAPIMetadata = async (req, res) => {
             if (!updatedRows) {
                 throw new Sequelize.EmptyResultError("No record found to update");
             }
-            if (apiMetadata.addedLabels) {
+            // An empty array is a valid "no labels to add/remove" diff result (e.g. the
+            // same labels were resent) — `if (apiMetadata.addedLabels)` alone is truthy
+            // for `[]` too, which used to call deleteApiMapping with nothing to delete
+            // and misreport that as "API Labels not found to delete".
+            if (apiMetadata.addedLabels?.length) {
                 const labels = apiMetadata.addedLabels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
@@ -540,7 +584,7 @@ const updateAPIMetadata = async (req, res) => {
                 await labelDao.createApiMapping(orgId, apiId, labels, userId, t);
                 updatedAPI[0].dataValues.addedLabels = apiMetadata.addedLabels;
             }
-            if (apiMetadata.removedLabels) {
+            if (apiMetadata.removedLabels?.length) {
                 const labels = apiMetadata.removedLabels;
                 if (!Array.isArray(labels)) {
                     throw new Sequelize.ValidationError(
@@ -649,10 +693,15 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
-            logUserAction('API_METADATA_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
             const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0].dataValues);
             res.status(200).send(new APIDTO(updatedAPI[0].dataValues, audit));
         });
+        // Fired only after the transaction above has committed and released its
+        // connection — logUserAction's DB write is fire-and-forget on the shared
+        // single-connection SQLite pool, and running it while that connection is
+        // still checked out by an open transaction deadlocks against itself,
+        // surfacing as "database is locked" after the busy_timeout expires.
+        logUserAction('API_METADATA_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
     } catch (error) {
         logger.error('API metadata update failed', {
             error: error.message,
@@ -668,6 +717,7 @@ const deleteAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
     const { apiId: apiHandle } = req.params;
     let apiId;
+    let deleted = false;
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -688,7 +738,7 @@ const deleteAPIMetadata = async (req, res) => {
             if (apiDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
             } else {
-                logUserAction('API_METADATA_DELETED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
+                deleted = true;
                 res.status(200).send("Resouce Deleted Successfully");
             }
         } catch (error) {
@@ -701,6 +751,12 @@ const deleteAPIMetadata = async (req, res) => {
             util.handleError(res, error);
         }
     });
+    // Fired only after the transaction above has committed and released its
+    // connection — see the comment in updateAPIMetadata for why firing this
+    // while the connection is still checked out deadlocks against itself.
+    if (deleted) {
+        logUserAction('API_METADATA_DELETED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
+    }
 };
 
 const createAPITemplate = async (req, res) => {
@@ -1059,27 +1115,23 @@ const getAPIFile = async (req, res) => {
         }
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
-        if (apiFileResponse) {
-            apiFile = apiFileResponse.file_content;
-            //convert to text to check if link
-            const textContent = new TextDecoder().decode(apiFile);
-            if (textContent.startsWith("http") || textContent.startsWith("https")) {
-                apiFile = textContent;
-                contentType = constants.MIME_TYPES.TEXT;
-            } else if (util.isTextFile(fileExtension)) {
-                contentType = util.retrieveContentType(apiFileName, constants.TEXT)
-            } else {
-                contentType = util.retrieveContentType(apiFileName, constants.IMAGE);
-            }
-            res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
-
-            if (apiFileResponse) {
-                // Send file content as text
-                return res.status(200).send(apiFile);
-            } else {
-                res.status(404).send("API File not found");
-            }
+        if (!apiFileResponse) {
+            return res.status(404).send("API File not found");
         }
+        apiFile = apiFileResponse.file_content;
+        //convert to text to check if link
+        const textContent = new TextDecoder().decode(apiFile);
+        if (textContent.startsWith("http") || textContent.startsWith("https")) {
+            apiFile = textContent;
+            contentType = constants.MIME_TYPES.TEXT;
+        } else if (util.isTextFile(fileExtension)) {
+            contentType = util.retrieveContentType(apiFileName, constants.TEXT)
+        } else {
+            contentType = util.retrieveContentType(apiFileName, constants.IMAGE);
+        }
+        res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
+        // Send file content as text
+        return res.status(200).send(apiFile);
     } catch (error) {
         logger.error('API content retrieval failed', {
             error: error.message,
@@ -1573,6 +1625,7 @@ const updateView = async (req, res) => {
     const labels = req.body.labels;
     const viewHandle = req.params.viewId;
     const userId = util.resolveActor(req);
+    let updatedViewId;
     try {
         await sequelize.transaction({
             timeout: 60000,
@@ -1588,9 +1641,13 @@ const updateView = async (req, res) => {
                 await viewDao.replaceLabels(orgId, viewId, labels, userId, t);
             }
             viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
-            logUserAction('VIEW_UPDATED', req, { orgId, viewId: viewHandle, resourceUuid: viewId, resourceType: 'view' });
+            updatedViewId = viewId;
             res.status(200).send(req.body);
         });
+        // Fired only after the transaction above has committed and released its
+        // connection — see the comment in updateAPIMetadata for why firing this
+        // while the connection is still checked out deadlocks against itself.
+        logUserAction('VIEW_UPDATED', req, { orgId, viewId: viewHandle, resourceUuid: updatedViewId, resourceType: 'view' });
     } catch (error) {
         logger.error('view update error failed', {
             error: error.message,
@@ -1648,7 +1705,7 @@ const getView = async (req, res) => {
 const getViewInfo = async (orgId, name) => {
 
     const view = await viewDao.get(orgId, name);
-    if (view.dataValues) {
+    if (view?.dataValues) {
         const audit = await userIdpReferenceDao.buildSingleAuditFields(view.dataValues);
         return new ViewDTO(view.dataValues, audit);
     } else {
@@ -1897,7 +1954,15 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
         status: apiStatus,
         agentVisibility,
         tags: util.normalizeStringArray(spec.tags),
-        labels: util.normalizeStringArray(spec.labels),
+        // Unlike tags (always fully replaced on update — apiMetadata.tags || [] runs
+        // unconditionally), labels are add/remove-diffed against the record's current
+        // labels, and that diff only runs when `labels` is an array at all — so this
+        // must stay `undefined` when the YAML omits `labels` entirely, not `[]`
+        // (normalizeStringArray's default), or every YAML/artifact update would compute
+        // "remove everything currently attached" even when labels were never mentioned.
+        // Matches the JSON apiMetadata field path, where an omitted `labels` key is
+        // already `undefined` with no coercion.
+        labels: spec.labels !== undefined ? util.normalizeStringArray(spec.labels) : undefined,
         owners: {
             businessOwner: businessInformation.businessOwner,
             businessOwnerEmail: businessInformation.businessOwnerEmail,

@@ -443,6 +443,8 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) e
 			return apperror.LLMProviderTemplateRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrSecretRefMissing):
 			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
+			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
 		case errors.Is(err, constants.ErrInvalidInput):
 			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
@@ -552,6 +554,8 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) e
 			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
 		case errors.Is(err, constants.ErrHandleImmutable):
 			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
+			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
 		case errors.Is(err, constants.ErrInvalidInput):
 			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
@@ -625,6 +629,8 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 			return apperror.LLMProviderRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrProjectNotFound):
 			return apperror.ProjectNotFound.Wrap(err)
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
+			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
 		case errors.Is(err, constants.ErrInvalidInput):
 			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
@@ -785,6 +791,8 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 			return apperror.LLMProviderRefNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrHandleImmutable):
 			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
+			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
 		case errors.Is(err, constants.ErrInvalidInput):
 			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:

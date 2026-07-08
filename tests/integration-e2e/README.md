@@ -146,7 +146,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      from `database/schema.postgres.sql` (the devportal does not auto-migrate on
      an external DB).
    - Auth: the devportal accepts the platform-api admin JWT directly (shared
-     `DP_PLATFORMAPI_JWTSECRET`, org from the token's `org_handle` claim). The
+     `APIP_DP_PLATFORMAPI_JWTSECRET`, org from the token's `org_handle` claim). The
      admin must carry `dp:*` scopes, which platform-api's built-in admin lacks —
      so the suite injects an admin (ap:* *and* dp:*) via the
      `AUTH_FILE_BASED_USERS` env var (a mounted config's users are ignored; only

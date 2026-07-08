@@ -802,6 +802,15 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
 		return nil, err
 	}
@@ -1039,6 +1048,15 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
 		return nil, err
 	}
@@ -1211,6 +1229,15 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
 		return nil, constants.ErrInvalidInput
+	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
 	}
 	// req.ProjectId is the project handle; resolve it to the project UUID so the
 	// proxy is stored against the same identifier List filters on.
@@ -1479,6 +1506,15 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" {
 		return nil, constants.ErrInvalidInput
+	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
 	}
 
 	existing, err := s.repo.GetByID(handle, orgUUID)

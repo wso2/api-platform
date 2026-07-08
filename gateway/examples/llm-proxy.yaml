@@ -20,6 +20,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy
 metadata:
   name: wso2con-assistant
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "Default"
 spec:
   displayName: WSO2 Con Assistant
   version: v1.0

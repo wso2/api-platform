@@ -81,12 +81,18 @@ async function publish(eventType, payload, opts) {
     if (secretFields) {
         const subscribers = await matchSubscribers(orgId, eventType);
         const perSubscriberEncrypted = {};
+        // Subscribers without a publicKey (or where encryption fully fails) still get
+        // delivered — just without the encrypted fields — per the warning logged below.
+        // Only a *partial* encryption failure excludes a subscriber, since a half-encrypted
+        // payload can't be trusted as either fully plaintext or fully sealed.
+        const noEncryptedFieldsSubscriberIds = new Set();
 
         for (const sub of subscribers) {
             if (!sub.publicKey) {
                 logger.warn('Subscriber has no publicKey — secret event will be delivered without encrypted fields', {
                     subscriberId: sub.id, eventType
                 });
+                noEncryptedFieldsSubscriberIds.add(sub.id);
                 continue;
             }
             const encryptedForSub = {};
@@ -105,10 +111,12 @@ async function publish(eventType, payload, opts) {
                 logger.error('Partial encryption for subscriber — skipping delivery', {
                     subscriberId: sub.id, eventType
                 });
+            } else {
+                noEncryptedFieldsSubscriberIds.add(sub.id);
             }
         }
 
-        const deliverableSubscribers = subscribers.filter(s => perSubscriberEncrypted[s.id]);
+        const deliverableSubscribers = subscribers.filter(s => perSubscriberEncrypted[s.id] || noEncryptedFieldsSubscriberIds.has(s.id));
         if (deliverableSubscribers.length > 0) {
             await eventDao.createDeliveries(event.uuid, deliverableSubscribers, perSubscriberEncrypted, transaction);
             event.status = 'DISPATCHED';

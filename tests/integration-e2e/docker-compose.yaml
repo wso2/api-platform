@@ -215,35 +215,35 @@ services:
       # Its own database on the shared postgres server (created by init-db.sql).
       # Postgres, not the devportal's default SQLite: the org-update path needs
       # UPDATE ... RETURNING, which SQLite doesn't support. Schema auto-migrates.
-      - DP_DB_DIALECT=postgres
-      - DP_DB_HOST=postgres
-      - DP_DB_PORT=5432
-      - DP_DB_DATABASE=devportal
-      - DP_DB_USERNAME=apip
-      - DP_DB_PASSWORD=apip
-      # Plain HTTP to avoid the self-signed cert dance in tests.
-      - DP_ADVANCED_HTTP=true
-      - DP_BASEURL=http://devportal:3000
+      - APIP_DP_DATABASE_TYPE=postgres
+      - APIP_DP_DATABASE_HOST=postgres
+      - APIP_DP_DATABASE_PORT=5432
+      - APIP_DP_DATABASE_NAME=devportal
+      - APIP_DP_DATABASE_USERNAME=apip
+      - APIP_DP_DATABASE_PASSWORD=apip
+      # Plain HTTP to avoid the self-signed cert dance in tests (tls disabled).
+      - APIP_DP_TLS_ENABLED=false
+      - APIP_DP_SERVER_BASEURL=http://devportal:3000
       # Seed the "default" org so its handle matches platform-api's org handle
       # (the webhook resolves the control-plane org by handle via org.ref_id).
-      - DP_DEFAULTORGNAME=default
-      - DP_DEMO_ENABLED=false
-      - DP_GENERATEDEFAULTSUBPLANS=false
-      - DP_LOGGING_CONSOLEONLY=true
+      - APIP_DP_ORGANIZATION_DEFAULTNAME=default
+      - APIP_DP_DEMO_ENABLED=false
+      - APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS=false
+      - APIP_DP_LOGGING_CONSOLEONLY=true
       # Validate platform-api-issued JWTs locally: this MUST equal the stack's
       # AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
-      - DP_PLATFORMAPI_BASEURL=https://platform-api:9243
-      - DP_PLATFORMAPI_JWTSECRET=e2e-integration-secret-key-0123456789
-      - DP_PLATFORMAPI_INSECURE=true
+      - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
+      - APIP_DP_PLATFORMAPI_JWTSECRET=e2e-integration-secret-key-0123456789
+      - APIP_DP_PLATFORMAPI_INSECURE=true
       # The webhook delivery worker POSTs over raw https with the default agent,
-      # and platform-api serves a self-signed cert here. DP_PLATFORMAPI_INSECURE
+      # and platform-api serves a self-signed cert here. APIP_DP_PLATFORMAPI_INSECURE
       # only covers the auth client, so disable TLS verification globally for this
       # throwaway test container to let signed webhook deliveries through.
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       # Stable AES-256-GCM key (64 hex) for encrypting the webhook subscriber
       # secret at rest; must not change across restarts or the stored secret
       # becomes undecryptable and outbound requests go unsigned.
-      - DP_ADVANCED_ENCRYPTIONKEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_DP_SECURITY_ENCRYPTIONKEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
     ports:
       - "${DP_HOST_PORT:-3000}:3000"
     networks: [e2e]

@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres open clean deps ensure-test-tag
+.PHONY: all test test-postgres test-rest-api test-rest-api-postgres open clean deps ensure-test-tag
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -41,34 +41,48 @@ ensure-test-tag:
 
 # Run Cypress tests headlessly against SQLite (CI-friendly, no external DB required).
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
+# Service list is explicit — the compose file also defines rest-api-tests, which
+# `up` with no args would otherwise start too.
 test: ensure-test-tag
-	CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up --abort-on-container-exit --exit-code-from cypress
-	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.yaml
+	-CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal cypress --abort-on-container-exit --exit-code-from cypress
+	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.yaml SERVICE=cypress
 
 # Run Cypress tests headlessly against PostgreSQL.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test-postgres: ensure-test-tag
-	CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up --abort-on-container-exit --exit-code-from cypress
-	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.postgres.yaml
+	-CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal cypress --abort-on-container-exit --exit-code-from cypress
+	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.postgres.yaml SERVICE=cypress
 
-# Capture the exit code from the cypress container even after compose exits.
+# Run the REST API integration test suite (Jest + Supertest) against SQLite.
+# Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
+test-rest-api: ensure-test-tag
+	-DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests
+	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.yaml SERVICE=rest-api-tests
+
+# Run the REST API integration test suite (Jest + Supertest) against PostgreSQL.
+test-rest-api-postgres: ensure-test-tag
+	-DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests
+	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.postgres.yaml SERVICE=rest-api-tests
+
+# Capture the exit code from the given service container even after compose exits.
 COMPOSE_FILE ?= docker-compose.test.yaml
+SERVICE ?= cypress
 _collect-exit:
-	@EXIT=$$(docker compose -f $(COMPOSE_FILE) ps -q cypress | xargs docker inspect --format='{{.State.ExitCode}}' 2>/dev/null || echo 0); \
+	@EXIT=$$(docker compose -f $(COMPOSE_FILE) ps -q $(SERVICE) | xargs docker inspect --format='{{.State.ExitCode}}' 2>/dev/null || echo 0); \
 	docker compose -f $(COMPOSE_FILE) down -v --remove-orphans; \
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running devportal (not in Docker).
 # Start your devportal with `docker compose up` in portals/developer-portal/ first.
 open: deps
-	CYPRESS_BASE_URL=https://localhost:3000 npx cypress open --e2e --config-file cypress.config.js
+	cd ui && CYPRESS_BASE_URL=https://localhost:3000 npx cypress open --e2e --config-file cypress.config.js
 
 # Install Node dependencies (only needed for `make open`).
 deps:
-	npm install
+	cd ui && npm install
 
 # Tear down any leftover test containers and volumes.
 clean:
 	docker compose -f docker-compose.test.yaml down -v --remove-orphans 2>/dev/null || true
 	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans 2>/dev/null || true
-	rm -rf reports/videos reports/screenshots reports/*.json reports/*.html node_modules/.cache
+	rm -rf reports/videos reports/screenshots reports/*.json reports/*.html ui/node_modules/.cache rest-api/node_modules

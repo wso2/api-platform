@@ -25,12 +25,31 @@
 # The devportal service uses the pre-built image tagged :test (set by make ensure-test-tag).
 
 services:
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
+    environment:
+      AUTH_JWT_SECRET_KEY: "it-test-jwt-secret-key-not-for-production"
+    volumes:
+      - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
+      - platform-api-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - it-devportal-network
+
   devportal:
     image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/developer-portal:test
-    volumes:
-      - ./test-config.toml:/app/configs/config.toml:ro
+    depends_on:
+      platform-api:
+        condition: service_healthy
     environment:
-      # SQLite — no external database required.
+      # SQLite — no external database required. Shared, DB-agnostic settings
+      # (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
       APIP_DP_DATABASE_TYPE: sqlite
       APIP_DP_DATABASE_FILE: /tmp/devportal-it.db
       APIP_DP_SERVER_BASEURL: "http://devportal:3000"
@@ -40,6 +59,14 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+    volumes:
+      - ./test-config.toml:/app/configs/config.toml:ro
+      # Named volume at /tmp (not a new mount point) so Docker copies the image's
+      # existing /tmp ownership/permissions into it on first use — a fresh mount
+      # at a brand-new path would be root-owned and unwritable by the app user.
+      # Shared with rest-api-tests (read-only, different path there) so specs can
+      # assert DP_EVENTS/DP_EVENT_DELIVERIES rows directly.
+      - sqlite-data:/tmp
     networks:
       - it-devportal-network
 
@@ -55,12 +82,51 @@ services:
       CYPRESS_BASE_URL: "http://devportal:3000"
       CYPRESS_API_KEY: "devportal-it-test-key"
     volumes:
-      - .:/e2e
+      - ./ui:/e2e
       - ./reports:/e2e/reports
     networks:
       - it-devportal-network
     command: ["cypress", "run", "--headless", "--browser", "electron"]
 
+  rest-api-tests:
+    image: node:22-alpine
+    depends_on:
+      devportal:
+        condition: service_healthy
+    working_dir: /rest-api
+    environment:
+      DEVPORTAL_BASE_URL: "http://devportal:3000"
+      # Real session login (config-platform-api-it.toml) — password == username
+      # for all three, matching the admin/admin convention documented in
+      # configs/config-platform-api.toml.example.
+      DEVPORTAL_ORG_HANDLE: "default"
+      DEVPORTAL_ADMIN_USERNAME: "admin"
+      DEVPORTAL_ADMIN_PASSWORD: "admin"
+      DEVPORTAL_PUBLISHER_USERNAME: "publisher"
+      DEVPORTAL_PUBLISHER_PASSWORD: "publisher"
+      DEVPORTAL_DEVELOPER_USERNAME: "developer"
+      DEVPORTAL_DEVELOPER_PASSWORD: "developer"
+      DEVPORTAL_DB_DIALECT: sqlite
+      DEVPORTAL_DB_STORAGE: /shared-db/devportal-it.db
+      # Reachable from inside the compose network by the webhook dispatcher.
+      WEBHOOK_SINK_URL: "http://rest-api-tests:4500"
+      MOCK_TOKEN_ENDPOINT_URL: "http://rest-api-tests:4504"
+    volumes:
+      - ./rest-api:/rest-api
+      - ./reports:/rest-api/reports
+      # Mounted at a path distinct from this container's own /tmp (needed for
+      # npm install), read-only since only the devportal process should write it.
+      - sqlite-data:/shared-db:ro
+    networks:
+      - it-devportal-network
+    # better-sqlite3 compiles from source on node:22-alpine (no prebuilt binary
+    # for this platform) — needs python3/make/g++ for node-gyp.
+    command: ["sh", "-c", "apk add --no-cache python3 make g++ >/dev/null && npm install --no-audit --no-fund && npm test"]
+
 networks:
   it-devportal-network:
     driver: bridge
+
+volumes:
+  sqlite-data:
+  platform-api-data:

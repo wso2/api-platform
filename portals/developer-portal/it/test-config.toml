@@ -19,3 +19,9 @@ value = "devportal-it-test-key"
 [organization]
 default_name = "default"
 auto_create_subscription_plans = true
+
+[platform_api]
+# File-based (local) auth against the Platform API sidecar. Host is identical in
+# both DB variants; insecure accepts its self-signed cert inside the test network.
+base_url = "https://platform-api:9243"
+insecure = true

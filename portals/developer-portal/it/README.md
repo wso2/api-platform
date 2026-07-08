@@ -1,67 +1,86 @@
 # Developer Portal Integration Tests
 
-End-to-end integration tests for the Developer Portal, validating UI rendering, REST API behaviour, and service health using Cypress.
+Integration tests for the Developer Portal. There are two suites, both run against a
+real portal instance in Docker Compose:
+
+- **REST API suite** (`rest-api/`) — Jest + Supertest tests that exercise the
+  Admin/DevPortal REST APIs, webhook delivery, key generation, and database side effects.
+- **UI E2E suite** (`ui/`) — Cypress tests that validate portal rendering, authentication
+  flows, try-out consoles, theming, and search in a headless browser.
+
+Each suite can run against either **SQLite** (default, no external DB) or **PostgreSQL**.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Test Suite (Cypress)                         │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────────────┐    │
-│  │  Spec Files   │  │  Commands     │  │  Fixtures             │    │
-│  │  (JS/cy.js)   │  │  (custom)     │  │  (org.json, ...)      │    │
-│  └───────────────┘  └───────────────┘  └───────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
+┌──────────────────────────────┐   ┌──────────────────────────────┐
+│   REST API suite (Jest)      │   │   UI suite (Cypress)         │
+│   rest-api/**/*.spec.js       │   │   ui/cypress/e2e/**/*.cy.js  │
+│   (Supertest + DB asserts)    │   │   (headless Electron)        │
+└──────────────┬───────────────┘   └──────────────┬───────────────┘
+               │                                   │
+               ▼                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      Docker Compose Environment                     │
-│  ┌────────────────────────┐        ┌─────────────────────────────┐  │
-│  │  developer-portal      │        │  postgres                   │  │
-│  │    :3000 (HTTP)        │◄───────│    :5432                    │  │
-│  │    /health             │        │    (seeded with ACME org)   │  │
-│  └────────────────────────┘        └─────────────────────────────┘  │
+│  ┌──────────────┐   ┌──────────────────────┐   ┌────────────────┐   │
+│  │ platform-api │◄──│  developer-portal    │──►│  postgres      │   │
+│  │  :9243       │   │    :3000 (HTTP)      │   │  :5432         │   │
+│  │  (auth/IdP)  │   │    /health           │   │  (postgres     │   │
+│  └──────────────┘   └──────────────────────┘   │   profile only)│   │
+│                                                 └────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 **Components:**
-- **Cypress** — E2E and REST API test framework
-- **Docker Compose** — Orchestrates the devportal and its Postgres database for testing
-- **Seed Data** — ACME organisation and default view pre-loaded from `artifacts/docker-init/`
+- **platform-api** — provides file-based auth / IdP so the REST API suite can perform real
+  session logins (`admin`/`admin`, `publisher`/`publisher`, `developer`/`developer`).
+- **developer-portal** — the pre-built image under test, tagged `:test` by `make ensure-test-tag`.
+- **Jest + Supertest** — REST API test framework.
+- **Cypress** — UI E2E test framework (headless Electron).
+- **SQLite / PostgreSQL** — SQLite by default; the `-postgres` targets swap in a Postgres service.
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- Built `developer-portal` image (run `make build` from `portals/developer-portal/`)
+- A built `developer-portal` image — run `make build` from `portals/developer-portal/` first.
+  (The Make targets here auto-tag that image as `:test`.)
 
 ## Quick Start
 
 ```bash
-# Build the developer-portal image and run all tests
+# 1. Build the developer-portal image (from the portal root)
 cd portals/developer-portal && make build
-cd it && make test
+
+# 2. Run the tests (from this directory)
+cd it
+make test-rest-api   # REST API suite (Jest, SQLite)
+make test            # UI E2E suite (Cypress, SQLite)
 ```
 
 ## Project Structure
 
 ```
 portals/developer-portal/it/
-├── cypress/
-│   ├── e2e/
-│   │   ├── smoke.cy.js          # Health, portal load, and asset tests
-│   │   └── api-listing.cy.js    # REST API and API browse page tests
-│   ├── fixtures/
-│   │   └── org.json             # Seeded ACME organisation IDs and handles
-│   └── support/
-│       ├── commands.js          # Custom Cypress commands (apiRequest, visitPortal, ...)
-│       └── e2e.js               # Global support file (imports commands)
-├── reports/                     # Test artifacts (generated at runtime)
-│   ├── videos/                  # Cypress screen recordings
-│   └── screenshots/             # Screenshots on failure
-├── cypress.config.js            # Cypress configuration
-├── docker-compose.test.yaml     # Test environment orchestration
-├── Makefile                     # Developer commands
-├── package.json
+├── rest-api/                       # REST API suite (Jest + Supertest)
+│   ├── <feature>/*.spec.js         # apis, api-keys, applications, subscriptions,
+│   │                               #   key-managers, mcp-servers, webhook-subscribers, ...
+│   ├── support/                    # client.js, db.js, fixtures.js, webhook-sink.js,
+│   │                               #   global-setup.js, global-teardown.js, wait-for.js, ...
+│   ├── jest.config.js              # Jest config (jest-junit → reports/rest-api-results.xml)
+│   └── package.json
+├── ui/                             # UI E2E suite (Cypress)
+│   ├── cypress/
+│   │   ├── e2e/                    # 000-smoke, auth, rest-apis, graphql-apis,
+│   │   │   └── **/*.cy.js          #   mcp-servers, websocket-apis, design-mode, search, ...
+│   │   ├── fixtures/               # org.json, users.json
+│   │   └── support/                # commands.js, e2e.js, commands/{auth,applications}.js
+│   ├── cypress.config.js
+│   └── package.json
+├── configs/                        # config-platform-api-it.toml (auth/IdP config)
+├── reports/                        # Test artifacts (generated at runtime)
+├── docker-compose.test.yaml        # Test environment (SQLite)
+├── docker-compose.test.postgres.yaml  # Test environment (PostgreSQL)
+├── Makefile                        # Developer commands
 └── README.md
 ```
 
@@ -69,73 +88,115 @@ portals/developer-portal/it/
 
 | Command | Description |
 |---------|-------------|
-| `make test` | Run all Cypress specs headlessly inside Docker (CI-friendly) |
-| `make open` | Open Cypress interactive UI against a locally running devportal |
+| `make test` | Run the Cypress UI suite headlessly (SQLite, CI-friendly) |
+| `make test-postgres` | Run the Cypress UI suite headlessly (PostgreSQL) |
+| `make test-rest-api` | Run the Jest REST API suite (SQLite) |
+| `make test-rest-api-postgres` | Run the Jest REST API suite (PostgreSQL) |
+| `make open` | Open the Cypress interactive UI against a locally running devportal |
 | `make deps` | Install Node dependencies (only needed for `make open`) |
 | `make clean` | Remove test containers, volumes, and report artifacts |
 
-## Running Tests
+> All targets require the `developer-portal` image to be built first (`make build` in
+> `portals/developer-portal/`). `make ensure-test-tag` (run automatically) tags it as `:test`.
 
-```bash
-# Run all tests (headless, inside Docker)
-make test
+You can also run both UI suites from the portal root: `make -C portals/developer-portal it`
+(SQLite) and `make -C portals/developer-portal it-postgres`.
 
-# Open the interactive Cypress UI against a local devportal
-# First start the devportal: docker compose up (from portals/developer-portal/)
-make open
-```
+## Continuous Integration
 
-**Note:** `make open` launches Cypress directly in E2E mode (`--e2e`), bypassing the Launchpad setup screen and showing the spec list immediately.
+Both suites run automatically on pull requests that touch `portals/developer-portal/**`,
+via [`.github/workflows/devportal-integration-test.yml`](../../../.github/workflows/devportal-integration-test.yml):
 
-## Test Reports
+- **`rest-api-test`** — builds the image and runs `make test-rest-api` /
+  `make test-rest-api-postgres` in an `sqlite` × `postgres` matrix.
+- **`ui-test`** — builds the image and runs `make test` (Cypress, SQLite).
 
-After running tests, reports are available at:
+Test reports (`it/reports/`) are uploaded as workflow artifacts on every run. The workflow
+can also be triggered manually via **workflow_dispatch**.
 
-| Report | Location |
-|--------|----------|
-| Screen recordings | `reports/videos/*.mp4` |
-| Failure screenshots | `reports/screenshots/` |
+> **Note:** `make open` launches Cypress directly in E2E mode (`--e2e`), bypassing the
+> Launchpad setup screen and showing the spec list immediately. It runs against a locally
+> running devportal (start it with `docker compose up` from `portals/developer-portal/`).
 
-## Custom Commands
+## Cypress Custom Commands
+
+Defined in `ui/cypress/support/`:
 
 | Command | Description |
 |---------|-------------|
-| `cy.visitPortal(path)` | Navigate to a path inside the ACME/default portal view |
-| `cy.portalUrl(path)` | Build a URL under the ACME/default view without visiting it |
+| `cy.visitPortal(path)` | Navigate to a path inside the default portal view |
+| `cy.portalUrl(path)` | Build a URL under the default view without visiting it |
 | `cy.apiRequest(method, path, options)` | `cy.request` wrapper that injects the IT API key header for admin-protected endpoints |
+| `cy.login(username, password)` | Perform a real login flow (see `support/commands/auth.js`) |
+| `cy.logout()` | Log the current user out |
+| `cy.createApplication(name)` / `cy.deleteApplication(name)` | Create/delete an application (see `support/commands/applications.js`) |
 
-## Example Test
+## Example Tests
+
+**UI (Cypress)** — `ui/cypress/e2e/`:
 
 ```js
 describe('Developer Portal — API Listing', () => {
-    context('REST API', () => {
-        it('GET /devportal/organizations returns 200 with an array', () => {
-            cy.apiRequest('GET', '/devportal/organizations').then((resp) => {
-                expect(resp.status).to.eq(200);
-                expect(resp.body).to.be.an('array');
-            });
+    it('GET /devportal/organizations returns 200 with an array', () => {
+        cy.apiRequest('GET', '/devportal/organizations').then((resp) => {
+            expect(resp.status).to.eq(200);
+            expect(resp.body).to.be.an('array');
         });
     });
 
-    context('UI — API browse page', () => {
-        it('loads the API list page without errors', () => {
-            cy.visitPortal('/apis');
-            cy.get('body').should('be.visible');
-            cy.get('body').should('not.contain.text', '500');
-        });
+    it('loads the API browse page without errors', () => {
+        cy.visitPortal('/apis');
+        cy.get('body').should('be.visible');
+        cy.get('body').should('not.contain.text', '500');
     });
 });
 ```
 
+**REST API (Jest + Supertest)** — `rest-api/`:
+
+```js
+const client = require('../support/client');
+
+describe('Organizations REST API', () => {
+    beforeAll(async () => {
+        await client.login('admin');       // real session login via platform-api
+    });
+
+    it('lists organizations', async () => {
+        const res = await client.as('admin').get('/organizations');
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.body)).toBe(true);
+    });
+});
+```
+
+## Test Reports
+
+After a run, artifacts are available under `reports/`:
+
+| Report | Location |
+|--------|----------|
+| REST API JUnit results | `reports/rest-api-results.xml` |
+| Cypress screen recordings | `reports/videos/*.mp4` |
+| Cypress failure screenshots | `reports/screenshots/` |
+
 ## Authentication in Tests
 
-The IT environment enables API key authentication so that Cypress can call admin-protected REST endpoints without a login session. The key is configured in `docker-compose.test.yaml` and automatically injected by `cy.apiRequest()` via the `x-wso2-api-key` request header.
-
-UI tests that exercise browser-side rendering do not require authentication — they access the public-facing portal routes directly.
+- **REST API suite** performs **real session logins** against `platform-api` using the
+  file-based users defined in `configs/config-platform-api-it.toml`
+  (`admin`/`admin`, `publisher`/`publisher`, `developer`/`developer`).
+- **UI suite** uses both real login flows (`auth/` specs) and, for admin-protected REST
+  calls, an IT API key injected via the `x-wso2-api-key` header.
 
 ## Adding New Tests
 
-1. Create a new spec file under `cypress/e2e/` (e.g., `my-feature.cy.js`).
-2. Use `cy.visitPortal(path)` for UI tests and `cy.apiRequest(method, path)` for REST API tests.
-3. Reference `cy.fixture('org')` to access the seeded ACME organisation identifiers.
-4. Run `make test` to verify before committing.
+**REST API (Jest):**
+1. Add a `*.spec.js` file under the relevant `rest-api/<feature>/` directory.
+2. Use the helpers in `rest-api/support/` (`client.js` for authenticated requests,
+   `db.js` to assert database side effects, `webhook-sink.js` for webhook delivery, etc.).
+3. Run `make test-rest-api` to verify before committing.
+
+**UI (Cypress):**
+1. Add a `*.cy.js` file under the relevant `ui/cypress/e2e/<area>/` directory.
+2. Use the custom commands in `ui/cypress/support/` and fixtures in `ui/cypress/fixtures/`.
+3. Run `make test` to verify before committing.

@@ -1,0 +1,21 @@
+{
+  "name": "developer-portal-it-rest-api",
+  "version": "1.0.0",
+  "description": "REST API integration tests for the Developer Portal",
+  "private": true,
+  "scripts": {
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-junit": "^16.0.0",
+    "supertest": "^7.0.0",
+    "cookiejar": "^2.1.4",
+    "nock": "^13.5.5",
+    "pg": "^8.14.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.3.0"
+  }
+}

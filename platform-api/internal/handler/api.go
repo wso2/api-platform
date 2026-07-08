@@ -125,6 +125,10 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 			return apperror.ValidationFailed.Wrap(err, "Invalid transport protocol").
 				WithLogMessage(fmt.Sprintf("invalid transport protocol in org %s", orgId))
 		}
+		if errors.Is(err, constants.ErrInvalidPolicyVersion) {
+			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format").
+				WithLogMessage(fmt.Sprintf("invalid policy version format in org %s", orgId))
+		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
 			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").
 				WithLogMessage(fmt.Sprintf("subscription plan not found or not active in org %s", orgId))
@@ -253,6 +257,10 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 		if errors.Is(err, constants.ErrInvalidTransport) {
 			return apperror.ValidationFailed.Wrap(err, "Invalid transport protocol").
 				WithLogMessage(fmt.Sprintf("invalid transport protocol for API %s in org %s", apiId, orgId))
+		}
+		if errors.Is(err, constants.ErrInvalidPolicyVersion) {
+			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format").
+				WithLogMessage(fmt.Sprintf("invalid policy version format for API %s in org %s", apiId, orgId))
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
 			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").

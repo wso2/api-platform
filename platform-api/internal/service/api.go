@@ -623,6 +623,10 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		}
 	}
 
+	if err := validateOperationAndChannelPolicyVersions(req.Operations, req.Channels); err != nil {
+		return err
+	}
+
 	// Validate subscription plans if provided
 	if err := s.validateSubscriptionPlans(req.SubscriptionPlans, orgUUID); err != nil {
 		return err
@@ -729,6 +733,10 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 				return constants.ErrInvalidTransport
 			}
 		}
+	}
+
+	if err := validateOperationAndChannelPolicyVersions(req.Operations, req.Channels); err != nil {
+		return err
 	}
 
 	// Validate subscription plans if provided

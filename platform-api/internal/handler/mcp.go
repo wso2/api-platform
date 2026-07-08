@@ -264,6 +264,8 @@ func (h *MCPProxyHandler) mapServiceError(err error) error {
 		return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
 	case errors.Is(err, constants.ErrInvalidInput):
 		return apperror.ValidationFailed.Wrap(err, "Invalid input parameters")
+	case errors.Is(err, constants.ErrInvalidPolicyVersion):
+		return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
 	case errors.Is(err, constants.ErrMCPProxyNotFound):
 		return apperror.MCPProxyNotFound.Wrap(err)
 	case errors.Is(err, constants.ErrMCPProxyExists):
