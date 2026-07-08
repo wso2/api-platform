@@ -27,19 +27,13 @@
 services:
   devportal:
     image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/developer-portal:test
+    volumes:
+      - ./test-config.toml:/app/configs/config.toml:ro
     environment:
       # SQLite — no external database required.
-      DP_DB_DIALECT: sqlite
-      DP_DB_STORAGE: /tmp/devportal-it.db
-      # Seed the default org on startup.
-      DP_DEFAULTORGNAME: "default"
-      # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
-      DP_ADVANCED_HTTP: "true"
-      DP_BASEURL: "http://devportal:3000"
-      DP_GENERATEDEFAULTSUBPLANS: "true"
-      DP_ADVANCED_APIKEY_ENABLED: "true"
-      DP_ADVANCED_APIKEY_KEYVALUE: "devportal-it-test-key"
-      DP_LOGGING_CONSOLEONLY: "true"
+      APIP_DP_DATABASE_TYPE: sqlite
+      APIP_DP_DATABASE_FILE: /tmp/devportal-it.db
+      APIP_DP_SERVER_BASEURL: "http://devportal:3000"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 10s

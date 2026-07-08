@@ -12,16 +12,16 @@ Use design mode when you want to:
 
 ## Enable Design Mode
 
-In `configs/config.yaml`, add or update the `designMode` section:
+In `configs/config.toml`, add or update the `[design_mode]` section:
 
-```yaml
-designMode:
-  enabled: true
-  apiSamplesPath: "./samples/apis/"          # directory of sample API definitions
-  mcpSamplesPath: "./samples/mcps/"          # directory of sample MCP server definitions
-  subscriptionPlansPath: "./samples/subscriptionPlans.yaml"
-  applicationsPath: "./samples/applications.yaml"
-  pathToLayout: "./src/defaultContent/"      # Handlebars templates and static assets
+```toml
+[design_mode]
+enabled = true
+api_samples_path = "./samples/apis/"          # directory of sample API definitions
+mcp_samples_path = "./samples/mcps/"          # directory of sample MCP server definitions
+subscription_plans_path = "./samples/subscriptionPlans.yaml"
+applications_path = "./samples/applications.yaml"
+path_to_layout = "./src/defaultContent/"      # Handlebars templates and static assets
 ```
 
 Then start the portal normally:
@@ -36,33 +36,33 @@ Visit **http://localhost:3000/views/default**.
 
 ## Configuration Options
 
-| Option | Default | Description |
+| Option (TOML) | Default | Description |
 |--------|---------|-------------|
 | `enabled` | `false` | Set to `true` to activate design mode |
-| `apiSamplesPath` | `./samples/apis/` | Directory of sample REST/GraphQL/SOAP/WS API definitions |
-| `mcpSamplesPath` | `./samples/mcps/` | Directory of sample MCP server definitions |
-| `subscriptionPlansPath` | `./samples/subscriptionPlans.yaml` | YAML file with org-level subscription plan details |
-| `applicationsPath` | `./samples/applications.yaml` | YAML file with sample applications shown on the Applications page |
-| `pathToLayout` | `./src/defaultContent/` | Layout directory used to render pages (see [Customising the Theme](#customising-the-theme)) |
+| `api_samples_path` | `./samples/apis/` | Directory of sample REST/GraphQL/SOAP/WS API definitions |
+| `mcp_samples_path` | `./samples/mcps/` | Directory of sample MCP server definitions |
+| `subscription_plans_path` | `./samples/subscriptionPlans.yaml` | YAML file with org-level subscription plan details |
+| `applications_path` | `./samples/applications.yaml` | YAML file with sample applications shown on the Applications page |
+| `path_to_layout` | `./src/defaultContent/` | Layout directory used to render pages (see [Customising the Theme](#customising-the-theme)) |
 
 All options can also be set via environment variables:
 
 ```
-DP_DESIGNMODE_ENABLED=true
-DP_DESIGNMODE_APISAMPLESPATH=./my-samples/apis/
-DP_DESIGNMODE_MCPSAMPLESPATH=./my-samples/mcps/
-DP_DESIGNMODE_SUBSCRIPTIONPLANSPATH=./my-samples/plans.yaml
-DP_DESIGNMODE_APPLICATIONSPATH=./my-samples/applications.yaml
-DP_DESIGNMODE_PATHTOLAYOUT=./my-layout/
+APIP_DP_DESIGNMODE_ENABLED=true
+APIP_DP_DESIGNMODE_APISAMPLESPATH=./my-samples/apis/
+APIP_DP_DESIGNMODE_MCPSAMPLESPATH=./my-samples/mcps/
+APIP_DP_DESIGNMODE_SUBSCRIPTIONPLANSPATH=./my-samples/plans.yaml
+APIP_DP_DESIGNMODE_APPLICATIONSPATH=./my-samples/applications.yaml
+APIP_DP_DESIGNMODE_PATHTOLAYOUT=./my-layout/
 ```
 
 ## Customising the Theme
 
-`pathToLayout` is your working theme directory. It mirrors the structure used by the production theme ZIP upload, so a theme built here can be deployed to production without any conversion.
+`path_to_layout` is your working theme directory. It mirrors the structure used by the production theme ZIP upload, so a theme built here can be deployed to production without any conversion.
 
 ### What can be customised
 
-| Asset | Path in `pathToLayout` | Effect |
+| Asset | Path in `path_to_layout` | Effect |
 |-------|------------------------|--------|
 | Page shell | `layout/main.hbs` | Controls the outer HTML, `<head>`, nav frame |
 | Header | `partials/header.hbs` | Top navigation bar |
@@ -86,12 +86,12 @@ cp src/defaultContent/partials/header.hbs my-theme/partials/
 cp src/defaultContent/styles/main.css my-theme/styles/
 ```
 
-Then point `pathToLayout` at your directory:
+Then point `path_to_layout` at your directory:
 
-```yaml
-designMode:
-  enabled: true
-  pathToLayout: "./my-theme/"
+```toml
+[design_mode]
+enabled = true
+path_to_layout = "./my-theme/"
 ```
 
 Reload the browser after editing any file — changes appear immediately without a server restart.
@@ -110,7 +110,7 @@ cp -r samples/layouts/green-theme/ my-theme/
 
 ### Per-API custom layout
 
-To customise the layout of a specific API's overview page, add an `api-content.hbs` file inside that API's `web/` directory under `apiSamplesPath`:
+To customise the layout of a specific API's overview page, add an `api-content.hbs` file inside that API's `web/` directory under `api_samples_path`:
 
 ```
 samples/apis/my-api-v1.0/
@@ -123,12 +123,12 @@ samples/apis/my-api-v1.0/
 
 ### Deploying to production
 
-When the theme is ready, zip the `pathToLayout` directory and upload it to the portal. The ZIP structure is identical to what design mode uses, so no conversion is needed.
+When the theme is ready, zip the `path_to_layout` directory and upload it to the portal. The ZIP structure is identical to what design mode uses, so no conversion is needed.
 
 **Build the ZIP:**
 
 ```bash
-# from inside your pathToLayout directory
+# from inside your path_to_layout directory
 zip -r my-theme.zip layout/ partials/ styles/ images/
 ```
 
@@ -258,7 +258,7 @@ The portal re-reads API definitions from disk on every page request. Edit `api.y
 
 ## Sample Applications
 
-The Applications page is available in design mode and shows entries from `applicationsPath`. The format follows the same Kubernetes-style manifest used across all sample files:
+The Applications page is available in design mode and shows entries from `applications_path`. The format follows the same Kubernetes-style manifest used across all sample files:
 
 ```yaml
 apiVersion: devportal.api-platform.wso2.com/v1alpha1
@@ -291,11 +291,11 @@ See `samples/applications.yaml` for a ready-made example.
 
 ## Turning Design Mode Off
 
-Set `enabled: false` (or remove the section entirely) and restart:
+Set `enabled = false` (or remove the section entirely) and restart:
 
-```yaml
-designMode:
-  enabled: false
+```toml
+[design_mode]
+enabled = false
 ```
 
 The portal returns to production mode, requiring a database and (if configured) an IDP.

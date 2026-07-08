@@ -20,12 +20,12 @@ const { Pool } = require('pg');
 const { config } = require('../config/configLoader');
 
 const poolConfig = {
-    user: config.db.username,
-    host: config.db.host,
-    database: config.db.database,
-    password: config.db.password,
-    port: config.db.port,
-    ...(config.advanced.dbSslDialectOption && { ssl: { require: true, rejectUnauthorized: false } }),
+    user: config.database.username,
+    host: config.database.host,
+    database: config.database.name,
+    password: config.database.password,
+    port: config.database.port,
+    ...(config.database.ssl.enabled && { ssl: { require: true, rejectUnauthorized: false } }),
 };
 
 const pool = new Pool(poolConfig);

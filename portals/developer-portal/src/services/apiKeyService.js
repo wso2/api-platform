@@ -139,7 +139,7 @@ async function publishKeyApplicationUpdated(orgId, keyId, handle, displayName, a
  * The plaintext is shown to the caller exactly once and never persisted.
  */
 async function generate({ orgId, apiId, subscriptionId, appId, handle, displayName, expiresAt, actor }) {
-    if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
+    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const normalizedHandle = parseAndValidateHandle(handle);
     if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
@@ -202,7 +202,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
  * The old secret is silently invalidated by whatever consumes the webhook event.
  */
 async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
-    if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
+    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
@@ -252,7 +252,7 @@ async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
  * Revoke a key. Fires apikey.revoked so webhook subscribers can reject it immediately.
  */
 async function revoke({ orgId, apiId, keyId, actor }) {
-    if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
+    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
@@ -292,7 +292,7 @@ async function list(orgId, filters, transaction) {
  * none of its other keys are affected.
  */
 async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
-    if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
+    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
@@ -320,7 +320,7 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
  * had no app associated.
  */
 async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
-    if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
+    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });

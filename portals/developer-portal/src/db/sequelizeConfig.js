@@ -22,21 +22,21 @@ const fs = require('fs');
 
 const { config } = require('../config/configLoader');
 
-const dialect = config.db.dialect;
+const dialect = config.database.type;
 let sequelize;
 
 if (dialect === 'sqlite') {
     sequelize = new Sequelize({
         dialect: 'sqlite',
         dialectModule: require('./betterSqlite3Compat'),
-        storage: config.db.storage || './devportal.db',
+        storage: config.database.file || './devportal.db',
         logging: false,
         pool: { max: 1, min: 1, acquire: 30000, idle: 10000 },
     });
 } else {
     const sequelizeOptions = {
-        host: config.db.host,
-        port: config.db.port,
+        host: config.database.host,
+        port: config.database.port,
         dialect,
         logging: false,
         pool: {
@@ -51,8 +51,8 @@ if (dialect === 'sqlite') {
         },
     };
 
-    if (config.advanced.dbSslDialectOption) {
-        const dbCAPath = path.join(process.cwd(), config.pathToDBCert);
+    if (config.database.ssl.enabled) {
+        const dbCAPath = path.join(process.cwd(), config.database.ssl.caFile);
         sequelizeOptions.dialectOptions = {
             ssl: {
                 require: true,
@@ -63,9 +63,9 @@ if (dialect === 'sqlite') {
     }
 
     sequelize = new Sequelize(
-        config.db.database,
-        config.db.username,
-        config.db.password,
+        config.database.name,
+        config.database.username,
+        config.database.password,
         sequelizeOptions
     );
 }

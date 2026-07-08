@@ -147,7 +147,7 @@ See `configs/config-platform-api.toml.example` for the complete scope list used 
 The Platform API generates a random JWT signing key at startup. Sessions are invalidated when it restarts unless you pin the key. Set the **same value** in both services so the devportal can verify JWTs locally without a network round-trip:
 
 ```bash
-# In .env (read by both services via docker-compose env_file / DP_* override)
+# In .env (read by both services via docker-compose env_file / APIP_DP_* override)
 AUTH_JWT_SECRET_KEY=<random-64-char-string>
 ```
 
@@ -162,7 +162,7 @@ curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organ
 
 The token is verified locally by the Developer Portal using the shared `AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
 
-> **Note:** Local auth is for development only. For production, configure the global OIDC identity provider via `DP_IDENTITY_PROVIDER_*` environment variables.
+> **Note:** Local auth is for development only. For production, configure the global OIDC identity provider via `APIP_DP_IDP_*` environment variables.
 
 ---
 

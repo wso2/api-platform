@@ -126,8 +126,8 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
         const jwtVerifyOptions = {};
-        if (config.identityProvider?.issuer) jwtVerifyOptions.issuer = config.identityProvider.issuer;
-        if (config.identityProvider?.audience) jwtVerifyOptions.audience = config.identityProvider.audience;
+        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
+        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
         const rawScope = payload.scope ?? payload.scp;
         const scopes = Array.isArray(rawScope) ? rawScope.join(' ') : (rawScope || '');
@@ -169,8 +169,8 @@ async function verifyBearerToken(token, req) {
     if (idp.certificate) {
         return verifyWithCertificate(token, idp.certificate);
     }
-    if (idp.jwksURL) {
-        return verifyJwksWithRefresh(token, idp.jwksURL, req);
+    if (idp.jwksUrl) {
+        return verifyJwksWithRefresh(token, idp.jwksUrl, req);
     }
     return { valid: false, scopes: '' };
 }
@@ -231,7 +231,7 @@ async function authResolver(req, res, next) {
         // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
         // sessions, so resolveOrgFromClaim works via the HANDLE lookup in orgDao.getId.
         if (req.isAuthenticated && req.isAuthenticated() &&
-            req.user?.isLocalAuth && !config.identityProvider?.clientId) {
+            req.user?.isLocalAuth && !config.idp?.clientId) {
             const platformToken = req.user[constants.ACCESS_TOKEN];
             const claims = platformToken ? extractPlatformJwtClaims(platformToken, null) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
@@ -252,8 +252,8 @@ async function authResolver(req, res, next) {
         // on page routes, so scope enforcement here is redundant and would require listing all
         // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
         // scope check for session users (same as API key and mTLS paths).
-        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.identityProvider?.clientId) {
-            const orgIDClaim = config.identityProvider?.orgIDClaim;
+        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.idp?.clientId) {
+            const orgIDClaim = config.idp?.claims?.orgId;
             if (orgIDClaim) {
                 const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
                 if (!sessionOrgClaim) {
@@ -289,8 +289,8 @@ async function authResolver(req, res, next) {
             const decoded = jwt.decode(req.user?.[constants.ACCESS_TOKEN] || token) || {};
             // Resolve org UUID from the token's org claim (IDP_REF_ID).
             // Only in IDP mode — local-auth and platform-JWT tokens carry no org claim.
-            const orgIDClaim = config.identityProvider?.orgIDClaim;
-            if (config.identityProvider?.clientId && orgIDClaim) {
+            const orgIDClaim = config.idp?.claims?.orgId;
+            if (config.idp?.clientId && orgIDClaim) {
                 const tokenOrgClaim = decoded[orgIDClaim];
                 if (!tokenOrgClaim) {
                     const err = new Error('Missing organization claim in token');
@@ -316,11 +316,11 @@ async function authResolver(req, res, next) {
         }
 
         // 4. API key — org resolved from the `organization` request header
-        if (config.advanced?.apiKey?.enabled) {
-            const keyType = config.advanced.apiKey.keyType;
-            if (keyType && config.advanced?.apiKey?.keyValue) {
+        if (config.security?.serviceApiKey?.enabled) {
+            const keyType = config.security.serviceApiKey.headerName;
+            if (keyType && config.security?.serviceApiKey?.value) {
                 const apiKey = req.headers[keyType.toLowerCase()];
-                if (apiKey && apiKey === config.advanced?.apiKey?.keyValue) {
+                if (apiKey && apiKey === config.security?.serviceApiKey?.value) {
                     const orgErr = await resolveOrgFromHeader(req);
                     if (orgErr) return next(orgErr);
                     req.auth = { mode: 'apikey', preauthorized: true, scopes: [] };

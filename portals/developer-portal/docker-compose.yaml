@@ -51,9 +51,9 @@
 #     docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
 #
 # Configuration:
-#   Edit configs/config.yaml to customise devportal settings.
+#   Edit configs/config.toml to customise devportal settings.
 #   Edit configs/config-platform-api.toml to customise Platform API settings (users, org, etc.).
-#   Every devportal config value can be overridden with a DP_* env var.
+#   Every devportal config value can be overridden with an APIP_DP_* env var.
 #   Create a .env file at the project root for persistent overrides.
 #
 # Demo mode (on by default):
@@ -83,7 +83,7 @@ services:
 
   devportal:
     build: .
-    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
     depends_on:
       platform-api:
         condition: service_healthy
@@ -91,7 +91,7 @@ services:
       - "3000:3000"
     volumes:
       # Mount config from the configs/ directory.
-      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - ./configs/config.toml:/app/configs/config.toml:ro
       # Persist the SQLite database across container restarts.
       - sqlite_data:/app/data
       # Persist the auto-generated TLS certificate across container restarts.
@@ -99,55 +99,45 @@ services:
       - certs_data:/app/certs
     environment:
       # ── Database: SQLite (default) ───────────────────────────────────────────
-      DP_DB_DIALECT: sqlite
-      DP_DB_STORAGE: /app/data/devportal.db
+      APIP_DP_DATABASE_FILE: /app/data/devportal.db
 
       # ── Database: PostgreSQL (optional) ─────────────────────────────────────
-      # Use docker-compose.postgres.yaml instead of editing here:
-      #   docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
-      #
-      # DP_DB_DIALECT: postgres
-      # DP_DB_HOST: postgres
-      # DP_DB_PORT: 5432
-      # DP_DB_USERNAME: devportal
-      # DP_DB_PASSWORD: devportal
-      # DP_DB_DATABASE: devportal
+      # APIP_DP_DATABASE_TYPE: postgres
+      # APIP_DP_DATABASE_HOST: postgres
+      # APIP_DP_DATABASE_PORT: 5432
+      # APIP_DP_DATABASE_USERNAME: devportal
+      # APIP_DP_DATABASE_PASSWORD: devportal
+      # APIP_DP_DATABASE_NAME: devportal
 
       # HTTPS — a self-signed cert is generated automatically on first start.
-      # To switch back to plain HTTP, set DP_ADVANCED_HTTP=true and DP_BASEURL=http://localhost:3000.
-      DP_ADVANCED_HTTP: "false"
-      DP_BASEURL: "https://localhost:3000"
-      DP_SERVERCERTS_PATHTOCERT: "/app/certs/server.crt"
-      DP_SERVERCERTS_PATHTOPK: "/app/certs/server.key"
-      DP_SERVERCERTS_PATHTOCA: "/app/certs/server.crt"
-
-      # Seed a default organization on startup (idempotent)
-      DP_DEFAULTORGNAME: "default"
+      # To switch back to plain HTTP, set APIP_DP_TLS_ENABLED=false and APIP_DP_SERVER_BASEURL=http://localhost:3000.
+      APIP_DP_TLS_ENABLED: "true"
+      APIP_DP_SERVER_BASEURL: "https://localhost:3000"
+      APIP_DP_TLS_CERTFILE: "/app/certs/server.crt"
+      APIP_DP_TLS_KEYFILE: "/app/certs/server.key"
+      APIP_DP_TLS_CAFILE: "/app/certs/server.crt"
 
       # Demo mode — on by default. When enabled, the Settings > Manage APIs page
       # shows a "Seed sample APIs" button and admins get a one-time onboarding
       # prompt to deploy sample APIs/MCPs. Disable with:
       #   demo=false docker compose up
-      DP_DEMO_ENABLED: "${demo:-true}"
-
-      # Auto-generate default subscription plans for every new org
-      DP_GENERATEDEFAULTSUBPLANS: "true"
+      APIP_DP_DEMO_ENABLED: "${demo:-true}"
 
       # Log to console only (no rotating log files)
-      DP_LOGGING_CONSOLEONLY: "true"
+      APIP_DP_LOGGING_CONSOLEONLY: "true"
 
       # Platform API — used for local auth credential validation.
-      # Set DP_PLATFORMAPI_JWTSECRET to the same value as AUTH_JWT_SECRET_KEY so
+      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as AUTH_JWT_SECRET_KEY so
       # the devportal can verify Platform API JWTs locally (no per-request login call).
-      DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
-      DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
-      DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
+      APIP_DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
+      APIP_DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
+      APIP_DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
 
       # AES-256-GCM key for encrypting subscription tokens and webhook secrets at rest.
       # Generate once with: openssl rand -hex 32
-      # Store in .env as: DP_ADVANCED_ENCRYPTIONKEY=<64-char hex>
+      # Store in .env as: APIP_DP_SECURITY_ENCRYPTIONKEY=<64-char hex>
       # Must remain stable across restarts — changing it makes existing encrypted data unreadable.
-      DP_ADVANCED_ENCRYPTIONKEY: ${DP_ADVANCED_ENCRYPTIONKEY:-}
+      APIP_DP_SECURITY_ENCRYPTIONKEY: ${APIP_DP_SECURITY_ENCRYPTIONKEY:-}
     env_file:
       - path: .env
         required: false   # Optional — create a .env file to add your own overrides

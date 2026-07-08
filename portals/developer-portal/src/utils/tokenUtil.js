@@ -36,18 +36,18 @@ function accessTokenPresent(req) {
 }
 
 async function refreshAccessToken(refreshToken) {
-    const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
+    const timeout = Number(config.idp?.tokenRefreshTimeoutMs);
     const timeoutMs = (Number.isFinite(timeout) && timeout > 0) ? timeout : DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
     const params = {
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
-        client_id: config.identityProvider.clientId,
+        client_id: config.idp.clientId,
     };
-    if (config.identityProvider.clientSecret) {
-        params.client_secret = config.identityProvider.clientSecret;
+    if (config.idp.clientSecret) {
+        params.client_secret = config.idp.clientSecret;
     }
     const data = qs.stringify(params);
-    const response = await axios.post(config.identityProvider.tokenURL, data, {
+    const response = await axios.post(config.idp.tokenUrl, data, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: timeoutMs,
     });
@@ -58,8 +58,8 @@ async function verifyWithCertificate(token, pemCertificate) {
     try {
         const publicKey = await importX509(pemCertificate, 'RS256');
         const jwtVerifyOptions = {};
-        if (config.identityProvider?.issuer) jwtVerifyOptions.issuer = config.identityProvider.issuer;
-        if (config.identityProvider?.audience) jwtVerifyOptions.audience = config.identityProvider.audience;
+        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
+        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
         const { payload } = await jwtVerify(token, publicKey, jwtVerifyOptions);
         return { valid: true, scopes: payload.scope || '' };
     } catch (err) {
@@ -69,7 +69,7 @@ async function verifyWithCertificate(token, pemCertificate) {
 }
 
 function resolveOrgIdp() {
-    return config.identityProvider || {};
+    return config.idp || {};
 }
 
 module.exports = { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp };

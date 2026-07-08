@@ -29,6 +29,18 @@ const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
 const { resolveUserUuid } = require('./authMiddleware');
 
+// System page-access gates (constants.js) merged with any deployer-supplied additions
+// (config.pageAccessRules, via config.toml) — the config side only ever adds patterns,
+// never replaces the fixed system list. Computed once; config is static after startup.
+const AUTHENTICATED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHENTICATED_PAGES,
+    ...(config.pageAccessRules?.authenticated || []),
+];
+const AUTHORIZED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHORIZED_PAGES,
+    ...(config.pageAccessRules?.authorized || []),
+];
+
 function enforceSecurity(scope) {
     return async function (req, res, next) {
         try {
@@ -41,7 +53,7 @@ function enforceSecurity(scope) {
                 return res.status(400).json(util.getErrors(errors));
             }
             // Local auth users: validate dp:* scope from platform JWT
-            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
+            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.idp?.clientId) {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
                 const tokenScopes = extractPlatformJwtClaims(platformToken, null)?.scopes ?? [];
@@ -61,7 +73,7 @@ function enforceSecurity(scope) {
                 const decodedAccessToken = jwt.decode(token);
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
                 return validateAuthentication(scope)(req, res, next);
-            } else if (config.advanced.apiKey.enabled) {
+            } else if (config.security.serviceApiKey.enabled) {
                 enforceAPIKey(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
@@ -95,7 +107,7 @@ const ensurePermission = (currentPage, role, req) => {
             return hasRole(role, superAdminRole) || hasRole(role, adminRole);
         } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
             return hasRole(role, superAdminRole);
-        } else if (config.authorizedPages.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+        } else if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
         }
     }
@@ -103,9 +115,9 @@ const ensurePermission = (currentPage, role, req) => {
 }
 
 const ensureAuthenticated = async (req, res, next) => {
-    let adminRole = config.identityProvider?.adminRole;
-    let superAdminRole = config.identityProvider?.superAdminRole;
-    let subscriberRole = config.identityProvider?.subscriberRole;
+    let adminRole = config.idp?.roles?.admin;
+    let superAdminRole = config.idp?.roles?.superAdmin;
+    let subscriberRole = config.idp?.roles?.subscriber;
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -124,7 +136,7 @@ const ensureAuthenticated = async (req, res, next) => {
     // audit columns and "my resources" filters like subscriptions) must return the same
     // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
     if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
-        if (req.user.isLocalAuth && !config.identityProvider?.clientId) {
+        if (req.user.isLocalAuth && !config.idp?.clientId) {
             req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
         } else {
             const earlyToken = accessTokenPresent(req);
@@ -135,7 +147,7 @@ const ensureAuthenticated = async (req, res, next) => {
         }
     }
     if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
-        config.authenticatedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+        AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
         const orgId = req.params.orgName;
         let orgDetails;
         if (orgId !== undefined) {
@@ -145,10 +157,10 @@ const ensureAuthenticated = async (req, res, next) => {
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
         if (req.isAuthenticated()) {
             // Config-auth: skip all token/exchange checks; roles already in session
-            if (req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
+            if (req.user && req.user.isLocalAuth && !config.idp?.clientId) {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
-                if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+                if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
@@ -158,7 +170,7 @@ const ensureAuthenticated = async (req, res, next) => {
                             req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
-                    if (!config.advanced.disabledRoleValidation) {
+                    if (config.security.roleValidation) {
                         role = req.user[constants.ROLES.ROLE_CLAIM];
                         if (ensurePermission(req.originalUrl, role, req)) {
                             return next();
@@ -177,7 +189,7 @@ const ensureAuthenticated = async (req, res, next) => {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
             }
-            if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+            if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];
                 if (req.user) {
                     req.user[constants.ROLES.ADMIN] = adminRole;
@@ -198,7 +210,7 @@ const ensureAuthenticated = async (req, res, next) => {
                         return next(err);
                     }
                 }
-                if (!config.advanced.disabledRoleValidation) {
+                if (config.security.roleValidation) {
                     if (ensurePermission(req.originalUrl, role, req)) {
                         return next();
                     } else {
@@ -238,7 +250,7 @@ function validateAuthentication(scope) {
             return res.status(400).json(util.getErrors(errors));
         }
         let IDP, valid, scopes;
-        IDP = config.identityProvider || {};
+        IDP = config.idp || {};
 
         let accessToken;
         if (req.isAuthenticated() && req.user) {
@@ -249,8 +261,8 @@ function validateAuthentication(scope) {
 
         if (IDP.certificate) {
             ({ valid, scopes } = await verifyWithCertificate(accessToken, IDP.certificate));
-        } else if (IDP.jwksURL) {
-            ({ valid, scopes } = await validateWithJwks(accessToken, IDP.jwksURL, req));
+        } else if (IDP.jwksUrl) {
+            ({ valid, scopes } = await validateWithJwks(accessToken, IDP.jwksUrl, req));
         } else {
             valid = false;
         }
@@ -272,8 +284,8 @@ const validateWithJwks = async (token, jwksURL, req) => {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
         const jwtVerifyOptions = {};
-        if (config.identityProvider?.issuer) jwtVerifyOptions.issuer = config.identityProvider.issuer;
-        if (config.identityProvider?.audience) jwtVerifyOptions.audience = config.identityProvider.audience;
+        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
+        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
         return { valid: true, scopes: payload.scope || '' };
     } catch (err) {
@@ -316,15 +328,15 @@ const enforceMTLS = (req, res, next) => {
 };
 
 const enforceAPIKey = (req, res, next) => {
-    const keyType = config.advanced?.apiKey?.keyType;
+    const keyType = config.security?.serviceApiKey?.headerName;
 
-    if (!keyType || !config.advanced?.apiKey?.keyValue) {
+    if (!keyType || !config.security?.serviceApiKey?.value) {
         return res.status(500).json({ error: "Server configuration error" });
     }
 
     const apiKey = req.headers[keyType.toLowerCase()];
 
-    if (!apiKey || apiKey !== config.advanced?.apiKey?.keyValue) {
+    if (!apiKey || apiKey !== config.security?.serviceApiKey?.value) {
         return res.status(401).json({ error: "Unauthorized: API key is invalid or not found" });
     }
     return next();
