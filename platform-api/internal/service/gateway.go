@@ -329,7 +329,8 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
 	if err != nil {
-		return nil, apperror.Internal.Wrap(err).WithLogMessage("failed to get gateway")
+		s.slogger.Error("failed to get gateway", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("error", err.Error()))
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if gateway == nil {
 		return nil, apperror.GatewayNotFound.New()
