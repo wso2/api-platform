@@ -328,8 +328,11 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 	policyName = strings.ToLower(policyName)
 
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
-	if err != nil || gateway == nil {
-		return nil, apperror.GatewayNotFound.Wrap(err)
+	if err != nil {
+		return nil, apperror.Internal.Wrap(err).WithLogMessage("failed to get gateway")
+	}
+	if gateway == nil {
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if gateway.OrganizationID != orgID {
 		return nil, apperror.GatewayNotFound.New().WithLogMessage("gateway belongs to a different organization")
