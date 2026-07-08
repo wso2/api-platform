@@ -23,10 +23,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -328,11 +328,15 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 	policyName = strings.ToLower(policyName)
 
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
-	if err != nil || gateway == nil {
-		return nil, errors.New("gateway not found")
+	if err != nil {
+		s.slogger.Error("failed to get gateway", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("error", err.Error()))
+		return nil, apperror.GatewayNotFound.New()
+	}
+	if gateway == nil {
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if gateway.OrganizationID != orgID {
-		return nil, errors.New("gateway not found")
+		return nil, apperror.GatewayNotFound.New().WithLogMessage("gateway belongs to a different organization")
 	}
 
 	raw, err := s.gatewayRepo.GetGatewayManifest(gatewayID)
@@ -342,7 +346,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 	}
 	if len(raw) == 0 {
 		s.slogger.Error("gateway manifest is not available", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID))
-		return nil, errors.New("gateway manifest is not available")
+		return nil, apperror.PolicyInvalidState.New().WithLogMessage("gateway manifest is not available")
 	}
 
 	var policies []GatewayPolicyDefinition
@@ -359,11 +363,13 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 	}
 	if found == nil {
 		s.slogger.Error("policy not found in gateway manifest", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
-		return nil, fmt.Errorf("policy '%s' version '%s' not found in gateway manifest", policyName, version)
+		return nil, apperror.CustomPolicyVersionNotFnd.New().
+			WithLogMessage(fmt.Sprintf("policy '%s' version '%s' not found in gateway manifest", policyName, version))
 	}
 	if found.ManagedBy != constants.PolicyManagedByCustomer {
 		s.slogger.Error("policy is not a custom policy", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
-		return nil, fmt.Errorf("policy '%s' version '%s' is not a custom policy", policyName, version)
+		return nil, apperror.PolicyInvalidState.New().
+			WithLogMessage(fmt.Sprintf("policy '%s' version '%s' is not a custom policy", policyName, version))
 	}
 
 	var policyDefJSON json.RawMessage
@@ -378,7 +384,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 	incomingVer, err := parseVersion(version)
 	if err != nil {
 		s.slogger.Error("invalid version format", slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
-		return nil, fmt.Errorf("invalid version '%s': %w", version, err)
+		return nil, apperror.ValidationFailed.Wrap(err, fmt.Sprintf("Invalid version '%s'", version))
 	}
 
 	existingPolicies, err := s.customPolicyRepo.GetCustomPoliciesByName(orgID, policyName)
@@ -418,16 +424,19 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 		}
 		if existingVer.Minor == incomingVer.Minor && existingVer.Patch == incomingVer.Patch {
 			// Exact same version — already exists.
-			return nil, fmt.Errorf("custom policy '%s' version '%s' already exists", policyName, version)
+			return nil, apperror.PolicyVersionConflict.New().
+				WithLogMessage(fmt.Sprintf("custom policy '%s' version '%s' already exists", policyName, version))
 		}
 		if existingVer.Minor == incomingVer.Minor && existingVer.Patch != incomingVer.Patch {
 			// Same major.minor, different patch — patch update, not allowed.
-			return nil, fmt.Errorf("patch version updates are not allowed for policy '%s': existing '%s', incoming '%s'",
-				policyName, sameMajorVersionedPolicy.Version, version)
+			return nil, apperror.PolicyVersionConflict.New().
+				WithLogMessage(fmt.Sprintf("patch version updates are not allowed for policy '%s': existing '%s', incoming '%s'",
+					policyName, sameMajorVersionedPolicy.Version, version))
 		}
 		if incomingVer.Minor < existingVer.Minor {
-			return nil, fmt.Errorf("cannot downgrade policy '%s' from '%s' to '%s'",
-				policyName, sameMajorVersionedPolicy.Version, version)
+			return nil, apperror.PolicyVersionConflict.New().
+				WithLogMessage(fmt.Sprintf("cannot downgrade policy '%s' from '%s' to '%s'",
+					policyName, sameMajorVersionedPolicy.Version, version))
 		}
 		// New minor version — update the existing record.
 		policy.UUID = sameMajorVersionedPolicy.UUID
@@ -485,10 +494,10 @@ func (s *GatewayService) GetCustomPolicyByUUID(orgID, policyUUID, version string
 		return nil, fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
 	}
 	if policy == nil {
-		return nil, constants.ErrCustomPolicyNotFound
+		return nil, apperror.CustomPolicyNotFound.Wrap(constants.ErrCustomPolicyNotFound)
 	}
 	if policy.Version != version {
-		return nil, constants.ErrCustomPolicyVersionMismatch
+		return nil, apperror.CustomPolicyVersionNotFnd.Wrap(constants.ErrCustomPolicyVersionMismatch)
 	}
 	return policy, nil
 }
@@ -500,10 +509,10 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 		return fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
 	}
 	if policy == nil {
-		return constants.ErrCustomPolicyNotFound
+		return apperror.CustomPolicyNotFound.Wrap(constants.ErrCustomPolicyNotFound)
 	}
 	if policy.Version != version {
-		return constants.ErrCustomPolicyVersionMismatch
+		return apperror.CustomPolicyVersionNotFnd.Wrap(constants.ErrCustomPolicyVersionMismatch)
 	}
 
 	if err := s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID); err != nil {
@@ -567,7 +576,7 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 		return nil, fmt.Errorf("failed to query organization: %w", err)
 	}
 	if org == nil {
-		return nil, errors.New("organization not found")
+		return nil, apperror.OrganizationNotFound.New()
 	}
 
 	// 3. Check gateway handle uniqueness within organization
@@ -576,7 +585,8 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 		return nil, fmt.Errorf("failed to check gateway handle uniqueness: %w", err)
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("gateway with handle '%s' already exists in this organization", name)
+		return nil, apperror.GatewayNameConflict.New().
+			WithLogMessage(fmt.Sprintf("gateway with handle '%s' already exists in this organization", name))
 	}
 
 	// 4. Generate UUID for gateway
@@ -666,7 +676,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 	}
 
 	if gateway == nil {
-		return nil, errors.New("gateway not found")
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	return s.gatewayModelToAPI(gateway)
@@ -770,7 +780,7 @@ func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoRes
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, errors.New("gateway not found")
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gateway.ID)
@@ -806,7 +816,7 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, errors.New("gateway not found")
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// 2. Count active tokens
@@ -817,7 +827,8 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 
 	// 3. Check max 2 active tokens limit
 	if activeCount >= 2 {
-		return nil, errors.New("maximum 2 active tokens allowed. Revoke old tokens before rotating")
+		return nil, apperror.GatewayTokenLimitReached.New().
+			WithLogMessage("maximum 2 active tokens allowed; revoke old tokens before rotating")
 	}
 
 	// 4. Generate new plain-text token
@@ -861,7 +872,7 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 		return fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return errors.New("gateway not found")
+		return apperror.GatewayNotFound.New()
 	}
 
 	token, err := s.gatewayRepo.GetTokenByUUID(tokenId)
@@ -869,10 +880,10 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 		return fmt.Errorf("failed to query token: %w", err)
 	}
 	if token == nil {
-		return errors.New("token not found")
+		return apperror.GatewayTokenNotFound.New()
 	}
 	if token.GatewayID != gateway.ID {
-		return errors.New("token not found")
+		return apperror.GatewayTokenNotFound.New().WithLogMessage("token belongs to a different gateway")
 	}
 
 	if err := s.gatewayRepo.RevokeToken(tokenId, revokedBy); err != nil {
@@ -886,7 +897,7 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 func (s *GatewayService) GetGatewayStatus(orgID string, gatewayId *string) (*api.GatewayStatusListResponse, error) {
 	// Validate organizationId is provided and valid
 	if strings.TrimSpace(orgID) == "" {
-		return nil, errors.New("organization ID is required")
+		return nil, apperror.ValidationFailed.New("organization ID is required")
 	}
 
 	var gateways []*model.Gateway
@@ -899,7 +910,7 @@ func (s *GatewayService) GetGatewayStatus(orgID string, gatewayId *string) (*api
 			return nil, fmt.Errorf("failed to get gateway: %w", err)
 		}
 		if gateway == nil {
-			return nil, errors.New("gateway not found")
+			return nil, apperror.GatewayNotFound.New()
 		}
 		gateways = []*model.Gateway{gateway}
 	} else {
@@ -939,66 +950,66 @@ func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bo
 func (s *GatewayService) validateGatewayInput(orgID, name, displayName string, endpoints []string, functionalityType string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
-		return errors.New("organization ID is required")
+		return apperror.ValidationFailed.New("organization ID is required")
 	}
 	if _, err := uuid.Parse(orgID); err != nil {
-		return errors.New("invalid organization ID format")
+		return apperror.ValidationFailed.Wrap(err, "invalid organization ID format")
 	}
 
 	// Gateway name validation
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return errors.New("gateway name is required")
+		return apperror.ValidationFailed.New("gateway name is required")
 	}
 	if len(name) < 3 {
-		return errors.New("gateway name must be at least 3 characters")
+		return apperror.ValidationFailed.New("gateway name must be at least 3 characters")
 	}
 	if len(name) > 64 {
-		return errors.New("gateway name must not exceed 64 characters")
+		return apperror.ValidationFailed.New("gateway name must not exceed 64 characters")
 	}
 
 	// Check pattern: ^[a-z0-9-]+$
 	namePattern := regexp.MustCompile(`^[a-z0-9-]+$`)
 	if !namePattern.MatchString(name) {
-		return errors.New("gateway name must contain only lowercase letters, numbers, and hyphens")
+		return apperror.ValidationFailed.New("gateway name must contain only lowercase letters, numbers, and hyphens")
 	}
 
 	// No leading/trailing hyphens
 	if strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") {
-		return errors.New("gateway name cannot start or end with a hyphen")
+		return apperror.ValidationFailed.New("gateway name cannot start or end with a hyphen")
 	}
 
 	// Display name validation
 	displayName = strings.TrimSpace(displayName)
 	if displayName == "" {
-		return errors.New("display name is required")
+		return apperror.ValidationFailed.New("display name is required")
 	}
 	if len(displayName) > 128 {
-		return errors.New("display name must not exceed 128 characters")
+		return apperror.ValidationFailed.New("display name must not exceed 128 characters")
 	}
 
 	// Endpoints validation
 	if len(endpoints) == 0 {
-		return errors.New("at least one endpoint is required")
+		return apperror.ValidationFailed.New("at least one endpoint is required")
 	}
 	for _, endpoint := range endpoints {
 		endpoint = strings.TrimSpace(endpoint)
 		if endpoint == "" {
-			return errors.New("endpoint must not be empty")
+			return apperror.ValidationFailed.New("endpoint must not be empty")
 		}
 		if len(endpoint) > 255 {
-			return errors.New("endpoint must not exceed 255 characters")
+			return apperror.ValidationFailed.New("endpoint must not exceed 255 characters")
 		}
 	}
 
 	// Gateway type validation
 	functionalityType = strings.TrimSpace(functionalityType)
 	if functionalityType == "" {
-		return errors.New("gateway functionality type is required")
+		return apperror.ValidationFailed.New("gateway functionality type is required")
 	}
 	if !constants.ValidGatewayFunctionalityType[functionalityType] {
-		return fmt.Errorf("gateway type must be one of: %s, %s, %s",
-			constants.GatewayFunctionalityTypeRegular, constants.GatewayFunctionalityTypeAI, constants.GatewayFunctionalityTypeEvent)
+		return apperror.ValidationFailed.New(fmt.Sprintf("gateway type must be one of: %s, %s, %s",
+			constants.GatewayFunctionalityTypeRegular, constants.GatewayFunctionalityTypeAI, constants.GatewayFunctionalityTypeEvent))
 	}
 
 	return nil
@@ -1011,7 +1022,7 @@ func generateToken() (string, error) {
 	tokenBytes := make([]byte, 32)
 	_, err := rand.Read(tokenBytes)
 	if err != nil {
-		return "", errors.New("failed to generate secure random token")
+		return "", apperror.Internal.Wrap(err).WithLogMessage("failed to generate secure random token")
 	}
 	token := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(tokenBytes)
 	return token, nil

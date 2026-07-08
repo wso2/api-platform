@@ -20,15 +20,16 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -49,365 +50,278 @@ func NewDeploymentHandler(deploymentService *service.DeploymentService, identity
 
 // DeployAPI handles POST /api/v0.9/rest-apis/:apiId/deployments
 // Creates a new immutable deployment artifact and deploys it to a gateway
-func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
+func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
+		return apperror.ValidationFailed.New("API ID is required")
 	}
 
 	var req api.DeployRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+		return apperror.NewValidation(err)
 	}
 
 	// Validate required fields
 	if req.Name == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"name is required"))
-		return
+		return apperror.RESTAPIDeploymentValidationFailed.New("name is required")
 	}
 	if req.Base == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"base is required (use 'current' or a deploymentId)"))
-		return
+		return apperror.RESTAPIDeploymentValidationFailed.New("base is required (use 'current' or a deploymentId)")
 	}
 	if strings.TrimSpace(req.GatewayId) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
-		return
+		return apperror.RESTAPIDeploymentValidationFailed.New("gatewayId is required")
 	}
 
-	createdBy, ok := resolveActor(w, r, h.identity, h.slogger, "deploy API")
-	if !ok {
-		return
+	createdBy, err := resolveActorErr(r, h.identity, "deploy API")
+	if err != nil {
+		return err
 	}
 	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
+			return apperror.RESTAPINotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
-			return
+			return apperror.GatewayNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrBaseDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Base deployment not found"))
-			return
+			return apperror.DeploymentBaseNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentNameRequired) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment name is required"))
-			return
+			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "Deployment name is required")
 		}
 		if errors.Is(err, constants.ErrDeploymentBaseRequired) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Base is required (use 'current' or a deploymentId)"))
-			return
+			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "Base is required (use 'current' or a deploymentId)")
 		}
 		if errors.Is(err, constants.ErrDeploymentGatewayIDRequired) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Gateway ID is required"))
-			return
+			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "Gateway ID is required")
 		}
 		if errors.Is(err, constants.ErrAPINoBackendServices) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"API must have at least one backend service attached before deployment"))
-			return
+			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "API must have at least one backend service attached before deployment")
 		}
-		h.slogger.Error("Failed to deploy API", "apiId", apiId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to deploy API"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to deploy API %s", apiId))
 	}
 
+	setLocation(w, "rest-apis", apiId, "deployments", deployment.DeploymentId.String())
 	httputil.WriteJSON(w, http.StatusCreated, deployment)
+	return nil
 }
 
 // UndeployDeployment handles POST /api/v0.9/rest-apis/:apiId/deployments/:deploymentId/undeploy
-func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Request) {
+func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId is required"))
-		return
+		return apperror.ValidationFailed.New("deploymentId is required")
 	}
 	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
-		return
+		return apperror.ValidationFailed.New("gatewayId is required")
 	}
 	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId/gatewayId cannot be zero-value UUID"))
-		return
+		return apperror.ValidationFailed.New("deploymentId/gatewayId cannot be zero-value UUID")
 	}
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
+		return apperror.ValidationFailed.New("API ID is required")
 	}
-	actor, ok := resolveActor(w, r, h.identity, h.slogger, "undeploy API")
-	if !ok {
-		return
+	actor, err := resolveActorErr(r, h.identity, "undeploy API")
+	if err != nil {
+		return err
 	}
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
+			return apperror.RESTAPINotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
-			return
+			return apperror.DeploymentNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
-			return
+			return apperror.GatewayNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"No active deployment found for this API on the gateway"))
-			return
+			return apperror.DeploymentNotActive.Wrap(err, "API")
 		}
 		if errors.Is(err, constants.ErrGatewayIDMismatch) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
-			return
+			return apperror.DeploymentGatewayMismatch.Wrap(err)
 		}
-		h.slogger.Error("Failed to undeploy", "apiId", apiId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to undeploy API %s deployment %s from gateway %s", apiId, deploymentId, gatewayId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
+	return nil
 }
 
 // RestoreDeployment handles POST /api/v0.9/rest-apis/:apiId/deployments/:deploymentId/restore
-func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Request) {
+func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId is required"))
-		return
+		return apperror.ValidationFailed.New("deploymentId is required")
 	}
 	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
-		return
+		return apperror.ValidationFailed.New("gatewayId is required")
 	}
 	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId/gatewayId cannot be zero-value UUID"))
-		return
+		return apperror.ValidationFailed.New("deploymentId/gatewayId cannot be zero-value UUID")
 	}
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
+		return apperror.ValidationFailed.New("API ID is required")
 	}
-	actor, ok := resolveActor(w, r, h.identity, h.slogger, "restore API deployment")
-	if !ok {
-		return
+	actor, err := resolveActorErr(r, h.identity, "restore API deployment")
+	if err != nil {
+		return err
 	}
 	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
+			return apperror.RESTAPINotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
-			return
+			return apperror.DeploymentNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
-			return
+			return apperror.GatewayNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentAlreadyDeployed) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot restore currently deployed deployment"))
-			return
+			return apperror.DeploymentRestoreConflict.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrGatewayIDMismatch) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Deployment is bound to a different gateway"))
-			return
+			return apperror.DeploymentGatewayMismatch.Wrap(err)
 		}
-		h.slogger.Error("Failed to restore deployment", "apiId", apiId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to restore API %s deployment %s on gateway %s", apiId, deploymentId, gatewayId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
+	return nil
 }
 
 // DeleteDeployment handles DELETE /api/v0.9/rest-apis/:apiId/deployments/:deploymentId
 // Permanently deletes an undeployed deployment artifact
-func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Request) {
+func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
+		return apperror.ValidationFailed.New("API ID is required")
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
-		return
+		return apperror.ValidationFailed.New("Deployment ID is required")
 	}
 
-	actor, ok := resolveActor(w, r, h.identity, h.slogger, "delete API deployment")
-	if !ok {
-		return
-	}
-	err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor)
+	actor, err := resolveActorErr(r, h.identity, "delete API deployment")
 	if err != nil {
+		return err
+	}
+	if err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
+			return apperror.RESTAPINotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
-			return
+			return apperror.DeploymentNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentIsDeployed) {
-			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Cannot delete an active deployment - undeploy it first"))
-			return
+			return apperror.DeploymentActive.Wrap(err)
 		}
-		if respondArtifactGuardError(w, err) {
-			return
+		if guardErr := mapArtifactGuardError(err); guardErr != nil {
+			return guardErr
 		}
-		h.slogger.Error("Failed to delete deployment", "apiId", apiId, "deploymentId", deploymentId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete deployment"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to delete API %s deployment %s", apiId, deploymentId))
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 // GetDeployment handles GET /api/v0.9/rest-apis/:apiId/deployments/:deploymentId
 // Retrieves metadata for a specific deployment artifact
-func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request) {
+func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	apiId := r.PathValue("restApiId")
 	deploymentId := r.PathValue("deploymentId")
 
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
+		return apperror.ValidationFailed.New("API ID is required")
 	}
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
-		return
+		return apperror.ValidationFailed.New("Deployment ID is required")
 	}
 
 	deployment, err := h.deploymentService.GetDeploymentByHandle(apiId, deploymentId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
+			return apperror.RESTAPINotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
-			return
+			return apperror.DeploymentNotFound.Wrap(err)
 		}
-		h.slogger.Error("Failed to get deployment", "apiId", apiId, "deploymentId", deploymentId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to retrieve deployment"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to get API %s deployment %s", apiId, deploymentId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
+	return nil
 }
 
 // GetDeployments handles GET /api/v0.9/rest-apis/:apiId/deployments
 // Retrieves all deployment records for an API with optional filters
-func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Request) {
+func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	apiId := r.PathValue("restApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
+		return apperror.ValidationFailed.New("API ID is required")
 	}
 
 	var params api.GetDeploymentsParams
@@ -431,32 +345,27 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 	deployments, err := h.deploymentService.GetDeploymentsByHandle(apiId, gatewayId, status, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
+			return apperror.RESTAPINotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrInvalidDeploymentStatus) {
-			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid deployment status"))
-			return
+			return apperror.DeploymentInvalidStatus.Wrap(err)
 		}
-		h.slogger.Error("Failed to get deployments", "apiId", apiId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to retrieve deployments"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to get deployments for API %s", apiId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployments)
+	return nil
 }
 
 // RegisterRoutes registers all deployment-related routes
 func (h *DeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
 	h.slogger.Debug("Registering deployment routes")
 	base := constants.APIBasePath + "/rest-apis/{restApiId}"
-	mux.HandleFunc("POST "+base+"/deployments", h.DeployAPI)
-	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
-	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/restore", h.RestoreDeployment)
-	mux.HandleFunc("GET "+base+"/deployments", h.GetDeployments)
-	mux.HandleFunc("GET "+base+"/deployments/{deploymentId}", h.GetDeployment)
-	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", h.DeleteDeployment)
+	mux.HandleFunc("POST "+base+"/deployments", middleware.MapErrors(h.slogger, h.DeployAPI))
+	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", middleware.MapErrors(h.slogger, h.UndeployDeployment))
+	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/restore", middleware.MapErrors(h.slogger, h.RestoreDeployment))
+	mux.HandleFunc("GET "+base+"/deployments", middleware.MapErrors(h.slogger, h.GetDeployments))
+	mux.HandleFunc("GET "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.GetDeployment))
+	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteDeployment))
 }

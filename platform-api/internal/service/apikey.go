@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -287,7 +288,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle", "apiHandle", apiHandle, "orgId", orgId)
-		return constants.ErrAPINotFound
+		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 	apiId := apiMetadata.ID
 
@@ -297,7 +298,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
 	}
 	if len(gateways) == 0 {
-		return constants.ErrGatewayUnavailable
+		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
 	}
 
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
@@ -413,7 +414,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle for API key update", "apiHandle", apiHandle)
-		return constants.ErrAPINotFound
+		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 	apiId := apiMetadata.ID
 
@@ -425,7 +426,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateway deployments found for API", "apiHandle", apiHandle)
-		return constants.ErrGatewayUnavailable
+		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
 	}
 
 	// Hash the API key with all configured algorithms before storage and broadcast
@@ -524,7 +525,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle for API key revocation", "apiHandle", apiHandle)
-		return constants.ErrAPINotFound
+		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 	apiId := apiMetadata.ID
 
@@ -534,7 +535,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
 	if len(gateways) == 0 {
-		return constants.ErrGatewayUnavailable
+		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
 	}
 
 	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)

@@ -19,12 +19,12 @@ package service
 
 import (
 	"fmt"
-	"log/slog"
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"log/slog"
 	"time"
 )
 
@@ -70,7 +70,7 @@ func (s *ProjectService) RegisterDeletionGuard(guard ProjectDeletionGuard) {
 
 func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error) {
 	if req.DisplayName == "" {
-		return nil, constants.ErrInvalidProjectName
+		return nil, apperror.ValidationFailed.New("Project displayName is required")
 	}
 
 	org, err := s.orgRepo.GetOrganizationByUUID(organizationID)
@@ -78,7 +78,7 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 		return nil, err
 	}
 	if org == nil {
-		return nil, constants.ErrOrganizationNotFound
+		return nil, apperror.OrganizationNotFound.New()
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -90,7 +90,7 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 			return nil, err
 		}
 		if existing != nil {
-			return nil, constants.ErrProjectExists
+			return nil, apperror.ProjectExists.New()
 		}
 	} else {
 		handle, err = utils.GenerateHandle(req.DisplayName, func(h string) bool {
@@ -109,7 +109,7 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	}
 	for _, p := range existingProjects {
 		if p.Name == req.DisplayName {
-			return nil, constants.ErrProjectExists
+			return nil, apperror.ProjectExists.New()
 		}
 	}
 
@@ -152,7 +152,7 @@ func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project,
 		return nil, err
 	}
 	if projectModel == nil {
-		return nil, constants.ErrProjectNotFound
+		return nil, apperror.ProjectNotFound.New()
 	}
 
 	org, err := s.orgRepo.GetOrganizationByUUID(projectModel.OrganizationID)
@@ -173,7 +173,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 		return nil, err
 	}
 	if org == nil {
-		return nil, constants.ErrOrganizationNotFound
+		return nil, apperror.OrganizationNotFound.New()
 	}
 
 	projectModels, err := s.projectRepo.GetProjectsByOrganizationID(organizationID)
@@ -204,7 +204,7 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 		return nil, err
 	}
 	if project == nil {
-		return nil, constants.ErrProjectNotFound
+		return nil, apperror.ProjectNotFound.New()
 	}
 
 	if req.DisplayName != project.Name {
@@ -214,7 +214,7 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 		}
 		for _, existingProject := range existingProjects {
 			if existingProject.Name == req.DisplayName && existingProject.Handle != handle {
-				return nil, constants.ErrProjectExists
+				return nil, apperror.ProjectExists.New()
 			}
 		}
 		project.Name = req.DisplayName
@@ -249,7 +249,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 		return err
 	}
 	if project == nil {
-		return constants.ErrProjectNotFound
+		return apperror.ProjectNotFound.New()
 	}
 
 	projects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
@@ -257,7 +257,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 		return err
 	}
 	if len(projects) <= 1 {
-		return constants.ErrOrganizationMustHAveAtLeastOneProject
+		return apperror.ValidationFailed.New("Organization must have at least one project")
 	}
 
 	apis, err := s.apiRepo.GetAPIsByProjectUUID(project.ID, orgId)
@@ -265,7 +265,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 		return err
 	}
 	if len(apis) > 0 {
-		return constants.ErrProjectHasAssociatedAPIs
+		return apperror.ValidationFailed.New("Project has associated APIs")
 	}
 
 	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, project.ID)
@@ -273,7 +273,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 		return err
 	}
 	if mcpProxiesCount > 0 {
-		return constants.ErrProjectHasAssociatedMCPProxies
+		return apperror.ValidationFailed.New("Project has associated MCP proxies")
 	}
 
 	// applications no longer cascade-delete with the project (the project_uuid foreign key was
@@ -284,7 +284,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 		return err
 	}
 	if appCount > 0 {
-		return constants.ErrProjectHasAssociatedApplications
+		return apperror.ValidationFailed.New("Project has associated applications")
 	}
 
 	for _, guard := range s.deletionGuards {

@@ -22,10 +22,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -47,17 +47,16 @@ func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, identity
 }
 
 // ListUserAPIKeys handles GET /api/v0.9/me/api-keys
-func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Request) {
+func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Request) error {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
-	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "list user API keys")
-	if !ok {
-		return
+	callerUserID, err := resolveActorErr(r, h.identity, "list user API keys")
+	if err != nil {
+		return err
 	}
 
 	var types []string
@@ -67,16 +66,15 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Reque
 
 	response, err := h.apiKeyUserService.ListAPIKeysByUser(r.Context(), orgID, callerUserID, types)
 	if err != nil {
-		h.slogger.Error("Failed to list API keys for user", "orgId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to list API keys"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage("failed to list API keys for user in org " + orgID)
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+	return nil
 }
 
 // RegisterRoutes registers the user API key routes.
 func (h *APIKeyUserHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET "+constants.APIBasePath+"/me/api-keys", h.ListUserAPIKeys)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/me/api-keys", middleware.MapErrors(h.slogger, h.ListUserAPIKeys))
 }

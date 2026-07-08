@@ -197,7 +197,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "gateway not found",
+			errContains: "GATEWAY_NOT_FOUND",
 		},
 		{
 			name:        "gateway not found - nil returned",
@@ -205,7 +205,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "gateway not found",
+			errContains: "GATEWAY_NOT_FOUND",
 		},
 		{
 			name: "gateway belongs to different org",
@@ -213,7 +213,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName: "rate-limit",
 			version:    "1.0.0",
 			wantErr:    true,
-			errContains: "gateway not found",
+			errContains: "GATEWAY_NOT_FOUND",
 		},
 
 		// manifest validation
@@ -233,7 +233,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "gateway manifest is not available",
+			errContains: "POLICY_INVALID_STATE",
 		},
 		{
 			name:    "policy not found in manifest",
@@ -244,7 +244,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "not found in gateway manifest",
+			errContains: "CUSTOM_POLICY_VERSION_NOT_FOUND",
 		},
 		{
 			name:    "policy version mismatch in manifest",
@@ -255,7 +255,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "not found in gateway manifest",
+			errContains: "CUSTOM_POLICY_VERSION_NOT_FOUND",
 		},
 		{
 			name:    "policy is not a custom policy (wso2 managed)",
@@ -266,7 +266,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "not a custom policy",
+			errContains: "POLICY_INVALID_STATE",
 		},
 
 		// version conflict rules
@@ -280,7 +280,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.2.0",
 			wantErr:     true,
-			errContains: "already exists",
+			errContains: "POLICY_VERSION_CONFLICT",
 		},
 		{
 			name:    "patch version update is not allowed",
@@ -292,7 +292,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.2.1",
 			wantErr:     true,
-			errContains: "patch version updates are not allowed",
+			errContains: "POLICY_VERSION_CONFLICT",
 		},
 		{
 			name:    "downgrade is not allowed",
@@ -304,7 +304,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.1.0",
 			wantErr:     true,
-			errContains: "cannot downgrade",
+			errContains: "POLICY_VERSION_CONFLICT",
 		},
 
 		//  custom policy successful paths

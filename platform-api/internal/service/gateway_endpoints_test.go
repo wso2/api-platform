@@ -61,8 +61,8 @@ func TestRegisterGatewayEndpoints(t *testing.T) {
 		if err == nil {
 			t.Fatal("RegisterGateway() expected error for nil endpoints, got nil")
 		}
-		if err.Error() != "at least one endpoint is required" {
-			t.Errorf("error = %q, want %q", err.Error(), "at least one endpoint is required")
+		if !strings.Contains(err.Error(), "at least one endpoint is required") {
+			t.Errorf("error = %q, want it to contain %q", err.Error(), "at least one endpoint is required")
 		}
 	})
 
@@ -72,8 +72,8 @@ func TestRegisterGatewayEndpoints(t *testing.T) {
 		if err == nil {
 			t.Fatal("RegisterGateway() expected error for empty endpoints, got nil")
 		}
-		if err.Error() != "at least one endpoint is required" {
-			t.Errorf("error = %q, want %q", err.Error(), "at least one endpoint is required")
+		if !strings.Contains(err.Error(), "at least one endpoint is required") {
+			t.Errorf("error = %q, want it to contain %q", err.Error(), "at least one endpoint is required")
 		}
 	})
 

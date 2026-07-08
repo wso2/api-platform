@@ -510,9 +510,16 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	}
 
 	resp := parseBody(wDel)
-	refs, ok := resp["references"].([]interface{})
+	if resp["code"] != "SECRET_IN_USE" {
+		t.Errorf("expected code SECRET_IN_USE, got: %v", resp)
+	}
+	details, ok := resp["details"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected details object, got: %v", resp)
+	}
+	refs, ok := details["references"].([]interface{})
 	if !ok || len(refs) == 0 {
-		t.Errorf("expected non-empty references array, got: %v", resp)
+		t.Errorf("expected non-empty details.references array, got: %v", resp)
 	}
 }
 
