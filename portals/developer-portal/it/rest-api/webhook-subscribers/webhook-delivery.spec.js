@@ -128,7 +128,10 @@ describe('webhook delivery pipeline', () => {
         const event = await waitForEvent({ orgHandle: client.ORG_HANDLE, type: 'application.created', since });
         await waitForDelivery({ eventUuid: event.uuid });
 
-        const [finalEvent] = await db.findEvents({ orgUuid: (await db.findOrgUuidByHandle(client.ORG_HANDLE)), type: 'application.created' });
+        // Match by the uuid captured from waitForEvent — filtering only by
+        // org+type could pick up an earlier application.created event from this suite.
+        const events = await db.findEvents({ orgUuid: (await db.findOrgUuidByHandle(client.ORG_HANDLE)), type: 'application.created' });
+        const finalEvent = events.find((e) => e.uuid === event.uuid);
         expect(finalEvent.status).toBe('ALL_DELIVERED');
     });
 });

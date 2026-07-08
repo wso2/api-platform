@@ -64,7 +64,7 @@ services:
       # Named volume at /tmp (not a new mount point) so Docker copies the image's
       # existing /tmp ownership/permissions into it on first use — a fresh mount
       # at a brand-new path would be root-owned and unwritable by the app user.
-      # Shared with backend-tests (read-only, different path there) so specs can
+      # Shared with rest-api-tests (read-only, different path there) so specs can
       # assert DP_EVENTS/DP_EVENT_DELIVERIES rows directly.
       - sqlite-data:/tmp
     networks:
@@ -88,12 +88,12 @@ services:
       - it-devportal-network
     command: ["cypress", "run", "--headless", "--browser", "electron"]
 
-  backend-tests:
+  rest-api-tests:
     image: node:22-alpine
     depends_on:
       devportal:
         condition: service_healthy
-    working_dir: /backend
+    working_dir: /rest-api
     environment:
       DEVPORTAL_BASE_URL: "http://devportal:3000"
       # Real session login (config-platform-api-it.toml) — password == username
@@ -109,11 +109,11 @@ services:
       DEVPORTAL_DB_DIALECT: sqlite
       DEVPORTAL_DB_STORAGE: /shared-db/devportal-it.db
       # Reachable from inside the compose network by the webhook dispatcher.
-      WEBHOOK_SINK_URL: "http://backend-tests:4500"
-      MOCK_TOKEN_ENDPOINT_URL: "http://backend-tests:4504"
+      WEBHOOK_SINK_URL: "http://rest-api-tests:4500"
+      MOCK_TOKEN_ENDPOINT_URL: "http://rest-api-tests:4504"
     volumes:
-      - ./backend:/backend
-      - ./reports:/backend/reports
+      - ./rest-api:/rest-api
+      - ./reports:/rest-api/reports
       # Mounted at a path distinct from this container's own /tmp (needed for
       # npm install), read-only since only the devportal process should write it.
       - sqlite-data:/shared-db:ro

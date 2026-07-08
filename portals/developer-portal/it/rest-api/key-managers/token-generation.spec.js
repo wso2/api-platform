@@ -131,7 +131,9 @@ describe('OAuth token generation', () => {
             `/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`,
             { consumerSecret: 'wrong-secret' }
         );
-        expect([400, 401, 500]).toContain(res.status);
+        // The mock key manager returns 401 for a bad secret; the devportal must
+        // propagate that client error, not mask it as a 500.
+        expect([400, 401]).toContain(res.status);
     });
 
     it('applies the default scope/validity period when omitted', async () => {

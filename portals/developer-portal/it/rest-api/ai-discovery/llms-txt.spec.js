@@ -62,14 +62,15 @@ describe('AI/LLM discovery (llms.txt)', () => {
     // prefix, so this stays in the Jest suite instead of needing Cypress.
     it('returns 404 when aiEnabled is false for the org', async () => {
         const configPath = `/${client.ORG_HANDLE}/views/default/llms-config`;
-        const save = await client.page('publisher').put(configPath, { aiEnabled: false, portalName: '', portalDescription: '' });
-        expect(save.status).toBe(200);
-
         try {
+            const save = await client.page('publisher').put(configPath, { aiEnabled: false, portalName: '', portalDescription: '' });
+            expect(save.status).toBe(200);
+
             const res = await client.raw().get(`/${client.ORG_HANDLE}/views/default/llms.txt`);
             expect(res.status).toBe(404);
         } finally {
             // Restore — this view/org is shared by every other test in this file.
+            // Inside finally so a failed/non-200 disable PUT can't leave aiEnabled off.
             await client.page('publisher').put(configPath, { aiEnabled: true, portalName: '', portalDescription: '' });
         }
     });

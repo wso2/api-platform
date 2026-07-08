@@ -103,12 +103,12 @@ services:
       - it-devportal-network
     command: ["cypress", "run", "--headless", "--browser", "electron"]
 
-  backend-tests:
+  rest-api-tests:
     image: node:22-alpine
     depends_on:
       devportal:
         condition: service_healthy
-    working_dir: /backend
+    working_dir: /rest-api
     environment:
       DEVPORTAL_BASE_URL: "http://devportal:3000"
       DEVPORTAL_ORG_HANDLE: "default"
@@ -125,11 +125,11 @@ services:
       DEVPORTAL_DB_PASSWORD: devportal
       DEVPORTAL_DB_DATABASE: devportal
       # Reachable from inside the compose network by the webhook dispatcher.
-      WEBHOOK_SINK_URL: "http://backend-tests:4500"
-      MOCK_TOKEN_ENDPOINT_URL: "http://backend-tests:4504"
+      WEBHOOK_SINK_URL: "http://rest-api-tests:4500"
+      MOCK_TOKEN_ENDPOINT_URL: "http://rest-api-tests:4504"
     volumes:
-      - ./backend:/backend
-      - ./reports:/backend/reports
+      - ./rest-api:/rest-api
+      - ./reports:/rest-api/reports
     networks:
       - it-devportal-network
     # better-sqlite3 compiles from source on node:22-alpine (no prebuilt binary

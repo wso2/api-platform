@@ -17,8 +17,8 @@
 // --------------------------------------------------------------------
 
 // Test-side mirror of src/services/webhooks/envelopeCrypto.js's decryptFromEnvelope.
-// Can't require the app source directly: the backend-tests container only has
-// `it/backend` mounted (docker-compose.test*.yaml), not the rest of the repo. Kept in
+// Can't require the app source directly: the rest-api-tests container only has
+// `it/rest-api` mounted (docker-compose.test*.yaml), not the rest of the repo. Kept in
 // lockstep with the app's encryptToSubscriber — RSA-OAEP(SHA-256)-wrapped AES-256-GCM
 // key, base64-encoded fields.
 

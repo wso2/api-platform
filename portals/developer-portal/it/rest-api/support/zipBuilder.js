@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // Minimal ZIP writer for artifact-upload tests (POST/PUT /apis with an `artifact`
-// field) — no zip-writing library is a dependency of it/backend, and the server
+// field) — no zip-writing library is a dependency of it/rest-api, and the server
 // side only needs to unzip (via `unzipper`), so this only ever needs to produce
 // valid input, not full ZIP feature coverage. Uses STORED (uncompressed) entries
 // only, so no deflate implementation is needed — just each entry's bytes verbatim

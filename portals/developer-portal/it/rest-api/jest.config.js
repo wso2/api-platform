@@ -21,9 +21,9 @@ module.exports = {
     testMatch: ['**/*.spec.js'],
     globalSetup: '<rootDir>/support/global-setup.js',
     globalTeardown: '<rootDir>/support/global-teardown.js',
-    testTimeout: 30000,
+    testTimeout: 10000,
     reporters: [
         'default',
-        ['jest-junit', { outputDirectory: 'reports', outputName: 'backend-results.xml' }],
+        ['jest-junit', { outputDirectory: 'reports', outputName: 'rest-api-results.xml' }],
     ],
 };

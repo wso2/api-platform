@@ -55,8 +55,8 @@ What happens automatically on first start:
 # Run the Cypress UI E2E suite headlessly inside Docker
 make it
 
-# Run the backend REST API suite (Jest + Supertest)
-make -C it test-backend
+# Run the REST API suite (Jest + Supertest)
+make -C it test-rest-api
 
 # Open Cypress interactive UI — requires the portal running locally first
 make it-open
@@ -114,8 +114,8 @@ Run `make help` to see the full list. Summary:
 | `make it` | Run the Cypress UI E2E suite against SQLite (headless, in Docker) |
 | `make it-postgres` | Run the Cypress UI E2E suite against PostgreSQL (headless, in Docker) |
 | `make it-open` | Open Cypress interactive UI (requires the portal running locally) |
-| `make -C it test-backend` | Run the backend REST API suite (Jest + Supertest) against SQLite |
-| `make -C it test-backend-postgres` | Run the backend REST API suite against PostgreSQL |
+| `make -C it test-rest-api` | Run the REST API suite (Jest + Supertest) against SQLite |
+| `make -C it test-rest-api-postgres` | Run the REST API suite against PostgreSQL |
 
 See [it/README.md](it/README.md) for the full list of test commands and suite details.
 

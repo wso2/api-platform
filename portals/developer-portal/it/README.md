@@ -3,7 +3,7 @@
 Integration tests for the Developer Portal. There are two suites, both run against a
 real portal instance in Docker Compose:
 
-- **Backend REST API suite** (`backend/`) — Jest + Supertest tests that exercise the
+- **REST API suite** (`rest-api/`) — Jest + Supertest tests that exercise the
   Admin/DevPortal REST APIs, webhook delivery, key generation, and database side effects.
 - **UI E2E suite** (`ui/`) — Cypress tests that validate portal rendering, authentication
   flows, try-out consoles, theming, and search in a headless browser.
@@ -14,8 +14,8 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
 
 ```
 ┌──────────────────────────────┐   ┌──────────────────────────────┐
-│   Backend suite (Jest)       │   │   UI suite (Cypress)         │
-│   backend/**/*.spec.js        │   │   ui/cypress/e2e/**/*.cy.js  │
+│   REST API suite (Jest)      │   │   UI suite (Cypress)         │
+│   rest-api/**/*.spec.js       │   │   ui/cypress/e2e/**/*.cy.js  │
 │   (Supertest + DB asserts)    │   │   (headless Electron)        │
 └──────────────┬───────────────┘   └──────────────┬───────────────┘
                │                                   │
@@ -32,10 +32,10 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
 ```
 
 **Components:**
-- **platform-api** — provides file-based auth / IdP so the backend suite can perform real
+- **platform-api** — provides file-based auth / IdP so the REST API suite can perform real
   session logins (`admin`/`admin`, `publisher`/`publisher`, `developer`/`developer`).
 - **developer-portal** — the pre-built image under test, tagged `:test` by `make ensure-test-tag`.
-- **Jest + Supertest** — backend REST API test framework.
+- **Jest + Supertest** — REST API test framework.
 - **Cypress** — UI E2E test framework (headless Electron).
 - **SQLite / PostgreSQL** — SQLite by default; the `-postgres` targets swap in a Postgres service.
 
@@ -53,7 +53,7 @@ cd portals/developer-portal && make build
 
 # 2. Run the tests (from this directory)
 cd it
-make test-backend    # backend REST API suite (Jest, SQLite)
+make test-rest-api   # REST API suite (Jest, SQLite)
 make test            # UI E2E suite (Cypress, SQLite)
 ```
 
@@ -61,12 +61,12 @@ make test            # UI E2E suite (Cypress, SQLite)
 
 ```
 portals/developer-portal/it/
-├── backend/                        # Backend REST API suite (Jest + Supertest)
+├── rest-api/                       # REST API suite (Jest + Supertest)
 │   ├── <feature>/*.spec.js         # apis, api-keys, applications, subscriptions,
 │   │                               #   key-managers, mcp-servers, webhook-subscribers, ...
 │   ├── support/                    # client.js, db.js, fixtures.js, webhook-sink.js,
 │   │                               #   global-setup.js, global-teardown.js, wait-for.js, ...
-│   ├── jest.config.js              # Jest config (jest-junit → reports/backend-results.xml)
+│   ├── jest.config.js              # Jest config (jest-junit → reports/rest-api-results.xml)
 │   └── package.json
 ├── ui/                             # UI E2E suite (Cypress)
 │   ├── cypress/
@@ -90,8 +90,8 @@ portals/developer-portal/it/
 |---------|-------------|
 | `make test` | Run the Cypress UI suite headlessly (SQLite, CI-friendly) |
 | `make test-postgres` | Run the Cypress UI suite headlessly (PostgreSQL) |
-| `make test-backend` | Run the Jest backend REST API suite (SQLite) |
-| `make test-backend-postgres` | Run the Jest backend REST API suite (PostgreSQL) |
+| `make test-rest-api` | Run the Jest REST API suite (SQLite) |
+| `make test-rest-api-postgres` | Run the Jest REST API suite (PostgreSQL) |
 | `make open` | Open the Cypress interactive UI against a locally running devportal |
 | `make deps` | Install Node dependencies (only needed for `make open`) |
 | `make clean` | Remove test containers, volumes, and report artifacts |
@@ -107,8 +107,8 @@ You can also run both UI suites from the portal root: `make -C portals/developer
 Both suites run automatically on pull requests that touch `portals/developer-portal/**`,
 via [`.github/workflows/devportal-integration-test.yml`](../../../.github/workflows/devportal-integration-test.yml):
 
-- **`backend-integration-test`** — builds the image and runs `make test-backend` /
-  `make test-backend-postgres` in an `sqlite` × `postgres` matrix.
+- **`rest-api-test`** — builds the image and runs `make test-rest-api` /
+  `make test-rest-api-postgres` in an `sqlite` × `postgres` matrix.
 - **`ui-test`** — builds the image and runs `make test` (Cypress, SQLite).
 
 Test reports (`it/reports/`) are uploaded as workflow artifacts on every run. The workflow
@@ -152,7 +152,7 @@ describe('Developer Portal — API Listing', () => {
 });
 ```
 
-**Backend (Jest + Supertest)** — `backend/`:
+**REST API (Jest + Supertest)** — `rest-api/`:
 
 ```js
 const client = require('../support/client');
@@ -176,13 +176,13 @@ After a run, artifacts are available under `reports/`:
 
 | Report | Location |
 |--------|----------|
-| Backend JUnit results | `reports/backend-results.xml` |
+| REST API JUnit results | `reports/rest-api-results.xml` |
 | Cypress screen recordings | `reports/videos/*.mp4` |
 | Cypress failure screenshots | `reports/screenshots/` |
 
 ## Authentication in Tests
 
-- **Backend suite** performs **real session logins** against `platform-api` using the
+- **REST API suite** performs **real session logins** against `platform-api` using the
   file-based users defined in `configs/config-platform-api-it.toml`
   (`admin`/`admin`, `publisher`/`publisher`, `developer`/`developer`).
 - **UI suite** uses both real login flows (`auth/` specs) and, for admin-protected REST
@@ -190,11 +190,11 @@ After a run, artifacts are available under `reports/`:
 
 ## Adding New Tests
 
-**Backend (Jest):**
-1. Add a `*.spec.js` file under the relevant `backend/<feature>/` directory.
-2. Use the helpers in `backend/support/` (`client.js` for authenticated requests,
+**REST API (Jest):**
+1. Add a `*.spec.js` file under the relevant `rest-api/<feature>/` directory.
+2. Use the helpers in `rest-api/support/` (`client.js` for authenticated requests,
    `db.js` to assert database side effects, `webhook-sink.js` for webhook delivery, etc.).
-3. Run `make test-backend` to verify before committing.
+3. Run `make test-rest-api` to verify before committing.
 
 **UI (Cypress):**
 1. Add a `*.cy.js` file under the relevant `ui/cypress/e2e/<area>/` directory.

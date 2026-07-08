@@ -1,5 +1,5 @@
 {
-  "name": "developer-portal-it-backend",
+  "name": "developer-portal-it-rest-api",
   "version": "1.0.0",
   "description": "REST API integration tests for the Developer Portal",
   "private": true,

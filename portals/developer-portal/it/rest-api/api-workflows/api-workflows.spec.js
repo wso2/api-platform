@@ -117,7 +117,7 @@ describe('API workflows', () => {
         expect(res.body.list.some((w) => w.id === id)).toBe(true);
     });
 
-    it('respects agent_visibility (HIDDEN workflows excluded from agent-facing listing)', async () => {
+    it('includes HIDDEN workflows in the publisher listing with their agentVisibility flag', async () => {
         const visibleId = uniqueHandle('workflow-visible');
         const hiddenId = uniqueHandle('workflow-hidden');
         await client.as('publisher').post(`/views/${view.id}/api-workflows`, {

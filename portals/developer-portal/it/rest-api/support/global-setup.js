@@ -31,12 +31,18 @@ module.exports = async function globalSetup() {
 
     await new Promise((resolve, reject) => {
         const attempt = () => {
-            client
+            const req = client
                 .get(`${BASE_URL}/health`, (res) => {
                     if (res.statusCode === 200) return resolve();
+                    res.resume();
                     retry();
                 })
                 .on('error', retry);
+            // A connection that neither responds nor errors (server accepted the
+            // socket but hangs) would otherwise never reach retry()/the deadline
+            // check, hanging setup forever. Destroy it so 'error' fires and retry()
+            // enforces TIMEOUT_MS.
+            req.setTimeout(5000, () => req.destroy(new Error('health check request timed out')));
         };
         const retry = () => {
             if (Date.now() > deadline) {

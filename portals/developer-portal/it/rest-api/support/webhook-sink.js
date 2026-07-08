@@ -24,7 +24,7 @@ const http = require('http');
 
 // WEBHOOK_SINK_URL (docker-compose.test*.yaml) gives the *hostname* the devportal
 // container must use to reach this test container (its own service name, e.g.
-// "backend-tests") — plain "localhost" wouldn't resolve across containers. But every
+// "rest-api-tests") — plain "localhost" wouldn't resolve across containers. But every
 // */webhook-events.spec.js file needs its OWN port, since Jest runs spec files in
 // parallel worker processes within this one container and they'd otherwise all try to
 // bind whatever single port the env var's URL happens to carry. So: take the hostname
@@ -56,10 +56,22 @@ function createWebhookSink() {
                 req.on('end', () => {
                     const status = nextResponseStatus;
                     nextResponseStatus = 200;
+                    // Guard the parse: a non-JSON payload would otherwise throw
+                    // inside this server callback and crash the Jest worker. On
+                    // failure keep `body` null so the assertion fails clearly
+                    // (with rawBody available) instead of the exception escaping.
+                    let body = null;
+                    if (rawBody) {
+                        try {
+                            body = JSON.parse(rawBody);
+                        } catch {
+                            body = null;
+                        }
+                    }
                     received.push({
                         headers: req.headers,
                         rawBody,
-                        body: rawBody ? JSON.parse(rawBody) : null,
+                        body,
                         receivedAt: new Date(),
                     });
                     res.writeHead(status, { 'Content-Type': 'application/json' });
