@@ -272,7 +272,7 @@ export default function LLMProxiesSummaryCardSection({
                       fontSize="0.7rem"
                       noWrap
                     >
-                      {truncateWords(proxy.description || 'No description', 12)}
+                      {truncateWords(proxy.description?.trim() || '', 12)}
                     </Typography>
                   </Box>
                 </Box>

@@ -24,7 +24,7 @@ const { config } = require('../config/configLoader');
 const { Sequelize } = require('sequelize');
 const logger = require('../config/logger');
 
-const subCrypto = createCryptoUtil(config.advanced.encryptionKey);
+const subCrypto = createCryptoUtil(config.security.encryptionKey);
 
 function encryptToken(token) {
     return subCrypto.encrypt(token);

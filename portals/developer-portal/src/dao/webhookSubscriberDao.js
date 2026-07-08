@@ -21,7 +21,7 @@ const { createCryptoUtil } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 
-const whCrypto = createCryptoUtil(config.advanced.encryptionKey);
+const whCrypto = createCryptoUtil(config.security.encryptionKey);
 
 /**
  * Create a new webhook subscriber for an organization.
@@ -31,7 +31,7 @@ const create = async (orgId, subData, createdBy) => {
     try {
         if (subData.secret && !whCrypto.enabled) {
             throw new Error('Webhook subscriber encryption key is not configured. ' +
-                'Set config.advanced.encryptionKey to a 64-char hex string.');
+                'Set config.security.encryptionKey to a 64-char hex string.');
         }
         const record = await WebhookSubscriber.create({
             org_uuid: orgId,

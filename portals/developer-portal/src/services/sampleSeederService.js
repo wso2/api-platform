@@ -264,7 +264,7 @@ async function seedSampleMCPs(orgId) {
  * swapped out, and not localStorage/sessionStorage, so it's shared across browsers/admins.
  */
 function markerPath() {
-    const dbStorage = config.db?.storage || './devportal.db';
+    const dbStorage = config.database?.file || './devportal.db';
     return path.join(path.dirname(dbStorage), '.samples-seeded');
 }
 

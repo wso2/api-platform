@@ -20,7 +20,8 @@
  * Secret management behaviour for MCP server (external server) create flows.
  *
  * Covers:
- *   TC-80  Create MCP server with auth → POST /secrets called, placeholder stored
+ *   TC-80  Create MCP server with auth → POST /secrets called, placeholder stored,
+ *          plaintext absent from the created server's page
  *   TC-81  fetchServerInfo validation → POST /secrets NOT called
  *   TC-82  Re-submit form with existing placeholder → POST /secrets NOT called
  *   TC-83  POST /secrets 500 → MCP server creation aborted, no server created
@@ -120,6 +121,11 @@ describe('AI Workspace — MCP server secret management', () => {
         interception.response.body?.id ??
         interception.response.body?.handle ??
         serverId;
+    });
+
+    // Plaintext auth value must never appear anywhere on the created server's page.
+    cy.get('body').invoke('text').then((text) => {
+      expect(text, 'plaintext absent from page').not.to.include('tok-tc80-plaintext');
     });
   });
 

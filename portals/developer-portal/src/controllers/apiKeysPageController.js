@@ -147,7 +147,7 @@ const loadAPIApiKeys = async (req, res, next) => {
             selectedAppId: selectedAppHandle,
             apiMetadata: metaData,
             apiHandle: apiHandle,
-            isReadOnlyMode: config.readOnlyMode,
+            isReadOnlyMode: config.server.readOnlyMode,
             showApiKeysNav,
             csrfToken: getSessionCsrfToken(req),
         };

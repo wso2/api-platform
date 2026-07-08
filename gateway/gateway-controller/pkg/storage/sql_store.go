@@ -648,7 +648,8 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 
 	// Portable insert-or-update guarded by deployed_at: only overwrite when the
 	// incoming deployed_at is strictly newer (or the stored value is NULL).
-	// cp_sync_* and created_at are written on INSERT only — preserved on update.
+	// cp_artifact_id and created_at are written on INSERT only — preserved on update
+	// cp_sync_status and cp_sync_info ARE reset on update
 	didWrite, err := s.upsert(tx, upsertSpec{
 		table: "artifacts",
 		columns: []string{
@@ -667,10 +668,12 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 			"display_name = ?", "version = ?", "data_version = ?", "kind = ?", "handle = ?",
 			"desired_state = ?", "deployment_id = ?", "origin = ?",
 			"updated_at = ?", "deployed_at = ?",
+			"cp_sync_status = ?", "cp_sync_info = ?",
 		},
 		setValues: []interface{}{
 			cfg.DisplayName, cfg.Version, cfg.DataVersion, cfg.Kind, cfg.Handle,
 			cfg.DesiredState, deploymentID, cfg.Origin, now, cfg.DeployedAt,
+			upsertCPSyncStatus, upsertCPSyncInfo,
 		},
 		guard:       "(deployed_at IS NULL OR deployed_at < ?)",
 		guardValues: []interface{}{cfg.DeployedAt},

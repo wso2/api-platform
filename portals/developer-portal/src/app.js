@@ -62,7 +62,7 @@ app.use(session({
     resave: false,
     saveUninitialized: true,
     cookie: {
-        secure: !config.advanced.http && !config.designMode?.enabled,
+        secure: config.tls.enabled && !config.designMode?.enabled,
         maxAge: 60 * 60 * 1000,
     },
 }));
@@ -78,7 +78,7 @@ app.get('/robots.txt', (req, res) => {
 });
 
 app.get('/llms.txt', (req, res) => {
-    const baseUrl = config.baseUrl;
+    const baseUrl = config.server.baseUrl;
     res.type('text/plain').send(
         `# API Developer Portal — AI Agent Entry Point\n\n` +
         `This portal provides APIs, MCP servers, and API workflows organized by organization and view.\n` +

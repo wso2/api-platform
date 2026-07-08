@@ -94,30 +94,32 @@ For local development, the default `ASGARDEO_RESOURCE_IDENTIFIER=https://localho
 
 ## 5. Developer Portal Configuration
 
-Update `configs/config.yaml`:
+Update `configs/config.toml`:
 
-```yaml
-identityProvider:
-  name: "Asgardeo"
-  issuer: "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
-  authorizationURL: "https://api.asgardeo.io/t/<your-tenant>/oauth2/authorize"
-  tokenURL: "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
-  userInfoURL: "https://api.asgardeo.io/t/<your-tenant>/oauth2/userinfo"
-  clientId: "<devportal-app-client-id>"
-  clientSecret: "<devportal-app-client-secret>"   # env: DP_IDENTITYPROVIDER_CLIENTSECRET
-  audience: "<devportal-app-client-id>"           # Asgardeo sets clientId as the aud claim
-  callbackURL: "https://<your-domain>/default/callback"
-  logoutURL: "https://api.asgardeo.io/t/<your-tenant>/oidc/logout"
-  logoutRedirectURI: "https://<your-domain>/default"
-  jwksURL: "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
-  scope: "openid profile email"   # dp:* not needed — browser sessions are preauthorized
-  orgIDClaim: "org_name"    # Asgardeo B2B: org_name matches ORGANIZATION_IDENTIFIER (sub-org display name)
-  roleClaim: "roles"
+```toml
+[idp]
+name = "Asgardeo"
+issuer = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
+authorization_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/authorize"
+token_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
+user_info_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/userinfo"
+client_id = "<devportal-app-client-id>"
+client_secret = "<devportal-app-client-secret>"   # env: APIP_DP_IDP_CLIENTSECRET
+audience = "<devportal-app-client-id>"            # Asgardeo sets client_id as the aud claim
+callback_url = "https://<your-domain>/default/callback"
+logout_url = "https://api.asgardeo.io/t/<your-tenant>/oidc/logout"
+logout_redirect_uri = "https://<your-domain>/default"
+jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
+scope = "openid profile email"   # dp:* not needed — browser sessions are preauthorized
+
+[idp.claims]
+org_id = "org_name"    # Asgardeo B2B: org_name matches ORGANIZATION_IDENTIFIER (sub-org display name)
+role = "roles"
 ```
 
-> **Note:** Set `clientSecret` via the `DP_IDENTITYPROVIDER_CLIENTSECRET` environment variable rather than in the config file.
+> **Note:** Set `client_secret` via the `APIP_DP_IDP_CLIENTSECRET` environment variable rather than in the config file.
 
-> **Callback URL:** A single `callbackURL` is shared across all devportal organizations. After the callback, the portal uses the session's `returnTo` value to redirect the user to the correct org. Register only the URL you set in `callbackURL` with Asgardeo.
+> **Callback URL:** A single `callback_url` is shared across all devportal organizations. After the callback, the portal uses the session's `returnTo` value to redirect the user to the correct org. Register only the URL you set in `callback_url` with Asgardeo.
 
 ---
 

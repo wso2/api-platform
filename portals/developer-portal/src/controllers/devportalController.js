@@ -30,7 +30,6 @@ const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { Sequelize } = require("sequelize");
-const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey, trackGenerateCredentials } = require('../utils/telemetryUtil');
 const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManagerDao');
 const { generateToken } = require('../services/oauthTokenService');
@@ -86,10 +85,7 @@ const saveApplication = async (req, res) => {
     const userId = req.auth?.userId || req.user?.sub;
     try {
         const applicationData = parseApplicationDataFromRequest(req);
-        const idpId = req.auth?.rawSub || req.user?.sub;
-        trackAppCreationStart({ orgId: orgId, appName: applicationData.displayName, idpId }, req);
         const application = await appDao.create(orgId, userId, applicationData);
-        trackAppCreationEnd({ orgId: orgId, appName: applicationData.displayName, idpId }, req);
         const createdApp = application.dataValues;
         try {
             await sequelize.transaction((t) => publish('application.created',
@@ -204,9 +200,8 @@ const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) =>
  * deletion events. Shared by deleteApplication's initial attempt and its
  * already-deleted (404) retry path.
  */
-const finalizeApplicationDeletion = async (orgId, applicationId, userId, idpId, req) => {
+const finalizeApplicationDeletion = async (orgId, applicationId, userId, req) => {
     const { appToDelete, affectedKeys } = await deleteApplicationAndSnapshotKeys(orgId, applicationId, userId);
-    trackAppDeletion({ orgId: orgId, appId: applicationId, idpId }, req);
     logUserAction('APPLICATION_DELETED', req, { orgId, appId: applicationId, resourceUuid: applicationId, resourceType: 'application' });
     await publishApplicationDeletedEvents(orgId, applicationId, appToDelete, affectedKeys);
 };
@@ -247,13 +242,12 @@ const deleteApplication = async (req, res) => {
         if (!ownedApp) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
         }
-        const idpId = req.auth?.rawSub || req.user?.sub;
         try {
-            await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
+            await finalizeApplicationDeletion(orgId, applicationId, userId, req);
             res.status(200).send("Resource Deleted Successfully");
         } catch (error) {
             if (error.statusCode === 404) {
-                await finalizeApplicationDeletion(orgId, applicationId, userId, idpId, req);
+                await finalizeApplicationDeletion(orgId, applicationId, userId, req);
                 return res.status(200).send("Resource Deleted Successfully");
             }
             logger.error('Error occurred while deleting the application', { orgId: orgId, appId: applicationId, error: error.message, stack: error.stack });
@@ -315,11 +309,6 @@ const generateKeys = async (req, res) => {
             keyMappingId: keyMappingRecord?.dataValues?.uuid,
         };
 
-        trackGenerateCredentials({
-            orgId: orgId,
-            appName: appId,
-            idpId: req.isAuthenticated() ? (req.auth?.rawSub || req.user?.sub) : undefined
-        }, req);
         return res.status(200).json(responseData);
     } catch (error) {
         logger.error('key mapping create error failed', {
@@ -369,11 +358,6 @@ const generateOAuthKeys = async (req, res) => {
             tokenScopes: tokenResult.scope ? tokenResult.scope.split(' ') : [],
         };
 
-        trackGenerateKey({
-            orgId: req.user[constants.ORG_UUID],
-            appId: applicationId,
-            idpId: req.isAuthenticated() ? (req.auth?.rawSub || req.user?.sub) : undefined
-        }, req);
         res.status(200).json(responseData);
     } catch (error) {
         logger.error("Error occurred while generating the OAuth keys", {

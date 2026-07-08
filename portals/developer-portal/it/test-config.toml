@@ -1,0 +1,21 @@
+# Integration Test Configuration
+#
+# Shared by docker-compose.test.yaml and docker-compose.test.postgres.yaml — mounted
+# at /app/configs/config.toml in both. Settings that are identical across both DB
+# variants live here; settings that differ (database connection, network hostnames)
+# stay as APIP_DP_* env vars in each compose file's environment: block.
+
+[tls]
+# Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
+enabled = false
+
+[logging]
+console_only = true
+
+[security.service_api_key]
+enabled = true
+value = "devportal-it-test-key"
+
+[organization]
+default_name = "default"
+auto_create_subscription_plans = true

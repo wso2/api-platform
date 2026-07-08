@@ -379,7 +379,7 @@ const getAllAPIWorkflows = async (req, res) => {
 const generatePrompt = async (req, res) => {
     const { displayName, description, apis, orgHandle, viewName, id } = req.body;
     try {
-        const baseUrl = config.baseUrl || `${req.protocol}://${req.get('host')}`;
+        const baseUrl = config.server.baseUrl || `${req.protocol}://${req.get('host')}`;
         const prompt = generateAgentPrompt(displayName, description, apis || [], orgHandle || '', viewName || 'default', baseUrl, id || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {

@@ -14,11 +14,11 @@
  * To customise colours: search for the :root block and change the values.
  * All other rules use var(--...) so they inherit the new palette automatically.
  *
- * To use this theme in design mode, set pathToLayout in config.yaml:
+ * To use this theme in design mode, set path_to_layout in config.toml:
  *
- *   designMode:
- *     enabled: true
- *     pathToLayout: "./samples/layouts/green-theme/"
+ *   [design_mode]
+ *   enabled = true
+ *   path_to_layout = "./samples/layouts/green-theme/"
  *
  * To deploy to production, zip this directory and upload it via
  * Admin Settings → Views → Upload View Content.

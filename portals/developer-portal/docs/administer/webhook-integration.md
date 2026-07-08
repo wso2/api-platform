@@ -40,16 +40,15 @@ For events that carry a sensitive field, the value is **envelope-encrypted** wit
 
 ## Configure a Webhook Subscriber
 
-Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.yaml`. Each organization registers its own endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
+Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.toml`. Each organization registers its own endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
 
-Only delivery tuning, which applies globally across all organizations, remains in `config.yaml`. Each delivery is attempted exactly once — there is no retry:
+Only delivery tuning, which applies globally across all organizations, remains in `config.toml`. Each delivery is attempted exactly once — there is no retry:
 
-```yaml
-webhooks:
-  delivery:
-    pollIntervalMs: 2000
-    batchSize: 50
-    signatureToleranceSec: 300
+```toml
+[webhooks.delivery]
+poll_interval_ms = 2000
+batch_size = 50
+signature_tolerance_sec = 300
 ```
 
 ### Create a subscriber
@@ -515,7 +514,7 @@ The HMAC-SHA256 is computed over the canonical string `<unix_seconds>.<raw_body>
 **Verification steps:**
 
 1. Extract `t` and `v1` from the header.
-2. Check that `|now - t| <= 300` seconds (configurable via `delivery.signatureToleranceSec`). Reject if outside the window — this prevents replay attacks.
+2. Check that `|now - t| <= 300` seconds (configurable via `webhooks.delivery.signatureToleranceSec`, TOML `[webhooks.delivery] signature_tolerance_sec`). Reject if outside the window — this prevents replay attacks.
 3. Compute `HMAC-SHA256(secret, "<t>.<raw_request_body>")`.
 4. Compare the result with `v1` using a timing-safe comparison. Reject the request if they do not match.
 

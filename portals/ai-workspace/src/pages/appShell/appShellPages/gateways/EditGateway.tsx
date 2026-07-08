@@ -126,7 +126,7 @@ export default function EditGateway() {
           ? [normalizedVhost, ...otherEndpoints]
           : undefined,
         functionalityType,
-        description: description || undefined,
+        description,
       });
 
       showSnackbar('AI Gateway updated successfully', 'success');

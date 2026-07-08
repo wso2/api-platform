@@ -33,7 +33,7 @@ const logger = require('../config/logger');
  * missing defaults is repaired without skipping the rest of the seed.
  */
 async function seedDefaultOrg() {
-    const orgName = config.defaultOrgName;
+    const orgName = config.organization.defaultName;
     if (!orgName) return;
 
     const payload = {
@@ -105,7 +105,7 @@ async function seedDefaultOrg() {
         }
     }
 
-    if (config.generateDefaultSubPlans) {
+    if (config.organization.autoCreateSubscriptionPlans) {
         for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
             try {
                 await subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR);

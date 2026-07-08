@@ -20,6 +20,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getGateways,
   registerGateway,
+  rotateGatewayToken,
   updateGateway,
   deleteGateway,
   HybridGateway,
@@ -52,7 +53,15 @@ interface UseGatewayListReturn {
   isDeleting: boolean;
 }
 
-export function useGatewayList(): UseGatewayListReturn {
+type UseGatewayListOptions = {
+  pollAlways?: boolean;
+  pollingIntervalMs?: number;
+};
+
+export function useGatewayList(
+  options: UseGatewayListOptions = {}
+): UseGatewayListReturn {
+  const { pollAlways = false, pollingIntervalMs = 5000 } = options;
   const [gateways, setGateways] = useState<HybridGateway[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -101,13 +110,14 @@ export function useGatewayList(): UseGatewayListReturn {
     fetchGateways();
   }, [fetchGateways]);
 
-  // Poll every 5 seconds while any gateway is inactive
+  // Poll while the page needs fresh status updates.
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const hasInactive = gateways.some((gw) => !gw.isActive);
+    const shouldPoll = pollAlways || hasInactive;
 
-    if (hasInactive && !isLoading) {
+    if (shouldPoll && !isLoading) {
       if (!pollingRef.current) {
         pollingRef.current = setInterval(async () => {
           if (!organizationId) return;
@@ -123,7 +133,7 @@ export function useGatewayList(): UseGatewayListReturn {
           } catch (err) {
             console.error('Polling failed:', err);
           }
-        }, 5000);
+        }, pollingIntervalMs);
       }
     } else if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -136,7 +146,7 @@ export function useGatewayList(): UseGatewayListReturn {
         pollingRef.current = null;
       }
     };
-  }, [gateways, isLoading, organizationId]);
+  }, [gateways, isLoading, organizationId, pollAlways, pollingIntervalMs]);
 
   // Auto-select first gateway when gateways list changes and none is selected
   useEffect(() => {
@@ -154,10 +164,26 @@ export function useGatewayList(): UseGatewayListReturn {
       setIsCreating(true);
       try {
         const response = await registerGateway(data, organizationId);
+        let initialToken = response.data.token ?? null;
+
+        // The create-gateway response does not always include the one-time
+        // registration token, so generate it immediately for the first-view flow.
+        if (!initialToken) {
+          try {
+            initialToken = await rotateGatewayToken(response.data.id, organizationId);
+          } catch (tokenError) {
+            console.error('Failed to generate initial gateway registration token:', tokenError);
+            showSnackbar(
+              'Gateway created, but the initial registration token could not be generated. Use Reconfigure on the gateway page.',
+              'warning'
+            );
+          }
+        }
+
         const newGateway: HybridGateway = {
           ...response.data,
           status: response.data.isActive ? 'connected' : 'pending',
-          token: response.data.token,
+          token: initialToken,
         };
 
         // Add to local state

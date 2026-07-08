@@ -51,7 +51,7 @@ const loadCustomContent = async (req, res, next) => {
         }
         const layoutPath = config.designMode.pathToLayout;
         let templateContent = {};
-        templateContent[constants.BASE_URL_NAME] = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent[constants.BASE_URL_NAME] = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
         //read all markdown content
         if (fs.existsSync(path.join(process.cwd(), layoutPath + 'pages', filePath, 'content'))) {
             const markdDownFiles = fs.readdirSync(path.join(process.cwd(), layoutPath + 'pages/' + filePath + '/content'));
