@@ -290,20 +290,19 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("failed to transform LLM provider to API configuration: %w", err)
 	}
 
-	// Validate policies against loaded policy definitions
-	// if s.policyValidator != nil {
-	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
-	// 	if len(policyErrors) > 0 {
-	// 		errs := make([]string, 0, len(policyErrors))
-	// 		for i, e := range policyErrors {
-	// 			if params.Logger != nil {
-	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
-	// 			}
-	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-	// 		}
-	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
-	// 	}
-	// }
+	// Validate policy references (name + version) against the loaded policy definitions.
+	// Mirrors the REST API path (ValidateRestAPIPolicies); an unresolvable policy name or
+	// version fails the deploy instead of being silently dropped by the runtime transform.
+	if s.policyValidator != nil {
+		if policyErrors := s.policyValidator.ValidateLLMProviderPolicies(&renderedProvider); len(policyErrors) > 0 {
+			errs := make([]string, 0, len(policyErrors))
+			for i, e := range policyErrors {
+				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+				errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+			}
+			return nil, fmt.Errorf("provider policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
+		}
+	}
 
 	// Generate API ID if not provided
 	apiID := params.ID
@@ -463,20 +462,19 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, fmt.Errorf("failed to transform LLM proxy to API configuration: %w", err)
 	}
 
-	// Validate policies against loaded policy definitions
-	// if s.policyValidator != nil {
-	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
-	// 	if len(policyErrors) > 0 {
-	// 		errs := make([]string, 0, len(policyErrors))
-	// 		for i, e := range policyErrors {
-	// 			if params.Logger != nil {
-	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
-	// 			}
-	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-	// 		}
-	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
-	// 	}
-	// }
+	// Validate policy references (name + version) against the loaded policy definitions.
+	// Mirrors the REST API path (ValidateRestAPIPolicies); an unresolvable policy name or
+	// version fails the deploy instead of being silently dropped by the runtime transform.
+	if s.policyValidator != nil {
+		if policyErrors := s.policyValidator.ValidateLLMProxyPolicies(&renderedProxy); len(policyErrors) > 0 {
+			errs := make([]string, 0, len(policyErrors))
+			for i, e := range policyErrors {
+				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+				errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+			}
+			return nil, fmt.Errorf("%w: %d policy error(s): %s", ErrLLMProxyValidation, len(policyErrors), strings.Join(errs, "; "))
+		}
+	}
 
 	// Generate API ID if not provided
 	apiID := params.ID
