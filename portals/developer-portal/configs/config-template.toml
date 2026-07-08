@@ -1,0 +1,181 @@
+# =============================================================================
+# DEVELOPER PORTAL CONFIGURATION TEMPLATE
+# =============================================================================
+# Documentation reference only — enumerates every supported config.toml key
+# with its default value. To actually run the portal, copy config.toml.example
+# instead (same keys, with setup-oriented comments and copy/paste guidance).
+#
+# Precedence (lowest to highest):
+#   1. Built-in defaults (src/config/configLoader.js)
+#   2. configs/config.toml
+#   3. APIP_DP_* environment variables
+#
+# Every key below can be overridden via APIP_DP_<LEVEL1>_<LEVEL2>_... (one
+# underscore-separated token per config level, case-insensitive, "__" for a
+# literal underscore in a key name). Example: security.service_api_key.value
+# -> APIP_DP_SECURITY_SERVICEAPIKEY_VALUE.
+
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+
+[server]
+base_url = "http://localhost:3000"
+port = 3000
+read_only_mode = false
+
+# =============================================================================
+# TLS CONFIGURATION
+# =============================================================================
+# Only relevant when the portal terminates TLS itself (not behind a proxy/LB).
+
+[tls]
+enabled = false
+cert_file = "./resources/security/client-truststore.pem"
+key_file = "./resources/security/private-key.pem"
+ca_file = "./resources/security/client-truststore.pem"
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+
+[logging]
+console_only = false
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+# Supported types: sqlite (default), postgres.
+
+[database]
+type = "sqlite"
+file = "./devportal.db"       # SQLite only
+host = "localhost"            # PostgreSQL only
+port = 5432                   # PostgreSQL only
+name = "devportal"            # PostgreSQL only
+username = "postgres"         # PostgreSQL only
+password = ""                 # PostgreSQL only
+
+[database.ssl]
+enabled = false
+ca_file = "./resources/security/ca.pem"
+
+# =============================================================================
+# SECURITY CONFIGURATION
+# =============================================================================
+
+[security]
+encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
+role_validation = false # Enforce per-operation role validation
+
+# Static shared-secret header for calling the devportal's own REST API.
+[security.service_api_key]
+enabled = true
+header_name = "x-wso2-api-key"
+value = ""
+
+# =============================================================================
+# IDENTITY PROVIDER CONFIGURATION (OAuth2 / OIDC)
+# =============================================================================
+# Leave client_id empty to use local auth (platform_api below) instead of OIDC.
+
+[idp]
+name = "IS"
+issuer = "https://localhost:9443/oauth2/token"
+authorization_url = "https://localhost:9443/oauth2/authorize"
+token_url = "https://localhost:9443/oauth2/token"
+user_info_url = "https://localhost:9443/oauth2/userinfo"
+client_id = ""
+client_secret = ""
+audience = ""
+callback_url = "http://localhost:3000/default/callback"
+scope = "openid profile email"
+sign_up_url = ""
+logout_url = "https://localhost:9443/oidc/logout"
+logout_redirect_uri = "http://localhost:3000/default"
+certificate = ""
+jwks_url = "https://localhost:9443/oauth2/jwks"
+token_refresh_timeout_ms = 10000
+silent_sso = true      # Enable silent SSO
+org_callback = false   # Redirect to the org's own landing page after login
+
+# Claim name mappings — adjust to match what your IDP puts in the JWT.
+# Dot-notation supported for nested claims (e.g. "realm_access.roles").
+[idp.claims]
+role = "roles"
+org_id = "org_name"
+groups = "groups"
+
+[idp.roles]
+admin = "admin"
+subscriber = "Internal/subscriber"
+super_admin = "superAdmin"
+
+# =============================================================================
+# PLATFORM API CONFIGURATION (local auth sidecar)
+# =============================================================================
+# Used only when idp.client_id is empty. Leave base_url empty
+# to disable local auth entirely.
+
+[platform_api]
+base_url = ""
+jwt_secret = ""
+insecure = false
+
+# =============================================================================
+# PAGE ACCESS RULES
+# =============================================================================
+# Additions only — the portal always protects its own pages (applications,
+# api-keys, subscriptions, settings) regardless of what's listed here. Use these
+# lists to require login/authorization for a custom page you've added, e.g. a
+# design-mode page or a custom static route. Patterns are glob-matched (minimatch)
+# against the request URL and merged with (never replace) the built-in list.
+#
+# [page_access_rules]
+# authenticated = ["**/my-custom-page"]
+# authorized = ["**/my-custom-page"]
+
+# =============================================================================
+# ORGANIZATION CONFIGURATION
+# =============================================================================
+# Bootstraps a default organization on startup (idempotent).
+
+[organization]
+default_name = "default"                 # "" disables auto-seeding
+auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
+
+# =============================================================================
+# DEMO MODE CONFIGURATION
+# =============================================================================
+# Enables the "Seed sample APIs" action and onboarding overlay. Do not enable
+# in production deployments.
+
+[demo]
+enabled = false
+
+# =============================================================================
+# DESIGN MODE CONFIGURATION
+# =============================================================================
+# Local, file-based preview mode — APIs/layouts load from disk instead of the
+# database. For content authoring and theming workflows only; do not enable
+# in a production environment. Disabled (commented) by default.
+
+# [design_mode]
+# enabled = false
+# path_to_layout = "./resources/default-layout/"
+# api_samples_path = "./samples/apis/"
+# mcp_samples_path = "./samples/mcps/"
+# subscription_plans_path = "./samples/subscription-plans.yaml"
+# applications_path = "./samples/applications.yaml"
+
+# =============================================================================
+# WEBHOOKS CONFIGURATION (gateway event delivery)
+# =============================================================================
+# Global delivery tuning only — subscribers are per-organization, managed via
+# the Webhook Subscribers API, not this file. Each delivery is attempted
+# exactly once; there is no retry/backoff.
+
+[webhooks.delivery]
+poll_interval_ms = 2000
+batch_size = 50
+signature_tolerance_sec = 300

@@ -29,7 +29,7 @@ const app = require('./app');
 
 const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
 
-const PORT = process.env.PORT || config.defaultPort;
+const PORT = process.env.PORT || config.server.port;
 
 function startBackgroundServices() {
     if (config.designMode?.enabled) return;
@@ -45,15 +45,42 @@ function startBackgroundServices() {
     }
 }
 
+// Prints a startup banner horizontally centered in an 80-column terminal, with
+// blank-line padding above and below the title — matches ai-workspace/bff/main.go's
+// printBanner(). Written directly to stdout (not through the structured logger) so
+// timestamp/level prefixes don't break the centering.
+function printBanner(visitUrl) {
+    const termWidth = 80;
+    const lines = [
+        '='.repeat(40),
+        '',
+        '',
+        'Developer Portal Started',
+        '',
+        `Visit Portal: ${visitUrl}`,
+        '',
+        '',
+        '='.repeat(40),
+    ];
+    console.log();
+    for (const line of lines) {
+        const pad = Math.max(0, Math.floor((termWidth - line.length) / 2));
+        console.log(' '.repeat(pad) + line);
+    }
+    console.log();
+}
+
 function logStartupBanner() {
-    const orgSegment = config.designMode?.enabled ? '' : `/${config.defaultOrgName || '<organization>'}`;
-    const visitUrl = `${config.baseUrl}${orgSegment}/views/default`;
-    const line = '='.repeat(72);
-    logger.info(`\n${line}\n\n\n\tDeveloper Portal Started.\n\tVisit Portal: ${visitUrl}\n\n\n${line}`);
+    const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
+    // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
+    // shorter and avoids baking view-naming details into the banner.
+    const visitUrl = `${config.server.baseUrl}${orgSegment}`;
+    printBanner(visitUrl);
+    logger.info('Developer Portal started', { visitUrl });
 
     if (config.demo?.enabled) {
         logger.warn(
-            'DEMO MODE is ENABLED (DP_DEMO_ENABLED=true) — sample APIs/MCPs can be seeded ' +
+            'DEMO MODE is ENABLED (APIP_DP_DEMO_ENABLED=true) — sample APIs/MCPs can be seeded ' +
             'via Settings > Manage APIs or the onboarding overlay. Do not enable this in ' +
             'production deployments.'
         );
@@ -73,21 +100,21 @@ let server;
 async function startServer() {
     logger.info('Developer Portal starting...');
     // Sync database schema for SQLite in production mode
-    if (config.db.dialect === 'sqlite' && !config.designMode?.enabled) {
+    if (config.database.type === 'sqlite' && !config.designMode?.enabled) {
         await sequelize.sync();
         logger.info('Database: SQLite schema synced ✓');
     }
 
-    if (config.advanced.http || config.designMode?.enabled) {
+    if (!config.tls.enabled || config.designMode?.enabled) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
     } else {
     try {
-        const certPath = path.resolve(config.serverCerts.pathToCert);
-        const keyPath = path.resolve(config.serverCerts.pathToPK);
+        const certPath = path.resolve(config.tls.certFile);
+        const keyPath = path.resolve(config.tls.keyFile);
 
         const serverCert = fs.readFileSync(certPath);
         const serverKey = fs.readFileSync(keyPath);
-        const caCert = fs.readFileSync(path.resolve(config.serverCerts.pathToCA));
+        const caCert = fs.readFileSync(path.resolve(config.tls.caFile));
 
         server = https.createServer({
             key: serverKey,

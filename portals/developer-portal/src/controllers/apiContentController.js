@@ -55,7 +55,7 @@ const loadAPIs = async (req, res, next) => {
         }
         const templateContent = {
             apiMetadata: metaDataList,
-            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         }
         const listingPage = isMcpListing ? 'pages/mcp' : 'pages/apis';
@@ -128,7 +128,7 @@ const loadAPIs = async (req, res, next) => {
                 orgId: orgId,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                isReadOnlyMode: config.readOnlyMode,
+                isReadOnlyMode: config.server.readOnlyMode,
                 demoEnabled: config.demo?.enabled === true,
                 applications: []
             };
@@ -216,7 +216,7 @@ const loadAPIContent = async (req, res, next) => {
             schemaDefinition,
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPlans,
-            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: apiUsesApiKeySecurity(metaData),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
@@ -403,7 +403,7 @@ const loadAPIContent = async (req, res, next) => {
                 scopes: [],
                 devportalMode: devportalMode,
                 profile: req.isAuthenticated() ? profile : null,
-                isReadOnlyMode: config.readOnlyMode,
+                isReadOnlyMode: config.server.readOnlyMode,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
@@ -497,8 +497,8 @@ const loadDocsPage = async (req, res, next) => {
         };
         const templateContent = {
             apiMD: '',
-            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
-            baseDocUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseDocUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
@@ -595,7 +595,7 @@ const loadDocument = async (req, res, next) => {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.swagger);
                     templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
-                    templateContent.graphqlApiKeyHeader = config.advanced?.apiKey?.keyType || 'apikey';
+                    templateContent.graphqlApiKeyHeader = config.security?.serviceApiKey?.headerName || 'apikey';
                     templateContent.apiMetadata = metaData;
                 } else {
                     templateContent.graphql = JSON.stringify(definitionResponse.swagger);
@@ -610,8 +610,8 @@ const loadDocument = async (req, res, next) => {
             const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle), docType) || '';
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
-        templateContent.baseUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
-        templateContent.baseDocUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
+        templateContent.baseUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent.baseDocUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;
@@ -715,7 +715,7 @@ const loadDocument = async (req, res, next) => {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.graphql);
                     templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
-                    templateContent.graphqlApiKeyHeader = config.advanced?.apiKey?.keyType || 'apikey';
+                    templateContent.graphqlApiKeyHeader = config.security?.serviceApiKey?.headerName || 'apikey';
                 } else {
                     templateContent.graphql = definitionResponse.graphql ? JSON.stringify(definitionResponse.graphql) : '""';
                     templateContent.apiMetadataJSON = JSON.stringify(apiMetadata || {});

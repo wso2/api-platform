@@ -4,7 +4,7 @@ A key manager is the OAuth2 authorization server used to issue access tokens for
 
 ## Prerequisites
 
-No encryption key is required for key manager configuration — the portal never stores a client secret or other key manager credential. (The encryption key in `config.yaml` is still used for other secrets, such as webhook signing secrets.)
+No encryption key is required for key manager configuration — the portal never stores a client secret or other key manager credential. (The encryption key in `config.toml` is still used for other secrets, such as webhook signing secrets.)
 
 ## Add a Key Manager
 

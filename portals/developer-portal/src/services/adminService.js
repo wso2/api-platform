@@ -36,7 +36,6 @@ const APIDTO = require('../dto/apiDto');
 const { config } = require('../config/configLoader');
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
-const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetryUtil');
 const kmDao = require('../dao/keyManagerDao');
 
 function mapYamlToOrganization(parsed) {
@@ -172,7 +171,7 @@ const createOrganization = async (req, res) => {
             logger.info('Views created successfully', { orgId });
 
             //store default subscription plans
-            if (config.generateDefaultSubPlans) {
+            if (config.organization.autoCreateSubscriptionPlans) {
                 await subscriptionPlanDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, userId, t);
             }
             logger.info('Default subscription plans created successfully', {

@@ -426,7 +426,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
 const generatePrompt = async (req, res) => {
     const { displayName, description, apis, orgName, viewName, handle } = req.body;
     try {
-        const baseUrl = config.baseUrl || `${req.protocol}://${req.get('host')}`;
+        const baseUrl = config.server.baseUrl || `${req.protocol}://${req.get('host')}`;
         const prompt = apiWorkflowService.generateAgentPrompt(displayName, description, apis || [], orgName || '', viewName || 'default', baseUrl, handle || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {

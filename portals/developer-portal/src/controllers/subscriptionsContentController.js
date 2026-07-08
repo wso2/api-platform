@@ -73,7 +73,7 @@ const loadSubscriptions = async (req, res, next) => {
             devportalMode: devportalMode,
             orgId: orgId,
             subscriptions: allSubscriptions,
-            isReadOnlyMode: config.readOnlyMode,
+            isReadOnlyMode: config.server.readOnlyMode,
         };
 
         html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/subscriptions', viewName);

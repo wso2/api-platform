@@ -25,7 +25,7 @@ function createSessionStore() {
         return new session.MemoryStore();
     }
 
-    const dialect = config.db.dialect;
+    const dialect = config.database.type;
 
     if (dialect === 'sqlite') {
         const SequelizeStore = require('connect-session-sequelize')(session.Store);

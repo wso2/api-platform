@@ -173,7 +173,28 @@ module.exports = {
         DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         DEVPORTAL_API_LISTING: '/*/apis',
         DEVPORTAL_TECHNICAL_PAGES: ['*/application'],
-        VIEWS_PATH: "/views/"
+        VIEWS_PATH: "/views/",
+        // Fixed page-access gates enforced by ensureAuthenticated.js — not user-configurable.
+        // config.pageAccessRules.authenticated/authorized (deployer-supplied, via config.toml)
+        // are merged on TOP of these, never replace them.
+        SYSTEM_AUTHENTICATED_PAGES: [
+            '**/applications',
+            '**/applications/**',
+            '**/api-keys',
+            '**/api-keys?**',
+            '**/subscriptions',
+            '/*/settings',
+            '/*/views/*/settings',
+        ],
+        SYSTEM_AUTHORIZED_PAGES: [
+            '**/applications',
+            '**/applications/**',
+            '**/api-keys',
+            '**/api-keys?**',
+            '**/subscriptions',
+            '/*/settings',
+            '/*/views/*/settings',
+        ],
     },
     ROLES: {
         ADMIN: 'admin',

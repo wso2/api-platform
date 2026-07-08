@@ -171,7 +171,7 @@ function operationResolver(handlersPath, route, apiDoc) {
  * Use 'log-only' to surface drift in staging/QA without breaking clients.
  */
 function resolveValidateResponsesOpt() {
-    const cfg = config.advanced?.openApiValidator?.openApiValidator?.validateResponses;
+    const cfg = config.developer?.openApiResponseValidation;
     if (cfg === 'strict') return true;
     if (cfg === 'off') return false;
     if (cfg === 'log-only' || cfg === 'logOnly') {
