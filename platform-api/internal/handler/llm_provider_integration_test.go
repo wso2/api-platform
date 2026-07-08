@@ -157,8 +157,8 @@ func TestLLMProviderHTTP_CreateRequiresOrg_401(t *testing.T) {
 	if body["status"] != "error" {
 		t.Errorf("expected status=error, got %v", body["status"])
 	}
-	if body["code"] != "COMMON_UNAUTHORIZED" {
-		t.Errorf("expected code=COMMON_UNAUTHORIZED, got %v", body["code"])
+	if body["code"] != "UNAUTHORIZED" {
+		t.Errorf("expected code=UNAUTHORIZED, got %v", body["code"])
 	}
 }
 

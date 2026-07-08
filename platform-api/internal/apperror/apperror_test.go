@@ -25,8 +25,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 func TestDefNewCapturesStack(t *testing.T) {
@@ -45,7 +43,7 @@ func TestDefNewFormatsMessage(t *testing.T) {
 	if e.Message != "API name is required" {
 		t.Errorf("unexpected message %q", e.Message)
 	}
-	if e.Code != utils.CodeCommonValidationFailed || e.HTTPStatus != http.StatusBadRequest {
+	if e.Code != CodeCommonValidationFailed || e.HTTPStatus != http.StatusBadRequest {
 		t.Errorf("Def did not carry its declared code/status: %+v", e)
 	}
 
@@ -77,7 +75,7 @@ func TestDefWrapAttachesCause(t *testing.T) {
 	if !errors.As(wrapped, &appErr) {
 		t.Fatal("expected errors.As to find *Error through a %w wrap")
 	}
-	if appErr.Code != utils.CodeCommonInternalError {
+	if appErr.Code != CodeCommonInternalError {
 		t.Errorf("unexpected code %q", appErr.Code)
 	}
 }
@@ -100,8 +98,8 @@ func TestNewValidationFallback(t *testing.T) {
 	if e.HTTPStatus != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", e.HTTPStatus)
 	}
-	if e.Code != utils.CodeCommonValidationFailed {
-		t.Errorf("expected %s, got %s", utils.CodeCommonValidationFailed, e.Code)
+	if e.Code != CodeCommonValidationFailed {
+		t.Errorf("expected %s, got %s", CodeCommonValidationFailed, e.Code)
 	}
 	if e.Message != "Invalid input." {
 		t.Errorf("unexpected message %q", e.Message)
@@ -116,11 +114,11 @@ func TestWriteHTTP(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
-	var body utils.ErrorResponse
+	var body ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON body: %v", err)
 	}
-	if body.Status != "error" || body.Code != utils.CodeProjectNotFound {
+	if body.Status != "error" || body.Code != CodeProjectNotFound {
 		t.Errorf("unexpected envelope: %+v", body)
 	}
 	if strings.Contains(rec.Body.String(), "sql:") || strings.Contains(rec.Body.String(), "internal detail") {

@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 func testLogger(buf *bytes.Buffer) *slog.Logger {
@@ -48,11 +47,11 @@ func TestMapErrorsAppError(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
-	var body utils.ErrorResponse
+	var body apperror.ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON body: %v", err)
 	}
-	if body.Status != "error" || body.Code != utils.CodeProjectNotFound ||
+	if body.Status != "error" || body.Code != apperror.CodeProjectNotFound ||
 		body.Message != "The specified project could not be found." {
 		t.Errorf("unexpected body: %+v", body)
 	}
@@ -84,7 +83,7 @@ func TestMapErrorsSeveritySplit(t *testing.T) {
 	if strings.Contains(log, `"stack"`) {
 		t.Error("4xx must not log a stack trace")
 	}
-	var body utils.ErrorResponse
+	var body apperror.ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON body: %v", err)
 	}
@@ -130,11 +129,11 @@ func TestMapErrorsPlainErrorFallsBackToGeneric500(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
-	var body utils.ErrorResponse
+	var body apperror.ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON body: %v", err)
 	}
-	if body.Code != utils.CodeCommonInternalError || body.Message != "An unexpected error occurred." {
+	if body.Code != apperror.CodeCommonInternalError || body.Message != "An unexpected error occurred." {
 		t.Errorf("unexpected body: %+v", body)
 	}
 	if strings.Contains(rec.Body.String(), "10.0.0.5") {
@@ -161,12 +160,12 @@ func TestMapErrorsPrefersInnerTypedErrorOverGenericInternalWrapper(t *testing.T)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 from the inner typed error, got %d", rec.Code)
 	}
-	var body utils.ErrorResponse
+	var body apperror.ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON body: %v", err)
 	}
-	if body.Code != utils.CodeGatewayNotFound {
-		t.Errorf("expected code %q, got %q", utils.CodeGatewayNotFound, body.Code)
+	if body.Code != apperror.CodeGatewayNotFound {
+		t.Errorf("expected code %q, got %q", apperror.CodeGatewayNotFound, body.Code)
 	}
 	if !strings.Contains(logBuf.String(), "gateway g1 missing") {
 		t.Error("expected the inner error's log message to be logged")
@@ -185,11 +184,11 @@ func TestMapErrorsRecoversPanic(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
-	var body utils.ErrorResponse
+	var body apperror.ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON body: %v", err)
 	}
-	if body.Code != utils.CodeCommonInternalError {
+	if body.Code != apperror.CodeCommonInternalError {
 		t.Errorf("unexpected code %q", body.Code)
 	}
 	if strings.Contains(rec.Body.String(), "abc123") {

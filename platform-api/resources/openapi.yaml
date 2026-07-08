@@ -8468,7 +8468,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             status: error
-            code: COMMON_UNAUTHORIZED
+            code: UNAUTHORIZED
             message: Authorization header is required, or the token is invalid or expired.
 
     BadRequest:
@@ -8479,7 +8479,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             status: error
-            code: COMMON_VALIDATION_FAILED
+            code: VALIDATION_FAILED
             message: The request failed validation.
             errors:
               - field: spec.context
@@ -8492,7 +8492,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             status: error
-            code: COMMON_FORBIDDEN
+            code: FORBIDDEN
             message: You do not have permission to perform this action.
     NotFound:
       description: Not Found. The specified resource does not exist.
@@ -8502,7 +8502,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             status: error
-            code: COMMON_NOT_FOUND
+            code: NOT_FOUND
             message: The specified resource does not exist.
     Conflict:
       description: Conflict. Specified resource already exists.
@@ -8512,7 +8512,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             status: error
-            code: COMMON_CONFLICT
+            code: CONFLICT
             message: The specified resource already exists.
     InternalServerError:
       description: Internal Server Error.
@@ -8522,7 +8522,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             status: error
-            code: COMMON_INTERNAL_ERROR
+            code: INTERNAL_ERROR
             message: An unexpected error occurred.
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
     ServiceUnavailable:
@@ -8533,7 +8533,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             status: error
-            code: COMMON_SERVICE_UNAVAILABLE
+            code: SERVICE_UNAVAILABLE
             message: Secrets management is not configured. Set PLATFORM_SECRET_ENCRYPTION_KEY.
 
     GatewayConnectionUnavailable:

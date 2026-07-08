@@ -24,7 +24,6 @@ import (
 	"runtime/debug"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/google/uuid"
 )
@@ -32,7 +31,7 @@ import (
 // ErrorHandlerFunc is the handler signature for routes that participate in
 // centralized error mapping: instead of writing HTTP error responses inline,
 // the handler returns an error (ideally an *apperror.Error) and MapErrors
-// logs it and writes the standard utils.ErrorResponse. Success responses are
+// logs it and writes the standard apperror.ErrorResponse. Success responses are
 // still written directly by the handler — the mapper only owns the error path.
 type ErrorHandlerFunc func(w http.ResponseWriter, r *http.Request) error
 
@@ -40,7 +39,7 @@ type ErrorHandlerFunc func(w http.ResponseWriter, r *http.Request) error
 // on the mux. It is the single catch point for handler errors: it recovers
 // panics into a structured 500, maps *apperror.Error values onto the wire
 // via apperror.WriteHTTP, and collapses any other error into a generic 500
-// COMMON_INTERNAL_ERROR so internal details never reach the client.
+// INTERNAL_ERROR so internal details never reach the client.
 func MapErrors(slogger *slog.Logger, next ErrorHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -80,7 +79,7 @@ func writeMappedError(w http.ResponseWriter, r *http.Request, slogger *slog.Logg
 	// A handler fallback may have wrapped a more specific typed error produced
 	// deeper in the stack (service layer) in a generic Internal — prefer the
 	// specific one so service-origin errors keep their code and status.
-	for appErr.Code == utils.CodeCommonInternalError && appErr.Cause != nil {
+	for appErr.Code == apperror.CodeCommonInternalError && appErr.Cause != nil {
 		var inner *apperror.Error
 		if !errors.As(appErr.Cause, &inner) {
 			break

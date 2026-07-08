@@ -20,13 +20,11 @@ package apperror
 import (
 	"net/http"
 
-	"github.com/wso2/api-platform/platform-api/internal/utils"
-
 	"github.com/wso2/go-httpkit/httputil"
 )
 
 // WriteHTTP is the one place in the codebase that serializes an *Error onto
-// an http.ResponseWriter as the standard utils.ErrorResponse shape. Both the
+// an http.ResponseWriter as the standard ErrorResponse shape. Both the
 // error mapper (middleware.MapErrors) and the pre-routing auth middleware
 // call it, so the wire format cannot drift between the two paths.
 //
@@ -34,7 +32,7 @@ import (
 // can quote it back for log correlation; the mapper passes it only for 5xx
 // responses. Callers with no correlation ID to expose pass "".
 func WriteHTTP(w http.ResponseWriter, e *Error, trackingID string) {
-	httputil.WriteJSON(w, e.HTTPStatus, utils.ErrorResponse{
+	httputil.WriteJSON(w, e.HTTPStatus, ErrorResponse{
 		Status:     "error",
 		Code:       e.Code,
 		Message:    e.Message,

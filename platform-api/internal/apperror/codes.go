@@ -15,52 +15,24 @@
  *
  */
 
-package utils
+package apperror
 
-import "net/http"
-
-// Common, domain-agnostic catalog codes. These mirror the COMMON_* codes
-// documented as shared response examples in resources/openapi.yaml, and are
-// the fallback used by NewErrorResponse when a handler hasn't been migrated
-// to a more specific domain code via NewErrorResponseWithCode.
+// Common, domain-agnostic catalog codes. These mirror the codes documented
+// as shared response examples in resources/openapi.yaml, and are
+// the fallback used by NewErrorResponse when a handler hasn't been
+// migrated to a more specific domain code via NewErrorResponseWithCode.
 const (
 	CodeCommonValidationFailed    = "VALIDATION_FAILED"
 	CodeCommonUnauthorized        = "UNAUTHORIZED"
-	CodeCommonForbidden           = "COMMON_FORBIDDEN"
-	CodeCommonNotFound            = "COMMON_NOT_FOUND"
-	CodeCommonConflict            = "COMMON_CONFLICT"
-	CodeCommonNotAcceptable       = "COMMON_NOT_ACCEPTABLE"
-	CodeCommonUnprocessableEntity = "COMMON_UNPROCESSABLE_ENTITY"
-	CodeCommonInternalError       = "COMMON_INTERNAL_ERROR"
-	CodeCommonServiceUnavailable  = "COMMON_SERVICE_UNAVAILABLE"
-	CodeCommonTooManyRequests     = "COMMON_TOO_MANY_REQUESTS"
+	CodeCommonForbidden           = "FORBIDDEN"
+	CodeCommonNotFound            = "NOT_FOUND"
+	CodeCommonConflict            = "CONFLICT"
+	CodeCommonNotAcceptable       = "NOT_ACCEPTABLE"
+	CodeCommonUnprocessableEntity = "UNPROCESSABLE_ENTITY"
+	CodeCommonInternalError       = "INTERNAL_ERROR"
+	CodeCommonServiceUnavailable  = "SERVICE_UNAVAILABLE"
+	CodeCommonTooManyRequests     = "TOO_MANY_REQUESTS"
 )
-
-// commonCodeByStatus maps an HTTP status code to its fallback catalog code.
-// 400 maps to COMMON_VALIDATION_FAILED (not a separate COMMON_BAD_REQUEST) to
-// match the single code documented for the shared BadRequest response in
-// resources/openapi.yaml.
-var commonCodeByStatus = map[int]string{
-	http.StatusBadRequest:          CodeCommonValidationFailed,
-	http.StatusUnauthorized:        CodeCommonUnauthorized,
-	http.StatusForbidden:           CodeCommonForbidden,
-	http.StatusNotFound:            CodeCommonNotFound,
-	http.StatusConflict:            CodeCommonConflict,
-	http.StatusNotAcceptable:       CodeCommonNotAcceptable,
-	http.StatusUnprocessableEntity: CodeCommonUnprocessableEntity,
-	http.StatusInternalServerError: CodeCommonInternalError,
-	http.StatusServiceUnavailable:  CodeCommonServiceUnavailable,
-	http.StatusTooManyRequests:     CodeCommonTooManyRequests,
-}
-
-// codeForStatus returns the fallback catalog code for an HTTP status,
-// defaulting to COMMON_INTERNAL_ERROR for unmapped statuses.
-func codeForStatus(httpStatus int) string {
-	if code, ok := commonCodeByStatus[httpStatus]; ok {
-		return code
-	}
-	return CodeCommonInternalError
-}
 
 // LLM provider/proxy domain codes, matching the examples documented in
 // resources/openapi.yaml for the corresponding operations.

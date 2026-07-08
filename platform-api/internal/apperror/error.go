@@ -15,7 +15,7 @@
  *
  */
 
-package utils
+package apperror
 
 import (
 	"encoding/json"
@@ -52,10 +52,38 @@ type FieldError struct {
 	Message string `json:"message"`
 }
 
+// commonCodeByStatus maps an HTTP status code to its fallback catalog code,
+// for handlers that build an ErrorResponse via NewErrorResponse instead of
+// picking a specific catalog code via NewErrorResponseWithCode. 400 maps to
+// CodeCommonValidationFailed (not a separate BAD_REQUEST) to match the
+// single code documented for the shared BadRequest response in
+// resources/openapi.yaml.
+var commonCodeByStatus = map[int]string{
+	http.StatusBadRequest:          CodeCommonValidationFailed,
+	http.StatusUnauthorized:        CodeCommonUnauthorized,
+	http.StatusForbidden:           CodeCommonForbidden,
+	http.StatusNotFound:            CodeCommonNotFound,
+	http.StatusConflict:            CodeCommonConflict,
+	http.StatusNotAcceptable:       CodeCommonNotAcceptable,
+	http.StatusUnprocessableEntity: CodeCommonUnprocessableEntity,
+	http.StatusInternalServerError: CodeCommonInternalError,
+	http.StatusServiceUnavailable:  CodeCommonServiceUnavailable,
+	http.StatusTooManyRequests:     CodeCommonTooManyRequests,
+}
+
+// codeForStatus returns the fallback catalog code for an HTTP status,
+// defaulting to CodeCommonInternalError for unmapped statuses.
+func codeForStatus(httpStatus int) string {
+	if code, ok := commonCodeByStatus[httpStatus]; ok {
+		return code
+	}
+	return CodeCommonInternalError
+}
+
 // NewErrorResponse builds a standard ErrorResponse for the given HTTP status.
 // title is retained for call-site compatibility but is no longer surfaced in
 // the response body; the catalog code is derived from httpStatus (see
-// codeForStatus in codes.go), and description[0], when given, becomes the
+// codeForStatus above), and description[0], when given, becomes the
 // human-readable message. Handlers that need a specific catalog code should
 // use NewErrorResponseWithCode instead.
 func NewErrorResponse(httpStatus int, title string, description ...string) ErrorResponse {

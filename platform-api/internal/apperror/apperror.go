@@ -29,25 +29,23 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/wso2/api-platform/platform-api/internal/utils"
-
 	"github.com/go-playground/validator/v10"
 )
 
 // Error carries everything the error mapper needs to log a failure and write
-// the client-facing utils.ErrorResponse: the catalog code and HTTP status,
+// the client-facing ErrorResponse: the catalog code and HTTP status,
 // the sanitized client message, optional field-level validation errors and
 // structured details, plus internal-only diagnostics (log message, wrapped
 // cause, and the call stack captured at construction time).
 type Error struct {
-	Code        string             // catalog code, e.g. utils.CodeCommonValidationFailed
-	HTTPStatus  int                // status to write
-	Message     string             // client-facing message
-	FieldErrors []utils.FieldError // optional, for validation failures
-	Details     any                // optional structured metadata
-	LogMessage  string             // internal-only detail; never sent to client
-	Cause       error              // wrapped original error, for logging/unwrapping
-	Stack       []uintptr          // captured at construction time, see New
+	Code        string       // catalog code, e.g. CodeCommonValidationFailed
+	HTTPStatus  int          // status to write
+	Message     string       // client-facing message
+	FieldErrors []FieldError // optional, for validation failures
+	Details     any          // optional structured metadata
+	LogMessage  string       // internal-only detail; never sent to client
+	Cause       error        // wrapped original error, for logging/unwrapping
+	Stack       []uintptr    // captured at construction time, see New
 }
 
 // Error satisfies the error interface. It intentionally includes only the
@@ -63,24 +61,24 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.Cause }
 
 // NewValidation converts a request-validation failure into an Error,
-// mirroring utils.NewValidationErrorResponse: validator.ValidationErrors
-// become field-level errors under COMMON_VALIDATION_FAILED; anything else
+// mirroring NewValidationErrorResponse: validator.ValidationErrors
+// become field-level errors under VALIDATION_FAILED; anything else
 // maps to the generic "Invalid input." message with the original error kept
 // as the cause for internal logging.
 func NewValidation(err error) *Error {
 	var ve validator.ValidationErrors
 	if errors.As(err, &ve) {
-		fieldErrors := make([]utils.FieldError, 0, len(ve))
+		fieldErrors := make([]FieldError, 0, len(ve))
 		for _, fe := range ve {
-			fieldErrors = append(fieldErrors, utils.FieldError{
+			fieldErrors = append(fieldErrors, FieldError{
 				Field:   fe.Field(),
 				Message: fmt.Sprintf("The field %s is %s", fe.Field(), fe.Tag()),
 			})
 		}
-		return newWithSkip(3, utils.CodeCommonValidationFailed, http.StatusBadRequest,
+		return newWithSkip(3, CodeCommonValidationFailed, http.StatusBadRequest,
 			"Validation failed for the request parameters.").WithFieldErrors(fieldErrors)
 	}
-	return newWithSkip(3, utils.CodeCommonValidationFailed, http.StatusBadRequest, "Invalid input.").WithCause(err)
+	return newWithSkip(3, CodeCommonValidationFailed, http.StatusBadRequest, "Invalid input.").WithCause(err)
 }
 
 // newWithSkip captures the stack skipping the given number of frames so the
@@ -110,7 +108,7 @@ func (e *Error) WithLogMessage(msg string) *Error {
 
 // WithFieldErrors attaches field-level validation errors surfaced to the
 // client in the errors[] array.
-func (e *Error) WithFieldErrors(fe []utils.FieldError) *Error {
+func (e *Error) WithFieldErrors(fe []FieldError) *Error {
 	e.FieldErrors = fe
 	return e
 }

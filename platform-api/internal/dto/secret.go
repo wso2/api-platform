@@ -90,7 +90,7 @@ type SecretSyncListResponse struct {
 
 // SecretReferenceDTO identifies a resource that references a secret. Carried
 // in the standard error response's `details.references` when a delete is
-// blocked by SECRET_IN_USE (see utils.ErrorResponse.Details).
+// blocked by SECRET_IN_USE (see apperror.ErrorResponse.Details).
 type SecretReferenceDTO struct {
 	Type   string `json:"type"`
 	Handle string `json:"handle"`
