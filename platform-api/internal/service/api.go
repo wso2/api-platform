@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -184,7 +185,7 @@ func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
 // GetAPIByUUID retrieves an API by its ID
 func (s *APIService) GetAPIByUUID(apiUUID, orgUUID string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
-		return nil, errors.New("API id is required")
+		return nil, apperror.ValidationFailed.New("API id is required")
 	}
 
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
@@ -227,7 +228,7 @@ func (s *APIService) HandleExistsCheck(orgUUID string) func(string) bool {
 // This is a lightweight operation that only fetches minimal metadata.
 func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) {
 	if handle == "" {
-		return "", errors.New("API handle is required")
+		return "", apperror.ValidationFailed.New("API handle is required")
 	}
 
 	metadata, err := s.apiRepo.GetAPIMetadataByHandle(handle, orgUUID)
@@ -280,7 +281,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string)
 // UpdateAPI updates an existing API
 func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, updatedBy string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
-		return nil, errors.New("API id is required")
+		return nil, apperror.ValidationFailed.New("API id is required")
 	}
 
 	// Get existing API
@@ -357,7 +358,7 @@ func (s *APIService) ensureRESTRuntimeArtifactUnchanged(existing, updated *model
 // DeleteAPI deletes an API
 func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 	if apiUUID == "" {
-		return errors.New("API id is required")
+		return apperror.ValidationFailed.New("API id is required")
 	}
 
 	// Check if API exists
@@ -573,7 +574,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		return constants.ErrInvalidAPIVersion
 	}
 	if strings.TrimSpace(req.ProjectId) == "" {
-		return errors.New("project id is required")
+		return apperror.ValidationFailed.New("project id is required")
 	}
 
 	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName, req.Version, orgUUID, "")
@@ -604,12 +605,12 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	case constants.APITypeWebSub:
 		// For WebSub APIs, ensure that at least one channel is defined
 		if req.Operations != nil && len(*req.Operations) > 0 {
-			return errors.New("WebSub APIs cannot have operations defined")
+			return apperror.ValidationFailed.New("WebSub APIs cannot have operations defined")
 		}
 	case constants.APITypeHTTP:
 		// For HTTP APIs, ensure that at least one operation is defined
 		if req.Channels != nil && len(*req.Channels) > 0 {
-			return errors.New("HTTP APIs cannot have channels defined")
+			return apperror.ValidationFailed.New("HTTP APIs cannot have channels defined")
 		}
 	}
 
@@ -620,6 +621,10 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 				return constants.ErrInvalidTransport
 			}
 		}
+	}
+
+	if err := validateOperationAndChannelPolicyVersions(req.Operations, req.Channels); err != nil {
+		return err
 	}
 
 	// Validate subscription plans if provided
@@ -728,6 +733,10 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 				return constants.ErrInvalidTransport
 			}
 		}
+	}
+
+	if err := validateOperationAndChannelPolicyVersions(req.Operations, req.Channels); err != nil {
+		return err
 	}
 
 	// Validate subscription plans if provided

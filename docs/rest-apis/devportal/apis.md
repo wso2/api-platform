@@ -19,7 +19,7 @@ curl -X POST https://localhost:3000/api/v0.9/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. Via the JSON `apiMetadata` field, `type` is required — an omitted type is rejected with `400` (via YAML, an omitted `spec.type` defaults to `REST`). MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
 `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `id` is used (`[{"id":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount` are ignored.
 
 > Payload
@@ -315,7 +315,7 @@ Status Code **200**
 |»»» version|string|false|none|none|
 |»»» status|string|false|none|API lifecycle status.|
 |»»» description|string|false|none|none|
-|»»» type|string|false|none|none|
+|»»» type|string|false|none|The stored/returned type constant (src/utils/constants.js API_TYPE) — distinct from the request-time keyword accepted on create/update (see `type` in ApiMetadataMultipartBody: REST, SOAP, MCP, WS, WEBSUB, GRAPHQL). REST maps to `RestApi` and WEBSUB maps to `WebSubApi`; the rest are returned unchanged.|
 |»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
@@ -389,11 +389,11 @@ Status Code **200**
 |---|---|
 |status|PUBLISHED|
 |status|DEPRECATED|
-|type|REST|
+|type|RestApi|
 |type|SOAP|
-|type|MCP|
+|type|Mcp|
 |type|WS|
-|type|WEBSUB|
+|type|WebSubApi|
 |type|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
@@ -566,7 +566,7 @@ curl -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
 
 ```
 
-Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and `apiMetadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist.
+Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and `apiMetadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the API's existing type; a different value is rejected with `409`.
 
 > Payload
 

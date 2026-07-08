@@ -17,6 +17,7 @@
  */
 const axios = require('axios');
 const logger = require('../config/logger');
+const { CustomError } = require('../utils/errors/customErrors');
 
 /**
  * Proxy a client_credentials token request to a key manager's token endpoint.
@@ -63,9 +64,13 @@ async function generateToken(tokenEndpoint, clientId, clientSecret, scopes, vali
             status: error.response?.status || null,
             tokenEndpoint,
         });
-        const err = new Error(`Token generation failed: ${error.message}`);
-        err.statusCode = error.response?.status ?? null;
-        throw err;
+        // Propagate a client error from the key manager (e.g. 401 for a bad
+        // consumer secret) as-is so the caller sees a 4xx, not a masked 500.
+        // Upstream 5xx, timeouts, and connection failures aren't the caller's
+        // fault, so they surface as a 500.
+        const upstreamStatus = error.response?.status;
+        const statusCode = upstreamStatus >= 400 && upstreamStatus < 500 ? upstreamStatus : 500;
+        throw new CustomError(statusCode, `Token generation failed: ${error.message}`);
     }
 }
 

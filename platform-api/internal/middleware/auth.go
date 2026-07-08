@@ -19,14 +19,16 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // contextKey is an unexported type for context keys in this package.
@@ -83,11 +85,30 @@ type PlatformClaimNames struct {
 	RoleScopeMap      map[string][]string
 }
 
-// writeJSONError is a helper to write a JSON error body without depending on httputil.
-func writeJSONError(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+// writeAuthError writes the unified 401 response. The auth middleware runs
+// ahead of routing so it can't return an error through the MapErrors chain;
+// instead it logs the specific failure reason internally and serializes
+// through the same apperror.WriteHTTP the mapper uses, so both the log shape
+// and the wire format have a single owner. Every authentication failure —
+// missing header, malformed header, invalid or expired token — produces the
+// identical payload (apperror.Unauthorized) per the unified-auth rule in
+// error-handling.md; reason is internal-only and must never contain a raw
+// token.
+func writeAuthError(w http.ResponseWriter, reason string) {
+	writeError(w, apperror.Unauthorized.New(), reason)
+}
+
+// writeError logs a pre-routing failure (all 4xx — WARN, no stack, per the
+// severity split in error_mapper.go) and serializes it through the shared
+// apperror.WriteHTTP. reason is internal-only and must never contain a raw
+// token.
+func writeError(w http.ResponseWriter, appErr *apperror.Error, reason string) {
+	slog.Warn("request failed",
+		"trackingId", uuid.NewString(),
+		"code", appErr.Code,
+		"status", appErr.HTTPStatus,
+		"reason", reason)
+	apperror.WriteHTTP(w, appErr, "")
 }
 
 // LocalJWTAuthMiddleware returns a middleware for locally-issued JWT validation.
@@ -104,19 +125,19 @@ func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
 
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				writeJSONError(w, http.StatusUnauthorized, "Authorization header is required")
+				writeAuthError(w, "authorization header missing")
 				return
 			}
 
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 			if tokenString == authHeader {
-				writeJSONError(w, http.StatusUnauthorized, "Invalid authorization header format. Expected: Bearer <token>")
+				writeAuthError(w, "authorization header is not a Bearer token")
 				return
 			}
 
 			enriched, err := validateLocalJWT(r, tokenString, config)
 			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, err.Error())
+				writeAuthError(w, "local JWT validation failed: "+err.Error())
 				return
 			}
 
@@ -534,18 +555,18 @@ func RequireOrganization(organizationParam string) func(http.Handler) http.Handl
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenOrg, exists := GetOrganizationFromRequest(r)
 			if !exists {
-				writeJSONError(w, http.StatusForbidden, "No organization found in token")
+				writeError(w, apperror.Forbidden.New(), "no organization claim in token")
 				return
 			}
 
 			requestedOrg := r.PathValue(organizationParam)
 			if requestedOrg == "" {
-				writeJSONError(w, http.StatusBadRequest, "Organization parameter is required")
+				writeError(w, apperror.ValidationFailed.New("Organization parameter is required"), "missing organization path parameter")
 				return
 			}
 
 			if tokenOrg != requestedOrg {
-				writeJSONError(w, http.StatusForbidden, "Access denied for the requested organization")
+				writeError(w, apperror.Forbidden.New(), "token organization does not match requested organization")
 				return
 			}
 

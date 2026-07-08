@@ -116,6 +116,9 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, constants.ErrInvalidInput
@@ -336,6 +339,9 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	}
 	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
+	}
+	if err := validatePolicyVersions(req.Policies); err != nil {
+		return nil, err
 	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {

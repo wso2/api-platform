@@ -209,6 +209,11 @@ const getByCondition = async (condition, t, tags) => {
                 through: { attributes: [] },
                 required: false,
                 include: [{ model: SubscriptionPlanLimit, as: 'limits' }]
+            }, {
+                model: Labels,
+                attributes: ["handle"],
+                through: { attributes: [] },
+                required: false
             },
             tagsInclude
             ],
@@ -224,7 +229,7 @@ const getByCondition = async (condition, t, tags) => {
     }
 }
 
-const list = async (orgId, viewName, t) => {
+const list = async (orgId, viewName, t, typeFilter) => {
 
     const viewDao = require('./viewDao');
     const viewId = await viewDao.getId(orgId, viewName, t);
@@ -233,7 +238,9 @@ const list = async (orgId, viewName, t) => {
         const apiMetadataResponse = await APIMetadata.findAll({
             where: {
                 org_uuid: orgId,
-                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
+                ...(typeFilter?.include && { type: typeFilter.include }),
+                ...(typeFilter?.exclude && { type: { [Op.ne]: typeFilter.exclude } })
             },
             include: [{
                 model: APIContent,
@@ -319,10 +326,26 @@ const listFromAllViews = async (orgId, t) => {
     return apiList;
 };
 
-const searchFallback = async (orgId, searchTerm, viewName, t) => {
+const searchFallback = async (orgId, searchTerm, viewName, t, typeFilter) => {
     const viewDao = require('./viewDao');
     const pattern = `%${searchTerm}%`;
+    // `view` is optional (apiViewQuery in the OpenAPI spec) — search unscoped by view
+    // when it's omitted, rather than forcing a view-label join that would otherwise
+    // either crash (viewId undefined) or silently match nothing (a literal 'undefined').
     const viewId = await viewDao.getId(orgId, viewName, t);
+    const labelsInclude = viewId
+        ? {
+            model: Labels,
+            attributes: ['handle'],
+            required: true,
+            through: { attributes: [] },
+            where: {
+                uuid: {
+                    [Op.in]: Sequelize.literal(`(SELECT "label_uuid" FROM "dp_view_label_mappings" WHERE "view_uuid" = '${viewId}')`)
+                }
+            }
+        }
+        : { model: Labels, attributes: ['handle'], required: false, through: { attributes: [] } };
 
     const matchingTags = await Tags.findAll({
         attributes: ['uuid'],
@@ -343,6 +366,8 @@ const searchFallback = async (orgId, searchTerm, viewName, t) => {
         where: {
             org_uuid: orgId,
             status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
+            ...(typeFilter?.include && { type: typeFilter.include }),
+            ...(typeFilter?.exclude && { type: { [Op.ne]: typeFilter.exclude } }),
             [Op.or]: [
                 Sequelize.where(
                     Sequelize.cast(Sequelize.col('dp_api_metadata.metadata_search'), 'TEXT'),
@@ -354,17 +379,7 @@ const searchFallback = async (orgId, searchTerm, viewName, t) => {
         include: [
             { model: APIContent, where: { type: constants.DOC_TYPES.IMAGES }, required: false },
             { model: SubscriptionPlan, through: { attributes: [] }, required: false, include: [{ model: SubscriptionPlanLimit, as: 'limits' }] },
-            {
-                model: Labels,
-                attributes: ['handle'],
-                required: true,
-                through: { attributes: [] },
-                where: {
-                    uuid: {
-                        [Op.in]: Sequelize.literal(`(SELECT "label_uuid" FROM "dp_view_label_mappings" WHERE "view_uuid" = '${viewId}')`)
-                    }
-                }
-            },
+            labelsInclude,
             {
                 model: Tags,
                 attributes: ['name'],
@@ -376,15 +391,20 @@ const searchFallback = async (orgId, searchTerm, viewName, t) => {
     });
 };
 
-const search = async (orgId, searchTerm, viewName, t) => {
+const search = async (orgId, searchTerm, viewName, t, typeFilter) => {
     if (APIMetadata.sequelize.getDialect() !== 'postgres') {
-        return searchFallback(orgId, searchTerm, viewName, t);
+        return searchFallback(orgId, searchTerm, viewName, t, typeFilter);
     }
     try {
         const viewDao = require('./viewDao');
         const viewId = await viewDao.getId(orgId, viewName, t);
         const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
-            replacements: { searchTerm, orgId, viewId },
+            replacements: {
+                searchTerm, orgId,
+                viewId: viewId || null,
+                includeType: typeFilter?.include || null,
+                excludeType: typeFilter?.exclude || null,
+            },
             type: Sequelize.QueryTypes.SELECT,
         });
         return results;

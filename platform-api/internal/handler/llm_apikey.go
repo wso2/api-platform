@@ -20,15 +20,16 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -50,161 +51,130 @@ func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService
 }
 
 // ListAPIKeys handles GET /api/v0.9/llm-providers/{llmProviderId}/api-keys
-func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) error {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
-		return
+		return apperror.ValidationFailed.New("LLM provider ID is required")
 	}
 
-	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "list LLM provider API keys")
-	if !ok {
-		return
+	callerUserID, err := resolveActorErr(r, h.identity, "list LLM provider API keys")
+	if err != nil {
+		return err
 	}
 
 	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
-			return
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-		h.slogger.Error("Failed to list LLM provider API keys", "providerId", providerID, "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to list API keys"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to list LLM provider API keys for provider %s in org %s", providerID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+	return nil
 }
 
 // DeleteAPIKey handles DELETE /api/v0.9/llm-providers/{llmProviderId}/api-keys/{apiKeyId}
-func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) error {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
-		return
+		return apperror.ValidationFailed.New("LLM provider ID is required")
 	}
 
 	keyName := r.PathValue("apiKeyId")
 	if keyName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API key name is required"))
-		return
+		return apperror.ValidationFailed.New("API key name is required")
 	}
 
-	callerUserID, ok := resolveActor(w, r, h.identity, h.slogger, "delete LLM provider API key")
-	if !ok {
-		return
-	}
-
-	err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName)
+	callerUserID, err := resolveActorErr(r, h.identity, "delete LLM provider API key")
 	if err != nil {
+		return err
+	}
+
+	if err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
-			return
+			return apperror.ArtifactNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrAPIKeyNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API key not found"))
-			return
+			return apperror.LLMProviderAPIKeyNotFound.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrAPIKeyForbidden) {
-			httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
-				"Only the key creator can delete this API key"))
-			return
+			return apperror.LLMProviderAPIKeyForbidden.Wrap(err)
 		}
-		h.slogger.Error("Failed to delete LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to delete API key"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to delete LLM provider API key %s for provider %s in org %s", keyName, providerID, orgID))
 	}
 
 	h.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID)
 	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 // CreateAPIKey handles POST /api/v0.9/llm-providers/{llmProviderId}/api-keys
-func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) error {
 	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
 	}
 
 	providerID := r.PathValue("llmProviderId")
 	if providerID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"LLM provider ID is required"))
-		return
+		return apperror.ValidationFailed.New("LLM provider ID is required")
 	}
 
 	var req api.CreateLLMProviderAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.slogger.Error("Invalid LLM provider API key creation request", "providerId", providerID, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
+			WithLogMessage(fmt.Sprintf("invalid LLM provider API key creation request for provider %s", providerID))
 	}
 
 	// Validate that displayName is provided (name is optional; auto-generated from displayName if absent)
 	req.DisplayName = strings.TrimSpace(req.DisplayName)
 	if req.DisplayName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"'displayName' is required"))
-		return
+		return apperror.ValidationFailed.New("'displayName' is required")
 	}
 
-	userID, ok := resolveActor(w, r, h.identity, h.slogger, "create LLM provider API key")
-	if !ok {
-		return
+	userID, err := resolveActorErr(r, h.identity, "create LLM provider API key")
+	if err != nil {
+		return err
 	}
 
 	response, err := h.apiKeyService.CreateLLMProviderAPIKey(r.Context(), providerID, orgID, userID, &req)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"LLM provider not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"No gateway connections available"))
-			return
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 
-		h.slogger.Error("Failed to create LLM provider API key", "providerId", providerID, "organizationId", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to create API key"))
-		return
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to create LLM provider API key for provider %s in org %s", providerID, orgID))
 	}
 
 	h.slogger.Info("Successfully created LLM provider API key", "providerId", providerID, "organizationId", orgID, "keyId", response.Id)
 
+	setLocation(w, "llm-providers", providerID, "api-keys", response.Id)
 	httputil.WriteJSON(w, http.StatusCreated, response)
+	return nil
 }
 
 // RegisterRoutes registers LLM provider API key routes with the router
 func (h *LLMProviderAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys", h.ListAPIKeys)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys/{apiKeyId}", h.DeleteAPIKey)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys", middleware.MapErrors(h.slogger, h.CreateAPIKey))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys", middleware.MapErrors(h.slogger, h.ListAPIKeys))
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-providers/{llmProviderId}/api-keys/{apiKeyId}", middleware.MapErrors(h.slogger, h.DeleteAPIKey))
 }
