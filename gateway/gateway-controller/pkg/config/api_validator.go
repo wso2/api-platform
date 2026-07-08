@@ -270,6 +270,11 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 	return validateUpstreamDefinitionsList("spec.upstreamDefinitions", definitions)
 }
 
+// upstreamDefinitionNameRegex enforces the same name constraint as the CRD/OpenAPI
+// (UpstreamDefinition.name pattern), so a definition accepted over the management API cannot carry a
+// name that CRD admission would reject. The name is also used for Envoy cluster naming.
+var upstreamDefinitionNameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
 // validateUpstreamDefinitionsList validates an upstreamDefinitions array. fieldPrefix is the path
 // to the array (e.g. "spec.upstreamDefinitions"). It is shared by the RestApi, LLM Provider, and
 // MCP validators so the three kinds validate upstream definitions identically. The connect timeout
@@ -286,13 +291,25 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 	namesSeen := make(map[string]bool)
 
 	for i, def := range *definitions {
-		// Validate name
+		// Validate name (must match the CRD/OpenAPI constraint: 1-100 chars, ^[a-zA-Z0-9\-_]+$).
 		if def.Name == "" {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s[%d].name", fieldPrefix, i),
 				Message: "Upstream definition name is required",
 			})
 			continue
+		}
+		if len(def.Name) > 100 {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s[%d].name", fieldPrefix, i),
+				Message: "Upstream definition name must be 1-100 characters",
+			})
+		}
+		if !upstreamDefinitionNameRegex.MatchString(def.Name) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s[%d].name", fieldPrefix, i),
+				Message: "Upstream definition name must match ^[a-zA-Z0-9\\-_]+$ (letters, numbers, hyphens, underscores)",
+			})
 		}
 
 		// Check for duplicate names
@@ -381,14 +398,24 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 		}
 
 		// Timeout validation is limited to connect timeout. Enforce the same single-unit duration
-		// pattern as the CRD/OpenAPI so gateway validation cannot diverge from CRD admission.
+		// pattern as the CRD/OpenAPI so gateway validation cannot diverge from CRD admission, then
+		// a ParseDuration guard for pathological overflow — mirroring validateResilienceTimeouts.
 		if def.Timeout != nil && def.Timeout.Connect != nil {
 			timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
-			if timeoutStr != "" && !constants.ResilienceDurationRegex.MatchString(timeoutStr) {
-				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
-					Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms')",
-				})
+			if timeoutStr != "" {
+				if !constants.ResilienceDurationRegex.MatchString(timeoutStr) {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
+						Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms')",
+					})
+				} else if _, err := time.ParseDuration(timeoutStr); err != nil {
+					// The pattern guarantees a single-unit value; ParseDuration is a final guard
+					// against pathological overflow (e.g. "99999999999999999999s").
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
+						Message: fmt.Sprintf("Invalid timeout format: %v", err),
+					})
+				}
 			}
 		}
 	}

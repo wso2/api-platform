@@ -79,6 +79,11 @@ type APIConfigData struct {
 	// +optional
 	Resilience *Resilience `json:"resilience,omitempty"`
 
+	// UpstreamDefinitions is the list of reusable upstream definitions (with optional connect
+	// timeout) that upstream.ref can reference.
+	// +optional
+	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
+
 	// Upstream API-level upstream configuration
 	// +kubebuilder:validation:Required
 	Upstream UpstreamConfig `json:"upstream"`
@@ -194,12 +199,66 @@ type Policy struct {
 	Version string `json:"version"`
 }
 
-// Upstream defines model for Upstream.
+// Upstream defines model for Upstream. Exactly one of url or ref must be set: a direct backend URL,
+// or a reference to a predefined upstreamDefinition (which can carry a per-upstream connect timeout).
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.ref)",message="exactly one of url or ref must be set"
 type Upstream struct {
-	// Url Backend service URL (may include path prefix like /api/v2)
+	// Url Direct backend service URL (may include path prefix like /api/v2)
+	// +optional
+	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
+	Url *string `json:"url,omitempty"`
+
+	// Ref Name of a predefined upstreamDefinition to route through.
+	// +optional
+	Ref *string `json:"ref,omitempty"`
+}
+
+// UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
+// load-balancing targets. Referenced from an upstream via its `ref` field. Shared by RestApi,
+// LLM Provider, and MCP; mirrors the management-API UpstreamDefinition schema.
+type UpstreamDefinition struct {
+	// Name Unique identifier for this upstream definition (referenced by upstream.ref).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9\-_]+$`
+	Name string `json:"name"`
+
+	// BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+	// +optional
+	BasePath *string `json:"basePath,omitempty"`
+
+	// Timeout Optional timeout configuration for this upstream (connect timeout).
+	// +optional
+	Timeout *UpstreamTimeout `json:"timeout,omitempty"`
+
+	// Upstreams List of backend targets with optional weights for load balancing.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	Upstreams []UpstreamTarget `json:"upstreams"`
+}
+
+// UpstreamTimeout carries the per-upstream timeout configuration. Only the connect timeout is
+// supported at the upstream-definition level.
+type UpstreamTimeout struct {
+	// Connect Connection-establishment timeout duration (e.g. "5s", "500ms"). "0s" disables.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
+	Connect *string `json:"connect,omitempty"`
+}
+
+// UpstreamTarget is a single backend target within an UpstreamDefinition.
+type UpstreamTarget struct {
+	// Url Backend URL (host and port only; path comes from the definition's basePath).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
 	Url string `json:"url"`
+
+	// Weight Weight for load balancing (optional, default 100).
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	Weight *int `json:"weight,omitempty"`
 }
 
 // Condition Types for RestApi

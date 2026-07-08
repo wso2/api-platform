@@ -1288,8 +1288,8 @@ func TestValidateLLMProvider_Upstream(t *testing.T) {
 				Url: nil,
 			},
 			expectError: true,
-			errorField:  "spec.upstream.url",
-			errorPart:   "required",
+			errorField:  "spec.upstream",
+			errorPart:   "either 'url' or 'ref'",
 		},
 		{
 			name: "empty URL",
@@ -1297,7 +1297,7 @@ func TestValidateLLMProvider_Upstream(t *testing.T) {
 				Url: stringPtr(""),
 			},
 			expectError: true,
-			errorField:  "spec.upstream.url",
+			errorField:  "spec.upstream",
 		},
 		{
 			name: "invalid URL - no protocol",
@@ -2086,6 +2086,30 @@ func TestValidateLLMProvider_UpstreamRef(t *testing.T) {
 	t.Run("valid fractional connect timeout accepted", func(t *testing.T) {
 		defs := &[]api.UpstreamDefinition{upstreamDef("openai-backend", "500ms")}
 		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("connect timeout that overflows time.Duration rejected", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("openai-backend", "99999999999999999999s")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assertHasFieldError(t, errs, "spec.upstreamDefinitions[0].timeout.connect")
+	})
+
+	t.Run("definition name with invalid characters rejected (CRD pattern)", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("bad name!", "6s")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("bad name!")}))
+		assertHasFieldError(t, errs, "spec.upstreamDefinitions[0].name")
+	})
+
+	t.Run("definition name over 100 chars rejected", func(t *testing.T) {
+		long := strings.Repeat("a", 101)
+		defs := &[]api.UpstreamDefinition{upstreamDef(long, "6s")}
+		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr(long)}))
+		assertHasFieldError(t, errs, "spec.upstreamDefinitions[0].name")
+	})
+
+	t.Run("url with surrounding whitespace is accepted", func(t *testing.T) {
+		errs := validator.Validate(providerWithUpstream(nil, api.LLMProviderConfigData_Upstream{Url: stringPtr("  https://api.openai.com  ")}))
 		assert.Empty(t, errs)
 	})
 }

@@ -443,11 +443,12 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 		})
 	case !hasURL && !hasRef:
 		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL is required",
+			Field:   fieldPrefix,
+			Message: "Must specify either 'url' or 'ref'",
 		})
 	case hasURL:
-		parsedURL, err := url.Parse(*upstream.Url)
+		// Trim first, consistent with the hasURL check, so surrounding whitespace does not fail parsing.
+		parsedURL, err := url.Parse(strings.TrimSpace(*upstream.Url))
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.url", fieldPrefix),

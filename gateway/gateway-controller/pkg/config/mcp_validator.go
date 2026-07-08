@@ -222,8 +222,8 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 		})
 	case !hasURL && !hasRef:
 		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL is required",
+			Field:   fieldPrefix,
+			Message: "Must specify either 'url' or 'ref'",
 		})
 	case hasRef:
 		if !upstreamRefResolves(*upstream.Ref, definitions) {
@@ -233,8 +233,9 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 			})
 		}
 	case hasURL:
-		// Validate URL format
-		parsedURL, err := url.Parse(*upstream.Url)
+		// Validate URL format (trim first, consistent with the hasURL check so surrounding
+		// whitespace does not fail parsing).
+		parsedURL, err := url.Parse(strings.TrimSpace(*upstream.Url))
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.url", fieldPrefix),

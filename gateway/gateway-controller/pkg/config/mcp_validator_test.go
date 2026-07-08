@@ -473,13 +473,13 @@ func TestMCPValidator_ValidateUpstream(t *testing.T) {
 			name:      "Nil URL",
 			upstream:  &api.MCPProxyConfigData_Upstream{Url: nil},
 			wantError: true,
-			errField:  "spec.upstream.url",
+			errField:  "spec.upstream",
 		},
 		{
 			name:      "Empty URL",
 			upstream:  &api.MCPProxyConfigData_Upstream{Url: stringPtr("")},
 			wantError: true,
-			errField:  "spec.upstream.url",
+			errField:  "spec.upstream",
 		},
 		{
 			name:      "Invalid URL scheme",
