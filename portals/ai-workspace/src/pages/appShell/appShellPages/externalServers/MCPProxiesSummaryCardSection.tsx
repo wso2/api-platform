@@ -271,7 +271,7 @@ export default function MCPProxiesSummaryCardSection({
                       fontSize="0.7rem"
                       noWrap
                     >
-                      {truncateWords(server.description || 'No description', 12)}
+                      {truncateWords(server.description?.trim() || '', 12)}
                     </Typography>
                   </Box>
                 </Box>

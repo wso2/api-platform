@@ -520,7 +520,7 @@ export default function ProviderTemplateOverview() {
   const metadata = template.metadata;
   const logoUrl = metadata?.logoUrl?.trim();
   const hasLogo = Boolean(logoUrl);
-  const description = template.description?.trim() || 'No description';
+  const description = template.description?.trim() || '';
   const lastUpdated = template.updatedAt ?? template.createdAt;
 
   const currentVersion = selectedVersion || template.version || 'v1.0';
@@ -785,11 +785,9 @@ export default function ProviderTemplateOverview() {
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  title={description}
+                  title={description || undefined}
                 >
-                  {description === 'No description'
-                    ? description
-                    : truncateProviderDisplayName(description, 70)}
+                  {description ? truncateProviderDisplayName(description, 70) : ''}
                 </Typography>
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <Typography variant="caption" color="text.secondary">

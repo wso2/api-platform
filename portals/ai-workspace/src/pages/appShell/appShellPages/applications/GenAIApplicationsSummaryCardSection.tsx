@@ -272,10 +272,7 @@ export default function GenAIApplicationsSummaryCardSection({
                       fontSize="0.7rem"
                       noWrap
                     >
-                      {truncateWords(
-                        application.description || 'No description',
-                        12
-                      )}
+                      {truncateWords(application.description?.trim() || '', 12)}
                     </Typography>
                   </Box>
                 </Box>

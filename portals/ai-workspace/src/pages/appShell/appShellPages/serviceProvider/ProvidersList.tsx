@@ -527,8 +527,7 @@ export default function ServiceProviders() {
                 provider.createdAt;
               const logoUrl = PROVIDER_LOGO_MAP[providerId];
               const hasLogo = Boolean(logoUrl);
-              const descriptionText =
-                provider.description?.trim() ?? 'No description';
+              const descriptionText = provider.description?.trim() || '';
               const templateDisplayName = getProviderTemplateDisplayName(
                 provider.template
               );

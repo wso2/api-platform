@@ -324,8 +324,7 @@ export default function ServiceProvidersSummaryCard({
               );
               const templateLogo = templateLogoMap[templateKey];
               const hasTemplateLogo = Boolean(templateLogo);
-              const descriptionText =
-                provider.description?.trim() ?? 'No description';
+              const descriptionText = provider.description?.trim() || '';
 
               return (
                 <Form.CardButton
