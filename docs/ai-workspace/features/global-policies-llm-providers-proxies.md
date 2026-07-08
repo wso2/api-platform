@@ -68,12 +68,14 @@ Rejected requests receive HTTP `429` with the body `Rate limit exceeded`.
 
 The original flat **policies** list is **deprecated** but continues to work, so existing configurations behave exactly as before.
 
-When a configuration is created or edited through the AI Workspace UI, each legacy entry is migrated into the new lists automatically, according to its scope:
+When a configuration is created or edited through the AI Workspace UI (via the Platform API), each legacy entry is migrated into the new lists automatically, according to its scope:
 
 - A **route-specific** legacy entry — one scoped to a specific path, or to specific methods — becomes an **operation policy**.
 - A **provider-wide** legacy entry — one that applied to all paths and all methods — becomes a **global policy**.
 
-You should pick **one style per resource**: either the deprecated flat `policies` list, or the new global/operation lists. A configuration that mixes a non-empty legacy `policies` list with the new lists is rejected. (Global and operation policies together are always fine — they are complementary.)
+This migration happens **on the fly**. If a configuration submitted to the Platform API happens to carry both a legacy `policies` list and the new lists at the same time, it is **not rejected** — the Platform API merges every legacy entry into the appropriate new list and clears the legacy field, so no policy is dropped. You should still pick **one style per resource** for clarity, but a mix is reconciled rather than refused. (Global and operation policies together are always fine — they are complementary.)
+
+> **Note.** The mix restriction is enforced only at the **gateway**. Because the Platform API always canonicalises to the two-list form before sending an artifact, the gateway never receives a mixed configuration in normal operation; the gateway-side check rejects a mixed `policies` + `globalPolicies`/`operationPolicies` artifact only if one is submitted to it directly.
 
 ## Gateway Version Requirements
 
