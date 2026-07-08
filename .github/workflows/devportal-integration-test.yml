@@ -1,0 +1,87 @@
+name: Developer Portal Integration Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'portals/developer-portal/**'
+      - '.github/workflows/devportal-integration-test.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-integration-test:
+    name: Backend REST API tests (${{ matrix.db }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build developer-portal image
+        run: make -C portals/developer-portal build
+
+      - name: Run backend integration tests (${{ matrix.db }})
+        run: |
+          if [ "${{ matrix.db }}" = "postgres" ]; then
+            make -C portals/developer-portal/it test-backend-postgres
+          else
+            make -C portals/developer-portal/it test-backend
+          fi
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-reports-${{ matrix.db }}
+          path: portals/developer-portal/it/reports/
+          retention-days: 7
+
+      - name: Debug on failure - dump container logs
+        if: failure()
+        run: |
+          echo "=== Docker containers ==="
+          docker ps -a
+
+  ui-test:
+    name: UI E2E tests (Cypress)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build developer-portal image
+        run: make -C portals/developer-portal build
+
+      - name: Run Cypress integration tests
+        run: make -C portals/developer-portal it
+
+      - name: Upload Cypress reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cypress-reports
+          path: portals/developer-portal/it/reports/
+          retention-days: 7
+
+      - name: Debug on failure - dump container logs
+        if: failure()
+        run: |
+          echo "=== Docker containers ==="
+          docker ps -a
