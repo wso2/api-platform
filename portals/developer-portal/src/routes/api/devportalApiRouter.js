@@ -37,6 +37,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const yaml = require('js-yaml');
 const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
@@ -225,7 +226,10 @@ function build() {
             // parseApiMetadataFromYamlRequest). extractApiContentFromUploadedZip
             // handles both file.path and file.buffer so memory storage is safe
             // for all endpoints including API content ZIP uploads.
-            fileUploader: { storage: require('multer').memoryStorage() },
+            fileUploader: {
+                storage: require('multer').memoryStorage(),
+                limits: { fileSize: config.uploads?.maxBytes || 10485760 },
+            },
             // Format strictness — use 'fast' for runtime cost; 'full' is too
             // strict for some of our existing schemas (e.g. uri formats).
             validateFormats: 'fast',
@@ -237,6 +241,17 @@ function build() {
     // objects with { status, message, errors? }.
     router.use((err, req, res, next) => {
         if (res.headersSent) return next(err);
+        // Oversize uploads surface as 413 with a generic message.
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            logger.warn('Upload rejected: file exceeds size limit', {
+                url: req.originalUrl,
+                method: req.method,
+            });
+            return res.status(413).json({
+                code: 413,
+                message: 'Uploaded file exceeds the maximum allowed size.',
+            });
+        }
         const status = err.status || 500;
         if (status >= 500) {
             logger.error('OpenAPI router error', {
@@ -245,14 +260,22 @@ function build() {
                 url: req.originalUrl,
                 method: req.method,
             });
-        } else {
-            logger.warn('OpenAPI router rejected request', {
-                error: err.message,
-                status,
-                url: req.originalUrl,
-                method: req.method,
+            // Return a generic message with a correlation id; detail is logged, not sent.
+            const trackingId = crypto.randomUUID();
+            logger.error('OpenAPI router error correlation', { trackingId });
+            return res.status(status).json({
+                code: status,
+                message: 'An unexpected error occurred.',
+                tracking_id: trackingId,
             });
         }
+        // 4xx validation errors from the OpenAPI validator are safe to pass through.
+        logger.warn('OpenAPI router rejected request', {
+            error: err.message,
+            status,
+            url: req.originalUrl,
+            method: req.method,
+        });
         res.status(status).json({
             code: status,
             message: err.message || 'Request failed',

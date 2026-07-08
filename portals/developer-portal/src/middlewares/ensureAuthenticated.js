@@ -114,7 +114,20 @@ const ensurePermission = (currentPage, role, req) => {
     return false;
 }
 
+// Rejects requests whose path contains traversal or encoded-separator sequences.
+// Checked on the path only; query strings may legitimately contain dots.
+const PATH_TRAVERSAL_RE = /(?:\.\.|%2e%2e|%2f|%5c|%00)/i;
+function hasTraversalSequence(originalUrl) {
+    const rawUrl = originalUrl || '';
+    const rawPath = rawUrl.split('?')[0];
+    return rawUrl.includes('\0') || rawPath.includes('\\') || PATH_TRAVERSAL_RE.test(rawPath);
+}
+
 const ensureAuthenticated = async (req, res, next) => {
+    if (hasTraversalSequence(req.originalUrl)) {
+        logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
+        return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
+    }
     let adminRole = config.idp?.roles?.admin;
     let superAdminRole = config.idp?.roles?.superAdmin;
     let subscriberRole = config.idp?.roles?.subscriber;
@@ -283,7 +296,7 @@ function validateAuthentication(scope) {
 const validateWithJwks = async (token, jwksURL, req) => {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const jwtVerifyOptions = {};
+        const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
         if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
         if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
