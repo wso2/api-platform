@@ -26,6 +26,7 @@ type Latencies struct {
 	BackendLatency           int64 `json:"backendLatency"`
 	RequestMediationLatency  int64 `json:"requestMediationLatency"`
 	ResponseMediationLatency int64 `json:"responseMediationLatency"`
+	Duration                 int64 `json:"duration"`
 }
 
 // TrafficLogLatencies holds gateway/backend timings for a traffic-log event, in
@@ -87,4 +88,12 @@ func (l *Latencies) GetResponseMediationLatency() int64 {
 // SetResponseMediationLatency sets the response mediation latency.
 func (l *Latencies) SetResponseMediationLatency(responseMediationLatency int64) {
 	l.ResponseMediationLatency = responseMediationLatency
+}
+
+func (l *Latencies) GetDuration() int64 {
+	return l.Duration
+}
+
+func (l *Latencies) SetDuration(duration int64) {
+	l.Duration = duration
 }
