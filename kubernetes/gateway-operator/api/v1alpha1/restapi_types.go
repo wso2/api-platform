@@ -225,7 +225,9 @@ type UpstreamDefinition struct {
 	Name string `json:"name"`
 
 	// BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+	// Must start with "/" and must not end with "/". Omit for root ("/").
 	// +optional
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`
 	BasePath *string `json:"basePath,omitempty"`
 
 	// Timeout Optional timeout configuration for this upstream (connect timeout).
@@ -254,7 +256,8 @@ type UpstreamTarget struct {
 	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
 	Url string `json:"url"`
 
-	// Weight Weight for load balancing (optional, default 100).
+	// Weight Relative weight for load balancing across multiple upstream targets. Reserved for
+	// future multi-target load balancing; not applied yet (only the first target is currently used).
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=100

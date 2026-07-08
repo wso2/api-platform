@@ -2089,6 +2089,27 @@ func TestValidateLLMProvider_UpstreamRef(t *testing.T) {
 		assert.Empty(t, errs)
 	})
 
+	t.Run("valid basePath accepted", func(t *testing.T) {
+		def := upstreamDef("openai-backend", "6s")
+		def.BasePath = stringPtr("/api/v2")
+		errs := validator.Validate(providerWithUpstream(&[]api.UpstreamDefinition{def}, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("basePath without leading slash rejected", func(t *testing.T) {
+		def := upstreamDef("openai-backend", "6s")
+		def.BasePath = stringPtr("api/v2")
+		errs := validator.Validate(providerWithUpstream(&[]api.UpstreamDefinition{def}, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assertHasFieldError(t, errs, "spec.upstreamDefinitions[0].basePath")
+	})
+
+	t.Run("basePath with trailing slash rejected", func(t *testing.T) {
+		def := upstreamDef("openai-backend", "6s")
+		def.BasePath = stringPtr("/api/v2/")
+		errs := validator.Validate(providerWithUpstream(&[]api.UpstreamDefinition{def}, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))
+		assertHasFieldError(t, errs, "spec.upstreamDefinitions[0].basePath")
+	})
+
 	t.Run("connect timeout that overflows time.Duration rejected", func(t *testing.T) {
 		defs := &[]api.UpstreamDefinition{upstreamDef("openai-backend", "99999999999999999999s")}
 		errs := validator.Validate(providerWithUpstream(defs, api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")}))

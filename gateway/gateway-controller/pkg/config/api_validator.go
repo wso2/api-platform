@@ -275,6 +275,12 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 // name that CRD admission would reject. The name is also used for Envoy cluster naming.
 var upstreamDefinitionNameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
 
+// upstreamBasePathRegex enforces the same basePath constraint as the CRD/OpenAPI: it must start with
+// "/" and must not end with "/" (root is expressed by omitting the field). basePath is prepended to
+// the upstream path during routing, so a malformed value (missing leading slash, trailing slash)
+// would silently produce a bad upstream request path — this rejects it at deploy time instead.
+var upstreamBasePathRegex = regexp.MustCompile(`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`)
+
 // validateUpstreamDefinitionsList validates an upstreamDefinitions array. fieldPrefix is the path
 // to the array (e.g. "spec.upstreamDefinitions"). It is shared by the RestApi, LLM Provider, and
 // MCP validators so the three kinds validate upstream definitions identically. The connect timeout
@@ -321,6 +327,15 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 			continue
 		}
 		namesSeen[def.Name] = true
+
+		// Validate basePath (when set) against the CRD/OpenAPI pattern. Validated raw (no trim) so it
+		// matches CRD admission exactly; omit the field for root.
+		if def.BasePath != nil && !upstreamBasePathRegex.MatchString(*def.BasePath) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s[%d].basePath", fieldPrefix, i),
+				Message: "Invalid basePath (must start with '/' and must not end with '/'; omit for root)",
+			})
+		}
 
 		// Validate upstreams array
 		if len(def.Upstreams) == 0 {

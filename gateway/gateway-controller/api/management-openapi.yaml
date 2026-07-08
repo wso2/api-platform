@@ -4225,7 +4225,8 @@ components:
           example: my-upstream-1
         basePath:
           type: string
-          description: Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended.
+          description: Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended. Must start with '/' and must not end with '/'; omit for root.
+          pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
           example: /api/v2
         timeout:
           $ref: "#/components/schemas/UpstreamTimeout"
@@ -4245,7 +4246,7 @@ components:
                 example: http://prod-backend-1:5000
               weight:
                 type: integer
-                description: Weight for load balancing (optional, default 100)
+                description: Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).
                 minimum: 0
                 maximum: 100
                 example: 80

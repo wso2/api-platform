@@ -281,8 +281,10 @@ spec:
                     LLM Provider, and MCP; mirrors the management-API UpstreamDefinition schema.
                   properties:
                     basePath:
-                      description: BasePath Base path prefix prepended to all requests
-                        routed through this upstream (e.g. /api/v2).
+                      description: |-
+                        BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+                        Must start with "/" and must not end with "/". Omit for root ("/").
+                      pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
                       type: string
                     name:
                       description: Name Unique identifier for this upstream definition
@@ -314,8 +316,9 @@ spec:
                             pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
                             type: string
                           weight:
-                            description: Weight Weight for load balancing (optional,
-                              default 100).
+                            description: |-
+                              Weight Relative weight for load balancing across multiple upstream targets. Reserved for
+                              future multi-target load balancing; not applied yet (only the first target is currently used).
                             maximum: 100
                             minimum: 0
                             type: integer
