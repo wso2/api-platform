@@ -99,3 +99,6 @@ resources/mock
 
 .env
 configs/config-platform-api.toml
+
+# Test reports
+it/reports/*

@@ -16,19 +16,25 @@
  * under the License.
  */
 const Audit = require('../models/audit');
+const sequelize = require('../db/sequelizeConfig');
 
 /**
  * Records one audit trail entry. Write-only — no list/query function, mirroring
  * platform-api's audit table, which is inspected directly in the database.
+ *
+ * Called fire-and-forget (see auditLogger.js), so this autocommit write can land at any
+ * time — including while an unrelated sequelize.transaction() (e.g. the webhook dispatcher)
+ * is open on its own separate SQLite connection. Routed through the same write-lock queue
+ * as transactions; see the comment in db/sequelizeConfig.js for why this dialect needs it.
  */
 const record = async (action, resourceUuid, resourceType, orgUuid, performedBy) => {
-    return Audit.create({
+    return sequelize.withWriteLock(() => Audit.create({
         action,
         resource_uuid: resourceUuid,
         resource_type: resourceType,
         org_uuid: orgUuid,
         performed_by: performedBy,
-    });
+    }));
 };
 
 module.exports = {

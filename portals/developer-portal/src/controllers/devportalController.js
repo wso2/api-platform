@@ -68,7 +68,7 @@ function parseApplicationDataFromRequest(req) {
 
 const listApplications = async (req, res) => {
     const orgId = req.orgId || '';
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     try {
         const applications = await appDao.list(orgId, userId);
         const auditList = await userIdpReferenceDao.buildListAuditFields(applications.map(a => a.dataValues));
@@ -82,7 +82,7 @@ const listApplications = async (req, res) => {
 
 const saveApplication = async (req, res) => {
     const orgId = req.orgId || '';
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     try {
         const applicationData = parseApplicationDataFromRequest(req);
         const application = await appDao.create(orgId, userId, applicationData);
@@ -108,7 +108,7 @@ const saveApplication = async (req, res) => {
 
 const updateApplication = async (req, res) => {
     const orgId = req.orgId || '';
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     try {
         const appHandle = req.params.applicationId;
         const appRecord = await appDao.getId(orgId, userId, appHandle);
@@ -208,7 +208,7 @@ const finalizeApplicationDeletion = async (orgId, applicationId, userId, req) =>
 
 const getApplication = async (req, res) => {
     const orgId = req.orgId || '';
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     const applicationHandle = req.params.applicationId;
     try {
         const appRecord = await appDao.getId(orgId, userId, applicationHandle);
@@ -228,7 +228,7 @@ const getApplication = async (req, res) => {
 };
 
 const deleteApplication = async (req, res) => {
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     const applicationHandle = req.params.applicationId;
     const orgId = req.orgId || '';
     let applicationId;
@@ -263,7 +263,7 @@ const generateKeys = async (req, res) => {
     let orgId, appId, userId;
     try {
         orgId = req.orgId;
-        userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        userId = util.resolveActor(req);
         const appHandle = req.params.applicationId;
         const appRecord = await appDao.getId(orgId, userId, appHandle);
         if (!appRecord) {
@@ -324,7 +324,7 @@ const generateKeys = async (req, res) => {
 const generateOAuthKeys = async (req, res) => {
     try {
         const orgId = req.orgId;
-        const userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const userId = util.resolveActor(req);
         const applicationHandle = req.params.applicationId;
         const appRecord = await appDao.getId(orgId, userId, applicationHandle);
         if (!appRecord) {
@@ -372,7 +372,7 @@ const generateOAuthKeys = async (req, res) => {
 const revokeOAuthKeys = async (req, res) => {
     try {
         const orgId = req.orgId;
-        const userId = req.auth?.userId || req[constants.USER_ID] || req.user?.sub;
+        const userId = util.resolveActor(req);
         const applicationHandle = req.params.applicationId;
         const appRecord = await appDao.getId(orgId, userId, applicationHandle);
         if (!appRecord) {

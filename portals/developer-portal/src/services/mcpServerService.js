@@ -75,9 +75,8 @@ const getAllMcpServersForOrganization = async (req, res) => {
         const apiVersion = req.query.version;
         const tags = req.query.tags;
         const view = req.query.view;
-        const retrievedAPIs = await apiMetadataService.getMetadataListFromDB(orgId, searchTerm, tags, apiName, apiVersion, view);
-        const mcpServers = retrievedAPIs.filter((api) => api.type === constants.API_TYPE.MCP);
-        res.status(200).json(util.toPaginatedList(mcpServers, req));
+        const retrievedAPIs = await apiMetadataService.getMetadataListFromDB(orgId, searchTerm, tags, apiName, apiVersion, view, { include: constants.API_TYPE.MCP });
+        res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
     } catch (error) {
         util.handleError(res, error);
     }

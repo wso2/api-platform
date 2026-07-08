@@ -20,9 +20,15 @@
 -- Loaded and executed by src/dao/apiMetadata.js :: searchAPIMetadata().
 --
 -- Named parameters (passed as Sequelize replacements):
---   :searchTerm  — the user-supplied search string
---   :orgId       — the organisation UUID to scope results to
---   :viewId      — the view UUID to scope results to (API must have a label mapped to this view)
+--   :searchTerm   — the user-supplied search string
+--   :orgId        — the organisation UUID to scope results to
+--   :viewId       — nullable; the view UUID to scope results to (API must have a label mapped
+--                   to this view). `view` is an optional query param — when omitted, results
+--                   are unscoped by view rather than matching nothing.
+--   :includeType  — nullable; when set, only rows with metadata.type = :includeType match
+--   :excludeType  — nullable; when set, rows with metadata.type = :excludeType are excluded
+--                   (keeps /apis and /mcp-servers list results type-scoped at the SQL level
+--                   rather than relying on callers to filter in application code)
 --
 -- Other dialects use a LIKE-based fallback in searchAPIMetadataFallback().
 
@@ -96,11 +102,16 @@ WHERE
         )
     )
     AND metadata.org_uuid = :orgId
-    AND EXISTS (
-        SELECT 1
-        FROM dp_api_label_mappings alm
-        JOIN dp_view_label_mappings vlm ON alm.label_uuid = vlm.label_uuid
-        WHERE alm.api_uuid = metadata.uuid AND vlm.view_uuid = :viewId
+    AND (:includeType::text IS NULL OR metadata.type = :includeType)
+    AND (:excludeType::text IS NULL OR metadata.type != :excludeType)
+    AND (
+        :viewId::uuid IS NULL
+        OR EXISTS (
+            SELECT 1
+            FROM dp_api_label_mappings alm
+            JOIN dp_view_label_mappings vlm ON alm.label_uuid = vlm.label_uuid
+            WHERE alm.api_uuid = metadata.uuid AND vlm.view_uuid = :viewId
+        )
     )
 GROUP BY
     metadata.uuid
