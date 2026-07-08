@@ -157,17 +157,20 @@ func directResponse500() *apiv1.OperationDirectResponse {
 	return &apiv1.OperationDirectResponse{StatusCode: 500}
 }
 
-func mapHTTPHeaderMatches(headers []gatewayv1.HTTPHeaderMatch) []apiv1.OperationHeaderMatch {
+// mapHTTPHeaderMatches converts Gateway-API header matchers into the operator-internal
+// headerMatch form used to build the header-based-routing policy. The result is not part
+// of the emitted API spec — header matching is expressed only via that policy.
+func mapHTTPHeaderMatches(headers []gatewayv1.HTTPHeaderMatch) []headerMatch {
 	if len(headers) == 0 {
 		return nil
 	}
-	out := make([]apiv1.OperationHeaderMatch, 0, len(headers))
+	out := make([]headerMatch, 0, len(headers))
 	for _, h := range headers {
 		matchType := "Exact"
 		if h.Type != nil && *h.Type == gatewayv1.HeaderMatchRegularExpression {
 			matchType = "RegularExpression"
 		}
-		out = append(out, apiv1.OperationHeaderMatch{
+		out = append(out, headerMatch{
 			Name:  string(h.Name),
 			Value: h.Value,
 			Type:  matchType,

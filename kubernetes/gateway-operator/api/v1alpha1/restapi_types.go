@@ -147,10 +147,6 @@ type Operation struct {
 	// +kubebuilder:validation:Enum=Exact;PathPrefix
 	PathMatchType OperationPathMatchType `json:"pathMatchType,omitempty"`
 
-	// MatchHeaders ANDed header matchers applied before routing to this operation.
-	// +optional
-	MatchHeaders []OperationHeaderMatch `json:"matchHeaders,omitempty"`
-
 	// DirectResponse When set, the gateway responds directly without calling an upstream.
 	// +optional
 	DirectResponse *OperationDirectResponse `json:"directResponse,omitempty"`
@@ -210,22 +206,6 @@ const (
 	OperationPathMatchExact      OperationPathMatchType = "Exact"
 	OperationPathMatchPathPrefix OperationPathMatchType = "PathPrefix"
 )
-
-// OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch for Envoy route selection.
-type OperationHeaderMatch struct {
-	// Name Header name (case-insensitive)
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-
-	// Value Header value to match
-	// +kubebuilder:validation:Required
-	Value string `json:"value"`
-
-	// Type Match type (Exact or RegularExpression)
-	// +optional
-	// +kubebuilder:validation:Enum=Exact;RegularExpression
-	Type string `json:"type,omitempty"`
-}
 
 // OperationDirectResponse configures an immediate HTTP response for a route.
 type OperationDirectResponse struct {

@@ -81,30 +81,6 @@ spec:
                       required:
                       - statusCode
                       type: object
-                    matchHeaders:
-                      description: MatchHeaders ANDed header matchers applied before
-                        routing to this operation.
-                      items:
-                        description: OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch
-                          for Envoy route selection.
-                        properties:
-                          name:
-                            description: Name Header name (case-insensitive)
-                            type: string
-                          type:
-                            description: Type Match type (Exact or RegularExpression)
-                            enum:
-                            - Exact
-                            - RegularExpression
-                            type: string
-                          value:
-                            description: Value Header value to match
-                            type: string
-                        required:
-                        - name
-                        - value
-                        type: object
-                      type: array
                     method:
                       description: Method HTTP method
                       enum:

@@ -19,8 +19,6 @@
 package xds
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -155,46 +153,8 @@ func convertServerHeaderTransformation(transformation string) hcm.HttpConnection
 // This format is used by both Envoy routes and the policy engine for route matching
 // It builds the full path by combining context, version, and path using ConstructFullPath
 func GenerateRouteName(method, context, apiVersion, path, vhost string) string {
-	return GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, "")
-}
-
-// GenerateRouteNameWithDiscriminator builds a route key like GenerateRouteName but appends an
-// optional discriminator segment so that routes which share method, path and vhost but differ by
-// header matches (e.g. multiple Gateway-API HTTPRoute rules on the same path) do not collide in the
-// RuntimeDeployConfig route map. When discriminator is empty the result is byte-identical to
-// GenerateRouteName, so routes without header matches keep their historical key.
-//
-// The vhost stays at index 2 when splitting on "|"; the discriminator is the (optional) 4th segment.
-func GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, discriminator string) string {
 	fullPath := ConstructFullPath(context, apiVersion, path)
-	if discriminator == "" {
-		return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
-	}
-	return fmt.Sprintf("%s|%s|%s|%s", method, fullPath, vhost, discriminator)
-}
-
-// HeaderMatchDiscriminator returns a short, stable discriminator for a set of route header matchers,
-// or "" when there are no header matchers. It is used to keep route keys unique across routes that
-// share method/path/vhost but match on different headers. The output is deterministic across
-// reconciles: header names are lowercased (mirroring Envoy's case-insensitive header matching) and
-// the matchers are canonically sorted by (name, type, value) before hashing, so input order does not
-// affect the result.
-func HeaderMatchDiscriminator(headers []models.RouteHeaderMatch) string {
-	if len(headers) == 0 {
-		return ""
-	}
-	canonical := make([]string, 0, len(headers))
-	for _, h := range headers {
-		// type defaults to Exact to align with how routes are rendered when unset.
-		t := h.Type
-		if t == "" {
-			t = "Exact"
-		}
-		canonical = append(canonical, strings.ToLower(strings.TrimSpace(h.Name))+"\x1f"+t+"\x1f"+h.Value)
-	}
-	sort.Strings(canonical)
-	sum := sha256.Sum256([]byte(strings.Join(canonical, "\x1e")))
-	return hex.EncodeToString(sum[:8])
+	return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
 }
 
 // ConstructFullPath builds the full path by replacing $version placeholder in context and appending path
@@ -529,12 +489,11 @@ func (t *Translator) setDirectResponseMatch(r *route.Route, method, fullPath, op
 	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
 }
 
-// buildMatchHeaders builds the Envoy header matchers for a route: the mandatory :method matcher
-// followed by any configured header matches. A header match of type RegularExpression becomes a
-// SafeRegexMatch; everything else is an exact string match. Shared by createRouteFromRDC and
-// setDirectResponseMatch so normal and direct-response routes match identical requests.
+// buildMatchHeaders builds the Envoy header matchers for a route: the mandatory :method matcher.
+// Shared by createRouteFromRDC and setDirectResponseMatch so normal and direct-response routes
+// match identical requests.
 func buildMatchHeaders(method string, rdcRoute *models.Route) []*route.HeaderMatcher {
-	headerMatchers := []*route.HeaderMatcher{{
+	return []*route.HeaderMatcher{{
 		Name: ":method",
 		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
 			StringMatch: &matcher.StringMatcher{
@@ -542,28 +501,6 @@ func buildMatchHeaders(method string, rdcRoute *models.Route) []*route.HeaderMat
 			},
 		},
 	}}
-	for _, hm := range rdcRoute.MatchHeaders {
-		name := strings.ToLower(strings.TrimSpace(hm.Name))
-		matchType := strings.TrimSpace(hm.Type)
-		if matchType == "RegularExpression" {
-			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
-				Name: name,
-				HeaderMatchSpecifier: &route.HeaderMatcher_SafeRegexMatch{
-					SafeRegexMatch: &matcher.RegexMatcher{Regex: hm.Value},
-				},
-			})
-		} else {
-			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
-				Name: name,
-				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-					StringMatch: &matcher.StringMatcher{
-						MatchPattern: &matcher.StringMatcher_Exact{Exact: hm.Value},
-					},
-				},
-			})
-		}
-	}
-	return headerMatchers
 }
 
 // setMatchPathSpecifier sets m.PathSpecifier for the given operation, covering every path type:

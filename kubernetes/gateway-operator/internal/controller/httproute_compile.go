@@ -69,7 +69,7 @@ func BuildAPIConfigFromHTTPRoute(
 	}
 
 	defsByName := make(map[string]apiv1.UpstreamDefinition)
-	var ops []apiv1.Operation
+	var staged []stagedOperation
 	mainUpstreamURL := backendResolution.PlaceholderURL
 	if mainUpstreamURL == "" {
 		mainUpstreamURL = "http://127.0.0.1:1"
@@ -178,7 +178,6 @@ func BuildAPIConfigFromHTTPRoute(
 					Method:        method,
 					Path:          pathVal,
 					PathMatchType: pathType,
-					MatchHeaders:  headerMatches,
 					Policies:      copyPolicies(rulePolicies),
 				}
 				op.Policies = append(op.Policies, filterPolicies...)
@@ -216,14 +215,21 @@ func BuildAPIConfigFromHTTPRoute(
 					}
 				}
 
-				ops = append(ops, op)
+				staged = append(staged, stagedOperation{op: op, headers: headerMatches})
 			}
 		}
 	}
 
-	if len(ops) == 0 {
+	if len(staged) == 0 {
 		return nil, newInvalidHTTPRouteConfigError("no operations derived from HTTPRoute")
 	}
+
+	// Realize header-based route selection via the header-based-routing policy: header-
+	// differentiated ops that share a path+method collapse into a single operation carrying
+	// that policy. Reshapes routing only; the upstream definitions built above are reused as
+	// the policy's destinations. Non-header ops pass through unchanged.
+	mainDest := mainUpstreamDefName(defsByName, mainUpstreamRef, mainUpstreamURL)
+	ops := collapseHeaderMatchesToPolicy(staged, mainDest, log)
 
 	apiPolicies, err := loadHTTPRouteAPIPolicies(ctx, c, route, log)
 	if err != nil {

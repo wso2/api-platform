@@ -4339,11 +4339,6 @@ components:
           description: Path matching semantics for the operation route
           enum: [Exact, PathPrefix]
           example: Exact
-        matchHeaders:
-          type: array
-          description: Header matchers ANDed with the path match for Envoy route selection
-          items:
-            $ref: "#/components/schemas/OperationHeaderMatch"
         directResponse:
           $ref: "#/components/schemas/OperationDirectResponse"
         redirect:
@@ -4355,27 +4350,6 @@ components:
             $ref: "#/components/schemas/Policy"
         resilience:
           $ref: "#/components/schemas/Resilience"
-
-    OperationHeaderMatch:
-      type: object
-      required:
-        - name
-        - value
-      properties:
-        name:
-          type: string
-          description: Header name (case-insensitive)
-          pattern: '^[a-zA-Z0-9!#$%&''*+\-.^_`|~]+$'
-          example: version
-        value:
-          type: string
-          description: Header value to match
-          example: one
-        type:
-          type: string
-          description: Header match type
-          enum: [Exact, RegularExpression]
-          default: Exact
 
     OperationDirectResponse:
       type: object

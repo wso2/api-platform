@@ -2827,35 +2827,6 @@ func TestDirectResponseMatch_MirrorsNormalRoute(t *testing.T) {
 			"direct-response path matcher must be identical to the normal route's")
 	})
 
-	t.Run("RegularExpression header match is not downgraded to exact", func(t *testing.T) {
-		base := &models.Route{
-			Method:        "GET",
-			Path:          "/svc/v1/things",
-			OperationPath: "/things",
-			Upstream:      models.RouteUpstream{ClusterKey: "main"},
-			MatchHeaders: []models.RouteHeaderMatch{
-				{Name: "X-Flavor", Type: "RegularExpression", Value: "red|blue"},
-			},
-		}
-		dr := *base
-		dr.DirectResponse = &models.RouteDirectResponse{StatusCode: 503}
-		direct := translator.createRouteFromRDC("GET|/svc/v1/things|", &dr, rdc)
-		require.NotNil(t, direct)
-
-		// Find the X-Flavor header matcher (lower-cased) and assert it is a SafeRegexMatch.
-		var flavor *route.HeaderMatcher
-		for _, h := range direct.GetMatch().GetHeaders() {
-			if h.GetName() == "x-flavor" {
-				flavor = h
-				break
-			}
-		}
-		require.NotNil(t, flavor, "expected an x-flavor header matcher")
-		rx, ok := flavor.GetHeaderMatchSpecifier().(*route.HeaderMatcher_SafeRegexMatch)
-		require.True(t, ok, "RegularExpression header match must stay a safe_regex, got %T", flavor.GetHeaderMatchSpecifier())
-		assert.Equal(t, "red|blue", rx.SafeRegexMatch.GetRegex())
-	})
-
 	t.Run("plain and exact paths are unchanged", func(t *testing.T) {
 		// Plain path -> default trailing-slash regex (same as before the refactor).
 		plain := &models.Route{
