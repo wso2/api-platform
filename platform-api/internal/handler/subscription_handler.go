@@ -102,11 +102,9 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 	}
 	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status, actor)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrSubscriptionAlreadyExists) {
-			return apperror.SubscriptionExists.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to create subscription for api %s in org %s", req.APIID, orgId))
@@ -177,8 +175,9 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	}
 	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr, limit, offset)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to list subscriptions for api %s in org %s", apiId, orgId))
@@ -251,8 +250,9 @@ func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Req
 	}
 	sub, err := h.subscriptionService.GetSubscription(subscriptionId, orgId)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return apperror.SubscriptionNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to get subscription %s in org %s", subscriptionId, orgId))
@@ -300,11 +300,9 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	}
 	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, status, actor)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return apperror.SubscriptionNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
-			return apperror.SubscriptionForbidden.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to update subscription %s in org %s", subscriptionId, orgId))

@@ -70,8 +70,9 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Reque
 
 	response, err := h.apiKeyService.ListLLMProxyAPIKeys(r.Context(), proxyID, orgID, callerUserID)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to list LLM proxy API keys for proxy %s in org %s", proxyID, orgID))
@@ -155,11 +156,9 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 
 	response, err := h.apiKeyService.CreateLLMProxyAPIKey(r.Context(), proxyID, orgID, userID, &req)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			return apperror.GatewayConnectionUnavailable.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 
 		return apperror.Internal.Wrap(err).

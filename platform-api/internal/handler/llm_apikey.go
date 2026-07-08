@@ -70,8 +70,9 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 
 	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to list LLM provider API keys for provider %s in org %s", providerID, orgID))
@@ -155,11 +156,9 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 
 	response, err := h.apiKeyService.CreateLLMProviderAPIKey(r.Context(), providerID, orgID, userID, &req)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			return apperror.GatewayConnectionUnavailable.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 
 		return apperror.Internal.Wrap(err).

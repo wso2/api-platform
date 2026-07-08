@@ -24,6 +24,7 @@ import (
 	"runtime/debug"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/google/uuid"
 )
@@ -75,6 +76,16 @@ func writeMappedError(w http.ResponseWriter, r *http.Request, slogger *slog.Logg
 	var appErr *apperror.Error
 	if !errors.As(err, &appErr) {
 		appErr = apperror.Internal.Wrap(err)
+	}
+	// A handler fallback may have wrapped a more specific typed error produced
+	// deeper in the stack (service layer) in a generic Internal — prefer the
+	// specific one so service-origin errors keep their code and status.
+	for appErr.Code == utils.CodeCommonInternalError && appErr.Cause != nil {
+		var inner *apperror.Error
+		if !errors.As(appErr.Cause, &inner) {
+			break
+		}
+		appErr = inner
 	}
 
 	logFields := []any{

@@ -90,11 +90,9 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	idpOrgRefUUID, _ := middleware.GetIdpOrgRefFromRequest(r)
 	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, idpOrgRefUUID, performedBy)
 	if err != nil {
-		if errors.Is(err, constants.ErrHandleExists) {
-			return apperror.OrganizationExists.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrOrganizationExists) {
-			return apperror.OrganizationExists.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to create organization")
@@ -123,8 +121,9 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 
 	_, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			return apperror.OrganizationNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to get organization by handle %s", handle))
@@ -140,8 +139,9 @@ func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http
 
 	org, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			return apperror.OrganizationNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to get organization by handle %s", handle))

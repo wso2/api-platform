@@ -113,23 +113,12 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) e
 	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Id, req.DisplayName, description, req.Endpoints,
 		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
-		errMsg := err.Error()
-
-		// Check for specific error types
-		if strings.Contains(errMsg, "organization not found") {
-			return apperror.OrganizationNotFound.Wrap(err)
+		// The service constructs typed catalog errors (not found, conflict,
+		// validation) at the point of failure — pass them through untouched.
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-
-		if strings.Contains(errMsg, "already exists") {
-			return apperror.GatewayNameConflict.Wrap(err)
-		}
-
-		if strings.Contains(errMsg, "required") || strings.Contains(errMsg, "invalid") ||
-			strings.Contains(errMsg, "must") || strings.Contains(errMsg, "cannot") {
-			return apperror.ValidationFailed.Wrap(err, errMsg)
-		}
-
-		// Internal server error
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to register gateway")
 	}
 
@@ -171,18 +160,13 @@ func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) erro
 
 	gateway, err := h.gatewayService.GetGateway(gatewayId, orgId)
 	if err != nil {
-		errMsg := err.Error()
-
-		// Check for specific error types
-		if strings.Contains(errMsg, "not found") {
-			return apperror.GatewayNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-
-		if strings.Contains(errMsg, "invalid UUID") {
+		if strings.Contains(err.Error(), "invalid UUID") {
 			return apperror.ValidationFailed.Wrap(err, "Invalid gateway ID format")
 		}
-
-		// Internal server error
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to retrieve gateway")
 	}
 
@@ -206,8 +190,9 @@ func (h *GatewayHandler) GetGatewayStatus(w http.ResponseWriter, r *http.Request
 
 	status, err := h.gatewayService.GetGatewayStatus(orgId, gatewayIdPtr)
 	if err != nil {
-		if strings.Contains(err.Error(), "gateway not found") {
-			return apperror.GatewayNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to get gateway status")
 	}
@@ -310,12 +295,10 @@ func (h *GatewayHandler) ListTokens(w http.ResponseWriter, r *http.Request) erro
 
 	tokens, err := h.gatewayService.ListTokens(gatewayId, orgId)
 	if err != nil {
-		errMsg := err.Error()
-
-		if strings.Contains(errMsg, "gateway not found") {
-			return apperror.GatewayNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to list tokens")
 	}
 
@@ -342,18 +325,10 @@ func (h *GatewayHandler) RotateToken(w http.ResponseWriter, r *http.Request) err
 	}
 	response, err := h.gatewayService.RotateToken(gatewayId, orgId, createdBy)
 	if err != nil {
-		errMsg := err.Error()
-
-		// Check for specific error types
-		if strings.Contains(errMsg, "gateway not found") {
-			return apperror.GatewayNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-
-		if strings.Contains(errMsg, "maximum") || strings.Contains(errMsg, "Revoke") {
-			return apperror.GatewayTokenLimitReached.Wrap(err)
-		}
-
-		// Internal server error
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to rotate token")
 	}
 
@@ -389,15 +364,10 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 	if err := h.gatewayService.RevokeToken(gatewayId, tokenId, orgId, revokedBy); err != nil {
-		errMsg := err.Error()
-
-		if strings.Contains(errMsg, "not found") {
-			if strings.Contains(errMsg, "gateway") {
-				return apperror.GatewayNotFound.Wrap(err)
-			}
-			return apperror.GatewayTokenNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to revoke token")
 	}
 
@@ -453,18 +423,9 @@ func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request
 
 	policy, err := h.gatewayService.SyncCustomPolicy(gatewayId, orgId, policyName, version)
 	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "gateway not found") {
-			return apperror.GatewayNotFound.Wrap(err)
-		}
-		if strings.Contains(msg, "not found in gateway manifest") {
-			return apperror.CustomPolicyVersionNotFnd.Wrap(err)
-		}
-		if strings.Contains(msg, "not a custom policy") || strings.Contains(msg, "manifest is not available") {
-			return apperror.PolicyInvalidState.Wrap(err)
-		}
-		if strings.Contains(msg, "already exists") || strings.Contains(msg, "patch version updates are not allowed") || strings.Contains(msg, "cannot downgrade") {
-			return apperror.PolicyVersionConflict.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to sync custom policy")
 	}
@@ -488,11 +449,9 @@ func (h *GatewayHandler) GetCustomPolicy(w http.ResponseWriter, r *http.Request)
 
 	policy, err := h.gatewayService.GetCustomPolicyByUUID(orgId, policyUUID, version)
 	if err != nil {
-		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
-			return apperror.CustomPolicyNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
-			return apperror.CustomPolicyVersionNotFnd.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to get custom policy")
 	}
@@ -515,11 +474,13 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := h.gatewayService.DeleteCustomPolicyByUUID(orgId, policyUUID, version); err != nil {
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
+		}
+		// Repository-origin sentinels (delete-if-unused path) are still untyped.
 		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
 			return apperror.CustomPolicyNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
-			return apperror.CustomPolicyVersionNotFnd.Wrap(err)
 		}
 		if errors.Is(err, constants.ErrCustomPolicyInUse) {
 			return apperror.PolicyInUse.Wrap(err)

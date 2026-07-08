@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -909,7 +910,7 @@ func (s *DeploymentService) RestoreDeploymentByHandle(apiHandle, deploymentID, g
 // getUUIDByHandle retrieves the artifact UUID by its handle from the artifact table
 func (s *DeploymentService) getUUIDByHandle(handle, orgUUID string) (string, error) {
 	if handle == "" {
-		return "", errors.New("artifact handle is required")
+		return "", apperror.ValidationFailed.New("artifact handle is required")
 	}
 
 	artifact, err := s.artifactRepo.GetByHandle(handle, orgUUID)

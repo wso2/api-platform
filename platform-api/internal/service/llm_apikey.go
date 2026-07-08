@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -72,7 +73,7 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		return nil, fmt.Errorf("failed to get LLM provider: %w", err)
 	}
 	if provider == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	keys, err := s.apiKeyRepo.ListByArtifact(provider.UUID)
@@ -123,7 +124,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return fmt.Errorf("failed to get LLM provider: %w", err)
 	}
 	if provider == nil {
-		return constants.ErrAPINotFound
+		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(provider.UUID, keyName)
@@ -132,11 +133,11 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return fmt.Errorf("failed to look up API key: %w", err)
 	}
 	if existingKey == nil {
-		return constants.ErrAPIKeyNotFound
+		return apperror.LLMProviderAPIKeyNotFound.Wrap(constants.ErrAPIKeyNotFound)
 	}
 
 	if userID != "" && existingKey.CreatedBy != userID {
-		return constants.ErrAPIKeyForbidden
+		return apperror.LLMProviderAPIKeyForbidden.Wrap(constants.ErrAPIKeyForbidden)
 	}
 
 	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
@@ -188,7 +189,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	}
 	if provider == nil {
 		s.slogger.Warn("LLM provider not found", "providerId", providerID, "organizationId", orgID)
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
@@ -231,7 +232,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return nil, constants.ErrGatewayUnavailable
+		return nil, apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
 	}
 
 	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})

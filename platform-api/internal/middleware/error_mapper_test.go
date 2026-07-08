@@ -145,6 +145,34 @@ func TestMapErrorsPlainErrorFallsBackToGeneric500(t *testing.T) {
 	}
 }
 
+func TestMapErrorsPrefersInnerTypedErrorOverGenericInternalWrapper(t *testing.T) {
+	// A service returns a specific typed error; a handler fallback blindly
+	// wraps it in a generic Internal. The mapper must surface the specific
+	// error, not the 500 wrapper.
+	var logBuf bytes.Buffer
+	h := MapErrors(testLogger(&logBuf), func(w http.ResponseWriter, r *http.Request) error {
+		serviceErr := apperror.GatewayNotFound.New().WithLogMessage("gateway g1 missing")
+		return apperror.Internal.Wrap(serviceErr).WithLogMessage("failed to get gateway")
+	})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v0.9/gateways/g1", nil))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 from the inner typed error, got %d", rec.Code)
+	}
+	var body utils.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+	if body.Code != utils.CodeGatewayNotFound {
+		t.Errorf("expected code %q, got %q", utils.CodeGatewayNotFound, body.Code)
+	}
+	if !strings.Contains(logBuf.String(), "gateway g1 missing") {
+		t.Error("expected the inner error's log message to be logged")
+	}
+}
+
 func TestMapErrorsRecoversPanic(t *testing.T) {
 	var logBuf bytes.Buffer
 	h := MapErrors(testLogger(&logBuf), func(w http.ResponseWriter, r *http.Request) error {

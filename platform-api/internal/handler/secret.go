@@ -81,11 +81,13 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) err
 
 	resp, err := h.secretService.Create(orgID, userID, &req)
 	if err != nil {
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
+		}
+		// Repository-origin duplicate (unique constraint) still surfaces as a sentinel.
 		if errors.Is(err, constants.ErrSecretAlreadyExists) {
 			return apperror.SecretExists.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrInvalidSecretType) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid secret type: must be GENERIC or CERTIFICATE")
 		}
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to create secret")
 	}

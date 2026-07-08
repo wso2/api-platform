@@ -208,8 +208,9 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 	}
 	created, err := h.planService.CreatePlan(orgId, actor, plan)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
-			return apperror.SubscriptionPlanExists.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to create subscription plan for org %s", orgId))
@@ -289,8 +290,9 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 
 	plan, err := h.planService.GetPlan(planId, orgId)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			return apperror.SubscriptionPlanNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to get subscription plan %s in org %s", planId, orgId))
@@ -374,14 +376,12 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
+		}
 		if errors.Is(err, constants.ErrHandleImmutable) {
 			return apperror.ValidationFailed.Wrap(err, "The plan id is immutable and cannot be changed")
-		}
-		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			return apperror.SubscriptionPlanNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
-			return apperror.SubscriptionPlanExists.Wrap(err)
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to update subscription plan %s in org %s", planId, orgId))
@@ -420,8 +420,9 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 	}
 	err = h.planService.DeletePlan(planId, orgId, actor)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			return apperror.SubscriptionPlanNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to delete subscription plan %s in org %s", planId, orgId))

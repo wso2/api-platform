@@ -219,6 +219,12 @@ func (r *Receiver) resolveOrgUUID(env *Envelope) error {
 // mapWebhookError maps domain errors returned by the reused services to the matching apperror
 // catalog entry, preserving the same HTTP status classification the old statusForError gave them.
 func mapWebhookError(err error) *apperror.Error {
+	// Services that have migrated to the apperror catalog return typed errors
+	// directly — pass them through untouched.
+	var appErr *apperror.Error
+	if errors.As(err, &appErr) {
+		return appErr
+	}
 	switch {
 	case errors.Is(err, ErrInvalidEnvelope), errors.Is(err, ErrUnsupportedEvent), errors.Is(err, ErrDecryptionFailed):
 		return apperror.ValidationFailed.Wrap(err, "Failed to process event")

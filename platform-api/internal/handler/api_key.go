@@ -97,14 +97,10 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 
 	// Create the API key and broadcast to gateways
 	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, userId, &req); err != nil {
-		// Handle specific error cases
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			return apperror.GatewayConnectionUnavailable.Wrap(err)
-		}
-
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to create API key %q for API %s in org %s by user %s", name, apiHandle, orgId, userId))
 	}
@@ -172,14 +168,10 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) err
 
 	// Update the API key and broadcast to gateways
 	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, &req); err != nil {
-		// Handle specific error cases
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			return apperror.GatewayConnectionUnavailable.Wrap(err)
-		}
-
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to update API key %s for API %s in org %s by user %s", keyName, apiHandle, orgId, userId))
 	}
@@ -223,14 +215,10 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) err
 
 	// Revoke the API key and broadcast to gateways
 	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId); err != nil {
-		// Handle specific error cases
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			return apperror.GatewayConnectionUnavailable.Wrap(err)
-		}
-
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to revoke API key %s for API %s in org %s by user %s", keyName, apiHandle, orgId, userId))
 	}

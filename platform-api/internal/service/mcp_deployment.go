@@ -22,13 +22,14 @@ package service
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -697,7 +698,7 @@ func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyUUID string, deploy
 // getMCPProxyUUIDByHandle retrieves the artifact UUID by its handle from the artifact table
 func (s *MCPDeploymentService) getMCPProxyUUIDByHandle(handle, orgUUID string) (string, error) {
 	if handle == "" {
-		return "", errors.New("artifact handle is required")
+		return "", apperror.ValidationFailed.New("artifact handle is required")
 	}
 
 	artifact, err := s.artifactRepo.GetByHandle(handle, orgUUID)

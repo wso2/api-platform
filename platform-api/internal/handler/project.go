@@ -71,14 +71,9 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) e
 	}
 	project, err := h.projectService.CreateProject(&req, organizationID, actor)
 	if err != nil {
-		if errors.Is(err, constants.ErrProjectExists) {
-			return apperror.ProjectExists.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			return apperror.OrganizationNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrInvalidProjectName) {
-			return apperror.ValidationFailed.Wrap(err, "Project displayName is required")
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to create project in org %s", organizationID))
@@ -104,8 +99,9 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) erro
 
 	project, err := h.projectService.GetProjectByHandle(projectId, orgID)
 	if err != nil {
-		if errors.Is(err, constants.ErrProjectNotFound) {
-			return apperror.ProjectNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to get project %s in org %s", projectId, orgID))
@@ -125,8 +121,9 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) er
 
 	projects, err := h.projectService.GetProjectsByOrganization(orgID)
 	if err != nil {
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			return apperror.OrganizationNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to list projects in org %s", orgID))
@@ -177,14 +174,12 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) e
 	}
 	project, err := h.projectService.UpdateProject(projectId, &req, orgID, actor)
 	if err != nil {
-		if errors.Is(err, constants.ErrProjectNotFound) {
-			return apperror.ProjectNotFound.Wrap(err)
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		if errors.Is(err, constants.ErrHandleImmutable) {
 			return apperror.ValidationFailed.Wrap(err, "Project id is immutable and cannot be changed")
-		}
-		if errors.Is(err, constants.ErrProjectExists) {
-			return apperror.ProjectExists.Wrap(err)
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to update project %s in org %s", projectId, orgID))
@@ -212,20 +207,9 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 	if err := h.projectService.DeleteProject(projectId, orgID, actor); err != nil {
-		if errors.Is(err, constants.ErrProjectNotFound) {
-			return apperror.ProjectNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrOrganizationMustHAveAtLeastOneProject) {
-			return apperror.ValidationFailed.Wrap(err, "Organization must have at least one project")
-		}
-		if errors.Is(err, constants.ErrProjectHasAssociatedAPIs) {
-			return apperror.ValidationFailed.Wrap(err, "Project has associated APIs")
-		}
-		if errors.Is(err, constants.ErrProjectHasAssociatedMCPProxies) {
-			return apperror.ValidationFailed.Wrap(err, "Project has associated MCP proxies")
-		}
-		if errors.Is(err, constants.ErrProjectHasAssociatedApplications) {
-			return apperror.ValidationFailed.Wrap(err, "Project has associated applications")
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to delete project %s in org %s", projectId, orgID))

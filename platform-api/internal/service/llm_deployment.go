@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/deploymenttransform"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
@@ -604,24 +605,24 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 
 func (s *LLMProviderDeploymentService) getTemplateHandle(templateUUID, orgUUID string) (string, error) {
 	if templateUUID == "" {
-		return "", constants.ErrLLMProviderTemplateNotFound
+		return "", apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	tpl, err := s.templateRepo.GetByUUID(templateUUID, orgUUID)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if tpl == nil {
-		return "", constants.ErrLLMProviderTemplateNotFound
+		return "", apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	return tpl.ID, nil
 }
 
 func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHandle string) (dto.LLMProviderDeploymentYAML, error) {
 	if provider == nil {
-		return dto.LLMProviderDeploymentYAML{}, errors.New("provider is required")
+		return dto.LLMProviderDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateLLMProviderDeploymentYAML: provider is nil")
 	}
 	if templateHandle == "" {
-		return dto.LLMProviderDeploymentYAML{}, errors.New("template handle is required")
+		return dto.LLMProviderDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateLLMProviderDeploymentYAML: template handle is empty")
 	}
 	if provider.Configuration.Upstream == nil || provider.Configuration.Upstream.Main == nil {
 		return dto.LLMProviderDeploymentYAML{}, constants.ErrInvalidInput
@@ -1768,7 +1769,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 
 func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeploymentYAML, error) {
 	if proxy == nil {
-		return dto.LLMProxyDeploymentYAML{}, errors.New("proxy is required")
+		return dto.LLMProxyDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateLLMProxyDeploymentYAML: proxy is nil")
 	}
 	if proxy.Configuration.Provider == "" {
 		return dto.LLMProxyDeploymentYAML{}, constants.ErrInvalidInput
