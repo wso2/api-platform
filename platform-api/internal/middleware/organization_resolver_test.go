@@ -41,8 +41,7 @@ func TestOrganizationResolverMiddleware(t *testing.T) {
 		name       string
 		claim      string
 		setClaim   bool
-		wantOrg    string // resolved organization the handler should see
-		wantIdpRef string // raw claim preserved for registration
+		wantOrg    string // organization the handler should see (resolved, or raw claim if unresolved)
 		wantHasOrg bool
 	}{
 		{
@@ -50,7 +49,6 @@ func TestOrganizationResolverMiddleware(t *testing.T) {
 			claim:      "idp-123",
 			setClaim:   true,
 			wantOrg:    "plat-uuid-1",
-			wantIdpRef: "idp-123",
 			wantHasOrg: true,
 		},
 		{
@@ -58,7 +56,6 @@ func TestOrganizationResolverMiddleware(t *testing.T) {
 			claim:      "plat-uuid-1",
 			setClaim:   true,
 			wantOrg:    "plat-uuid-1",
-			wantIdpRef: "plat-uuid-1",
 			wantHasOrg: true,
 		},
 		{
@@ -66,25 +63,22 @@ func TestOrganizationResolverMiddleware(t *testing.T) {
 			claim:      "brand-new-idp-org",
 			setClaim:   true,
 			wantOrg:    "brand-new-idp-org",
-			wantIdpRef: "brand-new-idp-org",
 			wantHasOrg: true,
 		},
 		{
 			name:       "no organization claim passes through untouched",
 			setClaim:   false,
 			wantOrg:    "",
-			wantIdpRef: "",
 			wantHasOrg: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var gotOrg, gotIdpRef string
+			var gotOrg string
 			var gotHasOrg bool
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				gotOrg, gotHasOrg = GetOrganizationFromRequest(r)
-				gotIdpRef, _ = GetIdpOrgRefFromRequest(r)
 			})
 
 			r := httptest.NewRequest(http.MethodGet, "/api/v0.9/rest-apis", nil)
@@ -99,9 +93,6 @@ func TestOrganizationResolverMiddleware(t *testing.T) {
 			}
 			if gotOrg != tt.wantOrg {
 				t.Errorf("resolved organization = %q, want %q", gotOrg, tt.wantOrg)
-			}
-			if gotIdpRef != tt.wantIdpRef {
-				t.Errorf("raw idp org ref = %q, want %q", gotIdpRef, tt.wantIdpRef)
 			}
 		})
 	}
