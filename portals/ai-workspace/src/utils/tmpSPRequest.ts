@@ -125,7 +125,7 @@ export function buildFullProviderRequest(
     modelProviders:
       request.modelProviders ?? buildModelProvidersFromTemplate(request.template),
     rateLimiting: {},
-    security: {
+    security: request.security ?? {
       enabled: true,
       apiKey: {
         enabled: true,

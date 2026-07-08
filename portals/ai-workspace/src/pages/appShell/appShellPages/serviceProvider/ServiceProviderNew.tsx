@@ -97,6 +97,14 @@ function TemplateBasedFormFieldsContainer({
         : prev.upstreamAuthHeader,
       upstreamAuthValue: templateChanged ? '' : prev.upstreamAuthValue,
       valuePrefix: template?.metadata?.auth?.valuePrefix || '',
+      // Consumer-facing security config (how callers authenticate to our
+      // gateway) mirrors the template's upstream auth metadata, when present.
+      securityKeyName: templateChanged
+        ? template?.metadata?.auth?.header || 'X-API-Key'
+        : prev.securityKeyName,
+      securityKeyPrefix: templateChanged
+        ? template?.metadata?.auth?.valuePrefix || ''
+        : prev.securityKeyPrefix,
     }));
 
     // Resolve OpenAPI spec. Prefer the inline spec stored on the template
@@ -183,6 +191,8 @@ export default function ServiceProviderNew() {
     upstreamAuthHeader: 'Authorization',
     upstreamAuthValue: '',
     valuePrefix: '',
+    securityKeyName: 'X-API-Key',
+    securityKeyPrefix: '',
   });
   const isVersionValid = VERSION_PATTERN.test(formState.version.trim());
   const [showCredential, setShowCredential] = useState(false);
@@ -307,8 +317,7 @@ export default function ServiceProviderNew() {
       isVersionValid &&
       selectedTemplateId &&
       formState.upstreamUrl.trim() &&
-      formState.upstreamAuthType &&
-      formState.upstreamAuthValue.trim()
+      formState.upstreamAuthType
   );
 
   const toProviderId = (name: string): string =>
@@ -332,10 +341,23 @@ export default function ServiceProviderNew() {
             type: formState.upstreamAuthType,
             header: formState.upstreamAuthHeader,
 
-            value: formState.valuePrefix
-              ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
-              : formState.upstreamAuthValue,
+            value:
+              formState.valuePrefix && formState.upstreamAuthValue.trim()
+                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
+                : formState.upstreamAuthValue,
           },
+        },
+      };
+
+      const security = {
+        enabled: true,
+        apiKey: {
+          enabled: true,
+          key: formState.securityKeyName || 'X-API-Key',
+          in: 'header' as const,
+          ...(formState.securityKeyPrefix
+            ? { keyPrefix: formState.securityKeyPrefix }
+            : {}),
         },
       };
 
@@ -348,6 +370,7 @@ export default function ServiceProviderNew() {
         template: selectedVersionTemplateId ?? selectedTemplateId,
         openapi: openapiSpec,
         upstream,
+        security,
         globalPolicies: [
           ...(familyHandle(selectedTemplateId) !== 'azure-openai' &&
           familyHandle(selectedTemplateId) !== 'azureai-foundry'
