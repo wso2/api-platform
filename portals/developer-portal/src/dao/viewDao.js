@@ -118,6 +118,11 @@ const get = async (orgId, handle) => {
 }
 
 const getId = async (orgId, viewName, t) => {
+    // `view` is an optional query param on /apis and /mcp-servers (apiViewQuery in the
+    // OpenAPI spec) — a bare handle/display_name lookup with `undefined` throws at the
+    // Sequelize layer ("WHERE parameter has invalid undefined value") rather than the
+    // 404 below, so short-circuit before ever building that query.
+    if (!viewName) return undefined;
 
     try {
         let viewResponse = await View.findOne({

@@ -79,7 +79,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "cpRefId": "string",
   "configuration": {
     "devportalMode": "DEFAULT"
-  }
+  },
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -224,7 +226,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "cpRefId": "string",
       "configuration": {
         "devportalMode": "DEFAULT"
-      }
+      },
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
     }
   ],
   "pagination": {
@@ -268,6 +272,8 @@ Status Code **200**
 |»» cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
 |»» configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
 |»»» devportalMode|string|false|none|Controls the mode of the developer portal.|
+|»» createdAt|string(date-time)¦null|false|none|none|
+|»» updatedAt|string(date-time)¦null|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -361,7 +367,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "cpRefId": "string",
   "configuration": {
     "devportalMode": "DEFAULT"
-  }
+  },
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -493,7 +501,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "cpRefId": "string",
   "configuration": {
     "devportalMode": "DEFAULT"
-  }
+  },
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 

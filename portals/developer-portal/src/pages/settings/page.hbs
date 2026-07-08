@@ -20,6 +20,7 @@
 <script type="application/json" id="cfg-org-apis-data">{{{ json orgAPIs }}}</script>
 <script type="application/json" id="cfg-plans-data">{{{ json orgPlans }}}</script>
 <script type="application/json" id="cfg-webhooks-data">{{{ json webhookSubscribers }}}</script>
+<script type="application/json" id="cfg-keymanagers-data">{{{ json keyManagers }}}</script>
 
 <div class="cfg-page">
 
@@ -53,6 +54,9 @@
         </a>
         <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
           <i class="bi bi-broadcast"></i><span>Webhooks</span>
+        </a>
+        <a href="#cfg-keymanagers" class="cfg-nav-item" data-panel="cfg-keymanagers">
+          <i class="bi bi-key"></i><span>Key Managers</span>
         </a>
       </div>
 
@@ -544,6 +548,73 @@
         </div>
       </div><!-- /#cfg-webhooks -->
 
+      <!-- ══ Key Managers ══ -->
+      <div class="cfg-panel" id="cfg-keymanagers">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Key Managers</h2>
+            <p class="cfg-panel-desc">Register the OAuth2 key managers applications can obtain tokens from. OAuth applications are created directly in the key manager itself — the portal only proxies token requests to it.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-km-btn" type="button">
+            <i class="bi bi-plus"></i> Add key manager
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Type</th>
+                <th>Token endpoint</th>
+                <th>Status</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-keymanagers-tbody">
+              {{#keyManagers}}
+              <tr id="cfg-km-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <button type="button" class="cfg-km-edit-btn" data-id="{{id}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
+                </td>
+                <td><span class="cfg-name-chip">{{type}}</span></td>
+                <td>
+                  <span class="cfg-name-chip" title="{{tokenEndpoint}}"
+                    style="display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{tokenEndpoint}}</span>
+                </td>
+                <td>
+                  {{#if enabled}}
+                  <span class="cfg-status-badge cfg-status-published">
+                    <span class="cfg-status-dot"></span>Enabled
+                  </span>
+                  {{else}}
+                  <span class="cfg-status-badge cfg-status-draft">
+                    <span class="cfg-status-dot"></span>Disabled
+                  </span>
+                  {{/if}}
+                </td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-km-edit-btn" type="button" data-id="{{id}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-km-delete-btn" type="button"
+                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/keyManagers}}
+              {{#unless keyManagers.length}}
+              <tr><td colspan="5" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-keymanagers -->
+
       <!-- ══ Manage Organizations ══ -->
 
     </div><!-- /.cfg-content -->
@@ -623,6 +694,21 @@
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-del-webhook-cancel">Cancel</button>
       <button type="button" class="cfg-btn-danger" id="cfg-del-webhook-confirm">Delete webhook</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Key Manager modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-km-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Key Manager</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-km-name-txt"></strong>? Applications relying on it will no longer be able to obtain tokens. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-km-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-km-confirm">Delete key manager</button>
     </div>
   </div>
 </div>
@@ -778,6 +864,52 @@
   </div>
 </div>
 
+<!-- Add / Edit Key Manager modal -->
+<div class="cfg-modal-overlay" id="cfg-km-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-km-modal-title">Add key manager</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-km-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="km-display">Display name <span class="required">*</span></label>
+      <input type="text" id="km-display" class="cfg-form-input" placeholder="e.g. Asgardeo" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="km-handle">Handle <span class="required">*</span></label>
+      <input type="text" id="km-handle" class="cfg-form-input cfg-form-input--mono" placeholder="asgardeo-prod" />
+      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
+    </div>
+    <div class="cfg-form-grid" style="margin-bottom:16px;">
+      <div class="cfg-form-group">
+        <label for="km-type">Type <span class="required">*</span></label>
+        <select id="km-type" class="cfg-form-input">
+          {{#each keyManagerTypes}}
+          <option value="{{this}}">{{this}}</option>
+          {{/each}}
+        </select>
+      </div>
+      <div class="cfg-form-group">
+        <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>
+        <input type="text" id="km-token-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.asgardeo.io/t/myorg/oauth2/token" />
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
+        <span class="wh-toggle">
+          <input type="checkbox" id="km-enabled" checked />
+          <span class="wh-toggle-slider"></span>
+        </span>
+        Enabled
+      </label>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-km-modal-save">Add key manager</button>
+    </div>
+  </div>
+</div>
+
 <!-- API Detail Drawer -->
 <div class="cfg-drawer-overlay" id="cfg-detail-drawer">
   <div class="cfg-drawer">
@@ -808,7 +940,7 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-plans', 'cfg-webhooks'];
+  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-plans', 'cfg-webhooks', 'cfg-keymanagers'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 
@@ -2157,6 +2289,140 @@
       }
     } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
     pendingDelWebhookId = null;
+  });
+}());
+</script>
+
+<!-- ══ Key Managers JS ══ -->
+<script>
+(function () {
+  var editKmId = null;
+
+  function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
+  function sv(id,val) { var e=document.getElementById(id); if(e) e.value=val||''; }
+
+  /* build id→key manager lookup from server-rendered data blob */
+  var kmMap = {};
+  (function() {
+    try {
+      var el = document.getElementById('cfg-keymanagers-data');
+      if (el) {
+        var list = JSON.parse(el.textContent || '[]');
+        list.forEach(function(km) { kmMap[km.id] = km; });
+      }
+    } catch(e) {}
+  }());
+
+  /* ── open modal ── */
+  function openKmModal(mode, data) {
+    editKmId = mode === 'edit' ? data.id : null;
+    document.getElementById('cfg-km-modal-title').textContent = mode === 'edit' ? 'Edit key manager' : 'Add key manager';
+    document.getElementById('cfg-km-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add key manager';
+    sv('km-display',        mode === 'edit' ? data.displayName    : '');
+    sv('km-handle',         mode === 'edit' ? data.id             : '');
+    sv('km-token-endpoint', mode === 'edit' ? data.tokenEndpoint  : '');
+    document.getElementById('km-type').value    = mode === 'edit' ? data.type : document.getElementById('km-type').options[0].value;
+    document.getElementById('km-enabled').checked = mode === 'edit' ? !!data.enabled : true;
+    document.getElementById('cfg-km-modal').style.display = 'flex';
+    document.getElementById('km-display').focus();
+  }
+  function closeKmModal() { document.getElementById('cfg-km-modal').style.display = 'none'; editKmId = null; }
+
+  /* ── auto-slug display → handle ── */
+  document.getElementById('km-display').addEventListener('input', function() {
+    if (editKmId) return;
+    document.getElementById('km-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  });
+
+  /* ── save ── */
+  document.getElementById('cfg-km-modal-save').addEventListener('click', async function() {
+    var displayName   = v('km-display');
+    var handle        = v('km-handle');
+    var type          = v('km-type');
+    var tokenEndpoint = v('km-token-endpoint');
+    if (!displayName || !handle || !tokenEndpoint) { await showAlert('Display name, handle and token endpoint are required.', 'error'); return; }
+
+    var parsedUrl;
+    try { parsedUrl = new URL(tokenEndpoint); } catch (e) { parsedUrl = null; }
+    if (!parsedUrl || (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:')) {
+      await showAlert('Token endpoint must be a valid http:// or https:// URL.', 'error');
+      return;
+    }
+
+    var body = {
+      id: handle,
+      displayName: displayName,
+      type: type,
+      tokenEndpoint: tokenEndpoint,
+      enabled: document.getElementById('km-enabled').checked,
+    };
+
+    var url    = editKmId
+      ? window.devportalApi.root('/key-managers/' + encodeURIComponent(editKmId))
+      : window.devportalApi.root('/key-managers');
+    var method = editKmId ? 'PUT' : 'POST';
+
+    try {
+      var res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        await showAlert(editKmId ? 'Key manager updated.' : 'Key manager created.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+  });
+
+  document.getElementById('cfg-km-modal-close').addEventListener('click', closeKmModal);
+  document.getElementById('cfg-km-modal-cancel').addEventListener('click', closeKmModal);
+  document.getElementById('cfg-km-modal').addEventListener('click', function(e){ if(e.target===this) closeKmModal(); });
+
+  document.getElementById('cfg-add-km-btn').addEventListener('click', function() { openKmModal('add'); });
+
+  /* ── edit / delete via event delegation ── */
+  var pendingDelKmId = null;
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cfg-km-edit-btn')) {
+      var btn = e.target.closest('.cfg-km-edit-btn');
+      var data = kmMap[btn.dataset.id];
+      if (data) openKmModal('edit', data);
+      return;
+    }
+    if (e.target.closest('.cfg-km-delete-btn')) {
+      var btn = e.target.closest('.cfg-km-delete-btn');
+      pendingDelKmId = btn.dataset.id;
+      document.getElementById('cfg-del-km-name-txt').textContent = btn.dataset.name;
+      document.getElementById('cfg-delete-km-modal').style.display = 'flex';
+      return;
+    }
+  });
+
+  document.getElementById('cfg-del-km-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-km-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-km-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+  document.getElementById('cfg-del-km-confirm').addEventListener('click', async function() {
+    if (!pendingDelKmId) return;
+    document.getElementById('cfg-delete-km-modal').style.display = 'none';
+    try {
+      var res = await fetch(window.devportalApi.root('/key-managers/' + encodeURIComponent(pendingDelKmId)), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+      });
+      if (res.ok || res.status === 204) {
+        await showAlert('Key manager deleted.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Delete failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+    pendingDelKmId = null;
   });
 }());
 </script>

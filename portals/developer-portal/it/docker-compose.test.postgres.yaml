@@ -41,14 +41,34 @@ services:
     networks:
       - it-devportal-network
 
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
+    environment:
+      AUTH_JWT_SECRET_KEY: "it-test-jwt-secret-key-not-for-production"
+    volumes:
+      - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
+      - platform-api-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - it-devportal-network
+
   devportal:
     image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/developer-portal:test
     depends_on:
       postgres:
         condition: service_healthy
+      platform-api:
+        condition: service_healthy
     volumes:
       - ./test-config.toml:/app/configs/config.toml:ro
     environment:
+      # DB-agnostic settings (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
       APIP_DP_DATABASE_HOST: postgres
       APIP_DP_DATABASE_PORT: 5432
       APIP_DP_DATABASE_TYPE: postgres
@@ -77,12 +97,49 @@ services:
       CYPRESS_BASE_URL: "http://devportal:3000"
       CYPRESS_API_KEY: "devportal-it-test-key"
     volumes:
-      - .:/e2e
+      - ./ui:/e2e
       - ./reports:/e2e/reports
     networks:
       - it-devportal-network
     command: ["cypress", "run", "--headless", "--browser", "electron"]
 
+  rest-api-tests:
+    image: node:22-alpine
+    depends_on:
+      devportal:
+        condition: service_healthy
+    working_dir: /rest-api
+    environment:
+      DEVPORTAL_BASE_URL: "http://devportal:3000"
+      DEVPORTAL_ORG_HANDLE: "default"
+      DEVPORTAL_ADMIN_USERNAME: "admin"
+      DEVPORTAL_ADMIN_PASSWORD: "admin"
+      DEVPORTAL_PUBLISHER_USERNAME: "publisher"
+      DEVPORTAL_PUBLISHER_PASSWORD: "publisher"
+      DEVPORTAL_DEVELOPER_USERNAME: "developer"
+      DEVPORTAL_DEVELOPER_PASSWORD: "developer"
+      DEVPORTAL_DB_DIALECT: postgres
+      DEVPORTAL_DB_HOST: postgres
+      DEVPORTAL_DB_PORT: 5432
+      DEVPORTAL_DB_USERNAME: devportal
+      DEVPORTAL_DB_PASSWORD: devportal
+      DEVPORTAL_DB_DATABASE: devportal
+      # Reachable from inside the compose network by the webhook dispatcher.
+      WEBHOOK_SINK_URL: "http://rest-api-tests:4500"
+      MOCK_TOKEN_ENDPOINT_URL: "http://rest-api-tests:4504"
+    volumes:
+      - ./rest-api:/rest-api
+      - ./reports:/rest-api/reports
+    networks:
+      - it-devportal-network
+    # better-sqlite3 (an optionalDependency used only by the SQLite variant) is the
+    # sole reason this image would need a native build toolchain — skip it here with
+    # --omit=optional so the Postgres run needs no apk add python3/make/g++.
+    command: ["sh", "-c", "npm install --no-audit --no-fund --omit=optional && npm test"]
+
 networks:
   it-devportal-network:
     driver: bridge
+
+volumes:
+  platform-api-data:

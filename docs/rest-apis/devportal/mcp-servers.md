@@ -19,7 +19,7 @@ curl -X POST https://localhost:3000/api/v0.9/mcp-servers \
 
 ```
 
-Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is always typed `MCP`, regardless of what `type` is supplied.
+Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is always typed `MCP`. Via the JSON `apiMetadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis` instead).
 
 > Payload
 
@@ -314,7 +314,7 @@ Status Code **200**
 |»»» version|string|false|none|none|
 |»»» status|string|false|none|API lifecycle status.|
 |»»» description|string|false|none|none|
-|»»» type|string|false|none|none|
+|»»» type|string|false|none|The stored/returned type constant (src/utils/constants.js API_TYPE) — distinct from the request-time keyword accepted on create/update (see `type` in ApiMetadataMultipartBody: REST, SOAP, MCP, WS, WEBSUB, GRAPHQL). REST maps to `RestApi` and WEBSUB maps to `WebSubApi`; the rest are returned unchanged.|
 |»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
@@ -388,11 +388,11 @@ Status Code **200**
 |---|---|
 |status|PUBLISHED|
 |status|DEPRECATED|
-|type|REST|
+|type|RestApi|
 |type|SOAP|
-|type|MCP|
+|type|Mcp|
 |type|WS|
-|type|WEBSUB|
+|type|WebSubApi|
 |type|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
@@ -561,7 +561,7 @@ curl -X PUT https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId} \
 
 ```
 
-Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`.
+Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`, including `type` being required and immutable — it must stay `MCP`; any other value is rejected with `400`, via the same resolveTypeOrReject check `POST /mcp-servers` uses.
 
 > Payload
 

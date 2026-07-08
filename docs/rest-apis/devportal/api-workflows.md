@@ -135,7 +135,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "apiWorkflowDefinition": "string",
       "markdownContent": "string",
       "createdAt": "May 7, 2026",
-      "updatedAt": "string"
+      "updatedAt": "string",
+      "createdBy": "string",
+      "updatedBy": "string"
     }
   ],
   "pagination": {
@@ -171,6 +173,8 @@ Status Code **200**
 |»» markdownContent|string¦null|false|none|none|
 |»» createdAt|string|false|none|none|
 |»» updatedAt|string¦null|false|none|none|
+|»» createdBy|string¦null|false|none|none|
+|»» updatedBy|string¦null|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
