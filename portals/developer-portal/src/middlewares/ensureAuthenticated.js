@@ -29,6 +29,18 @@ const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
 const { resolveUserUuid } = require('./authMiddleware');
 
+// System page-access gates (constants.js) merged with any deployer-supplied additions
+// (config.pageAccessRules, via config.toml) — the config side only ever adds patterns,
+// never replaces the fixed system list. Computed once; config is static after startup.
+const AUTHENTICATED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHENTICATED_PAGES,
+    ...(config.pageAccessRules?.authenticated || []),
+];
+const AUTHORIZED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHORIZED_PAGES,
+    ...(config.pageAccessRules?.authorized || []),
+];
+
 function enforceSecurity(scope) {
     return async function (req, res, next) {
         try {
@@ -95,7 +107,7 @@ const ensurePermission = (currentPage, role, req) => {
             return hasRole(role, superAdminRole) || hasRole(role, adminRole);
         } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
             return hasRole(role, superAdminRole);
-        } else if (config.pageAccessRules.authorized.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+        } else if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
         }
     }
@@ -135,7 +147,7 @@ const ensureAuthenticated = async (req, res, next) => {
         }
     }
     if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
-        config.pageAccessRules.authenticated.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+        AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
         const orgId = req.params.orgName;
         let orgDetails;
         if (orgId !== undefined) {
@@ -148,7 +160,7 @@ const ensureAuthenticated = async (req, res, next) => {
             if (req.user && req.user.isLocalAuth && !config.idp?.clientId) {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
-                if (config.pageAccessRules.authorized.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+                if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
@@ -177,7 +189,7 @@ const ensureAuthenticated = async (req, res, next) => {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
             }
-            if (config.pageAccessRules.authorized.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+            if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];
                 if (req.user) {
                     req.user[constants.ROLES.ADMIN] = adminRole;

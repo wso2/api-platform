@@ -36,7 +36,6 @@ const APIDTO = require('../dto/apiDto');
 const { config } = require('../config/configLoader');
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
-const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetryUtil');
 const kmDao = require('../dao/keyManagerDao');
 
 function mapYamlToOrganization(parsed) {

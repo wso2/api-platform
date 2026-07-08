@@ -26,7 +26,6 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
 const { validationResult } = require('express-validator');
-const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetryUtil');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
 
@@ -51,7 +50,6 @@ const login = async (req, res, next) => {
             } else {
                 await passport.authenticate('oauth2', { ...(orgIdentifier && { org: orgIdentifier }) })(req, res, next);
             }
-            trackLoginTrigger({ orgName }, req);
         } else {
             // Local auth mode: show username/password form
             const templateContent = {
@@ -62,7 +60,6 @@ const login = async (req, res, next) => {
             const html = util.renderTemplate('../pages/login-page/page.hbs',
                 'src/pages/login-page/layout.hbs', templateContent, true);
             res.send(html);
-            trackLoginTrigger({ orgName }, req);
         }
     } else {
         res.redirect(baseUrl);
@@ -185,7 +182,6 @@ const handleLogOut = async (req, res) => {
                 orgName: req.params.orgName,
                 logoutURL: logoutURL
             });
-            trackLogoutTrigger({ orgName: req.params.orgName }, req);
             req.session.currentPathURI = currentPathURI;
             req.session.save((saveErr) => {
                 if (saveErr) {

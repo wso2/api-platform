@@ -140,7 +140,7 @@ function coerceValue(value) {
  *   APIP_DP_IDP_CLIENTID                         → config.idp.clientId
  *   APIP_DP_DATABASE_PASSWORD                    → config.database.password
  *   APIP_DP_SECURITY_SERVICEAPIKEY_VALUE         → config.security.serviceApiKey.value
- *   APIP_DP_TELEMETRY_AZUREINSIGHTSCONNECTIONSTRING → config.telemetry.azureInsightsConnectionString
+ *   APIP_DP_WEBHOOKS_DELIVERY_SIGNATURETOLERANCESEC → config.webhooks.delivery.signatureToleranceSec
  */
 const ENV_PREFIX = 'APIP_DP_';
 

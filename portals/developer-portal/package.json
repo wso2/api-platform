@@ -26,7 +26,6 @@
   },
   "homepage": "https://github.com/api-developer-portal-core#readme",
   "dependencies": {
-    "applicationinsights": "2.9.7",
     "async-lock": "1.4.1",
     "axios": "1.11.0",
     "basic-ftp": "5.2.0",

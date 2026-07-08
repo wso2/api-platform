@@ -94,7 +94,6 @@ eslint.config.mjs
 
 config*.json
 secret*.json
-config*.toml
 resources/default-layout
 resources/mock
 

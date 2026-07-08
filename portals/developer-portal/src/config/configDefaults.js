@@ -39,7 +39,7 @@ const DEFAULTS = {
         caFile: './resources/security/client-truststore.pem',
     },
     logging: {
-        consoleOnly: false,
+        consoleOnly: true,
     },
     database: {
         type: 'sqlite',
@@ -92,6 +92,11 @@ const DEFAULTS = {
             subscriber: 'Internal/subscriber',
             superAdmin: 'superAdmin',
         },
+        // Maps ?fidp=<key> query param to IDP identifier for federated login hints
+        // (authController.js#login -> passportConfig.js's authorizationParams). Only
+        // takes effect in OIDC mode (idp.clientId set) — the default local-auth login
+        // screen never renders the social/enterprise buttons that trigger this. Kept
+        // out of config-template.toml since it's not part of the default experience.
         fidp: {
             google: 'google',
             github: 'github',
@@ -105,41 +110,21 @@ const DEFAULTS = {
         jwtSecret: '',
         insecure: false,
     },
+    // Deployer-supplied ADDITIONS to the fixed system page-access lists — merged on top
+    // of constants.js's ROUTE.SYSTEM_AUTHENTICATED_PAGES/SYSTEM_AUTHORIZED_PAGES by
+    // ensureAuthenticated.js, never a replacement for them. Empty by default.
     pageAccessRules: {
-        authenticated: [
-            '/portal/*/edit',
-            '/portal',
-            '/*/configure',
-            '**/applications',
-            '**/applications/**',
-            '**/myapis',
-            '**/myapis/**',
-            '**/myapis?**',
-            '**/api-keys',
-            '**/api-keys?**',
-        ],
-        authorized: [
-            '**/applications',
-            '**/applications/**',
-            '/*/configure',
-            '/portal/*/edit',
-            '/portal',
-            '**/myapis',
-            '**/myapis/**',
-            '**/myapis?**',
-            '**/api-keys',
-            '**/api-keys?**',
-        ],
-    },
-    telemetry: {
-        enabled: false,
-        azureInsightsConnectionString: '',
+        authenticated: [],
+        authorized: [],
     },
     organization: {
         defaultName: 'default',
         autoCreateSubscriptionPlans: true,
     },
     features: {
+        // API Workflows is a core, always-on feature — not meant to be toggled off via
+        // config. Kept as a struct default (not documented in config-template.toml) only
+        // because src/utils/util.js and viewConfigureController.js read it defensively.
         apiWorkflows: true,
     },
     demo: {
@@ -161,6 +146,10 @@ const DEFAULTS = {
         },
     },
     developer: {
+        // Internal/debug knob for the /devportal REST router's response validation
+        // strictness (express-openapi-validator) — 'off' | 'strict' | 'log-only'. Not
+        // meant for typical deployment config, so kept out of config-template.toml.
+        // See src/routes/api/devportalApiRouter.js#resolveValidateResponsesOpt.
         openApiResponseValidation: 'off',
     },
 };

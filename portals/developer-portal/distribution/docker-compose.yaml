@@ -121,13 +121,9 @@ services:
       - certs_data:/app/certs
     environment:
       # ── Database: SQLite (default) ───────────────────────────────────────────
-      APIP_DP_DATABASE_TYPE: sqlite
       APIP_DP_DATABASE_FILE: /app/data/devportal.db
 
       # ── Database: PostgreSQL (optional) ─────────────────────────────────────
-      # Remove the SQLite block above and uncomment this block to use PostgreSQL.
-      # Also uncomment the `postgres` service and `depends_on` above.
-      #
       # APIP_DP_DATABASE_TYPE: postgres
       # APIP_DP_DATABASE_HOST: postgres
       # APIP_DP_DATABASE_PORT: 5432
@@ -143,17 +139,11 @@ services:
       APIP_DP_TLS_KEYFILE: "/app/certs/server.key"
       APIP_DP_TLS_CAFILE: "/app/certs/server.crt"
 
-      # Seed a default organization on startup (idempotent)
-      APIP_DP_ORGANIZATION_DEFAULTNAME: "default"
-
       # Demo mode — on by default. When enabled, the Settings > Manage APIs page
       # shows a "Seed sample APIs" button and admins get a one-time onboarding
       # prompt to deploy sample APIs/MCPs. Disable with:
       #   demo=false docker compose up
       APIP_DP_DEMO_ENABLED: "${demo:-true}"
-
-      # Auto-generate default subscription plans for every new org
-      APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS: "true"
 
       # Log to console only (no rotating log files)
       APIP_DP_LOGGING_CONSOLEONLY: "true"
