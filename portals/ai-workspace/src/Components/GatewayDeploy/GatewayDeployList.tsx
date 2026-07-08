@@ -124,7 +124,7 @@ export default function GatewayDeployList({
         <Button
           variant="contained"
           onClick={() =>
-            navigate(buildOrgPath(currentOrganization, '/gateways/new'))
+            navigate(buildOrgPath(currentOrganization, '/gateways/create'))
           }
         >
           Add Gateway

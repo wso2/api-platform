@@ -107,7 +107,7 @@ function ProjectListViewInner() {
   }, [rowsPerPage, searchQuery, projectsForCurrentOrganization.length]);
 
   const orgProjectsPath = buildOrgPath(currentOrganization, '/projects/list');
-  const newProjectPath = buildOrgPath(currentOrganization, '/projects/new');
+  const newProjectPath = buildOrgPath(currentOrganization, '/projects/create');
   const hasProjects = projectsForCurrentOrganization.length > 0;
 
   // Must be before any early returns — Rules of Hooks

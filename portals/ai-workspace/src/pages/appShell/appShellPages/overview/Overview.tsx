@@ -58,7 +58,7 @@ export default function Overview() {
   const newProxyPath = buildProjectPath(
     currentOrganization,
     currentProject,
-    '/proxies/new'
+    '/proxies/create'
   );
   const mcpProxiesPath = buildProjectPath(
     currentOrganization,
@@ -68,7 +68,7 @@ export default function Overview() {
   const newMCPProxyPath = buildProjectPath(
     currentOrganization,
     currentProject,
-    '/mcp-proxy/new'
+    '/mcp-proxy/create'
   );
   const applicationsPath = buildProjectPath(
     currentOrganization,
@@ -78,7 +78,7 @@ export default function Overview() {
   const newApplicationPath = buildProjectPath(
     currentOrganization,
     currentProject,
-    '/applications/new'
+    '/applications/create'
   );
   const serviceProvidersPath = buildProjectPath(
     currentOrganization,
@@ -91,7 +91,9 @@ export default function Overview() {
     hasPermission(SCOPES.LLM_PROVIDER_CREATE) && isProjectLevel
       ? () => {
           setCurrentProject(null);
-          navigate(buildOrgPath(currentOrganization, '/service-provider/new'));
+          navigate(
+            buildOrgPath(currentOrganization, '/service-provider/create')
+          );
         }
       : undefined;
 

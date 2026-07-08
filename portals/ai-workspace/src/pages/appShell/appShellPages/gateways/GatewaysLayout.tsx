@@ -26,7 +26,7 @@ export default function GatewaysLayout() {
   return (
     <Routes>
       <Route index element={<GatewaysList />} />
-      <Route path="new" element={<AddGateway />} />
+      <Route path="create" element={<AddGateway />} />
       <Route path="edit/:gatewayName" element={<EditGateway />} />
       <Route path="view/:gatewayName" element={<ViewGateway />} />
     </Routes>

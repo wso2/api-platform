@@ -171,9 +171,9 @@ export default function ApplicationsList() {
     ? buildProjectPath(
         currentOrganization,
         effectiveProject,
-        '/applications/new'
+        '/applications/create'
       )
-    : buildOrgPath(currentOrganization, '/applications/new');
+    : buildOrgPath(currentOrganization, '/applications/create');
 
   const renderOrgLevelContent = () => (
     <Grid size={{ xs: 12, sm: 12, md: 7 }}>

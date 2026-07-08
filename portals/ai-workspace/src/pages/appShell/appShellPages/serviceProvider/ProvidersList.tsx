@@ -126,9 +126,9 @@ export default function ServiceProviders() {
     ? buildProjectPath(
         currentOrganization,
         currentProject,
-        '/service-provider/new'
+        '/service-provider/create'
       )
-    : buildOrgPath(currentOrganization, '/service-provider/new');
+    : buildOrgPath(currentOrganization, '/service-provider/create');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;

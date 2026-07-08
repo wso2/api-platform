@@ -890,6 +890,7 @@ export default function LLMProxyOverviewTab() {
                       alignItems: 'center',
                       gap: 1,
                       p: 1.5,
+                      width: '100%',
                       bgcolor: 'background.paper',
                       border: '1px solid',
                       borderColor: 'divider',

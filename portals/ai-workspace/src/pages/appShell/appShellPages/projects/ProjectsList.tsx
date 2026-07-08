@@ -82,7 +82,7 @@ export default function ProjectsList({ disableRedirect }: ProjectsListProps) {
       ? () => {
           const path = buildOrgPath(
             currentOrganization,
-            '/service-provider/new'
+            '/service-provider/create'
           );
           navigate(path);
         }

@@ -200,7 +200,7 @@ export default function ServiceProviderNew() {
   useEffect(() => {
     if (isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_MANAGE)) {
       setCurrentProject(null);
-      navigate(buildOrgPath(currentOrganization, '/service-provider/new'), {
+      navigate(buildOrgPath(currentOrganization, '/service-provider/create'), {
         replace: true,
       });
     }
