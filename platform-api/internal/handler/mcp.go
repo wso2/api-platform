@@ -268,6 +268,9 @@ func (h *MCPProxyHandler) handleServiceError(w http.ResponseWriter, err error) {
 	case errors.Is(err, constants.ErrInvalidInput):
 		h.slogger.Error("MCP request validation failed", "reason", err.Error())
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	case errors.Is(err, constants.ErrInvalidPolicyVersion):
+		h.slogger.Error("MCP policy version validation failed", "reason", err.Error())
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrMCPProxyNotFound):
 		h.slogger.Error("MCP proxy not found", "reason", err.Error())
 		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "MCP proxy not found"))

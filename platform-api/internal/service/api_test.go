@@ -63,6 +63,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 		mockNameVersionError      error
 		wantErr                   bool
 		expectedErr               error
+		errContains               string
 		expectedExcludeHandle     string
 		verifyExcludeHandleCalled bool
 	}{
@@ -155,6 +156,42 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			req:     &api.RESTAPI{Transport: slicePtr([]string{"https"})},
 			wantErr: false,
 		},
+		{
+			name: "invalid operation policy version",
+			existingAPI: &model.API{
+				Handle:  "my-api",
+				Version: "v1",
+			},
+			req: &api.RESTAPI{
+				Operations: &[]api.Operation{
+					{
+						Request: api.OperationRequest{
+							Policies: &[]api.Policy{{Name: "SET_HEADER", Version: "v1.0.0"}},
+						},
+					},
+				},
+			},
+			wantErr:     true,
+			errContains: "policy version must be major-only",
+		},
+		{
+			name: "invalid channel policy version",
+			existingAPI: &model.API{
+				Handle:  "my-api",
+				Version: "v1",
+			},
+			req: &api.RESTAPI{
+				Channels: &[]api.Channel{
+					{
+						Request: api.ChannelRequest{
+							Policies: &[]api.Policy{{Name: "SET_HEADER", Version: "1"}},
+						},
+					},
+				},
+			},
+			wantErr:     true,
+			errContains: "policy version must be major-only",
+		},
 	}
 
 	for _, tt := range tests {
@@ -178,9 +215,12 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				return
 			}
 
-			if tt.wantErr && err != nil && tt.expectedErr != nil {
-				if err != tt.expectedErr {
+			if tt.wantErr && err != nil {
+				if tt.expectedErr != nil && err != tt.expectedErr {
 					t.Errorf("validateUpdateAPIRequest() error = %v, expectedErr %v", err, tt.expectedErr)
+				}
+				if tt.errContains != "" && !contains(err.Error(), tt.errContains) {
+					t.Errorf("validateUpdateAPIRequest() error = %v, should contain %v", err, tt.errContains)
 				}
 			}
 
@@ -379,6 +419,65 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				ProjectId:   projectID,
 				Transport:   slicePtr([]string{"https"}),
 				Upstream:    api.Upstream{},
+			},
+			mockNameVersionExists:    false,
+			wantErr:                  false,
+			verifyExcludeHandleEmpty: true,
+			expectedExcludeHandle:    "",
+		},
+		{
+			name: "invalid operation policy version",
+			req: &api.CreateRESTAPIRequest{
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
+				Operations: &[]api.Operation{
+					{
+						Request: api.OperationRequest{
+							Policies: &[]api.Policy{{Name: "SET_HEADER", Version: "v1.0.0"}},
+						},
+					},
+				},
+			},
+			wantErr:     true,
+			errContains: "policy version must be major-only",
+		},
+		{
+			name: "invalid channel policy version",
+			req: &api.CreateRESTAPIRequest{
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
+				Channels: &[]api.Channel{
+					{
+						Request: api.ChannelRequest{
+							Policies: &[]api.Policy{{Name: "SET_HEADER", Version: "1"}},
+						},
+					},
+				},
+			},
+			wantErr:     true,
+			errContains: "policy version must be major-only",
+		},
+		{
+			name: "unspecified operation policy version is allowed (gateway resolves to latest)",
+			req: &api.CreateRESTAPIRequest{
+				DisplayName: "Test API",
+				Context:     "/test",
+				Version:     "v1",
+				ProjectId:   projectID,
+				Upstream:    api.Upstream{},
+				Operations: &[]api.Operation{
+					{
+						Request: api.OperationRequest{
+							Policies: &[]api.Policy{{Name: "SET_HEADER", Version: ""}},
+						},
+					},
+				},
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,

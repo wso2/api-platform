@@ -480,6 +480,9 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, constants.ErrSecretRefMissing):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -598,6 +601,9 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, constants.ErrHandleImmutable):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -679,6 +685,9 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) {
 			return
 		case errors.Is(err, constants.ErrProjectNotFound):
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+			return
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
@@ -850,6 +859,9 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Referenced provider not found"))
 			return
 		case errors.Is(err, constants.ErrHandleImmutable):
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
+		case errors.Is(err, constants.ErrInvalidPolicyVersion):
 			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
