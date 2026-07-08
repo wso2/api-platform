@@ -126,6 +126,31 @@ func (e *Error) WithCause(err error) *Error {
 	return e
 }
 
+// Origin symbolizes just the first frame of the stack captured at
+// construction time — the file:line of the Def.New/Def.Wrap call site where
+// the error actually originated, e.g. "/internal/handler/application.go:142".
+// The path is trimmed to start at "/internal/" so logs carry a short,
+// repo-relative path instead of the full build-machine absolute path. This is
+// distinct from slog's own "source" attribute, which always points at the
+// mapper's log call site (middleware/error_mapper.go) regardless of where
+// the error was created, and is therefore useless for locating the throw
+// site. Returns "" if no stack was captured.
+func (e *Error) Origin() string {
+	if len(e.Stack) == 0 {
+		return ""
+	}
+	frames := runtime.CallersFrames(e.Stack)
+	frame, _ := frames.Next()
+	if frame.File == "" {
+		return ""
+	}
+	file := frame.File
+	if idx := strings.Index(file, "/internal/"); idx != -1 {
+		file = file[idx:]
+	}
+	return fmt.Sprintf("%s:%d", file, frame.Line)
+}
+
 // StackString symbolizes the stack captured at construction time. Kept as
 // raw []uintptr on the struct (cheap to capture) and only symbolized lazily
 // when the mapper actually logs it, rather than paying runtime.CallersFrames

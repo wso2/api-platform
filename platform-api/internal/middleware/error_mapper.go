@@ -100,6 +100,12 @@ func writeMappedError(w http.ResponseWriter, r *http.Request, slogger *slog.Logg
 	if appErr.Cause != nil {
 		logFields = append(logFields, "cause", appErr.Cause.Error())
 	}
+	// origin is the file:line where the error was actually constructed
+	// (Def.New/Def.Wrap call site) — not to be confused with slog's own
+	// "source" attribute, which always points at this mapper's log call.
+	if origin := appErr.Origin(); origin != "" {
+		logFields = append(logFields, "origin", origin)
+	}
 
 	if appErr.HTTPStatus >= http.StatusInternalServerError {
 		if len(appErr.Stack) > 0 {
