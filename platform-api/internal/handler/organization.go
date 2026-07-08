@@ -114,12 +114,7 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 
 	h.slogger.Debug("Organization from token", "organizationId", organizationIdFromContext)
 
-	if handle != organizationIdFromContext {
-		return apperror.Forbidden.New().
-			WithLogMessage("Organization ID in token does not match the requested organization ID")
-	}
-
-	_, err := h.orgService.GetOrganizationByHandle(handle)
+	org, err := h.orgService.GetOrganizationByHandle(handle)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -127,6 +122,11 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to get organization by handle %s", handle))
+	}
+
+	if *org.Id != organizationIdFromContext {
+		return apperror.Forbidden.New().
+			WithLogMessage("Organization ID in token does not match the requested organization ID")
 	}
 
 	w.WriteHeader(http.StatusOK)
