@@ -24,8 +24,8 @@ import "net/http"
 // the fallback used by NewErrorResponse when a handler hasn't been migrated
 // to a more specific domain code via NewErrorResponseWithCode.
 const (
-	CodeCommonValidationFailed    = "COMMON_VALIDATION_FAILED"
-	CodeCommonUnauthorized        = "COMMON_UNAUTHORIZED"
+	CodeCommonValidationFailed    = "VALIDATION_FAILED"
+	CodeCommonUnauthorized        = "UNAUTHORIZED"
 	CodeCommonForbidden           = "COMMON_FORBIDDEN"
 	CodeCommonNotFound            = "COMMON_NOT_FOUND"
 	CodeCommonConflict            = "COMMON_CONFLICT"
