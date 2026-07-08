@@ -66,7 +66,7 @@ func recoverPanic(next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				slog.Error("panic recovered", "err", rec, "path", r.URL.Path)
-				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+				writeServerErrorJSON(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", w.Header().Get("X-Request-Id"))
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -82,7 +82,7 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 			// Safe methods: no CSRF token required.
 		default:
 			if r.Header.Get(s.cfg.CSRFHeader) == "" {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "missing CSRF header"})
+				writeErrorJSON(w, http.StatusForbidden, "MISSING_CSRF_HEADER", "missing CSRF header")
 				return
 			}
 		}

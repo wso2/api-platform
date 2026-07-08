@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { get, del, postForm, putForm } from '../clients/choreoApiClient';
+import { get, del, postForm, putForm, ApiError } from '../clients/choreoApiClient';
 
 // ============================================================================
 // Types
@@ -70,7 +70,7 @@ export interface SecretReference {
 }
 
 export interface DeleteSecretConflict {
-  error: string;
+  message: string;
   references: SecretReference[];
 }
 
@@ -78,7 +78,7 @@ export class SecretConflictError extends Error {
   readonly status = 409;
   readonly conflict: DeleteSecretConflict;
   constructor(conflict: DeleteSecretConflict) {
-    super(conflict.error);
+    super(conflict.message);
     this.name = 'SecretConflictError';
     this.conflict = conflict;
   }
@@ -145,11 +145,10 @@ export async function deleteSecret(handle: string): Promise<void> {
   try {
     return await del<void>(`/secrets/${handle}`);
   } catch (err: unknown) {
-    if (err instanceof Error && (err as { status?: number }).status === 409) {
-      const data = (err as { data?: unknown }).data as DeleteSecretConflict | undefined;
-      if (data?.references) {
-        throw new SecretConflictError(data);
-      }
+    const apiErr = err as ApiError;
+    if (apiErr?.code === 'SECRET_IN_USE') {
+      const references = (apiErr.details?.references as SecretReference[] | undefined) ?? [];
+      throw new SecretConflictError({ message: apiErr.message, references });
     }
     throw err;
   }

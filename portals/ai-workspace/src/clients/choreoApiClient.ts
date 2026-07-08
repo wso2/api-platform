@@ -32,8 +32,10 @@
 import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { logger } from '../utils/logger';
 import { HttpMethod, ApiRequestConfig, GQLResponse } from '../utils/types';
+import { buildApiError } from '../utils/apiError';
 
 export type { HttpMethod, ApiRequestConfig, GQLResponse };
+export type { ApiError, FieldError } from '../utils/apiError';
 
 // ---------------------------------------------------------------------------
 // Token shims — tokens now live server-side in the BFF session, never in the
@@ -98,19 +100,15 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
   });
 
   if (!res.ok) {
-    let message = `HTTP ${res.status}`;
     let data: unknown;
     try {
       data = await res.json();
-      const d = data as Record<string, unknown>;
-      message = (d?.description ?? d?.message ?? d?.error ?? message) as string;
     } catch { /* body not JSON */ }
-    logger.error(`[platformApiClient] ${method} ${url} → ${res.status}: ${message}`);
-    // Attach status and raw parsed body so callers can inspect structured error
-    // payloads (e.g. 409 DeleteSecretConflict) without re-fetching.
-    const err = new Error(message) as Error & { status?: number; data?: unknown };
-    err.status = res.status;
-    err.data = data;
+    const err = buildApiError(res.status, data, `HTTP ${res.status}`);
+    logger.error(
+      `[platformApiClient] ${method} ${url} → ${res.status} [${err.code ?? 'UNKNOWN'}]: ${err.message}`
+      + (err.trackingId ? ` (trackingId: ${err.trackingId})` : ''),
+    );
     throw err;
   }
 
@@ -151,13 +149,15 @@ const sendForm = async <T>(
   const res = await fetch(url, { method, credentials: 'include', headers, body: form });
 
   if (!res.ok) {
-    let message = `HTTP ${res.status}`;
+    let data: unknown;
     try {
-      const body = await res.json();
-      message = body?.description ?? body?.message ?? body?.error ?? message;
+      data = await res.json();
     } catch { /* body not JSON */ }
-    const err = new Error(message) as Error & { status?: number };
-    err.status = res.status;
+    const err = buildApiError(res.status, data, `HTTP ${res.status}`);
+    logger.error(
+      `[platformApiClient] ${method} ${url} → ${res.status} [${err.code ?? 'UNKNOWN'}]: ${err.message}`
+      + (err.trackingId ? ` (trackingId: ${err.trackingId})` : ''),
+    );
     throw err;
   }
 

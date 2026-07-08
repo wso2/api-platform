@@ -45,6 +45,7 @@ import {
   registerOrganization,
   type RegisterOrganizationRequest,
 } from '../../apis/platformApis';
+import { getErrorMessage, getFieldErrors } from '../../utils/apiError';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const REGIONS = [
@@ -224,8 +225,35 @@ export default function OrgRegisterPage() {
 
       setRegisteredOrgName(org.displayName);
       setRegisteredOrgHandle(org.id);
-    } catch (err: any) {
-      setApiError(err?.message ?? 'An unexpected error occurred.');
+    } catch (err: unknown) {
+      const backendFieldErrors = getFieldErrors(err);
+      if (backendFieldErrors?.length) {
+        // Backend field names ("id", "displayName") map onto this form's
+        // ("handle", "name") state keys; anything else falls through to the banner.
+        const fieldNameMap: Record<string, keyof FormErrors> = {
+          id: 'handle',
+          displayName: 'name',
+          region: 'region',
+        };
+        const mapped: FormErrors = {};
+        let hasUnmapped = false;
+        backendFieldErrors.forEach(({ field, message }) => {
+          const formField = fieldNameMap[field];
+          if (formField) {
+            mapped[formField] = message;
+          } else {
+            hasUnmapped = true;
+          }
+        });
+        if (Object.keys(mapped).length > 0) {
+          setErrors((prev) => ({ ...prev, ...mapped }));
+        }
+        if (hasUnmapped || Object.keys(mapped).length === 0) {
+          setApiError(getErrorMessage(err, 'An unexpected error occurred.'));
+        }
+      } else {
+        setApiError(getErrorMessage(err, 'An unexpected error occurred.'));
+      }
     } finally {
       setIsSubmitting(false);
     }

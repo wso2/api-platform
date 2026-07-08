@@ -56,9 +56,21 @@ import type {
 import type { ProviderTemplate } from '../../../../utils/types';
 import { familyHandle } from '../../../../utils/providerTemplateDisplay';
 import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
+import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { FormattedMessage } from 'react-intl';
 
 const VERSION_PATTERN = /^v\d+\.\d+$/;
+
+// Backend field names (from CreateLLMProviderRequest) mapped onto this form's state keys.
+// Auth sub-fields ("upstream.main.auth.*") are not mapped here — best-effort only,
+// they surface via the general error banner instead of forcing an unclear match.
+const FIELD_NAME_MAP: Partial<Record<string, keyof FormState>> = {
+  displayName: 'name',
+  description: 'description',
+  version: 'version',
+  context: 'context',
+  'upstream.main.url': 'upstreamUrl',
+};
 
 type TemplateBasedFormFieldsContainerProps = {
   formState: FormState;
@@ -66,6 +78,7 @@ type TemplateBasedFormFieldsContainerProps = {
   showCredential: boolean;
   setShowCredential: React.Dispatch<React.SetStateAction<boolean>>;
   setOpenapiSpec: React.Dispatch<React.SetStateAction<string>>;
+  fieldErrors: Partial<Record<keyof FormState, string>>;
 };
 
 function TemplateBasedFormFieldsContainer({
@@ -74,6 +87,7 @@ function TemplateBasedFormFieldsContainer({
   showCredential,
   setShowCredential,
   setOpenapiSpec,
+  fieldErrors,
 }: TemplateBasedFormFieldsContainerProps) {
   const { template, isLoading, error } = useProviderTemplate();
   const lastTemplateIdRef = useRef<string | null>(null);
@@ -132,6 +146,7 @@ function TemplateBasedFormFieldsContainer({
       template={template}
       isLoading={isLoading}
       error={error}
+      fieldErrors={fieldErrors}
     />
   );
 }
@@ -185,6 +200,7 @@ export default function ServiceProviderNew() {
     valuePrefix: '',
   });
   const isVersionValid = VERSION_PATTERN.test(formState.version.trim());
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [showCredential, setShowCredential] = useState(false);
   const [guardrails, setGuardrails] = useState<GuardrailSelection[]>([]);
   const [guardrailDrawerOpen, setGuardrailDrawerOpen] = useState(false);
@@ -322,6 +338,7 @@ export default function ServiceProviderNew() {
     if (!isFormValid || !selectedTemplateId) return;
 
     try {
+      setFieldErrors({});
       const providerId = toProviderId(formState.name);
 
       const upstream = {
@@ -385,12 +402,24 @@ export default function ServiceProviderNew() {
       );
     } catch (error) {
       logger.error('Failed to create LLM provider:', error);
-      const description =
-        (error as any)?.response?.data?.description ||
-        (error as any)?.response?.data?.message ||
-        (error instanceof Error ? error.message : null) ||
-        'Failed to create LLM provider.';
-      showSnackbar(description, 'error');
+      const backendFieldErrors = getFieldErrors(error);
+      const mappedErrors: Partial<Record<keyof FormState, string>> = {};
+      let hasUnmapped = false;
+      backendFieldErrors?.forEach(({ field, message }) => {
+        const formField = FIELD_NAME_MAP[field];
+        if (formField) {
+          mappedErrors[formField] = message;
+        } else {
+          hasUnmapped = true;
+        }
+      });
+      if (Object.keys(mappedErrors).length > 0) {
+        setFieldErrors(mappedErrors);
+      }
+      if (hasUnmapped || Object.keys(mappedErrors).length === 0) {
+        const description = getErrorMessage(error, 'Failed to create LLM provider.');
+        showSnackbar(description, 'error');
+      }
     }
   };
 
@@ -525,6 +554,7 @@ export default function ServiceProviderNew() {
                 showCredential={showCredential}
                 setShowCredential={setShowCredential}
                 setOpenapiSpec={setOpenapiSpec}
+                fieldErrors={fieldErrors}
               />
             </ProviderTemplateProvider>
           )}
