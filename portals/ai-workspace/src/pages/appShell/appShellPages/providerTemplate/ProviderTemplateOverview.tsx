@@ -122,7 +122,8 @@ function specServerUrl(text: string): string | null {
     servers?: Array<{ url?: string }>;
   } | null;
   const url = spec?.servers?.[0]?.url;
-  return typeof url === 'string' && url.trim() ? url.trim() : null;
+  const trimmed = typeof url === 'string' ? url.trim() : '';
+  return trimmed && isValidHttpUrl(trimmed) ? trimmed : null;
 }
 
 function isParseableSpec(text: string): boolean {
