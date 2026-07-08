@@ -84,7 +84,7 @@ func runListCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, listInsecure)
-	resp, err := client.Get("/devportal/organizations")
+	resp, err := client.Get("/organizations")
 	if err != nil {
 		return internaldevportal.WrapRequestError("list organizations", err, listInsecure)
 	}

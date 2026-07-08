@@ -6,10 +6,10 @@ This page explains the key building blocks of the Developer Portal and how they 
 
 An **organization** is the top-level multi-tenant unit. Each organization gets its own branded space in the portal, and its APIs, applications, subscriptions, and users are isolated from other organizations.
 
-The organization name appears in every portal URL:
+The organization's handle appears in every portal URL:
 
 ```
-https://<host>/<orgName>/views/<viewName>
+https://<host>/<orgHandle>/views/<viewName>
 ```
 
 Users are automatically routed to their organization when they sign in, based on a claim in their identity provider (IdP) token.
@@ -21,7 +21,7 @@ A **view** is a filtered, branded subset of an organization's APIs. An organizat
 Each view has its own URL:
 
 ```
-https://<host>/<orgName>/views/<viewName>
+https://<host>/<orgHandle>/views/<viewName>
 ```
 
 Views can have their own layout (HTML/CSS template) for independent branding.
@@ -45,15 +45,11 @@ Each API can have its own landing page content, documentation sections, icon, an
 
 ## Subscription Plan
 
-A **subscription plan** (also called a subscription plan) is a named usage tier that controls how much of an API a developer can consume. Plans are attached to APIs during publishing, and developers choose a plan when subscribing.
+A **subscription plan** is a named usage tier that controls how much of an API a developer can consume. Plans are attached to APIs during publishing, and developers choose a plan when subscribing.
 
-Plans can define:
-- Rate limits (requests per minute/hour)
-- Quota (requests per day/month)
+Plans can define rate limits — a request count (or event count, for async APIs) per time window (minute, hour, day, or month).
 
-Example plans: `Free`, `Basic`, `Gold`, `Enterprise`.
-
-> **Note:** When `generateDefaultSubPlans: true` is set in the config (the default), four standard plans (`Bronze`, `Silver`, `Gold`, `Unlimited`) are automatically created for every new organization.
+> **Note:** When `generateDefaultSubPlans: true` is set in the config (the default), five standard plans (`Bronze`, `Silver`, `Gold`, `Unlimited`, `AsyncUnlimited`) are automatically created for every new organization.
 
 ## Application
 

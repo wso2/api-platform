@@ -9,16 +9,13 @@ body:
       label: Please select the area the issue is related to
       multiple: true
       options:
-        - Area/Management (Management API or Management Portal UI)
-        - Area/Gateway (Routing, API deployment in gateway etc.)
-        - Area/Policies (Policies, Policy Hub, Policy Engine etc)
-        - Area/APIDesigner (API Designer VSCode extension)
-        - Area/DeveloperPortal (Developer Portal API, Developer Portal UI)
-        - Area/AIGateway (AI Gateway runtime/control plane)
-        - Area/EventGateway (Event Gateway runtime/control plane)
-        - Area/AIPolicies (AI Gateway Policies, Guardrails)
-        - Area/Operator (Kubernetes operator for AI Gateway or Regular Gateway)
-        - Area/Other (Anything else which does not match above categories)
+        - Gateway
+        - Platform API
+        - Developer Portal
+        - AI Workspace
+        - CLI
+        - Gateway Operator
+        - Event Gateway
     validations:
       required: true
   - type: dropdown

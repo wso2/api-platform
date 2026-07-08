@@ -269,10 +269,7 @@ export default function ProjectsList({ disableRedirect }: ProjectsListProps) {
                             fontSize="0.7rem"
                             noWrap
                           >
-                            {truncateWords(
-                              project.description || 'No description',
-                              12
-                            )}
+                            {truncateWords(project.description?.trim() || '', 12)}
                           </Typography>
                         </Box>
                       </Box>

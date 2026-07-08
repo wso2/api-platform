@@ -91,6 +91,19 @@ const tabs = ['Overview', 'Provider', 'Definition', 'Security', 'Guardrails & Po
 const UNSAVED_CHANGES_MESSAGE =
   'You have unsaved changes. Please save or cancel before leaving this page.';
 
+function getErrorDescription(error: unknown, fallbackMessage: string): string {
+  return (
+    (error as any)?.response?.data?.description ||
+    (error as any)?.response?.data?.message ||
+    (error instanceof Error ? error.message : null) ||
+    fallbackMessage
+  );
+}
+
+type LLMProxyOverviewLocationState = {
+  proxyAdded?: boolean;
+} | null;
+
 const normalizeProviderForComparison = (
   providerValue?: LLMProxy['provider']
 ) => {
@@ -173,7 +186,7 @@ function ProxyOverviewContent() {
   };
 
   useEffect(() => {
-    const state = location.state as { proxyAdded?: boolean } | null;
+    const state = location.state as LLMProxyOverviewLocationState;
     if (state?.proxyAdded) {
       showSnackbar('Successfully created App LLM Proxy.', 'success');
       navigate(location.pathname, { replace: true, state: null });
@@ -234,15 +247,25 @@ function ProxyOverviewContent() {
   };
 
   const handleDelete = async () => {
-    if (!proxy) return;
+    if (!proxy || isDeleting) return;
     try {
       setIsDeleting(true);
       await deleteProxyApi();
-      await refreshProxies();
-      navigate(proxiesPath);
+      try {
+        await refreshProxies();
+      } catch (refreshError) {
+        console.error(
+          'Failed to refresh proxies after deleting App LLM Proxy:',
+          refreshError
+        );
+      }
+      navigate(proxiesPath, {
+        state: { proxyDeleted: true },
+      });
     } catch (err) {
-      setUpdateError(
-        err instanceof Error ? err.message : 'Failed to delete proxy'
+      showSnackbar(
+        getErrorDescription(err, 'Failed to delete App LLM Proxy.'),
+        'error'
       );
     } finally {
       setIsDeleting(false);

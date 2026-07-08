@@ -7,7 +7,7 @@ When the Developer Portal is configured with an external IDP (e.g. Asgardeo), RE
 - IDP is configured (`idp.clientId` is set in `config.toml`)
 - The `dp:*` scopes are registered in the IDP and assigned to your user (see [asgardeo-setup.md](asgardeo-setup.md) sections 3–4)
 - You have the **client ID** and **client secret** from your IDP application
-- You know your org's UUID (the `ORG_ID` column in the `DP_ORGANIZATION` table, or ask the admin)
+- You know your org's identifier (the `ORGANIZATION_IDENTIFIER` value used to scope the Asgardeo login, e.g. `sub`)
 
 ---
 
@@ -116,8 +116,9 @@ echo "TOKEN=$TOKEN"
 ## Step 6 — Call the API
 
 ```bash
-ORG_UUID=<org-uuid>    # ORG_ID from the DP_ORGANIZATION table, e.g. 65789d2d-0238-412a-995c-5ce74c82e169
-BASE="https://localhost:3000/o/${ORG_UUID}/api/v0.9"
+# The org is resolved from the token's org claim (set via ORGANIZATION_IDENTIFIER
+# during login in Step 3) — no org identifier needed in the request itself.
+BASE="https://localhost:3000/api/v0.9"
 
 # List APIs
 curl -sk "${BASE}/apis" -H "Authorization: Bearer $TOKEN" | jq .
@@ -138,7 +139,8 @@ curl -sk -X POST "${BASE}/applications" \
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `403 Token org does not match requested organization` | Token's `org_name` claim doesn't match the org UUID's `ORGANIZATION_IDENTIFIER` | Make sure you logged in with `org=<ORGANIZATION_IDENTIFIER>` in the auth URL and are using the matching org UUID |
+| `403 Missing organization claim in token` | Token has no org claim | Make sure you logged in with `org=<ORGANIZATION_IDENTIFIER>` in the auth URL |
+| `404 Organization not found` | Token's org claim doesn't match any known org | Verify the `ORGANIZATION_IDENTIFIER` matches an org's `idpRefId` |
 | `403 Forbidden` (scope error) | Token is missing required `dp:*` scopes | Complete [asgardeo-setup.md](asgardeo-setup.md) sections 3–4: register scopes and assign role to your user |
 | `401 Authentication required` | Token expired or invalid | Re-run steps 1–5 to get a fresh token |
 | Token has no `dp:*` scopes | Role not assigned to user in the sub-org | In Asgardeo console, go to the sub-org → Users → assign the `dp_admin` role |

@@ -1362,6 +1362,64 @@ func TestSQLiteStorage_UpsertConfig(t *testing.T) {
 		assert.Equal(t, models.StateDeployed, retrieved.DesiredState)
 	})
 
+	t.Run("Update re-marks gateway-origin cp_sync_status pending and preserves cp_artifact_id", func(t *testing.T) {
+		// Regression for #2475: an update made while the DP->CP push is disabled must flip
+		// the row back to pending so the reconnect reconciliation re-syncs it. Previously
+		// cp_sync_status was written on INSERT only and left stale ("success") on update.
+		cfg := createTestStoredConfig() // Origin gateway_api
+		olderTime := time.Now().Add(-1 * time.Hour)
+		cfg.DeployedAt = &olderTime
+		cfg.CPSyncStatus = models.CPSyncStatusPending // cpSyncStatusForOrigin(gateway_api)
+
+		updated, err := storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		// Simulate a successful DP->CP push: status success, CP UUID recorded.
+		assert.NilError(t, storage.UpdateCPSyncStatus(cfg.UUID, "cp-uuid-123", models.CPSyncStatusSuccess, ""))
+
+		// A later update (newer deployed_at), as the deploy path builds it — carrying
+		// pending for a gateway-origin artifact.
+		newerTime := time.Now()
+		cfg.DeployedAt = &newerTime
+		cfg.DisplayName = "Updated Name"
+		cfg.CPSyncStatus = models.CPSyncStatusPending
+
+		updated, err = storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		retrieved, err := storage.GetConfig(cfg.UUID)
+		assert.NilError(t, err)
+		assert.Equal(t, models.CPSyncStatusPending, retrieved.CPSyncStatus)
+		// The CP UUID from the prior successful sync is preserved (not wiped by the update).
+		assert.Equal(t, "cp-uuid-123", retrieved.CPArtifactID)
+	})
+
+	t.Run("Update keeps cp_sync_status NULL for control-plane-origin", func(t *testing.T) {
+		cfg := createTestStoredConfig()
+		cfg.Origin = models.OriginControlPlane
+		cfg.CPSyncStatus = "" // cpSyncStatusForOrigin(control_plane) => NULL, never pushed back
+		olderTime := time.Now().Add(-1 * time.Hour)
+		cfg.DeployedAt = &olderTime
+
+		updated, err := storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		newerTime := time.Now()
+		cfg.DeployedAt = &newerTime
+		cfg.DisplayName = "Updated CP Name"
+
+		updated, err = storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		retrieved, err := storage.GetConfig(cfg.UUID)
+		assert.NilError(t, err)
+		assert.Equal(t, models.CPSyncStatus(""), retrieved.CPSyncStatus)
+	})
+
 	t.Run("Missing handle returns error", func(t *testing.T) {
 		cfg := createTestStoredConfig()
 		cfg.Handle = ""

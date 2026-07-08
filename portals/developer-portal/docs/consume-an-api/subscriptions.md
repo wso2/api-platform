@@ -7,11 +7,10 @@ A subscription grants you access to a specific API under a chosen subscription p
 1. Sign in to the Developer Portal.
 2. Click **APIs** from the sidebar.
 3. Find the API you want to access and open it.
-4. Click **Subscribe**.
-5. Select a subscription plan from the available options (e.g. Bronze, Gold, Unlimited).
-6. Confirm the subscription.
+4. Click **Subscribe** in the API's banner (or scroll to the **Subscription plans** section).
+5. Click **Subscribe** on the plan card you want (e.g. Bronze, Gold, Unlimited).
 
-Once subscribed, you can invoke the API under the terms of the chosen plan. If the API uses API key authentication, you can now [generate an API key](consume-with-api-key.md) for it.
+The subscription is created immediately when you click **Subscribe** on a plan — there is no separate confirmation step. Once subscribed, you can invoke the API under the terms of the chosen plan. If the API uses API key authentication, you can now [generate an API key](consume-with-api-key.md) for it.
 
 ## Subscription Plans
 
@@ -38,13 +37,13 @@ Some APIs are configured to allow direct invocation without subscribing. For the
 
 ## View Your Subscriptions
 
-Your active subscriptions are listed under **My Subscriptions** in the Developer Portal sidebar. From there you can see which APIs you are subscribed to, the active plan for each, and manage or cancel subscriptions.
+Your active subscriptions are listed under **Subscriptions** in the Developer Portal sidebar. From there you can see which APIs you are subscribed to, the active plan for each, and manage or cancel subscriptions.
 
 ## Cancel a Subscription
 
 To cancel a subscription:
 
-1. Go to **My Subscriptions** in the sidebar.
+1. Go to **Subscriptions** in the sidebar.
 2. Find the API subscription you want to cancel.
 3. Click **Unsubscribe**.
 

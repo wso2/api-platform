@@ -31,7 +31,7 @@ spec:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/api/v0.9/key-managers \
+curl -k -X POST https://localhost:3000/api/v0.9/key-managers \
   -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager.yaml"
 ```
@@ -46,22 +46,13 @@ curl -X POST http://localhost:3000/api/v0.9/key-managers \
 ## List Key Managers
 
 ```bash
-curl http://localhost:3000/api/v0.9/key-managers -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3000/api/v0.9/key-managers -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Key Manager
 
 ```bash
-curl http://localhost:3000/api/v0.9/key-managers/{kmId} -H "Authorization: Bearer $TOKEN"
-```
-
-## Discover Available Key Managers
-
-Developers can use this endpoint to see which key managers are available for their organization:
-
-```bash
-curl http://localhost:3000/api/v0.9/key-managers/discover \
-  -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3000/api/v0.9/key-managers/{kmId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a Key Manager
@@ -79,7 +70,7 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/api/v0.9/key-managers/{kmId} \
+curl -k -X PUT https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager-update.yaml"
 ```
@@ -87,7 +78,7 @@ curl -X PUT http://localhost:3000/api/v0.9/key-managers/{kmId} \
 ## Delete a Key Manager
 
 ```bash
-curl -X DELETE http://localhost:3000/api/v0.9/key-managers/{kmId} \
+curl -k -X DELETE https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 

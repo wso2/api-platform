@@ -367,7 +367,7 @@ function ProjectListViewInner() {
                             sx={{ mb: 0.25, mt: 0.8 }}
                             noWrap
                           >
-                            {project.description || 'No description'}
+                            {project.description?.trim() || ''}
                           </Typography>
                         </Box>
                       </Stack>

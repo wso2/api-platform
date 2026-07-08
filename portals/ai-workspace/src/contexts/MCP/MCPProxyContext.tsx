@@ -19,6 +19,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import type { MCPServer, UpdateMCPServerRequest } from '../../utils/types';
 import { mcpProxiesApis } from '../../apis/MCP/mcpProxiesApis';
+import {
+  createSecret,
+  deleteSecret,
+  buildSecretPlaceholder,
+  generateSecretHandle,
+  extractSecretHandle,
+} from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
 import { logger } from '../../utils/logger';
@@ -99,14 +106,62 @@ export function MCPServerProvider({ children, mcpServerId }: MCPServerProviderPr
       throw new Error('MCP Server ID or Organization ID is missing');
     }
     try {
-      const updatedMCPServer = await mcpProxiesApis.updateMCPServer(mcpServerId, updates, apimBaseUrl);
+      // If the upstream auth value is a new plain-text credential (not already a
+      // placeholder), create a new secret and substitute the placeholder before
+      // persisting. After a successful update the old secret is deleted best-effort.
+      let updatesPayload = updates;
+      const authValue = updates.upstream?.main?.auth?.value;
+      const isAlreadyPlaceholder =
+        typeof authValue === 'string' && authValue.includes('{{ secret ');
+
+      if (authValue && !isAlreadyPlaceholder) {
+        const secretHandle = generateSecretHandle();
+        const secretResponse = await createSecret({
+          id: secretHandle,
+          displayName: `${mcpServerId} upstream auth`,
+          description: `Auto-generated secret for MCP server ${mcpServerId}`,
+          value: authValue,
+          type: 'GENERIC',
+        });
+        logger.info('Created new secret for MCP server update', { secretHandle, mcpServerId });
+
+        updatesPayload = {
+          ...updates,
+          upstream: {
+            ...updates.upstream,
+            main: {
+              ...updates.upstream?.main,
+              url: updates.upstream?.main?.url ?? mcpServer?.upstream?.main?.url ?? '',
+              auth: {
+                ...updates.upstream?.main?.auth,
+                value: buildSecretPlaceholder(secretResponse.id),
+              },
+            },
+          },
+        };
+      }
+
+      const updatedMCPServer = await mcpProxiesApis.updateMCPServer(mcpServerId, updatesPayload, apimBaseUrl);
       setMCPServer(updatedMCPServer);
+
+      // Best-effort: delete the old secret after the update succeeds.
+      if (authValue && !isAlreadyPlaceholder) {
+        const oldHandle = mcpServer?.upstream?.main?.auth?.value
+          ? extractSecretHandle(mcpServer.upstream.main.auth.value)
+          : null;
+        if (oldHandle) {
+          deleteSecret(oldHandle).catch((err) => {
+            logger.warn('Could not delete old secret after MCP server update', { oldHandle, err });
+          });
+        }
+      }
+
       return updatedMCPServer;
     } catch (err) {
       logger.error('Failed to update MCP server:', err);
       throw err;
     }
-  }, [mcpServerId, organizationId, apimBaseUrl]);
+  }, [mcpServerId, organizationId, apimBaseUrl, mcpServer]);
 
   const deleteMCPServer = useCallback(async (): Promise<void> => {
     if (!mcpServerId || !organizationId) {

@@ -1,0 +1,117 @@
+name: Sync Checklist Labels
+
+# Trigger whenever an issue body is edited so checklist changes are reflected
+# as issue labels.
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+jobs:
+  sync-checklist-labels:
+    if: github.event.issue != null
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Sync checklist items to labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const issueNumber = context.payload.issue.number;
+
+            const checklistLabels = [
+              {
+                label: 'Design Done',
+                color: '0075ca',
+                description: 'Design document has been created and reviewed.',
+                pattern: /^[\s]*[-*]\s+\[x\]\s+.*\*{0,2}Design Document\*{0,2}.*$/im,
+              },
+              {
+                label: 'Mail Sent',
+                color: 'e4e669',
+                description: 'Design mail has been sent.',
+                pattern: /^[\s]*[-*]\s+\[x\]\s+.*Design Mail.*$/im,
+              },
+              {
+                label: 'Code Review Done',
+                color: '0e8a16',
+                description: "All code changes have been peer-reviewed and approved according to the project's review standards.",
+                pattern: /^[\s]*[-*]\s+\[x\]\s+.*\*{0,2}Code Review\*{0,2}.*$/im,
+              },
+              {
+                label: 'Testing Done',
+                color: '5319e7',
+                description: 'Adequate unit, integration, and/or end-to-end tests have been written and are passing.',
+                pattern: /^[\s]*[-*]\s+\[x\]\s+.*\*{0,2}Testing Complete\*{0,2}.*$/im,
+              },
+              {
+                label: 'Doc Review Done',
+                color: '1d76db',
+                description: 'User-facing and/or developer documentation has been updated to reflect the new feature and reviewed.',
+                pattern: /^[\s]*[-*]\s+\[x\]\s+.*\*{0,2}Documentation Review\*{0,2}.*$/im,
+              },
+              {
+                label: 'Feature Complete',
+                color: '0052cc',
+                description: 'The feature is fully implemented, all checklist items above are done, and it is ready for release.',
+                pattern: /^[\s]*[-*]\s+\[x\]\s+.*\*{0,2}Feature Complete\*{0,2}.*$/im,
+              },
+            ];
+
+            async function ensureLabel({ label, color, description }) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color,
+                  description,
+                });
+                console.log(`Label "${label}" created.`);
+              } catch (err) {
+                if (err.status === 422) {
+                  console.log(`Label "${label}" already exists.`);
+                } else {
+                  throw err;
+                }
+              }
+            }
+
+            async function addLabel(label) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [label],
+              });
+              console.log(`Label "${label}" added to issue #${issueNumber}.`);
+            }
+
+            async function removeLabel(label) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label,
+                });
+                console.log(`Label "${label}" removed from issue #${issueNumber}.`);
+              } catch (err) {
+                if (err.status === 404) {
+                  console.log(`Label "${label}" was not present on issue #${issueNumber}.`);
+                } else {
+                  throw err;
+                }
+              }
+            }
+
+            for (const config of checklistLabels) {
+              if (config.pattern.test(body)) {
+                await ensureLabel(config);
+                await addLabel(config.label);
+              } else {
+                await removeLabel(config.label);
+              }
+            }

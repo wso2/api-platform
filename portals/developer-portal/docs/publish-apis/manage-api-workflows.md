@@ -19,8 +19,8 @@ API workflow requests are JSON. The `apiWorkflowDefinition` field contains the A
 ```json
 // workflow.json
 {
-  "name": "Place an Order",
-  "handle": "place-an-order",
+  "displayName": "Place an Order",
+  "id": "place-an-order",
   "description": "End-to-end flow for creating and confirming a customer order",
   "agentPrompt": "Use this workflow when a user wants to place a new order. It covers product lookup, cart creation, and order submission.",
   "agentVisibility": "VISIBLE",
@@ -70,8 +70,8 @@ API workflow requests are JSON. The `apiWorkflowDefinition` field contains the A
 ```
 
 ```bash
-curl -X POST \
-  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows" \
+curl -k -X POST \
+  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow.json
@@ -79,8 +79,8 @@ curl -X POST \
 
 | Field | Description |
 |---|---|
-| `name` | Short, task-oriented workflow name |
-| `handle` | URL-safe identifier for the workflow (auto-derived from `name` if omitted) |
+| `displayName` | Short, task-oriented workflow name |
+| `id` | URL-safe identifier for the workflow (unique per org and view; auto-derived from `displayName` if omitted) |
 | `description` | One to two sentences describing what the workflow accomplishes |
 | `agentPrompt` | Natural language guidance for AI agents on when/how to use this workflow |
 | `agentVisibility` | `VISIBLE` — included in `llms.txt`/`api-workflows.md`; `HIDDEN` — excluded from agent surfaces |
@@ -91,14 +91,14 @@ curl -X POST \
 ## List Workflows
 
 ```bash
-curl http://localhost:3000/api/v0.9/views/{viewName}/api-workflows \
+curl -k https://localhost:3000/api/v0.9/views/{viewId}/api-workflows \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Workflow
 
 ```bash
-curl http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/{apiWorkflowId} \
+curl -k https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -107,15 +107,15 @@ curl http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/{apiWorkflowI
 ```json
 // workflow-update.json
 {
-  "name": "Place an Order",
+  "displayName": "Place an Order",
   "description": "Updated description",
   "agentVisibility": "VISIBLE"
 }
 ```
 
 ```bash
-curl -X PUT \
-  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/{apiWorkflowId}" \
+curl -k -X PUT \
+  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow-update.json
@@ -124,8 +124,8 @@ curl -X PUT \
 ## Delete a Workflow
 
 ```bash
-curl -X DELETE \
-  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/{apiWorkflowId}" \
+curl -k -X DELETE \
+  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -136,11 +136,11 @@ The portal can generate a suggested agent prompt for a workflow using AI:
 ```json
 // generate-prompt.json
 {
-  "name": "Place an Order",
+  "displayName": "Place an Order",
   "description": "End-to-end flow for creating and confirming a customer order",
   "orgHandle": "acme",
   "viewName": "default",
-  "handle": "place-an-order",
+  "id": "place-an-order",
   "apis": [
     {"name": "Order API", "version": "v1.0"}
   ]
@@ -148,8 +148,8 @@ The portal can generate a suggested agent prompt for a workflow using AI:
 ```
 
 ```bash
-curl -X POST \
-  "http://localhost:3000/api/v0.9/views/{viewName}/api-workflows/generate-prompt" \
+curl -k -X POST \
+  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/generate-prompt" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @generate-prompt.json

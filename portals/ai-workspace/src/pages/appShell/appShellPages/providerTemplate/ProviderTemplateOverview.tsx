@@ -520,7 +520,7 @@ export default function ProviderTemplateOverview() {
   const metadata = template.metadata;
   const logoUrl = metadata?.logoUrl?.trim();
   const hasLogo = Boolean(logoUrl);
-  const description = template.description?.trim() || 'No description';
+  const description = template.description?.trim() || '';
   const lastUpdated = template.updatedAt ?? template.createdAt;
 
   const currentVersion = selectedVersion || template.version || 'v1.0';
@@ -785,11 +785,9 @@ export default function ProviderTemplateOverview() {
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  title={description}
+                  title={description || undefined}
                 >
-                  {description === 'No description'
-                    ? description
-                    : truncateProviderDisplayName(description, 70)}
+                  {description ? truncateProviderDisplayName(description, 70) : ''}
                 </Typography>
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <Typography variant="caption" color="text.secondary">
@@ -1113,25 +1111,21 @@ export default function ProviderTemplateOverview() {
               {isDpOrigin && !isReadOnly && (
                 <GatewayArtifactReadOnlyBanner message="Token mapping is managed by the gateway that created this template and is read-only here." />
               )}
-              <Box
-                sx={
-                  isSectionReadOnly
-                    ? { pointerEvents: 'none', opacity: 0.7 }
-                    : undefined
-                }
-              >
-                <TemplateTokenMapping
-                  defaultTokens={defaultTokens}
-                  onChangeDefaultToken={updateToken}
-                  resourceMappings={resourceMappings}
-                  onChangeResourceMappings={(next) => {
-                    setResourceMappings(next);
-                    setIsDirty(true);
-                  }}
-                  spec={parsedSpec}
-                  hidePerResource={isSectionReadOnly}
-                />
-              </Box>
+              {/* Read-only sections stay fully viewable: TemplateTokenMapping
+                  disables its editable fields via readOnly while keeping the
+                  scope toggle, search, per-resource list and expansion working
+                  (no pointerEvents:none, and per-resource is not hidden). */}
+              <TemplateTokenMapping
+                defaultTokens={defaultTokens}
+                onChangeDefaultToken={updateToken}
+                resourceMappings={resourceMappings}
+                onChangeResourceMappings={(next) => {
+                  setResourceMappings(next);
+                  setIsDirty(true);
+                }}
+                spec={parsedSpec}
+                readOnly={isSectionReadOnly}
+              />
             </TabPanel>
           </Box>
         </Card>

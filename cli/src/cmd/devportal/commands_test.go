@@ -428,4 +428,3 @@ func writeDevPortalConfig(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	testutil.WriteCLIConfig(t, cfg)
 }
-

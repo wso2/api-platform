@@ -23,14 +23,20 @@ package e2e
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,16 +46,53 @@ import (
 const (
 	composeProject = "apip-e2e-bdd"
 	ingressHost    = "localhost"
-	pollTimeout    = 90 * time.Second
+	// Ingress/readiness poll budget. Generous headroom so the full multi-scenario
+	// run (postgres + two gateways + devportal, with controller restarts) tolerates
+	// slower Envoy config propagation under load on constrained hosts.
+	pollTimeout = 120 * time.Second
+
+	// Webhook HMAC secret shared with the developer portal (matches WEBHOOK_SECRET in
+	// docker-compose.yaml). The RSA key pair used for the encrypted key/token fields
+	// is generated fresh per run by prepareWebhookKey (not read from the repo — the
+	// private key is intentionally gitignored and absent in CI).
+	webhookSecret = "5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22"
+
+	// Admin user injected via AUTH_FILE_BASED_USERS on the @devportal stack. It
+	// carries both the platform-api ap:* scopes and the dp:*_manage scopes the
+	// developer portal requires, so the same admin JWT authorizes both products.
+	// (A mounted config's users are ignored — the built-in default admin wins —
+	// but the AUTH_FILE_BASED_USERS env var does override it.)
+	fileBasedAdminUsers = `[{"username":"admin","password_hash":"$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.","scopes":"ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage dp:org_manage dp:api_manage dp:sub_plan_manage dp:app_manage dp:subscription_manage dp:api_key_manage dp:webhook_subscriber_manage"}]`
 )
 
 // Host-side endpoints. Ports are overridable so the suite can run alongside
 // other local stacks; container-internal wiring (controller -> platform-api:9243)
 // is unaffected. Defaults match the compose files and CI.
 var (
-	platformAPI = "https://localhost:" + envOr("PA_HOST_PORT", "9243")
-	ingressGw1  = "http://localhost:" + envOr("GW_HTTP_PORT", "18080")
-	ingressGw2  = "http://localhost:" + envOr("GW2_HTTP_PORT", "18081")
+	platformAPI  = "https://localhost:" + envOr("PA_HOST_PORT", "9243")
+	ingressGw1   = "http://localhost:" + envOr("GW_HTTP_PORT", "18080")
+	ingressGw2   = "http://localhost:" + envOr("GW2_HTTP_PORT", "18081")
+	devportalAPI = "http://localhost:" + envOr("DP_HOST_PORT", "3000")
+)
+
+// REST API base paths, defined in one place so each product's API version/prefix can
+// be reconfigured centrally — and independently, since platform-api and the developer
+// portal version on separate release cadences and may diverge. Overridable via env
+// (PA_API_BASE / DP_API_BASE) so a version bump needs no code change. platformAPIBase
+// is prepended by the apiCall helper; devportalBase by dpDo — so their callers name
+// only the resource path (e.g. "/rest-apis").
+var (
+	platformAPIBase = envOr("PA_API_BASE", "/api/v0.9")
+	devportalBase   = envOr("DP_API_BASE", "/api/v0.9")
+)
+
+// Additional platform-api path prefixes, distinct from the resource API version above
+// (they carry their own version segment). Overridable for the same forward-compat reason.
+var (
+	portalAuthPath = envOr("PA_PORTAL_BASE", "/api/portal/v0.9") // username/password login
+	// webhookReceiverPath is the platform-api webhook receiver, addressed by the
+	// devportal at the container-internal host (see webhookReceiverURL).
+	webhookReceiverPath = envOr("PA_WEBHOOK_BASE", "/api/internal/v0.9") + "/webhook/events"
 )
 
 // suite holds state established once for the whole run (BeforeSuite): the chosen
@@ -58,6 +101,7 @@ var suite struct {
 	db          string // postgres | sqlite | sqlserver
 	composeFile string
 	multi       bool // second gateway available (postgres stack only)
+	devportal   bool // developer portal + webhook wired (postgres stack only)
 	token       string
 	projectID   string
 	gw1ID       string
@@ -73,7 +117,9 @@ var httpClient = &http.Client{
 func TestFeatures(t *testing.T) {
 	tags := os.Getenv("E2E_TAGS")
 	if tags == "" && os.Getenv("E2E_DB") != "" && os.Getenv("E2E_DB") != "postgres" {
-		tags = "~@multigateway" // second gateway is only wired on the postgres stack
+		// The second gateway and the developer portal are only wired on the
+		// postgres stack, so their scenarios are skipped elsewhere.
+		tags = "~@multigateway && ~@devportal"
 	}
 	status := godog.TestSuite{
 		Name:                 "platform-api-gateway-e2e",
@@ -113,7 +159,12 @@ func bringUpStack() error {
 	suite.db = envOr("E2E_DB", "postgres")
 	switch suite.db {
 	case "postgres":
+		// The postgres stack is the one wired with the second gateway and the
+		// developer portal (+ webhook), so @multigateway and @devportal run here.
+		// The devportal service needs its own image, so only bring it up when the
+		// @devportal scenario is actually selected (a tag subset may exclude it).
 		suite.composeFile, suite.multi = "docker-compose.yaml", true
+		suite.devportal = devportalSelected()
 	case "sqlite":
 		suite.composeFile = "docker-compose.sqlite.yaml"
 	case "sqlserver":
@@ -122,6 +173,20 @@ func bringUpStack() error {
 		return fmt.Errorf("unsupported E2E_DB %q", suite.db)
 	}
 	fmt.Printf("E2E database backend: %s (%s)\n", suite.db, suite.composeFile)
+
+	// The postgres platform-api has the webhook receiver enabled and mounts the
+	// private key at startup (phase 1), so make a container-readable copy and
+	// export PA_WEBHOOK_KEY before bringing it up — regardless of whether the
+	// @devportal scenario runs this time.
+	if suite.db == "postgres" {
+		if err := prepareWebhookKey(); err != nil {
+			return err
+		}
+		// Give the admin JWT the dp:* scopes the developer portal enforces.
+		if err := os.Setenv("AUTH_FILE_BASED_USERS", fileBasedAdminUsers); err != nil {
+			return err
+		}
+	}
 
 	// Phase 1: control plane + backend.
 	phase1 := []string{"platform-api", "sample-backend"}
@@ -156,10 +221,22 @@ func bringUpStack() error {
 		env["GATEWAY_REGISTRATION_TOKEN_2"] = gw2Token
 		dataPlane = append(dataPlane, "gateway-controller-2", "gateway-runtime-2")
 	}
+	if suite.devportal {
+		dataPlane = append(dataPlane, "devportal")
+	}
 
-	// Phase 2: data plane with the minted tokens.
+	// Phase 2: data plane (+ devportal) with the minted tokens.
 	if err := compose(env, append([]string{"up", "-d"}, dataPlane...)...); err != nil {
 		return fmt.Errorf("start data plane: %w", err)
+	}
+
+	// Bootstrap the developer portal so it can fire webhooks that platform-api
+	// accepts: link its org to the control-plane org handle and register the
+	// platform-api webhook subscriber.
+	if suite.devportal {
+		if err := bootstrapDevportal(); err != nil {
+			return fmt.Errorf("bootstrap devportal: %w", err)
+		}
 	}
 	return nil
 }
@@ -208,13 +285,15 @@ func waitHealthy() error {
 
 // --- platform-api REST helpers --------------------------------------------
 
+// apiCall issues a JSON request to the platform-api resource API. path is the
+// resource path relative to platformAPIBase (e.g. "/rest-apis"), which is prepended.
 func apiCall(method, path, token string, body any) (int, []byte, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
 		rdr = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, platformAPI+path, rdr)
+	req, err := http.NewRequest(method, platformAPI+platformAPIBase+path, rdr)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -233,7 +312,7 @@ func apiCall(method, path, token string, body any) (int, []byte, error) {
 
 func login() (string, error) {
 	form := url.Values{"username": {"admin"}, "password": {"admin"}}
-	req, err := http.NewRequest(http.MethodPost, platformAPI+"/api/portal/v0.9/auth/login",
+	req, err := http.NewRequest(http.MethodPost, platformAPI+portalAuthPath+"/auth/login",
 		bytes.NewBufferString(form.Encode()))
 	if err != nil {
 		return "", err
@@ -256,7 +335,7 @@ func login() (string, error) {
 }
 
 func createProject() (string, error) {
-	st, body, err := apiCall(http.MethodPost, "/api/v0.9/projects", suite.token,
+	st, body, err := apiCall(http.MethodPost, "/projects", suite.token,
 		map[string]string{"id": "e2e-proj", "displayName": "e2e-proj", "description": "e2e"})
 	if err != nil {
 		return "", err
@@ -269,7 +348,7 @@ func createProject() (string, error) {
 }
 
 func createGatewayAndToken(name string) (gatewayID, token string, err error) {
-	st, body, err := apiCall(http.MethodPost, "/api/v0.9/gateways", suite.token, map[string]any{
+	st, body, err := apiCall(http.MethodPost, "/gateways", suite.token, map[string]any{
 		"id": name, "displayName": name, "endpoints": []string{"http://" + ingressHost}, "functionalityType": "regular",
 	})
 	if err != nil {
@@ -279,7 +358,7 @@ func createGatewayAndToken(name string) (gatewayID, token string, err error) {
 	if st >= 300 || gatewayID == "" {
 		return "", "", fmt.Errorf("create gateway failed (%d): %s", st, body)
 	}
-	st, body, err = apiCall(http.MethodPost, "/api/v0.9/gateways/"+gatewayID+"/tokens", suite.token, map[string]any{})
+	st, body, err = apiCall(http.MethodPost, "/gateways/"+gatewayID+"/tokens", suite.token, map[string]any{})
 	if err != nil {
 		return "", "", err
 	}
@@ -288,6 +367,68 @@ func createGatewayAndToken(name string) (gatewayID, token string, err error) {
 		return "", "", fmt.Errorf("rotate token failed (%d): %s", st, body)
 	}
 	return gatewayID, token, nil
+}
+
+// devportalSelected reports whether the @devportal scenario will run, so the
+// devportal service (which needs its own image) is only brought up when needed.
+// A default run (no E2E_TAGS) includes it; an explicit tag subset includes it
+// only when it selects @devportal and does not negate it.
+func devportalSelected() bool {
+	tags := os.Getenv("E2E_TAGS")
+	if tags == "" {
+		return true
+	}
+	return strings.Contains(tags, "@devportal") && !strings.Contains(tags, "~@devportal")
+}
+
+// prepareWebhookKey copies the repo's devportal webhook private key (mode 0600,
+// owned by the host user) to a world-readable copy and points PA_WEBHOOK_KEY at
+// it, so the platform-api container (uid 10001) can read the mounted key. The
+// key is a non-secret dev fixture, so a 0644 copy is fine.
+//
+// The copy is written into the working directory (the compose-file dir, under
+// the user's home), NOT os.TempDir(): the container runtime (e.g. colima) only
+// shares the home tree into its VM, so a /tmp source would fail to bind-mount
+// (docker would create an empty directory at the target instead).
+// webhookPublicKeyPEM is the SPKI PEM of the RSA key pair generated by
+// prepareWebhookKey; registerWebhookSubscriber gives it to the developer portal so it
+// can encrypt key/token fields that platform-api decrypts with the matching private key.
+var webhookPublicKeyPEM string
+
+// prepareWebhookKey generates the RSA key pair used for the devportal↔platform-api
+// hybrid encryption of webhook secret fields, writes the private key where the
+// platform-api container mounts it (PA_WEBHOOK_KEY), and stores the public key for the
+// subscriber registration. The pair is generated per run rather than read from the
+// repo, since the private key is gitignored (and absent in CI); any matched pair works.
+//
+// The private key is written under the compose directory (not os.TempDir) because the
+// container runtime only shares the working tree into its VM, and 0644 so the
+// container user (uid 10001) can read the read-only mount.
+func prepareWebhookKey() error {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return fmt.Errorf("generate webhook key pair: %w", err)
+	}
+	privPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	dst := filepath.Join(cwd, ".webhook-key.it.pem")
+	if err := os.WriteFile(dst, privPEM, 0o644); err != nil {
+		return fmt.Errorf("write webhook private key: %w", err)
+	}
+
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return fmt.Errorf("marshal webhook public key: %w", err)
+	}
+	webhookPublicKeyPEM = string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
+
+	return os.Setenv("PA_WEBHOOK_KEY", dst)
 }
 
 // --- small helpers ---------------------------------------------------------

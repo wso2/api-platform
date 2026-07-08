@@ -7,10 +7,10 @@ The Developer Portal is a self-hosted web application that acts as the front doo
 | Capability | Description |
 |---|---|
 | **API catalog** | Browse and search REST, AsyncAPI, GraphQL, and SOAP APIs with full documentation and try-out |
-| **Developer applications** | Logical containers for OAuth2 credentials; a developer can have multiple apps (web, mobile, CLI) each with independent consumer key/secret pairs |
+| **Developer applications** | Logical containers for OAuth2 credentials; a developer can have multiple apps (web, mobile, CLI) each linked to independent OAuth client IDs |
 | **Subscription management** | Subscribe directly to APIs under named plans (e.g. Gold, Free) that enforce rate limits and quotas |
 | **API key generation** | Generate, rotate, and revoke API keys bound to a specific API |
-| **OAuth2 credentials** | Generate consumer key/secret pairs and access tokens for OAuth2-secured APIs |
+| **OAuth2 credentials** | Link an OAuth client ID (created directly in a key manager) to an application and generate access tokens for OAuth2-secured APIs |
 | **Webhook event delivery** | Real-time delivery of API key and subscription lifecycle events to gateways and external systems |
 | **MCP server registry** | Discover and integrate Model Context Protocol (MCP) servers alongside REST APIs |
 | **API workflows** | Publish and consume multi-step API call sequences (Arazzo format) for human and AI agent use |

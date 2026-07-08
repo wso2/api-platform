@@ -98,6 +98,10 @@ platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","chan
 # tls_cert_file = "/etc/ai-workspace/tls/tls.crt"
 # tls_key_file  = "/etc/ai-workspace/tls/tls.key"
 
+# --- Logging ---
+# log_level  = "info"   # debug | info | warn | error
+# log_format = "text"   # text | json
+
 # --- Upstream Platform API ---
 # Base URL the BFF uses to reach the Platform API (server-to-server, NOT the
 # browser path above). REQUIRED — set here or via the PLATFORM_API_URL env var.

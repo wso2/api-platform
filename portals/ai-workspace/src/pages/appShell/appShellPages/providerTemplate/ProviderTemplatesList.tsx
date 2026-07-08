@@ -225,7 +225,7 @@ export default function ProviderTemplatesList({
               >
                 {template.description?.trim()
                   ? truncateProviderDisplayName(template.description, 70)
-                  : 'No description'}
+                  : ''}
               </Typography>
             </Box>
           </Box>

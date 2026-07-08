@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/wso2/go-httpkit/httputil"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -34,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
@@ -121,14 +121,6 @@ func (s *APIServer) CreateMCPProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(mcp, cfg))
-
-	if result.IsStale {
-		return
-	}
-
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
-	}
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies

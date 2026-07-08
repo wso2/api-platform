@@ -78,7 +78,7 @@ export default function GatewaysList() {
   } | null>(null);
 
   const { gateways, isLoading, error, refetch, deleteGatewayById } =
-    useGatewayList();
+    useGatewayList({ pollAlways: true });
 
   // Prefetch environments so they're available when navigating to Add/Edit views
   useEnvironments();
@@ -185,23 +185,23 @@ export default function GatewaysList() {
               sx={{ ml: 'auto', flexShrink: 0 }}
             >
               {isAdmin && filteredGateways.length > 0 ? (
-                <Tooltip
-                  title={isGatewayQuotaReached ? gatewayQuotaTooltip : ''}
-                  disableHoverListener={!isGatewayQuotaReached}
-                >
+                // <Tooltip
+                //   title={isGatewayQuotaReached ? gatewayQuotaTooltip : ''}
+                //   disableHoverListener={!isGatewayQuotaReached}
+                // >
                   <Box component="span">
                     <Button
                       variant="contained"
                       component={RouterLink}
                       to={newGatewayPath}
                       startIcon={<Plus size={20} />}
-                      disabled={isGatewayQuotaReached}
-                      sx={{
-                        opacity: isGatewayQuotaReached ? 0.55 : 1,
-                        '&.Mui-disabled': {
-                          opacity: isGatewayQuotaReached ? 0.55 : 1,
-                        },
-                      }}
+                      // disabled={isGatewayQuotaReached}
+                      // sx={{
+                      //   opacity: isGatewayQuotaReached ? 0.55 : 1,
+                      //   '&.Mui-disabled': {
+                      //     opacity: isGatewayQuotaReached ? 0.55 : 1,
+                      //   },
+                      // }}
                     >
                       <FormattedMessage
                         id="aiWorkspace.pages.appShell.appShellPages.gateways.GatewaysList.add.ai.gateway"
@@ -209,7 +209,7 @@ export default function GatewaysList() {
                       />
                     </Button>
                   </Box>
-                </Tooltip>
+                // </Tooltip>
               ) : null}
             </Stack>
           </Box>

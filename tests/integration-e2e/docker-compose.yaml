@@ -24,7 +24,10 @@ services:
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
       # platform-api no longer auto-provisions its schema on external databases,
       # so init-db.sql applies it from here (mounted from the source tree).
-      - ../../platform-api/src/internal/database/schema.postgres.sql:/schema/schema.postgres.sql:ro
+      - ../../platform-api/internal/database/schema.postgres.sql:/schema/schema.postgres.sql:ro
+      # The developer portal likewise pre-loads its schema on postgres (it does
+      # not sequelize.sync() on external DBs); init-db.sql applies it too.
+      - ../../portals/developer-portal/database/schema.postgres.sql:/devportal-schema/schema.postgres.sql:ro
     ports:
       - "55433:5432"
     healthcheck:
@@ -50,7 +53,9 @@ services:
       - DATABASE_USER=apip
       - DATABASE_PASSWORD=apip
       - DATABASE_SSL_MODE=disable
-      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+      # Must be 32 bytes (64 hex chars); the subscription-token encryption path
+      # (exercised by the webhook subscription.created handler) rejects shorter keys.
+      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       # Force file-based auth + a stable org so the scenario can log in and the
       # org is seeded (env overrides the mounted config file).
       - AUTH_FILE_BASED_ENABLED=true
@@ -59,8 +64,26 @@ services:
       - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
       - AUTH_FILE_BASED_ORGANIZATION_REGION=us
       - AUTH_JWT_SECRET_KEY=e2e-integration-secret-key-0123456789
+      # The @devportal stack injects the admin user (with dp:* scopes) here so the
+      # issued JWT is authorized on the developer portal. Empty (the default) means
+      # platform-api uses its built-in admin (ap:* scopes only).
+      - AUTH_FILE_BASED_USERS=${AUTH_FILE_BASED_USERS:-}
+      # Developer Portal webhook receiver (only the postgres stack runs the devportal).
+      # Enabled via env so the sqlite/sqlserver stacks — which have no devportal and no
+      # mounted key — leave it off. The private key must be readable by the container
+      # user (uid 10001); the suite generates a fresh RSA pair, writes the 0644 private
+      # key and points PA_WEBHOOK_KEY at it (see prepareWebhookKey in suite_test.go).
+      - WEBHOOK_ENABLED=true
+      - WEBHOOK_SECRET=5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22
+      - WEBHOOK_PRIVATE_KEY_PATH=/etc/platform-api/devportal-webhook.pem
+      - WEBHOOK_GATEWAY_TYPE=wso2/api-platform
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
+      # RSA private key that platform-api decrypts the webhook's encrypted key/token
+      # fields with; its public half is registered on the devportal subscriber. The
+      # suite always sets PA_WEBHOOK_KEY (the generated key); the default is only a
+      # fallback for manual `docker compose up` after a suite run has generated it.
+      - ${PA_WEBHOOK_KEY:-./.webhook-key.it.pem}:/etc/platform-api/devportal-webhook.pem:ro
     ports:
       - "${PA_HOST_PORT:-9243}:9243"
     depends_on:
@@ -174,6 +197,55 @@ services:
     depends_on:
       gateway-controller-2:
         condition: service_started
+    networks: [e2e]
+
+  # Developer Portal — the consumer-facing plane. Credentials (subscriptions,
+  # API keys) generated here are fired as signed webhooks to platform-api's
+  # receiver (…/api/internal/v0.9/webhook/events), which persists them and
+  # propagates to the gateway data plane over its existing WebSocket sync. 
+  # Started on demand by the godog suite (postgres stack only).
+  devportal:
+    image: ${DEVPORTAL_IMAGE:-developer-portal:it-e2e}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform-api:
+        condition: service_started
+    environment:
+      # Its own database on the shared postgres server (created by init-db.sql).
+      # Postgres, not the devportal's default SQLite: the org-update path needs
+      # UPDATE ... RETURNING, which SQLite doesn't support. Schema auto-migrates.
+      - DP_DB_DIALECT=postgres
+      - DP_DB_HOST=postgres
+      - DP_DB_PORT=5432
+      - DP_DB_DATABASE=devportal
+      - DP_DB_USERNAME=apip
+      - DP_DB_PASSWORD=apip
+      # Plain HTTP to avoid the self-signed cert dance in tests.
+      - DP_ADVANCED_HTTP=true
+      - DP_BASEURL=http://devportal:3000
+      # Seed the "default" org so its handle matches platform-api's org handle
+      # (the webhook resolves the control-plane org by handle via org.ref_id).
+      - DP_DEFAULTORGNAME=default
+      - DP_DEMO_ENABLED=false
+      - DP_GENERATEDEFAULTSUBPLANS=false
+      - DP_LOGGING_CONSOLEONLY=true
+      # Validate platform-api-issued JWTs locally: this MUST equal the stack's
+      # AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
+      - DP_PLATFORMAPI_BASEURL=https://platform-api:9243
+      - DP_PLATFORMAPI_JWTSECRET=e2e-integration-secret-key-0123456789
+      - DP_PLATFORMAPI_INSECURE=true
+      # The webhook delivery worker POSTs over raw https with the default agent,
+      # and platform-api serves a self-signed cert here. DP_PLATFORMAPI_INSECURE
+      # only covers the auth client, so disable TLS verification globally for this
+      # throwaway test container to let signed webhook deliveries through.
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      # Stable AES-256-GCM key (64 hex) for encrypting the webhook subscriber
+      # secret at rest; must not change across restarts or the stored secret
+      # becomes undecryptable and outbound requests go unsigned.
+      - DP_ADVANCED_ENCRYPTIONKEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    ports:
+      - "${DP_HOST_PORT:-3000}:3000"
     networks: [e2e]
 
 networks:

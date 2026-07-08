@@ -54,12 +54,12 @@ signature_tolerance_sec = 300
 ### Create a subscriber
 
 ```bash
-curl -X POST "http://localhost:3000/api/v0.9/webhook-subscribers" \
+curl -k -X POST "https://localhost:3000/api/v0.9/webhook-subscribers" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Production Listener",
-    "url": "https://your-service.example.com/devportal/events",
+    "id": "production-listener",
+    "targetUrl": "https://your-service.example.com/devportal/events",
     "secret": "change-me-minimum-32-chars",
     "events": ["apikey.*", "subscription.*"],
     "timeoutMs": 5000
@@ -72,8 +72,8 @@ The response never includes the secret. To set a public key for envelope-encrypt
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | Yes | Unique within the organization |
-| `url` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
+| `id` | Yes | Desired handle for the webhook subscriber (unique per org), stored as-is |
+| `targetUrl` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
 | `secret` | No | Minimum 32-character string used to sign each event with HMAC-SHA256. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) |
 | `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit or leave empty to receive all events |
@@ -84,22 +84,22 @@ The response never includes the secret. To set a public key for envelope-encrypt
 
 ```bash
 # List
-curl "http://localhost:3000/api/v0.9/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
+curl -k "https://localhost:3000/api/v0.9/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
 
 # Get one
-curl "http://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
+curl -k "https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
 
 # Update (only supplied fields are changed; omitted fields keep their stored values)
-curl -X PUT "http://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" \
+curl -k -X PUT "https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 
 # Delete
-curl -X DELETE "http://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" \
+curl -k -X DELETE "https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-These endpoints require the `dp:webhook_subscriber_read`, `dp:webhook_subscriber_write`, `dp:webhook_subscriber_delete`, or `dp:webhook_subscriber_manage` OAuth2 scopes (see the OpenAPI spec for the exact scope per operation).
+These endpoints require the `dp:webhook_subscriber_read`, `dp:webhook_subscriber_create`, `dp:webhook_subscriber_update`, `dp:webhook_subscriber_delete`, or `dp:webhook_subscriber_manage` OAuth2 scopes (see the OpenAPI spec for the exact scope per operation).
 
 ## Webhook Request Format
 
@@ -601,11 +601,11 @@ Each delivery is attempted exactly once. If your subscriber endpoint is unavaila
 ### List recent events
 
 ```bash
-curl http://localhost:3000/api/v0.9/webhook-events -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3000/api/v0.9/webhook-events -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get event details
 
 ```bash
-curl http://localhost:3000/api/v0.9/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3000/api/v0.9/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
 ```

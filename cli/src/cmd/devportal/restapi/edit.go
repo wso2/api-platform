@@ -102,7 +102,7 @@ func runEditCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, editInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/apis/%s", url.PathEscape(orgID), url.PathEscape(apiID))
+	path := internaldevportal.OrgScopedPath(orgID, "apis/"+url.PathEscape(apiID))
 	resp, err := client.PutMultipartFile(path, "artifact", artifactPath)
 	if err != nil {
 		return internaldevportal.WrapRequestError("edit api artifact", err, editInsecure)

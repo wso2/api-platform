@@ -109,7 +109,7 @@ npm run dev
 ```
 This starts the AI Workspace frontend in development mode.
 
-Update platform-api/src/config/config.toml and set the following configuration:
+Update platform-api/config/config.toml and set the following configuration:
 
 ```bash
 [auth.file_based]
@@ -119,7 +119,7 @@ This enables file-based authentication, allowing users configured in the file-ba
 
 Terminal 2:
 ```bash
-cd platform-api/src
+cd platform-api
 go run ./cmd/main.go -config ./config/config.toml
 ```
 This starts the Platform API using the local configuration file.
@@ -249,7 +249,7 @@ the zero-config file-based quickstart (`admin` / `admin`).
 Running the BFF and Platform API directly (no compose) means no pre-wiring, so configure both
 sides by hand.
 
-Edit `platform-api/src/config/config.toml` so the Platform API validates the Asgardeo token —
+Edit `platform-api/config/config.toml` so the Platform API validates the Asgardeo token —
 remember the three auth modes are mutually exclusive, so turn the local ones off:
 
 ```toml

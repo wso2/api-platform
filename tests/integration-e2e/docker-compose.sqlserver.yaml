@@ -38,7 +38,7 @@ services:
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
     volumes:
-      - ../../platform-api/src/internal/database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
+      - ../../platform-api/internal/database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
     networks: [e2e]
 
   platform-api:
@@ -52,7 +52,9 @@ services:
       - DATABASE_USER=sa
       - DATABASE_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
       - DATABASE_SSL_MODE=disable
-      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+      # Must be 32 bytes (64 hex chars); the subscription-token encryption path
+      # (exercised by the @secured subscription-create handler) rejects shorter keys.
+      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       - AUTH_FILE_BASED_ENABLED=true
       - AUTH_FILE_BASED_ORGANIZATION_ID=default
       - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295

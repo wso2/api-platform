@@ -93,7 +93,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/applications/%s", url.PathEscape(orgID), url.PathEscape(appID))
+	path := internaldevportal.OrgScopedPath(orgID, "applications/"+url.PathEscape(appID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete application", err, deleteInsecure)

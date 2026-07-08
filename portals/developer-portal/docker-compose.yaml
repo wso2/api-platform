@@ -83,7 +83,7 @@ services:
 
   devportal:
     build: .
-    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
     depends_on:
       platform-api:
         condition: service_healthy

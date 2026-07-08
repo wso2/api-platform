@@ -1,12 +1,14 @@
 # Gateway Management Implementation
 
-**Last Updated**: October 26, 2025
+**Last Updated**: July 3, 2026
 **Authentication**: Thunder STS JWT (organization claim)
-**Status**: Gateway Registration, Listing, Retrieval, Token Rotation, and Deletion implemented
+**Status**: Gateway Registration, Listing, Retrieval, Update, Token Rotation, Token Revocation, and Deletion implemented
 
 ## Overview
 
 Gateway Management provides APIs for registering, managing, and deleting API gateways within organizations. All operations are scoped to the organization specified in the JWT token, ensuring complete multi-tenant isolation.
+
+Gateways follow the platform-wide handle convention: `id` is the immutable, URL-safe handle (used as `{gatewayId}` in every path), `displayName` is the human-readable name, and the internal UUID is never exposed on the wire (it only appears on WebSocket events sent to the gateway itself).
 
 ## Implementation Files
 
@@ -25,11 +27,14 @@ Gateway Management provides APIs for registering, managing, and deleting API gat
 |--------|----------|-------------|--------|
 | POST | `/api/v0.9/gateways` | Register new gateway | ✅ Implemented |
 | GET | `/api/v0.9/gateways` | List all gateways | ✅ Implemented |
-| GET | `/api/v0.9/gateways/{id}` | Get gateway details | ✅ Implemented |
-| PUT | `/api/v0.9/gateways/{id}` | Update gateway | ✅ Implemented |
-| DELETE | `/api/v0.9/gateways/{id}` | Delete gateway | ✅ Implemented |
-| POST | `/api/v0.9/gateways/{id}/tokens` | Rotate gateway token | ✅ Implemented |
-| DELETE | `/api/v0.9/gateways/{id}/tokens/{tokenId}` | Revoke token | ⏳ Planned |
+| GET | `/api/v0.9/gateways/{gatewayId}` | Get gateway details | ✅ Implemented |
+| PUT | `/api/v0.9/gateways/{gatewayId}` | Update gateway | ✅ Implemented |
+| DELETE | `/api/v0.9/gateways/{gatewayId}` | Delete gateway | ✅ Implemented |
+| GET | `/api/v0.9/gateways/{gatewayId}/tokens` | List active tokens | ✅ Implemented |
+| POST | `/api/v0.9/gateways/{gatewayId}/tokens` | Rotate gateway token | ✅ Implemented |
+| DELETE | `/api/v0.9/gateways/{gatewayId}/tokens/{tokenId}` | Revoke token | ✅ Implemented |
+
+`{gatewayId}` is the gateway's handle (e.g. `prod-gateway-01`), not its UUID.
 
 ## Authentication & Authorization
 
@@ -60,19 +65,21 @@ The organization ID is automatically extracted from the JWT token and used for a
 
 **Behavior**:
 1. Validates JWT token and extracts organization claim
-2. Validates request payload (name, displayName, description, vhost)
+2. Validates request payload (id/handle, displayName, description, endpoints, functionalityType)
 3. Verifies organization exists
-4. Prevents duplicate names within organization
-5. Generates secure registration token
-6. Returns gateway details with initial token (201 Created)
+4. Prevents duplicate handles within organization
+5. Returns gateway details (registration itself does not generate or return a token — call `POST /gateways/{gatewayId}/tokens` afterward to obtain one)
 
 **Request Fields**:
-- **name**: Lowercase alphanumeric with hyphens, 3-64 characters, pattern: `^[a-z0-9-]+$`
-- **displayName**: 1-128 characters
+- **id**: Optional. Lowercase alphanumeric with hyphens, 3-40 characters, pattern: `^[a-z0-9-]+$`. Auto-generated from `displayName` if omitted. Immutable after creation.
+- **displayName**: Required, 1-128 characters
 - **description**: Optional text
-- **vhost**: Required, valid hostname format
+- **endpoints**: Required, array of full URL strings (network endpoints exposed by the gateway) — replaces the old single `vhost` field
+- **functionalityType**: Required enum — `regular`, `ai`, or `event`
+- **isCritical**: Optional boolean, defaults to `false`
+- **version**: Optional, defaults to `1.0`
 
-**Uniqueness**: Gateway names must be unique within an organization. Different organizations can use the same gateway name.
+**Uniqueness**: Gateway handles must be unique within an organization. Different organizations can use the same gateway handle.
 
 ### 2. List Gateways
 
@@ -110,7 +117,7 @@ The organization ID is automatically extracted from the JWT token and used for a
 
 **Behavior**:
 1. Validates JWT token and extracts organization claim
-2. Validates UUID format for gateway ID
+2. Resolves the gateway by handle (`{gatewayId}`)
 3. Verifies gateway exists and belongs to user's organization
 4. Executes transaction-wrapped DELETE with organization isolation
 5. Automatic CASCADE deletion of:
@@ -136,13 +143,14 @@ The organization ID is automatically extracted from the JWT token and used for a
 **Schema**: `src/internal/database/schema.sql`
 
 **Tables**:
-- `gateways` - Gateway entities with organization scoping
+- `gateways` - Gateway entities with organization scoping (handle + display name; no `vhost` column)
+- `gateway_endpoints` - Network endpoints exposed by a gateway (one row per URL, replaces the old single `vhost` column)
 - `gateway_tokens` - Authentication tokens with CASCADE delete
 
 **Key Constraints**:
-- Composite unique constraint on `(organization_uuid, name)` prevents duplicate gateway names within organization
+- Composite unique constraint on `(organization_uuid, handle)` prevents duplicate gateway handles within organization
 - CASCADE delete: Deleting organization removes all gateways and related data
-- CASCADE delete: Deleting gateway removes all tokens, deployments, and deployment status
+- CASCADE delete: Deleting gateway removes all tokens, endpoints, deployments, and deployment status
 - Token status validation: 'active' or 'revoked'
 
 ## Token Security
@@ -167,16 +175,20 @@ The organization ID is automatically extracted from the JWT token and used for a
 ### Handler Implementation
 
 ```go
-func (h *GatewayHandler) CreateGateway(c *gin.Context) {
+func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
     // Extract organization from JWT token (not request body)
-    organizationID, exists := middleware.GetOrganizationFromContext(c)
+    orgId, exists := middleware.GetOrganizationFromRequest(r)
     if !exists {
-        c.JSON(http.StatusUnauthorized, ...)
+        httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+            "Organization claim not found in token"))
         return
     }
-    
-    // Use organizationID from token
-    response, err := h.gatewayService.RegisterGateway(organizationID, req.Name, req.DisplayName)
+
+    var req api.CreateGatewayRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+        return
+    }
     // ...
 }
 ```
@@ -187,34 +199,33 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 
 1. **Authentication**: Middleware validates JWT token and extracts organization claim
 2. **Request Validation**: Validates presence of required fields:
-   - `name`: lowercase alphanumeric with hyphens, 3-64 chars
+   - `id`: optional handle, lowercase alphanumeric with hyphens, 3-40 chars (auto-generated from `displayName` if omitted)
    - `displayName`: 1-128 chars
-   - `vhost`: virtual host for the gateway
+   - `endpoints`: required array of full endpoint URLs
    - `isCritical`: boolean indicating gateway criticality
    - `functionalityType`: enum value (required) - one of "regular", "ai", "event"
    - `description`: optional gateway description
 3. **Gateway Type Validation**: Uses global constants from `constants.go` to validate enum values
 4. **Organization Scoping**: Uses organization ID from JWT token (not request body)
-5. Service confirms organization existence and prevents duplicate names within the same organization using composite unique constraint `(organization_id, name)`
+5. Service confirms organization existence and prevents duplicate handles within the same organization using composite unique constraint `(organization_uuid, handle)`
 6. **Default Values**: New gateways default to `isActive: false` until WebSocket connection is established
-7. System generates cryptographically secure 32-byte token using `crypto/rand`, hashes it with SHA-256 and unique 32-byte salt, stores hash and salt (never plain-text)
-8. Response returns gateway details with initial registration token
-9. Different organizations can register gateways with identical names
+7. Registration does not generate a token — call `POST /gateways/{gatewayId}/tokens` separately, which generates a cryptographically secure 32-byte token via `crypto/rand`, hashes it with SHA-256 and a unique 32-byte salt, and stores only the hash and salt (never plain-text)
+8. Different organizations can register gateways with identical handles
 
 ### Token Lifecycle
 1. **Creation**: Generated during gateway registration or rotation
 2. **Active**: Token can authenticate gateway requests
 3. **Rotation**: New token created, old tokens remain active (max 2 active)
-4. **Revocation**: Token marked as revoked, can no longer authenticate (planned)
+4. **Revocation**: Token marked as revoked, can no longer authenticate; implemented and idempotent
 
 ## Error Responses
 
 | Code | Message | Common Scenarios |
 |------|---------|------------------|
-| 400 | Bad Request | Validation failures, invalid UUID format, max tokens reached |
+| 400 | Bad Request | Validation failures, max tokens reached |
 | 401 | Unauthorized | Missing/invalid JWT token, missing organization claim |
 | 404 | Not Found | Gateway not found, organization not found, wrong organization |
-| 409 | Conflict | Duplicate gateway name, active deployments/connections |
+| 409 | Conflict | Duplicate gateway handle, active deployments/connections |
 | 500 | Internal Server Error | Database errors, token generation failures |
 
 ## Key Design Decisions
@@ -222,15 +233,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 1. Token rotation generates new token while keeping existing tokens active, enforces maximum 2 active tokens per gateway
 2. Each token has UUID for tracking, creation timestamp, status (active/revoked), and optional revocation timestamp
 3. Token verification compares submitted token against stored hashes using constant-time comparison (`crypto/subtle`) to prevent timing attacks
-4. Future implementation: Token revocation updates status to 'revoked' and sets revocation timestamp (idempotent operation).
-
-### Gateway Status Monitoring
-
-1. **Lightweight Status API**: New endpoint `/api/v0.9/status/gateways` provides minimal gateway information for frequent polling by management portals
-2. **Optional Filtering**: Query parameter `gatewayId` allows filtering to a specific gateway
-3. **Response Structure**: Returns only essential fields (id, name, isActive, isCritical) for efficient polling
-4. **Organization Scoping**: Automatically filtered by organization from JWT token
-5. **Constitution Compliance**: Returns data in standard `{count, list, pagination}` envelope format
+4. Token revocation (`DELETE /gateways/{gatewayId}/tokens/{tokenId}`) updates status to 'revoked' and sets revocation timestamp; implemented and idempotent.
 
 ### WebSocket Connection Status Management
 
@@ -246,20 +249,32 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 **Gateways Table:**
 ```sql
 CREATE TABLE gateways (
-    uuid TEXT PRIMARY KEY,
-    organization_uuid TEXT NOT NULL,
-    name TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    description TEXT,
-    vhost TEXT NOT NULL,
-    is_critical BOOLEAN DEFAULT FALSE,
-    gateway_functionality_type TEXT DEFAULT 'regular' NOT NULL,
-    is_active BOOLEAN DEFAULT FALSE,
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
+    gateway_functionality_type VARCHAR(20) NOT NULL DEFAULT 'regular',
+    properties BLOB NOT NULL,
+    manifest BLOB,
+    is_active INTEGER DEFAULT 0,
+    is_critical INTEGER DEFAULT 0,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, name),
-    CHECK (gateway_functionality_type IN ('regular', 'ai', 'event'))
+    UNIQUE(organization_uuid, handle)
+);
+
+-- Network endpoints exposed by the gateway (replaces the old single `vhost` column)
+CREATE TABLE gateway_endpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    url VARCHAR(255) NOT NULL,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 ```
 
@@ -310,8 +325,8 @@ CREATE TABLE gateway_tokens (
 ## Testing Scenarios
 
 ### Duplicate Prevention
-1. Register gateway with name "prod-gateway-01"
-2. Attempt to register another gateway with same name in same organization
+1. Register gateway with handle "prod-gateway-01"
+2. Attempt to register another gateway with the same handle in the same organization
 3. Expected: 409 Conflict error
 
 ### Max Tokens Enforcement
@@ -340,10 +355,10 @@ curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...' \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "prod-gateway-01",
+    "id": "prod-gateway-01",
     "displayName": "Production Gateway 01",
     "description": "Primary production gateway for API traffic",
-    "vhost": "api.example.com",
+    "endpoints": ["https://api.example.com:8443/api/v1"],
     "isCritical": true,
     "functionalityType": "regular"
   }'
@@ -352,17 +367,17 @@ curl -k -X POST https://localhost:9243/api/v0.9/gateways \
 **Expected Response (201 Created):**
 ```json
 {
-  "id": "987e6543-e21b-45d3-a789-426614174999",
-  "organizationId": "123e4567-e89b-12d3-a456-426614174000",
-  "name": "prod-gateway-01",
+  "id": "prod-gateway-01",
+  "organizationId": "acme",
   "displayName": "Production Gateway 01",
   "description": "Primary production gateway for API traffic",
-  "vhost": "api.example.com",
+  "endpoints": ["https://api.example.com:8443/api/v1"],
   "isCritical": true,
   "functionalityType": "regular",
+  "version": "1.0",
   "isActive": false,
-  "createdAt": "2025-10-26T10:30:00Z",
-  "updatedAt": "2025-10-26T10:30:00Z"
+  "createdAt": "2026-06-21T10:30:00Z",
+  "updatedAt": "2026-06-21T10:30:00Z"
 }
 ```
 
@@ -380,30 +395,30 @@ curl -k https://localhost:9243/api/v0.9/gateways \
   "count": 2,
   "list": [
     {
-      "id": "987e6543-e21b-45d3-a789-426614174999",
-      "organizationId": "123e4567-e89b-12d3-a456-426614174000",
-      "name": "prod-gateway-01",
+      "id": "prod-gateway-01",
+      "organizationId": "acme",
       "displayName": "Production Gateway 01",
       "description": "Primary production gateway for API traffic",
-      "vhost": "api.example.com",
+      "endpoints": ["https://api.example.com:8443/api/v1"],
       "isCritical": true,
       "functionalityType": "regular",
+      "version": "1.0",
       "isActive": true,
-      "createdAt": "2025-10-26T10:30:00Z",
-      "updatedAt": "2025-10-26T10:30:00Z"
+      "createdAt": "2026-06-21T10:30:00Z",
+      "updatedAt": "2026-06-21T10:30:00Z"
     },
     {
-      "id": "abc12345-f678-90de-f123-456789abcdef",
-      "organizationId": "123e4567-e89b-12d3-a456-426614174000",
-      "name": "ai-gateway-01",
+      "id": "ai-gateway-01",
+      "organizationId": "acme",
       "displayName": "AI Gateway 01",
       "description": "AI workloads gateway",
-      "vhost": "ai-api.example.com",
+      "endpoints": ["https://ai-api.example.com:8443/api/v1"],
       "isCritical": false,
       "functionalityType": "ai",
+      "version": "1.0",
       "isActive": false,
-      "createdAt": "2025-10-26T11:00:00Z",
-      "updatedAt": "2025-10-26T11:00:00Z"
+      "createdAt": "2026-06-21T11:00:00Z",
+      "updatedAt": "2026-06-21T11:00:00Z"
     }
   ],
   "pagination": {
@@ -417,104 +432,52 @@ curl -k https://localhost:9243/api/v0.9/gateways \
 ### Get Gateway by ID
 
 ```bash
-curl -k https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999 \
+curl -k https://localhost:9243/api/v0.9/gateways/prod-gateway-01 \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
 **Expected Response (200 OK):**
 ```json
 {
-  "id": "987e6543-e21b-45d3-a789-426614174999",
-  "organizationId": "123e4567-e89b-12d3-a456-426614174000",
-  "name": "prod-gateway-01",
+  "id": "prod-gateway-01",
+  "organizationId": "acme",
   "displayName": "Production Gateway 01",
   "description": "Primary production gateway for API traffic",
-  "vhost": "api.example.com",
+  "endpoints": ["https://api.example.com:8443/api/v1"],
   "isCritical": true,
   "functionalityType": "regular",
+  "version": "1.0",
   "isActive": true,
-  "createdAt": "2025-10-26T10:30:00Z",
-  "updatedAt": "2025-10-26T10:30:00Z"
-}
-```
-
-### Get Gateway Status (for polling)
-
-**Get all gateway statuses:**
-```bash
-curl -k https://localhost:9243/api/v0.9/status/gateways \
-  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
-```
-
-**Expected Response (200 OK):**
-```json
-{
-  "count": 2,
-  "list": [
-    {
-      "id": "987e6543-e21b-45d3-a789-426614174999",
-      "name": "prod-gateway-01",
-      "isActive": true,
-      "isCritical": true
-    },
-    {
-      "id": "abc12345-f678-90de-f123-456789abcdef",
-      "name": "ai-gateway-01",
-      "isActive": false,
-      "isCritical": false
-    }
-  ],
-  "pagination": {
-    "total": 2,
-    "offset": 0,
-    "limit": 2
-  }
-}
-```
-
-**Get specific gateway status:**
-```bash
-curl -k https://localhost:9243/api/v0.9/status/gateways?gatewayId=987e6543-e21b-45d3-a789-426614174999 \
-  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
-```
-
-**Expected Response (200 OK):**
-```json
-{
-  "count": 1,
-  "list": [
-    {
-      "id": "987e6543-e21b-45d3-a789-426614174999",
-      "name": "prod-gateway-01",
-      "isActive": true,
-      "isCritical": true,
-      "functionalityType": "regular"
-    }
-  ],
-  "pagination": {
-    "total": 1,
-    "offset": 0,
-    "limit": 1
-  }
+  "createdAt": "2026-06-21T10:30:00Z",
+  "updatedAt": "2026-06-21T10:30:00Z"
 }
 ```
 
 ### Rotate Gateway Token
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/prod-gateway-01/tokens \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
 **Expected Response (201 Created):**
 ```json
 {
-  "tokenId": "def45678-g901-23hi-j456-789012klmnop",
+  "id": "def45678-1234-4567-89ab-789012cdefgh",
   "token": "kR3mF9pL2vX8qN5wY7jK4sT1hU6gB0cD9aE8fI2mN5oP7qR3sT6uV9xY2zA5bC8e",
-  "createdAt": "2025-10-15T14:20:00Z",
+  "createdAt": "2026-06-21T14:20:00Z",
   "message": "New token generated successfully. Old token remains active until revoked."
 }
 ```
+
+### Revoke Gateway Token
+
+```bash
+curl -k -X DELETE https://localhost:9243/api/v0.9/gateways/prod-gateway-01/tokens/def45678-1234-4567-89ab-789012cdefgh \
+  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
+```
+
+**Expected Response:** `204 No Content`. Revoking an already-revoked token is idempotent.
 
 ### Authentication Error Responses
 
@@ -544,17 +507,21 @@ curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "prod-gateway-01",
-    "displayName": "Production Gateway 01"
+    "id": "prod-gateway-01",
+    "displayName": "Production Gateway 01",
+    "endpoints": ["https://api.example.com:8443/api/v1"],
+    "functionalityType": "regular"
   }'
 
-# Attempt duplicate (should return 409 Conflict)
+# Attempt duplicate handle (should return 409 Conflict)
 curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "prod-gateway-01",
-    "displayName": "Duplicate Gateway"
+    "id": "prod-gateway-01",
+    "displayName": "Duplicate Gateway",
+    "endpoints": ["https://api.example.com:8443/api/v1"],
+    "functionalityType": "regular"
   }'
 ```
 
@@ -563,7 +530,7 @@ curl -k -X POST https://localhost:9243/api/v0.9/gateways \
 {
   "code": 409,
   "message": "Conflict",
-  "description": "gateway with name 'prod-gateway-01' already exists in this organization"
+  "description": "gateway with handle 'prod-gateway-01' already exists in this organization"
 }
 ```
 
@@ -571,16 +538,16 @@ curl -k -X POST https://localhost:9243/api/v0.9/gateways \
 
 ```bash
 # Rotate once (2 active tokens: initial + rotation 1)
-curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
-  -H 'Authorization: Bearer <token>' \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/prod-gateway-01/tokens \
+  -H 'Authorization: Bearer <token>'
 
 # Rotate again (3 active tokens: initial + rotation 1 + rotation 2)
-curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
-  -H 'Authorization: Bearer <token>' \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/prod-gateway-01/tokens \
+  -H 'Authorization: Bearer <token>'
 
 # Attempt third rotation (should return 400 Bad Request)
-curl -k -X POST https://localhost:9243/api/v0.9/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
-  -H 'Authorization: Bearer <token>' \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/prod-gateway-01/tokens \
+  -H 'Authorization: Bearer <token>'
 ```
 
 **Expected Response (400 Bad Request):**
@@ -617,14 +584,15 @@ Detailed design and planning documents are available in the `artifacts/` directo
 
 ## Future Enhancements
 
-### Token Revocation (Planned)
+### Gateway Deletion Safety Checks (Not Yet Implemented)
 
-**Endpoint**: `DELETE /api/v0.9/gateways/{gatewayId}/tokens/{tokenId}`
-
-Immediate token revocation with idempotent behavior.
-
-### Gateway Deletion Safety Checks (User Story 2)
-
-- Pre-deletion validation for active API deployments
-- Pre-deletion validation for active WebSocket connections
-- 409 Conflict response with details when validation fails
+`src/resources/openapi.yaml` documents `DELETE /gateways/{gatewayId}` as returning `409 Conflict`
+when the gateway has active API deployments or active WebSocket connections
+(`constants.ErrGatewayHasDeployments` and the `activeConnections`/`activeDeployments` examples
+in the spec). As of this writing, `GatewayService.DeleteGateway` and `GatewayRepo.Delete`
+(`src/internal/service/gateway.go`, `src/internal/repository/gateway.go`) do not perform either
+check — deletion unconditionally removes artifact-gateway mappings and cascades tokens/deployments
+via foreign keys. The handler (`src/internal/handler/gateway.go`) also has a dead branch for
+`constants.ErrGatewayHasAssociatedAPIs`, which is defined in `constants/error.go` but never
+returned by the service. Treat the openapi.yaml description of pre-deletion validation as
+aspirational until this guard is implemented.
