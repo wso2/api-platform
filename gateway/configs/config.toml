@@ -1,19 +1,9 @@
-
-# The collector is the shared data-capture pipeline. It has no on/off switch of its
-# own: it turns on automatically whenever a consumer (analytics or traffic_logging)
-# is enabled, and stays off otherwise. This section only tunes what is captured.
 [collector]
-# Capture request/response payloads (bodies) into the collected event (full bodies;
-# per-consumer size caps are applied on output).
 send_request_body = false
 send_response_body = false
-# Capture ALL request/response headers (redacted on output by per-consumer masking).
-# Off by default; the Moesif publisher does not mask headers, so only enable this
-# for consumers you know redact sensitive values (e.g. traffic_logging.masked_headers).
 send_request_headers = false
 send_response_headers = false
 
-# Analytics consumer (e.g. Moesif). Enabling it activates the collector automatically.
 [analytics]
 enabled = true
 enabled_publishers = ["moesif"]
@@ -21,13 +11,9 @@ enabled_publishers = ["moesif"]
 [analytics.publishers.moesif]
 application_id = "<MOESIF_APPLICATION_ID>"
 
-# Traffic-logging consumer: writes each collected event to stdout as a JSON line
-# (no external service needed). Enabling it activates the collector automatically.
 [traffic_logging]
 enabled = false
-# Header names (case-insensitive) whose values are redacted as "****".
 masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
-# Max bytes of request/response payload written to each log line (0 = no limit).
 max_payload_size = 2048
 
 [router]
