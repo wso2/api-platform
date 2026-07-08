@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/tests/integration-e2e
 
-go 1.26.2
+go 1.26.5
 
 require github.com/cucumber/godog v0.15.0
 
