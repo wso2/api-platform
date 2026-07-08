@@ -44,7 +44,7 @@ SELECT
         '[]'
     ) AS "DP_API_SUBSCRIPTION_PLAN_MAPPING",
     COALESCE(
-        ARRAY_AGG(DISTINCT lbl.name) FILTER (WHERE lbl.name IS NOT NULL),
+        ARRAY_AGG(DISTINCT lbl.handle) FILTER (WHERE lbl.handle IS NOT NULL),
         '{}'
     ) AS "DP_LABELs",
     COALESCE(

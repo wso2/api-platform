@@ -22,7 +22,7 @@
 // `admin` manages the view/label setup; `publisher` manages workflow content.
 
 const client = require('../support/client');
-const { uniqueHandle } = require('../support/fixtures');
+const { uniqueHandle, createView } = require('../support/fixtures');
 
 const SAMPLE_ARAZZO = {
     arazzo: '1.0.0',
@@ -30,19 +30,6 @@ const SAMPLE_ARAZZO = {
     sourceDescriptions: [],
     workflows: [],
 };
-
-async function createView(overrides = {}) {
-    // ViewCreateRequest requires labels to have at least one entry.
-    const labelId = uniqueHandle('label');
-    await client.as('admin').post('/labels', { id: labelId, displayName: labelId });
-
-    const id = overrides.id || uniqueHandle('view');
-    const res = await client.as('admin').post('/views', { id, displayName: overrides.displayName || id, labels: [labelId] });
-    if (res.status !== 201) {
-        throw new Error(`Failed to seed view: ${res.status} ${JSON.stringify(res.body)}`);
-    }
-    return { id };
-}
 
 describe('API workflows', () => {
     let view;

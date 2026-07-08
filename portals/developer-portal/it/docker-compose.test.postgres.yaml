@@ -132,10 +132,10 @@ services:
       - ./reports:/rest-api/reports
     networks:
       - it-devportal-network
-    # better-sqlite3 compiles from source on node:22-alpine (no prebuilt binary
-    # for this platform) — needs python3/make/g++ for node-gyp, even though this
-    # variant doesn't use it, since it's an unconditional devDependency.
-    command: ["sh", "-c", "apk add --no-cache python3 make g++ >/dev/null && npm install --no-audit --no-fund && npm test"]
+    # better-sqlite3 (an optionalDependency used only by the SQLite variant) is the
+    # sole reason this image would need a native build toolchain — skip it here with
+    # --omit=optional so the Postgres run needs no apk add python3/make/g++.
+    command: ["sh", "-c", "npm install --no-audit --no-fund --omit=optional && npm test"]
 
 networks:
   it-devportal-network:

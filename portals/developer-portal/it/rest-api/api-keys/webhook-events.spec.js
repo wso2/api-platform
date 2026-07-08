@@ -172,6 +172,8 @@ describe('api-keys webhook events', () => {
     });
 
     it('encrypts the key value field to the subscriber public key when configured', async () => {
+        // TODO(pqc): migrate — RSA keypair mirrors the app's quantum-vulnerable
+        // envelope crypto (src/services/webhooks/envelopeCrypto.js); migrate together.
         const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
             modulusLength: 2048,
             publicKeyEncoding: { type: 'spki', format: 'pem' },

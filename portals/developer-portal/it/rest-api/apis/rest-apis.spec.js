@@ -155,7 +155,9 @@ describe('REST APIs', () => {
 
     it('rejects requests without an authenticated session', async () => {
         const res = await client.raw().get(`${client.API_PREFIX}/apis`);
-        expect([401, 403]).toContain(res.status);
+        // No credentials → both security handlers (OAuth2Security/apiKeyAuth) throw
+        // 401; 403 is only for authenticated-but-insufficient-scope requests.
+        expect(res.status).toBe(401);
     });
 
     it('rejects a request whose resolved type is MCP (must use /mcp-servers)', async () => {

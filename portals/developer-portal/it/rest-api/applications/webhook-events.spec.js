@@ -207,7 +207,11 @@ describe('applications webhook events', () => {
             expect(res.status).toBe(404);
 
             const events = await db.findEvents({ orgUuid: await db.findOrgUuidByHandle(client.ORG_HANDLE), type: 'application.deleted', since });
-            const forThisApp = events.filter((e) => JSON.parse(e.payload).handle === id);
+            // payload is TEXT on SQLite (a string) but jsonb on Postgres (an object).
+            const forThisApp = events.filter((e) => {
+                const payload = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
+                return payload.handle === id;
+            });
             expect(forThisApp).toHaveLength(1);
         });
     });

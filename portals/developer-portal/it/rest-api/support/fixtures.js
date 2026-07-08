@@ -23,10 +23,30 @@
 // uniqueness comes from uniqueHandle(), not a fresh org per test. Callers must
 // have already done `await client.login(role)` for whichever role a fixture uses.
 
+const crypto = require('crypto');
+
 const client = require('./client');
 
 function uniqueHandle(prefix) {
-    return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    return `${prefix}-${crypto.randomUUID()}`;
+}
+
+// Seeds a view (ViewCreateRequest requires at least one label). Seeds its own
+// label unless the caller passes `overrides.labels` (specs that manage label
+// visibility themselves supply their own label ids).
+async function createView(overrides = {}) {
+    let labels = overrides.labels;
+    if (!labels) {
+        const labelId = uniqueHandle('label');
+        await client.as('admin').post('/labels', { id: labelId, displayName: labelId });
+        labels = [labelId];
+    }
+    const id = overrides.id || uniqueHandle('view');
+    const res = await client.as('admin').post('/views', { id, displayName: overrides.displayName || id, labels });
+    if (res.status !== 201) {
+        throw new Error(`Failed to seed view: ${res.status} ${JSON.stringify(res.body)}`);
+    }
+    return { id };
 }
 
 // Only used by organizations.spec.js's own CRUD tests — org creation isn't
@@ -110,6 +130,7 @@ async function createWebhookSubscriber(overrides = {}) {
 
 module.exports = {
     uniqueHandle,
+    createView,
     createOrganization,
     deleteOrganization,
     createApi,

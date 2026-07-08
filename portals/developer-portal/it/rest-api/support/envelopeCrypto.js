@@ -25,6 +25,8 @@
 const crypto = require('crypto');
 
 function decryptFromEnvelope(privateKeyPem, envelope) {
+    // TODO(pqc): migrate — mirrors the app's quantum-vulnerable RSA-OAEP unwrap
+    // (src/services/webhooks/envelopeCrypto.js); migrate together.
     const aesKey = crypto.privateDecrypt(
         { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
         Buffer.from(envelope.wrappedKey, 'base64')

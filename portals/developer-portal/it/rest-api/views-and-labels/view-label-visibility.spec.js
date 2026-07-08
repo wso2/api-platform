@@ -21,7 +21,7 @@
 // labels/views; `publisher` creates the APIs.
 
 const client = require('../support/client');
-const { createApi, uniqueHandle } = require('../support/fixtures');
+const { createApi, uniqueHandle, createView } = require('../support/fixtures');
 
 async function createLabel(overrides = {}) {
     const id = overrides.id || uniqueHandle('label');
@@ -30,15 +30,6 @@ async function createLabel(overrides = {}) {
         throw new Error(`Failed to seed label: ${res.status} ${JSON.stringify(res.body)}`);
     }
     return res.body;
-}
-
-async function createView(labelIds, overrides = {}) {
-    const id = overrides.id || uniqueHandle('view');
-    const res = await client.as('admin').post('/views', { id, displayName: overrides.displayName || id, labels: labelIds });
-    if (res.status !== 201) {
-        throw new Error(`Failed to seed view: ${res.status} ${JSON.stringify(res.body)}`);
-    }
-    return { id };
 }
 
 describe('view/label visibility filtering', () => {
@@ -50,8 +41,8 @@ describe('view/label visibility filtering', () => {
     it('GET /apis?view={viewName} only returns APIs whose labels intersect the view', async () => {
         const labelA = await createLabel();
         const labelB = await createLabel();
-        const viewA = await createView([labelA.id]);
-        const viewB = await createView([labelB.id]);
+        const viewA = await createView({ labels: [labelA.id] });
+        const viewB = await createView({ labels: [labelB.id] });
 
         const apiInA = await createApi({ labels: [labelA.id] });
         const apiInB = await createApi({ labels: [labelB.id] });
@@ -68,9 +59,9 @@ describe('view/label visibility filtering', () => {
 
     it('an API tagged with a label only appears in views that include that label', async () => {
         const label = await createLabel();
-        const matchingView = await createView([label.id]);
+        const matchingView = await createView({ labels: [label.id] });
         const otherLabel = await createLabel();
-        const nonMatchingView = await createView([otherLabel.id]);
+        const nonMatchingView = await createView({ labels: [otherLabel.id] });
 
         const api = await createApi({ labels: [label.id] });
 
@@ -83,7 +74,7 @@ describe('view/label visibility filtering', () => {
 
     it('removing a label from a view hides previously-visible APIs from that view', async () => {
         const label = await createLabel();
-        const view = await createView([label.id]);
+        const view = await createView({ labels: [label.id] });
         const api = await createApi({ labels: [label.id] });
 
         const before = await client.as('publisher').get(`/apis?view=${view.id}`);

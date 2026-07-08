@@ -23,20 +23,7 @@
 // `publisher` manages workflow content.
 
 const client = require('../support/client');
-const { uniqueHandle } = require('../support/fixtures');
-
-async function createView(overrides = {}) {
-    // ViewCreateRequest requires labels to have at least one entry.
-    const labelId = uniqueHandle('label');
-    await client.as('admin').post('/labels', { id: labelId, displayName: labelId });
-
-    const id = overrides.id || uniqueHandle('view');
-    const res = await client.as('admin').post('/views', { id, displayName: overrides.displayName || id, labels: [labelId] });
-    if (res.status !== 201) {
-        throw new Error(`Failed to seed view: ${res.status} ${JSON.stringify(res.body)}`);
-    }
-    return { id };
-}
+const { createView } = require('../support/fixtures');
 
 describe('API workflow prompt generation', () => {
     let view;
