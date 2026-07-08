@@ -165,7 +165,11 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok {
 		if hasFieldsSelection || (dir.Request != nil && dir.Request.Headers) {
 			if headers := parseHeadersFromString(raw); headers != nil {
-				tl.RequestHeaders = l.maskHeaders(headers, mask)
+				masked := l.maskHeaders(headers, mask)
+				if dir.Request != nil {
+					dropHeaders(masked, dir.Request.ExcludeHeaders)
+				}
+				tl.RequestHeaders = masked
 			}
 		}
 	}
@@ -179,7 +183,11 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok {
 		if hasFieldsSelection || (dir.Response != nil && dir.Response.Headers) {
 			if headers := parseHeadersFromString(raw); headers != nil {
-				tl.ResponseHeaders = l.maskHeaders(headers, mask)
+				masked := l.maskHeaders(headers, mask)
+				if dir.Response != nil {
+					dropHeaders(masked, dir.Response.ExcludeHeaders)
+				}
+				tl.ResponseHeaders = masked
 			}
 		}
 	}

@@ -253,6 +253,57 @@ func TestLog_Publish_ExcludeHeadersDrops(t *testing.T) {
 	assert.Equal(t, "bar", reqH["x-foo"])
 }
 
+// Per-flow excludeHeaders drops a header entirely (case-insensitive), in both the
+// request and response flows, while masking still redacts other headers. This is
+// the traffic-logging counterpart of the inline excludeHeaders param.
+func TestLog_Publish_PerFlowExcludeHeadersDrops(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		// Directive carries lower-cased names (as the policy stamps them); the
+		// captured header keys use mixed case to prove case-insensitive matching.
+		Request:  &dto.TrafficLogFlow{Headers: true, ExcludeHeaders: []string{"x-secret"}},
+		Response: &dto.TrafficLogFlow{Headers: true, ExcludeHeaders: []string{"set-cookie"}},
+	}
+	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Secret":"top","x-foo":"bar"}`
+	event.Properties["responseHeaders"] = `{"Set-Cookie":"sid=1","x-bar":"baz"}`
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+
+	reqH := headerMap(t, decoded["requestHeaders"])
+	_, hasSecret := reqH["X-Secret"]
+	assert.False(t, hasSecret, "excluded request header must be dropped entirely")
+	assert.Equal(t, "****", reqH["Authorization"], "masked header still redacted")
+	assert.Equal(t, "bar", reqH["x-foo"], "untouched header retained")
+
+	resH := headerMap(t, decoded["responseHeaders"])
+	_, hasCookie := resH["Set-Cookie"]
+	assert.False(t, hasCookie, "excluded response header must be dropped entirely")
+	assert.Equal(t, "baz", resH["x-bar"], "untouched response header retained")
+}
+
+// Per-flow excludeHeaders must not mutate the shared event, so other publishers
+// (e.g. Moesif) still see the full captured header set.
+func TestLog_Publish_PerFlowExcludeHeadersDoesNotMutateSharedEvent(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Request: &dto.TrafficLogFlow{Headers: true, ExcludeHeaders: []string{"x-secret"}},
+	}
+	const raw = `{"X-Secret":"top","x-foo":"bar"}`
+	event.Properties["requestHeaders"] = raw
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	reqH := headerMap(t, decoded["requestHeaders"])
+	_, hasSecret := reqH["X-Secret"]
+	assert.False(t, hasSecret, "header dropped from the emitted line")
+	assert.Equal(t, raw, event.Properties["requestHeaders"], "shared event.Properties must be untouched")
+}
+
 // headers:false omits the headers property; a nil flow omits its whole side.
 func TestLog_Publish_DisabledFieldsOmitted(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})

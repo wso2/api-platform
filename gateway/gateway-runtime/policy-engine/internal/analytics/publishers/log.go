@@ -229,8 +229,9 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 }
 
 // maskHeaders redacts header values whose names appear in mask (case-insensitive).
-// Returns a new map; the input is not modified. Per-header exclusion is handled
-// downstream by applyFieldsProjection via dotted paths (e.g. "requestHeaders.authorization").
+// Returns a new map; the input is not modified. To drop a header entirely rather
+// than redacting its value, use the per-flow excludeHeaders directive (see
+// dropHeaders) or a dotted fields.exclude path (e.g. "requestHeaders.authorization").
 func (l *Log) maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {
@@ -241,4 +242,24 @@ func (l *Log) maskHeaders(headers map[string]string, mask map[string]bool) map[s
 		}
 	}
 	return result
+}
+
+// dropHeaders deletes, in place, any header whose name (case-insensitive) appears
+// in exclude. It is a no-op when exclude is empty. Unlike masking (which redacts
+// the value) this removes the key entirely, matching the log-message policy's
+// per-flow excludeHeaders semantics. Callers pass the freshly-built, non-shared
+// map returned by maskHeaders, so in-place mutation never affects other publishers.
+func dropHeaders(headers map[string]string, exclude []string) {
+	if len(exclude) == 0 {
+		return
+	}
+	drop := make(map[string]bool, len(exclude))
+	for _, h := range exclude {
+		drop[strings.ToLower(strings.TrimSpace(h))] = true
+	}
+	for name := range headers {
+		if drop[strings.ToLower(name)] {
+			delete(headers, name)
+		}
+	}
 }

@@ -82,6 +82,13 @@ type TrafficLogDirective struct {
 type TrafficLogFlow struct {
 	Payload bool `json:"payload"`
 	Headers bool `json:"headers"`
+	// ExcludeHeaders lists header names (case-insensitive) dropped entirely from
+	// this flow's headers in the emitted line. It is orthogonal to Fields and to
+	// masking: it always applies when the flow's headers are present, and removes
+	// the header rather than redacting it (use the global/per-API masked headers to
+	// redact instead). The log-message policy lower-cases these names when stamping
+	// the marker; the publisher matches case-insensitively regardless.
+	ExcludeHeaders []string `json:"excludeHeaders,omitempty"`
 }
 
 // TrafficLogFields selects which fields appear in the emitted line. Exactly one
