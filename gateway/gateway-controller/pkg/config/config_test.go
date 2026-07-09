@@ -1217,7 +1217,6 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 				cfg.Collector.Server.BufferFlushInterval = 1000
 				cfg.Collector.Server.BufferSizeBytes = 16384
 				cfg.Collector.Server.GRPCRequestTimeout = 5000
-				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr: false,
 		},
@@ -1226,11 +1225,9 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			enabled: true,
 			setupConfig: func(cfg *Config) {
 				cfg.Collector.Server.Mode = "tcp"
-				cfg.Collector.Server.Port = 18090
 				cfg.Collector.Server.BufferFlushInterval = 1000
 				cfg.Collector.Server.BufferSizeBytes = 16384
 				cfg.Collector.Server.GRPCRequestTimeout = 5000
-				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr: false,
 		},
@@ -1242,7 +1239,6 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 				cfg.Collector.Server.BufferFlushInterval = 1000
 				cfg.Collector.Server.BufferSizeBytes = 16384
 				cfg.Collector.Server.GRPCRequestTimeout = 5000
-				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr: false,
 		},
@@ -1254,37 +1250,9 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 				cfg.Collector.Server.BufferFlushInterval = 1000
 				cfg.Collector.Server.BufferSizeBytes = 16384
 				cfg.Collector.Server.GRPCRequestTimeout = 5000
-				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr:     true,
 			errContains: "collector.server.mode must be 'uds' or 'tcp'",
-		},
-		{
-			name:    "TCP mode - invalid port",
-			enabled: true,
-			setupConfig: func(cfg *Config) {
-				cfg.Collector.Server.Mode = "tcp"
-				cfg.Collector.Server.Port = 0
-				cfg.Collector.Server.BufferFlushInterval = 1000
-				cfg.Collector.Server.BufferSizeBytes = 16384
-				cfg.Collector.Server.GRPCRequestTimeout = 5000
-				cfg.Collector.Server.ServerPort = 18090
-			},
-			wantErr:     true,
-			errContains: "collector.server.port must be between 1 and 65535",
-		},
-		{
-			name:    "Invalid server port",
-			enabled: true,
-			setupConfig: func(cfg *Config) {
-				cfg.Collector.Server.Mode = "uds"
-				cfg.Collector.Server.BufferFlushInterval = 1000
-				cfg.Collector.Server.BufferSizeBytes = 16384
-				cfg.Collector.Server.GRPCRequestTimeout = 5000
-				cfg.Collector.Server.ServerPort = 0
-			},
-			wantErr:     true,
-			errContains: "collector.server.server_port must be between 1 and 65535",
 		},
 		{
 			name:    "Invalid buffer flush interval",
@@ -1292,10 +1260,36 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			setupConfig: func(cfg *Config) {
 				cfg.Collector.Server.Mode = "uds"
 				cfg.Collector.Server.BufferFlushInterval = 0
-				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr:     true,
 			errContains: "invalid gRPC event server configuration",
+		},
+		{
+			// Backward compat: an existing config that already sets a custom port
+			// (the deprecated Port override) must keep working, not error.
+			name:    "Deprecated port override still accepted (backward compat)",
+			enabled: true,
+			setupConfig: func(cfg *Config) {
+				cfg.Collector.Server.Mode = "tcp"
+				cfg.Collector.Server.Port = 9099
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+			},
+			wantErr: false,
+		},
+		{
+			name:    "Deprecated port override out of range still errors",
+			enabled: true,
+			setupConfig: func(cfg *Config) {
+				cfg.Collector.Server.Mode = "tcp"
+				cfg.Collector.Server.Port = 70000
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+			},
+			wantErr:     true,
+			errContains: "collector.server.port must be between 1 and 65535",
 		},
 	}
 
@@ -1351,7 +1345,6 @@ func TestConfig_ValidateAnalyticsPayloadMigration(t *testing.T) {
 		cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
 		cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
 		cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-		cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
 	}
 
 	tests := []struct {
@@ -1443,7 +1436,6 @@ func TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled
 	cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
 	cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
 	cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-	cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
 
 	err := cfg.Validate()
 	require.NoError(t, err)

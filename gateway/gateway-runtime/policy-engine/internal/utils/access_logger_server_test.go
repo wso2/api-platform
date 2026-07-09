@@ -213,7 +213,7 @@ func TestStartAccessLogServiceServer_TCP(t *testing.T) {
 		Collector: config.CollectorConfig{
 			Server: config.AccessLogsServiceConfig{
 				Mode:                  "tcp",
-				ServerPort:            19001, // Use non-standard port to avoid conflicts
+				ServerPort:            19001, // Deprecated override; also exercises backward compat
 				ALSPlainText:          true,
 				ExtProcMaxMessageSize: 1024 * 1024 * 4,
 				ExtProcMaxHeaderLimit: 8192,

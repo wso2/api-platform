@@ -27,6 +27,7 @@ import (
 	"time"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/service/accesslog/v3"
+	"github.com/wso2/api-platform/common/collector"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
@@ -139,14 +140,20 @@ func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 			}
 		}()
 	case "tcp":
-		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Collector.Server.ServerPort))
+		// cfg.Collector.Server.ServerPort is a deprecated override (see its doc comment);
+		// the fixed collector.ServerPort constant is used unless a config already sets it.
+		port := collector.ServerPort
+		if cfg.Collector.Server.ServerPort != 0 {
+			port = cfg.Collector.Server.ServerPort
+		}
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err != nil {
-			slog.Error("Failed to listen on ALS TCP port", "port", cfg.Collector.Server.ServerPort)
+			slog.Error("Failed to listen on ALS TCP port", "port", port)
 			panic(err)
 		}
 
 		go func() {
-			slog.Info("Starting to serve access log service server", "mode", "tcp", "port", cfg.Collector.Server.ServerPort)
+			slog.Info("Starting to serve access log service server", "mode", "tcp", "port", port)
 			if err := server.Serve(listener); err != nil {
 				slog.Error("ALS server exited", "error", err)
 			}

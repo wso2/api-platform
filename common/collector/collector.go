@@ -30,6 +30,15 @@ package collector
 
 import "log/slog"
 
+// ServerPort is the fixed TCP port for the Envoy → policy-engine ALS
+// (access-log service) gRPC stream in "tcp" mode: the gateway-controller
+// dials it (translator.go, Envoy cluster config) and the policy-engine
+// listens on it (access_logger_server.go). It is intentionally
+// non-configurable — the two sides previously had independent config fields
+// that defaulted to the same value but could drift apart, silently breaking
+// the connection; a single shared constant makes that impossible.
+const ServerPort = 18090
+
 // IsEnabled reports whether the collector should run: implicitly active
 // whenever any consumer of the collected data (analytics or stdout traffic
 // logging) is enabled, and off otherwise.

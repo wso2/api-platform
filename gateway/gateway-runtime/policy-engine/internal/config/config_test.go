@@ -983,7 +983,6 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
 					Mode:                  "tcp",
-					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1006,12 +1005,28 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			errMsg:    "mode must be 'uds' or 'tcp'",
 		},
 		{
-			name: "analytics enabled - TCP mode invalid ALS port",
+			// Backward compat: an existing config that already sets a custom port
+			// (the deprecated ServerPort override) must keep working, not error.
+			name: "analytics enabled - deprecated server_port override still accepted (backward compat)",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
 					Mode:                  "tcp",
-					ServerPort:            0,
+					ServerPort:            9099,
+					ShutdownTimeout:       600 * time.Second,
+					ExtProcMaxMessageSize: 1000000,
+					ExtProcMaxHeaderLimit: 8192,
+				}
+			},
+			expectErr: false,
+		},
+		{
+			name: "analytics enabled - deprecated server_port override out of range still errors",
+			setup: func(cfg *Config) {
+				cfg.Analytics.Enabled = true
+				cfg.Collector.Server = AccessLogsServiceConfig{
+					Mode:                  "tcp",
+					ServerPort:            70000,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1019,20 +1034,6 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "server_port must be between 1 and 65535",
-		},
-		{
-			name: "analytics enabled - UDS mode skips port validation",
-			setup: func(cfg *Config) {
-				cfg.Analytics.Enabled = true
-				cfg.Collector.Server = AccessLogsServiceConfig{
-					Mode:                  "uds",
-					ServerPort:            0, // Invalid port, but irrelevant in UDS mode
-					ShutdownTimeout:       600 * time.Second,
-					ExtProcMaxMessageSize: 1000000,
-					ExtProcMaxHeaderLimit: 8192,
-				}
-			},
-			expectErr: false,
 		},
 		{
 			name: "analytics enabled - invalid shutdown timeout",
@@ -1263,7 +1264,6 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
-					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1277,7 +1277,6 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
-					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1292,7 +1291,6 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
-					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1308,7 +1306,6 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
-					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1325,7 +1322,6 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
-					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1343,7 +1339,6 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
 				cfg.Collector.Server = AccessLogsServiceConfig{
-					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,

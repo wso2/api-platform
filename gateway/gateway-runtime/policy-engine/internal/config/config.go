@@ -20,8 +20,10 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,13 +120,13 @@ type MoesifPublisherConfig struct {
 
 // Config represents the complete policy engine configuration
 type PolicyEngine struct {
-	Server     ServerConfig     `koanf:"server"`
-	Admin      AdminConfig      `koanf:"admin"`
-	Metrics    MetricsConfig    `koanf:"metrics"`
-	ConfigMode ConfigModeConfig `koanf:"config_mode"`
-	XDS        XDSConfig        `koanf:"xds"`
-	FileConfig FileConfigConfig `koanf:"file_config"`
-	Logging    LoggingConfig    `koanf:"logging"`
+	Server         ServerConfig         `koanf:"server"`
+	Admin          AdminConfig          `koanf:"admin"`
+	Metrics        MetricsConfig        `koanf:"metrics"`
+	ConfigMode     ConfigModeConfig     `koanf:"config_mode"`
+	XDS            XDSConfig            `koanf:"xds"`
+	FileConfig     FileConfigConfig     `koanf:"file_config"`
+	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
@@ -271,7 +273,13 @@ type LoggingConfig struct {
 
 // AccessLogsServiceConfig holds access logs service configuration
 type AccessLogsServiceConfig struct {
-	Mode                  string        `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	Mode string `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	// ServerPort overrides the fixed ALS listener port (collector.ServerPort, 18090),
+	// used only in "tcp" mode. Deprecated: no longer defaulted here or documented in
+	// config-template.toml/Helm charts, so new deployments have no way to discover or
+	// set it. Kept solely so a config that already sets it explicitly keeps working;
+	// leave unset (0) to use the fixed port. Must match the gateway-controller's
+	// collector.server.port override, or the two sides will fail to connect.
 	ServerPort            int           `koanf:"server_port"`
 	ShutdownTimeout       time.Duration `koanf:"shutdown_timeout"`
 	PublicKeyPath         string        `koanf:"public_key_path"`
@@ -346,7 +354,6 @@ func Load(configPath string) (*Config, error) {
 func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 	return AccessLogsServiceConfig{
 		Mode:                  "",
-		ServerPort:            18090,
 		ShutdownTimeout:       600 * time.Second,
 		PublicKeyPath:         "",
 		PrivateKeyPath:        "",
@@ -637,16 +644,22 @@ func (c *Config) migrateDeprecatedAnalyticsTransport() {
 }
 
 // validateAccessLogsServiceConfig validates the policy-engine ALS receiver tuning.
+// The transport port is normally the fixed, non-configurable collector.ServerPort
+// constant (see collector.ServerPort); als.ServerPort is a deprecated override honored
+// only for backward compatibility with configs that already set it (see its doc comment).
 func validateAccessLogsServiceConfig(als AccessLogsServiceConfig) error {
 	switch als.Mode {
-	case "uds", "":
-		// UDS mode (default) - port is unused
-	case "tcp":
-		if als.ServerPort <= 0 || als.ServerPort > 65535 {
-			return fmt.Errorf("collector.server.server_port must be between 1 and 65535, got %d", als.ServerPort)
-		}
+	case "uds", "tcp", "":
 	default:
 		return fmt.Errorf("collector.server.mode must be 'uds' or 'tcp', got: %s", als.Mode)
+	}
+	if als.ServerPort != 0 {
+		slog.Warn("collector.server.server_port is deprecated and no longer documented; the ALS port is fixed at " +
+			strconv.Itoa(collector.ServerPort) + " by default. Honoring the configured override for backward " +
+			"compatibility — ensure the gateway-controller's collector.server.port matches, or the two sides will fail to connect.")
+		if als.ServerPort < 0 || als.ServerPort > 65535 {
+			return fmt.Errorf("collector.server.server_port must be between 1 and 65535, got %d", als.ServerPort)
+		}
 	}
 	if als.ShutdownTimeout <= 0 {
 		return fmt.Errorf("collector.server.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)

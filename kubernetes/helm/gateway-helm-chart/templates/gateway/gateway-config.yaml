@@ -262,7 +262,6 @@ data:
     buffer_flush_interval = {{ .Values.gateway.config.collector.server.buffer_flush_interval | quote }}
     buffer_size_bytes = {{ .Values.gateway.config.collector.server.buffer_size_bytes | int64 }}
     grpc_request_timeout = {{ .Values.gateway.config.collector.server.grpc_request_timeout | quote }}
-    server_port = {{ .Values.gateway.config.collector.server.server_port | int64 }}
     shutdown_timeout = {{ .Values.gateway.config.collector.server.shutdown_timeout | quote }}
     public_key_path = {{ .Values.gateway.config.collector.server.public_key_path | quote }}
     private_key_path = {{ .Values.gateway.config.collector.server.private_key_path | quote }}

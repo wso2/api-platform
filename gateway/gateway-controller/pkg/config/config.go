@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -153,9 +154,14 @@ type MoesifPublisherConfig struct {
 
 // GRPCEventServerConfig holds configuration for gRPC event server (combines access log service and ALS server config)
 type GRPCEventServerConfig struct {
-	Mode                string        `koanf:"mode"`                  // Connection mode: "uds" (default) or "tcp"
-	Port                int           `koanf:"port"`                  // ALS port for Envoy connection (TCP mode only)
-	ServerPort          int           `koanf:"server_port"`           // gRPC server port for ALS server
+	Mode string `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	// Port overrides the fixed Envoy→policy-engine ALS dial port (collector.ServerPort,
+	// 18090), used only in "tcp" mode. Deprecated: no longer defaulted here or documented
+	// in config-template.toml/Helm charts, so new deployments have no way to discover or
+	// set it. Kept solely so a config that already sets it explicitly keeps working;
+	// leave unset (0) to use the fixed port. Must match the policy-engine's
+	// collector.server.server_port override, or the two sides will fail to connect.
+	Port                int           `koanf:"port"`
 	BufferFlushInterval int           `koanf:"buffer_flush_interval"` // Envoy buffer flush interval (nanoseconds)
 	BufferSizeBytes     int           `koanf:"buffer_size_bytes"`     // Envoy buffer size
 	GRPCRequestTimeout  int           `koanf:"grpc_request_timeout"`  // Envoy gRPC timeout (nanoseconds)
@@ -742,8 +748,6 @@ func LoadConfig(configPath string) (*Config, error) {
 func defaultGRPCEventServerConfig() GRPCEventServerConfig {
 	return GRPCEventServerConfig{
 		Mode:                "uds",       // UDS mode by default
-		Port:                18090,       // Only used in TCP mode
-		ServerPort:          18090,       // ALS server port
 		BufferFlushInterval: 1000000000,  // 1 second
 		BufferSizeBytes:     16384,       // 16 KiB
 		GRPCRequestTimeout:  20000000000, // 20 seconds
@@ -1840,18 +1844,24 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 }
 
 // validateGRPCEventServerConfig validates the Envoy→policy-engine ALS transport tuning.
+// The transport port is normally the fixed, non-configurable collector.ServerPort
+// constant (see collector.ServerPort); cfg.Port is a deprecated override honored only
+// for backward compatibility with configs that already set it (see its doc comment).
 func validateGRPCEventServerConfig(cfg GRPCEventServerConfig) error {
 	// Validate connection mode
 	switch cfg.Mode {
-	case "uds", "":
-		// UDS mode (default) - port is unused for Envoy connection
-	case "tcp":
-		// TCP mode - validate port (host is derived from policy_engine.host)
-		if cfg.Port <= 0 || cfg.Port > 65535 {
-			return fmt.Errorf("collector.server.port must be between 1 and 65535 when mode is tcp, got %d", cfg.Port)
-		}
+	case "uds", "tcp", "":
 	default:
 		return fmt.Errorf("collector.server.mode must be 'uds' or 'tcp', got: %s", cfg.Mode)
+	}
+
+	if cfg.Port != 0 {
+		slog.Warn("collector.server.port is deprecated and no longer documented; the ALS port is fixed at " +
+			strconv.Itoa(collector.ServerPort) + " by default. Honoring the configured override for backward " +
+			"compatibility — ensure the policy-engine's collector.server.server_port matches, or the two sides will fail to connect.")
+		if cfg.Port < 0 || cfg.Port > 65535 {
+			return fmt.Errorf("collector.server.port must be between 1 and 65535, got %d", cfg.Port)
+		}
 	}
 
 	// Validate buffer and timeout settings
@@ -1864,10 +1874,6 @@ func validateGRPCEventServerConfig(cfg GRPCEventServerConfig) error {
 		)
 	}
 
-	// Validate server port
-	if cfg.ServerPort <= 0 || cfg.ServerPort > 65535 {
-		return fmt.Errorf("collector.server.server_port must be between 1 and 65535, got %d", cfg.ServerPort)
-	}
 	return nil
 }
 

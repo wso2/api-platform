@@ -1386,7 +1386,6 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		cfg.Analytics.Enabled = true
 		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "tcp",
-			Port:                18090,
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
 			GRPCRequestTimeout:  20000000000,
@@ -1410,6 +1409,29 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		assert.Equal(t, "policy-engine", socketAddr.Address)
 		assert.Equal(t, uint32(18090), socketAddr.GetPortValue())
 	})
+
+	t.Run("TCP mode honors deprecated port override (backward compat)", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		cfg.Analytics.Enabled = true
+		cfg.Collector.Server = config.GRPCEventServerConfig{
+			Mode:                "tcp",
+			Port:                9099,
+			BufferFlushInterval: 1000000000,
+			BufferSizeBytes:     16384,
+			GRPCRequestTimeout:  20000000000,
+		}
+		cfg.Router.PolicyEngine.Host = "policy-engine"
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		c := translator.createALSCluster()
+		assert.NotNil(t, c)
+
+		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
+		socketAddr := lbEndpoint.GetEndpoint().Address.GetSocketAddress()
+		assert.NotNil(t, socketAddr)
+		assert.Equal(t, uint32(9099), socketAddr.GetPortValue())
+	})
 }
 
 func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
@@ -1418,7 +1440,6 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	cfg := testConfig()
 	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
-		Port:                18090,
 		BufferFlushInterval: 1000,
 		BufferSizeBytes:     16384,
 		GRPCRequestTimeout:  5000,
@@ -1437,7 +1458,6 @@ func TestTranslator_CreateGRPCAccessLog_WithIgnorePathPrefixes(t *testing.T) {
 	cfg := testConfig()
 	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
-		Port:                18090,
 		BufferFlushInterval: 1000,
 		BufferSizeBytes:     16384,
 		GRPCRequestTimeout:  5000,
@@ -1457,11 +1477,9 @@ func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
 	cfg := testConfig()
 	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
-		Port:                18090,
 		BufferFlushInterval: 1000,
 		BufferSizeBytes:     math.MaxInt,
 		GRPCRequestTimeout:  5000,
-		ServerPort:          18090,
 	}
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 

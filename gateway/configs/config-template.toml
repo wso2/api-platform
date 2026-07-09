@@ -319,12 +319,14 @@ ignore_path_prefixes = []
 # ends of the Envoy → policy-engine access-log stream:
 #   • gateway-controller — configures Envoy's gRPC access-log sink (the sender)
 #   • policy-engine       — runs the receiving gRPC server
-# Shared keys (server_port, TLS, message/header limits) must match on both ends and
-# live here once. Envoy-sender-only keys (buffer_*, grpc_request_timeout) are read
-# only by the controller and ignored by the policy-engine.
+# Shared keys (TLS, message/header limits) must match on both ends and live here
+# once. Envoy-sender-only keys (buffer_*, grpc_request_timeout) are read only by
+# the controller and ignored by the policy-engine.
+# NOTE: the TCP port (18090) is not configurable here — it is a fixed constant
+# (collector.ServerPort in common/collector) shared by both ends, so they can
+# never disagree on it. See ANALYTICS_LOG_PUBLISHER_DESIGN.md changelog.
 [collector.server]
 mode = "uds"                       # "uds" (default) or "tcp"
-server_port = 18090                # engine listens here; Envoy dials it (tcp mode)
 buffer_flush_interval = 1000000000 # Envoy sender only (nanoseconds)
 buffer_size_bytes = 16384          # Envoy sender only
 grpc_request_timeout = 20000000000 # Envoy sender only (nanoseconds)

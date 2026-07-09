@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/collector"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
@@ -2162,14 +2163,20 @@ func (t *Translator) createALSCluster() *cluster.Cluster {
 	var address *core.Address
 
 	if grpcConfig.Mode == "tcp" {
-		// TCP mode - use host:port
+		// TCP mode - use host:port. grpcConfig.Port is a deprecated override
+		// (see its doc comment); the fixed collector.ServerPort constant is used
+		// unless a config already sets it explicitly.
+		port := collector.ServerPort
+		if grpcConfig.Port != 0 {
+			port = grpcConfig.Port
+		}
 		address = &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
 					Protocol: core.SocketAddress_TCP,
 					Address:  t.config.Router.PolicyEngine.Host,
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: uint32(grpcConfig.Port),
+						PortValue: uint32(port),
 					},
 				},
 			},
