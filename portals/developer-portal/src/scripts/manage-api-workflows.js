@@ -751,7 +751,7 @@ function copySpecPrompt() {
 
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
-    const viewName = pathParts[3] || 'default';
+    const viewName = currentViewName || 'default';
     const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
     const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
 
@@ -847,7 +847,7 @@ function buildPromptContext() {
     const apis = getSelectedAPIs();
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
-    const viewName = pathParts[3] || 'default';
+    const viewName = currentViewName || 'default';
 
     const apiContext = apis.length > 0
         ? apis.map(a => {
@@ -1072,7 +1072,7 @@ function renderApiCards(query) {
 
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
-    const viewName  = pathParts[3] || 'default';
+    const viewName  = currentViewName || 'default';
 
     grid.innerHTML = filtered.map(cb => {
         const isSelected = cb.checked;
@@ -1154,7 +1154,7 @@ async function updatePromptFromForm() {
     const apis = getSelectedAPIs();
     const pathParts = window.location.pathname.split('/');
     const orgName = pathParts[1] || '';
-    const viewName = pathParts[3] || 'default';
+    const viewName = currentViewName || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value || '';
     const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.id) === String(editingId)) : null;
     const handle = editingFlow?.id || generateHandle(name);
@@ -1198,7 +1198,7 @@ function updateWorkflowMdPreview() {
 
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
-    const viewName = pathParts[3] || 'default';
+    const viewName = currentViewName || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value;
     const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.id) === editingId) : null;
     const handle = editingFlow?.id || generateHandle(name);
@@ -1333,7 +1333,8 @@ async function saveApiWorkflow(orgId, viewName, status) {
             credentials: 'same-origin'
         });
         if (response.ok) {
-            window.location.href = window.location.pathname + '#apiworkflows';
+            // Preserve ?view= so a non-default selected view survives the reload.
+            window.location.href = window.location.pathname + window.location.search + '#apiworkflows';
             window.location.reload();
         } else {
             const err = await response.json().catch(() => ({ message: 'Save failed' }));
@@ -1623,7 +1624,7 @@ function generateArazzoSpec() {
     const apis = getSelectedAPIs();
     const pathParts = window.location.pathname.split('/');
     const orgHandle = pathParts[1] || '';
-    const viewName = pathParts[3] || 'default';
+    const viewName = currentViewName || 'default';
 
     const spec = buildArazzoSpec(name, description, apis, orgHandle, viewName);
 

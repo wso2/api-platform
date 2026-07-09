@@ -20,13 +20,15 @@ Well-written LLM Instructions reduce agent errors and improve the quality of AI-
 
 ## Configuring LLM Instructions
 
-LLM Instructions are configured at the view level in the portal's admin settings.
+LLM Instructions are configured per view, from the organization's admin settings.
 
 1. Sign in to the Developer Portal as an admin.
-2. Navigate to **Admin Settings** for your view (`/<orgName>/views/<viewName>/admin/settings`).
-3. Select the **LLM Instructions** tab.
-4. Enter your instructions in the text editor.
-5. Click **Publish**.
+2. Navigate to **Settings** (`/<orgName>/settings`).
+3. Select **LLM Instructions** from the sidebar.
+4. If your organization has more than one view, the **View-scoped setting** banner at the top shows which view you're currently editing — use the pill selector to switch views. Each view has its own LLM Instructions.
+5. Use the **Portal is AI-discoverable** toggle to control whether `llms.txt` and the agent-facing content endpoints are served for this view at all. When turned off, those endpoints return `404` to agents — turning it off doesn't just hide the setting, it takes the portal out of agent discovery entirely.
+6. Enter a **Portal name** and **Description** to orient agents.
+7. Click **Publish** — this is always available, even when AI-discoverable is turned off, so you can save that you've intentionally disabled discovery for this view.
 
 Changes take effect immediately — the updated instructions are reflected in `llms.txt` as soon as you save.
 

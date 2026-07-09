@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
     }
 });
 
-document.querySelectorAll('.form-check-input').forEach(checkbox => {
+document.querySelectorAll('[data-tag]').forEach(checkbox => {
     checkbox.addEventListener('change', () => {
         let selectedTags = [];
         document.querySelectorAll('.form-check-input:checked').forEach(checkedCheckbox => {
