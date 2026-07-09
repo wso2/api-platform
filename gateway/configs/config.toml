@@ -51,10 +51,3 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 enabled = false
 artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
 
-[mcp]
-# When true, restores the legacy behaviour of appending the "/mcp" resource path to the
-# MCP backend upstream (i.e. "<context>/mcp" is forwarded to "<upstream>/mcp"). The
-# default (false) forwards to exactly the configured upstream path. Enable this only if
-# existing MCP API definitions rely on the "/mcp" suffix being appended to the backend.
-append_resource_path_to_backend = false
-
