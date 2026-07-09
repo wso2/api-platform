@@ -31,7 +31,7 @@ func TestBuildRestAPIYAML_Deterministic(t *testing.T) {
 			{Name: "ns-infra-backend-v1-8080", Upstreams: []apiv1.WeightedUpstream{{Url: "http://v1:8080"}}},
 			{Name: "ns-infra-backend-v2-8080", Upstreams: []apiv1.WeightedUpstream{{Url: "http://v2:8080"}}},
 		},
-		Upstream: apiv1.UpstreamConfig{Main: apiv1.Upstream{Url: "http://v1:8080"}},
+		Upstream: apiv1.UpstreamConfig{Main: apiv1.Upstream{Url: stringPtr("http://v1:8080")}},
 	}
 	md := RestAPIPayloadMetadata{Name: "api-handle"}
 
@@ -94,7 +94,7 @@ func TestBuildRestAPIYAML_CarriesUpstreamDefinitionsAndRef(t *testing.T) {
 		UpstreamDefinitions: []apiv1.UpstreamDefinition{{
 			Name:      "hello-backend",
 			Timeout:   &apiv1.UpstreamTimeout{Connect: stringPtr("6s")},
-			Upstreams: []apiv1.UpstreamTarget{{Url: "http://hello.default.svc.cluster.local:9080"}},
+			Upstreams: []apiv1.WeightedUpstream{{Url: "http://hello.default.svc.cluster.local:9080"}},
 		}},
 		Upstream: apiv1.UpstreamConfig{
 			Main: apiv1.Upstream{Ref: stringPtr("hello-backend")},

@@ -168,13 +168,13 @@ func TestCollapseHeaderMatches_NonHeaderGroupUntouched(t *testing.T) {
 }
 
 // TestCollapseHeaderMatches_RedirectFallsBackToNative verifies a header-matched op that
-// also redirects cannot be collapsed and is left as its original operation.
+// also carries a redirect policy cannot be collapsed and is left as its original operation.
 func TestCollapseHeaderMatches_RedirectFallsBackToNative(t *testing.T) {
 	op := headerOp("GET", "/", "infra-backend-v1", hdrMatch("version", "one"))
-	op.op.Redirect = &apiv1.OperationRedirect{StatusCode: 302}
+	op.op.Policies = append(op.op.Policies, apiv1.Policy{Name: redirectPolicyName, Version: "v1"})
 	out := collapseHeaderMatchesToPolicy([]stagedOperation{op}, "", zap.NewNop())
 	require.Len(t, out, 1)
-	require.NotNil(t, out[0].Redirect, "kept as the original redirect operation")
+	require.True(t, operationHasRedirectPolicy(out[0]), "kept as the original redirect operation")
 	for _, p := range out[0].Policies {
 		require.NotEqual(t, headerBasedRoutingPolicyName, p.Name)
 	}

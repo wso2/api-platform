@@ -80,7 +80,8 @@ type APIConfigData struct {
 	Resilience *Resilience `json:"resilience,omitempty"`
 
 	// UpstreamDefinitions is the list of reusable upstream definitions (with optional connect
-	// timeout) that upstream.ref can reference.
+	// timeout and weighted load-balancing targets) that upstream.ref and the dynamic-endpoint
+	// policy can reference.
 	// +optional
 	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
 
@@ -96,10 +97,6 @@ type APIConfigData struct {
 	// Vhosts Custom virtual hosts/domains for the API
 	// +optional
 	Vhosts *VhostConfig `json:"vhosts,omitempty"`
-
-	// UpstreamDefinitions Reusable upstream targets for dynamic routing and weighted load balancing.
-	// +optional
-	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
 }
 
 // UpstreamConfig defines the upstream backend configuration for the API
@@ -151,52 +148,9 @@ type Operation struct {
 	// +optional
 	DirectResponse *OperationDirectResponse `json:"directResponse,omitempty"`
 
-	// Redirect When set, the gateway issues an HTTP redirect (Gateway-API RequestRedirect).
-	// Components left unset are preserved from the original request.
+	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
 	// +optional
-	Redirect *OperationRedirect `json:"redirect,omitempty"`
-}
-
-// OperationRedirect is a structured Gateway-API RequestRedirect. Each optional component left unset
-// is preserved from the original request (scheme, host, port, path), matching Gateway-API semantics.
-type OperationRedirect struct {
-	// StatusCode HTTP redirect status code
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=301;302;303;307;308
-	StatusCode int `json:"statusCode"`
-
-	// Scheme Redirect scheme; omit to preserve the request scheme
-	// +optional
-	// +kubebuilder:validation:Enum=http;https
-	Scheme *string `json:"scheme,omitempty"`
-
-	// Hostname Redirect host; omit to preserve the request Host
-	// +optional
-	Hostname *string `json:"hostname,omitempty"`
-
-	// Port Redirect port; omit to preserve the request port / use the scheme default
-	// +optional
-	Port *int `json:"port,omitempty"`
-
-	// Path Path rewrite; omit to preserve the request path
-	// +optional
-	Path *OperationRedirectPath `json:"path,omitempty"`
-}
-
-// OperationRedirectPath is a path rewrite for a redirect (mirrors Gateway-API HTTPPathModifier).
-type OperationRedirectPath struct {
-	// Type Path rewrite type
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=ReplaceFullPath;ReplacePrefixMatch
-	Type string `json:"type"`
-
-	// ReplaceFullPath Full replacement path when Type is ReplaceFullPath
-	// +optional
-	ReplaceFullPath *string `json:"replaceFullPath,omitempty"`
-
-	// ReplacePrefixMatch Replacement for the matched path prefix when Type is ReplacePrefixMatch
-	// +optional
-	ReplacePrefixMatch *string `json:"replacePrefixMatch,omitempty"`
+	Resilience *Resilience `json:"resilience,omitempty"`
 }
 
 // OperationPathMatchType controls path matching semantics.
@@ -222,10 +176,6 @@ type OperationDirectResponse struct {
 type OperationResponseHeader struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
-
-	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
-	// +optional
-	Resilience *Resilience `json:"resilience,omitempty"`
 }
 
 // Resilience defines backend/route timeout configuration (maps to Envoy RouteAction
@@ -298,54 +248,6 @@ type Upstream struct {
 	// Ref Name of a predefined upstreamDefinition to route through.
 	// +optional
 	Ref *string `json:"ref,omitempty"`
-}
-
-// UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
-// load-balancing targets. Referenced from an upstream via its `ref` field. Shared by RestApi,
-// LLM Provider, and MCP; mirrors the management-API UpstreamDefinition schema.
-type UpstreamDefinition struct {
-	// Name Unique identifier for this upstream definition (referenced by upstream.ref).
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=100
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9\-_]+$`
-	Name string `json:"name"`
-
-	// BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
-	// Must start with "/" and must not end with "/". Omit for root ("/").
-	// +optional
-	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`
-	BasePath *string `json:"basePath,omitempty"`
-
-	// Timeout Optional timeout configuration for this upstream (connect timeout).
-	// +optional
-	Timeout *UpstreamTimeout `json:"timeout,omitempty"`
-
-	// Upstreams List of backend targets with optional weights for load balancing.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinItems=1
-	Upstreams []UpstreamTarget `json:"upstreams"`
-}
-
-// UpstreamTimeout carries the per-upstream timeout configuration. Only the connect timeout is
-// supported at the upstream-definition level.
-type UpstreamTimeout struct {
-	// Connect Connection-establishment timeout duration (e.g. "5s", "500ms"). "0s" disables.
-	// +optional
-	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
-	Connect *string `json:"connect,omitempty"`
-}
-
-// UpstreamTarget is a single backend target within an UpstreamDefinition.
-type UpstreamTarget struct {
-	// Url Backend URL (host and port only; path comes from the definition's basePath).
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
-	Url string `json:"url,omitempty"`
-
-	// Ref Reference to a named entry in upstreamDefinitions
-	// +optional
-	Ref *string `json:"ref,omitempty"`
 
 	// HostRewrite controls how the Host header is handled when routing to the upstream.
 	// "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
@@ -366,22 +268,45 @@ const (
 	UpstreamHostRewriteManual UpstreamHostRewrite = "manual"
 )
 
-// UpstreamDefinition groups one or more weighted upstream targets.
+// UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
+// one or more weighted load-balancing targets. Referenced from an upstream via its `ref` field
+// and by the dynamic-endpoint policy. Shared by RestApi, LLM Provider, and MCP; mirrors the
+// management-API UpstreamDefinition schema.
 type UpstreamDefinition struct {
-	// Name Unique identifier referenced by upstream.ref or dynamic-endpoint policy
+	// Name Unique identifier for this upstream definition (referenced by upstream.ref or the
+	// dynamic-endpoint policy).
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9\-_]+$`
 	Name string `json:"name"`
 
-	// BasePath Optional path prefix prepended on the upstream
+	// BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+	// Must start with "/" and must not end with "/". Omit for root ("/").
 	// +optional
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`
 	BasePath *string `json:"basePath,omitempty"`
 
-	// Upstreams Backend targets with optional weights
+	// Timeout Optional timeout configuration for this upstream (connect timeout).
+	// +optional
+	Timeout *UpstreamTimeout `json:"timeout,omitempty"`
+
+	// Upstreams List of backend targets with optional weights for load balancing.
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	Upstreams []WeightedUpstream `json:"upstreams"`
 }
 
-// WeightedUpstream is a single target within an upstream definition.
+// UpstreamTimeout carries the per-upstream timeout configuration. Only the connect timeout is
+// supported at the upstream-definition level.
+type UpstreamTimeout struct {
+	// Connect Connection-establishment timeout duration (e.g. "5s", "500ms"). "0s" disables.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
+	Connect *string `json:"connect,omitempty"`
+}
+
+// WeightedUpstream is a single backend target within an UpstreamDefinition.
 type WeightedUpstream struct {
 	// Url Backend URL (host and port; no path)
 	// +kubebuilder:validation:Required

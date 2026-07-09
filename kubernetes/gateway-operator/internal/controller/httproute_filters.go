@@ -40,10 +40,10 @@ func policyFromParams(name, version string, params map[string]interface{}) (apiv
 	}, nil
 }
 
-func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.Policy, *apiv1.OperationDirectResponse, *apiv1.OperationRedirect, error) {
+func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.Policy, *apiv1.OperationDirectResponse, bool, error) {
 	var policies []apiv1.Policy
 	var direct *apiv1.OperationDirectResponse
-	var redirect *apiv1.OperationRedirect
+	var hasRedirect bool
 
 	for _, f := range filters {
 		switch f.Type {
@@ -64,7 +64,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, nil, err
+					return nil, nil, false, err
 				}
 				policies = append(policies, p)
 			}
@@ -88,7 +88,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, nil, err
+					return nil, nil, false, err
 				}
 				policies = append(policies, p)
 			}
@@ -105,7 +105,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, nil, err
+					return nil, nil, false, err
 				}
 				policies = append(policies, p)
 			}
@@ -113,44 +113,21 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 			if f.RequestRedirect == nil {
 				continue
 			}
-			redir := f.RequestRedirect
-			// Build a structured redirect: set ONLY the components the filter specifies.
-			// Every omitted component is left nil so the controller/Envoy preserves it from
-			// the original request (scheme, host, port, path) — the Gateway-API contract.
-			out := &apiv1.OperationRedirect{StatusCode: 302} // Gateway-API default status.
-			if redir.StatusCode != nil {
-				out.StatusCode = int(*redir.StatusCode)
+			// A RequestRedirect is realized as the redirect policy: it builds the Location
+			// (preserving any component the filter leaves unset) and short-circuits the
+			// request. hasRedirect tells the caller this rule terminates at the gateway and
+			// legitimately has no backends.
+			p, err := redirectPolicyFromFilter(f.RequestRedirect)
+			if err != nil {
+				return nil, nil, false, err
 			}
-			if redir.Scheme != nil && *redir.Scheme != "" {
-				s := *redir.Scheme
-				out.Scheme = &s
-			}
-			if redir.Hostname != nil {
-				h := string(*redir.Hostname)
-				out.Hostname = &h
-			}
-			if redir.Port != nil {
-				p := int(*redir.Port)
-				out.Port = &p
-			}
-			if redir.Path != nil {
-				rp := &apiv1.OperationRedirectPath{Type: string(redir.Path.Type)}
-				if redir.Path.ReplaceFullPath != nil {
-					v := *redir.Path.ReplaceFullPath
-					rp.ReplaceFullPath = &v
-				}
-				if redir.Path.ReplacePrefixMatch != nil {
-					v := *redir.Path.ReplacePrefixMatch
-					rp.ReplacePrefixMatch = &v
-				}
-				out.Path = rp
-			}
-			redirect = out
+			policies = append(policies, p)
+			hasRedirect = true
 		default:
 			// ExtensionRef and unsupported filters are handled elsewhere or ignored.
 		}
 	}
-	return policies, direct, redirect, nil
+	return policies, direct, hasRedirect, nil
 }
 
 func directResponse500() *apiv1.OperationDirectResponse {

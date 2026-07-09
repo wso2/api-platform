@@ -81,7 +81,7 @@ func BuildAPIConfigFromHTTPRoute(
 		if err != nil {
 			return nil, err
 		}
-		filterPolicies, ruleDirect, ruleRedirect, err := policiesFromHTTPRouteFilters(rule.Filters)
+		filterPolicies, ruleDirect, hasRedirect, err := policiesFromHTTPRouteFilters(rule.Filters)
 		if err != nil {
 			return nil, err
 		}
@@ -132,13 +132,11 @@ func BuildAPIConfigFromHTTPRoute(
 		}
 
 		var useDirect *apiv1.OperationDirectResponse
-		var useRedirect *apiv1.OperationRedirect
 		switch {
-		case ruleRedirect != nil:
-			// A RequestRedirect rule terminates at the gateway and legitimately has no
-			// backendRefs, so the redirect branch must take precedence over the
-			// "no backends → 500" fallback below.
-			useRedirect = ruleRedirect
+		case hasRedirect:
+			// A RequestRedirect rule terminates at the gateway (its redirect policy is
+			// already in filterPolicies) and legitimately has no backendRefs, so this must
+			// take precedence over the "no backends → 500" fallback below.
 		case !ruleHasBackendRefs(rule):
 			if ruleDirect != nil {
 				useDirect = ruleDirect
@@ -182,10 +180,12 @@ func BuildAPIConfigFromHTTPRoute(
 				}
 				op.Policies = append(op.Policies, filterPolicies...)
 
-				if useRedirect != nil {
-					op.Redirect = useRedirect
-				} else if useDirect != nil {
+				// A redirect rule's policy is already attached via filterPolicies and
+				// short-circuits the request, so it needs no backend routing.
+				if useDirect != nil {
 					op.DirectResponse = useDirect
+				} else if hasRedirect {
+					// redirect policy already attached; nothing to route.
 				} else if weightedRule {
 					// A weighted rule is realized as ONE upstream definition ("rule-N-weighted")
 					// whose endpoints carry the per-backend weights; the controller creates a
@@ -248,7 +248,7 @@ func BuildAPIConfigFromHTTPRoute(
 		return upstreamDefs[i].Name < upstreamDefs[j].Name
 	})
 
-	mainUpstream := apiv1.Upstream{Url: mainUpstreamURL}
+	mainUpstream := apiv1.Upstream{Url: &mainUpstreamURL}
 	if mainUpstreamRef != nil {
 		mainUpstream = apiv1.Upstream{Ref: mainUpstreamRef}
 	} else if needsDynamicEndpoint(defsByName) && len(defsByName) == 1 {

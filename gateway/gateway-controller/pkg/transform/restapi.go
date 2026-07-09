@@ -217,9 +217,6 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				}
 				rdcRoute.DirectResponse = dr
 			}
-			if op.Redirect != nil {
-				rdcRoute.Redirect = mapOperationRedirect(op.Redirect)
-			}
 			rdc.Routes[routeKey] = rdcRoute
 
 			// Build policy chain: API-level + operation-level + system policies
@@ -332,41 +329,6 @@ func splitVhosts(raw string) []string {
 		}
 		seen[p] = struct{}{}
 		out = append(out, p)
-	}
-	return out
-}
-
-// mapOperationRedirect converts a management-API OperationRedirect into the model RouteRedirect,
-// preserving pointer-nil ⇒ "omitted, preserve from the original request" semantics for every
-// component (scheme, host, port, path).
-func mapOperationRedirect(r *api.OperationRedirect) *models.RouteRedirect {
-	if r == nil {
-		return nil
-	}
-	out := &models.RouteRedirect{StatusCode: int(r.StatusCode)}
-	if r.Scheme != nil {
-		s := string(*r.Scheme)
-		out.Scheme = &s
-	}
-	if r.Hostname != nil {
-		h := *r.Hostname
-		out.Hostname = &h
-	}
-	if r.Port != nil {
-		p := *r.Port
-		out.Port = &p
-	}
-	if r.Path != nil {
-		rp := &models.RouteRedirectPath{Type: string(r.Path.Type)}
-		if r.Path.ReplaceFullPath != nil {
-			v := *r.Path.ReplaceFullPath
-			rp.ReplaceFullPath = &v
-		}
-		if r.Path.ReplacePrefixMatch != nil {
-			v := *r.Path.ReplacePrefixMatch
-			rp.ReplacePrefixMatch = &v
-		}
-		out.Path = rp
 	}
 	return out
 }

@@ -62,25 +62,6 @@ type RouteResponseHeader struct {
 	Value string
 }
 
-// RouteRedirect is a structured Gateway-API RequestRedirect. Each optional component left nil is
-// preserved from the original request (scheme, host, port, path) when the route is rendered as an
-// Envoy RedirectAction — matching Gateway-API semantics.
-type RouteRedirect struct {
-	StatusCode int
-	Scheme     *string
-	Hostname   *string
-	Port       *int
-	Path       *RouteRedirectPath
-}
-
-// RouteRedirectPath is a path rewrite for a redirect (mirrors Gateway-API HTTPPathModifier).
-// Exactly one of ReplaceFullPath / ReplacePrefixMatch is set, selected by Type.
-type RouteRedirectPath struct {
-	Type               string // "ReplaceFullPath" | "ReplacePrefixMatch"
-	ReplaceFullPath    *string
-	ReplacePrefixMatch *string
-}
-
 // Route represents a single Envoy route derived from an API operation.
 type Route struct {
 	Method          string
@@ -88,7 +69,6 @@ type Route struct {
 	OperationPath   string // original operation path without context prefix
 	PathMatchType   string // Exact or PathPrefix (empty defaults to Exact semantics for legacy APIs)
 	DirectResponse  *RouteDirectResponse
-	Redirect        *RouteRedirect
 	Vhost           string // "" = default vhost
 	AutoHostRewrite bool
 	Timeout         *RouteTimeout

@@ -130,10 +130,10 @@ func collapseHeaderGroup(g []stagedOperation, mainDest string, log *zap.Logger) 
 			zap.String("path", g[0].op.Path))
 	}
 
-	// A header-matched op that terminates (redirect / direct response) cannot be a
+	// A header-matched op that terminates (redirect policy / direct response) cannot be a
 	// policy upstream selection.
 	for _, so := range g {
-		if len(so.headers) > 0 && (so.op.Redirect != nil || so.op.DirectResponse != nil) {
+		if len(so.headers) > 0 && (operationHasRedirectPolicy(so.op) || so.op.DirectResponse != nil) {
 			warn("header match combined with redirect/directResponse cannot be expressed as a policy")
 			return apiv1.Operation{}, false
 		}
