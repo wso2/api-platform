@@ -60,13 +60,21 @@ func MigrateDeprecatedCapture(analyticsEnabled bool, deprecated CaptureFlags, co
 	if !analyticsEnabled {
 		return
 	}
-	if deprecated.SendRequestBody && !*collectorSendRequestBody {
-		slog.Warn("analytics.send_request_body is deprecated; use collector.request_body instead")
-		*collectorSendRequestBody = true
+	if deprecated.SendRequestBody {
+		if !*collectorSendRequestBody {
+			slog.Warn("analytics.send_request_body is deprecated; use collector.request_body instead")
+			*collectorSendRequestBody = true
+		} else {
+			slog.Warn("analytics.send_request_body is deprecated and collector.request_body is already configured; ignoring the analytics.send_request_body override")
+		}
 	}
-	if deprecated.SendResponseBody && !*collectorSendResponseBody {
-		slog.Warn("analytics.send_response_body is deprecated; use collector.response_body instead")
-		*collectorSendResponseBody = true
+	if deprecated.SendResponseBody {
+		if !*collectorSendResponseBody {
+			slog.Warn("analytics.send_response_body is deprecated; use collector.response_body instead")
+			*collectorSendResponseBody = true
+		} else {
+			slog.Warn("analytics.send_response_body is deprecated and collector.response_body is already configured; ignoring the analytics.send_response_body override")
+		}
 	}
 	if deprecated.AllowPayloads {
 		slog.Warn("analytics.allow_payloads is deprecated; use collector.request_body and collector.response_body instead")
