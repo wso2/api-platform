@@ -1496,7 +1496,7 @@ const seedSamples = async (req, res) => {
         res.json({ results, deployed, skipped, failed });
     } catch (err) {
         logger.error('Sample seed error', { orgName, error: err.message });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to seed samples' });
     }
 };
 

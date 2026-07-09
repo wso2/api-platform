@@ -34,14 +34,13 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete a platform subscription
-ap devportal subscription delete --org org_1 --sub-id sub_1
+ap devportal subscription delete --sub-id sub_1
 
 # Delete using a specific devportal
-ap devportal subscription delete --org org_1 --sub-id sub_1 --display-name my-portal --platform eu`
+ap devportal subscription delete --sub-id sub_1 --display-name my-portal --platform eu`
 )
 
 var (
-	deleteOrgID        string
 	deleteSubscription string
 	deleteName         string
 	deletePlatform     string
@@ -62,21 +61,14 @@ var deleteCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(deleteCmd, utils.FlagOrgID, &deleteOrgID, "", "Organization ID")
 	utils.AddStringFlag(deleteCmd, utils.FlagSubID, &deleteSubscription, "", "Subscription ID")
 	utils.AddStringFlag(deleteCmd, utils.FlagName, &deleteName, "", "DevPortal display name")
 	utils.AddStringFlag(deleteCmd, utils.FlagPlatform, &deletePlatform, "", "Platform name")
 	deleteCmd.Flags().BoolVar(&deleteInsecure, utils.FlagInsecure, false, "Skip TLS certificate verification")
-	_ = deleteCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = deleteCmd.MarkFlagRequired(utils.FlagSubID)
 }
 
 func runDeleteCommand() error {
-	orgID := strings.TrimSpace(deleteOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	subscriptionID := strings.TrimSpace(deleteSubscription)
 	if subscriptionID == "" {
 		return fmt.Errorf("subscription ID is required")
@@ -93,7 +85,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "subscriptions/"+url.PathEscape(subscriptionID))
+	path := internaldevportal.ResourcePath("subscriptions/" + url.PathEscape(subscriptionID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete platform subscription", err, deleteInsecure)

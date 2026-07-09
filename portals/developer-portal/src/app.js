@@ -43,6 +43,8 @@ const { registerHelpers } = require('./helpers/handlebarsHelpers');
 const { configurePassport } = require('./middlewares/passportConfig');
 
 const app = express();
+// Do not advertise Express in response headers.
+app.disable('x-powered-by');
 // const secret = crypto.randomBytes(64).toString('hex');
 const sessionSecret = 'my-secret';
 
@@ -92,8 +94,10 @@ app.get('/llms.txt', (req, res) => {
     );
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Bound JSON/urlencoded body size (config-sourced).
+const bodyLimit = config.uploads?.maxBytes || 10485760;
+app.use(express.json({ limit: bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
 // Add audit logging middleware
 app.use(auditMiddleware({

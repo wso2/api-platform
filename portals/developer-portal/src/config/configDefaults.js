@@ -145,6 +145,13 @@ const DEFAULTS = {
             signatureToleranceSec: 300,
         },
     },
+    // Upload and archive-extraction limits.
+    uploads: {
+        maxBytes: 10485760,     // 10 MiB — single upload / single archive entry
+        maxTotalBytes: 52428800, // 50 MiB — total extracted per archive
+        maxZipEntries: 500,
+        maxDepth: 10,
+    },
     developer: {
         // Internal/debug knob for the /devportal REST router's response validation
         // strictness (express-openapi-validator) — 'off' | 'strict' | 'log-only'. Not

@@ -36,7 +36,7 @@ func TestRunGenerateCommand_SendsPayload(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/api-keys/generate" {
+		if req.URL.Path != "/api/v0.9/api-keys/generate" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		body, err := io.ReadAll(req.Body)
@@ -51,7 +51,6 @@ func TestRunGenerateCommand_SendsPayload(t *testing.T) {
 
 	writeAPIKeyConfig(t, server.URL)
 
-	generateOrgID = "org-1"
 	generateAPIID = "api-1"
 	generateName = "weather_prod_key"
 	generateExpiresAt = "2026-12-31T23:59:59Z"
@@ -75,7 +74,7 @@ func TestRunGetCommand_ListsAPIKeys(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/api-keys" {
+		if req.URL.Path != "/api/v0.9/api-keys" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		if got := req.URL.Query().Get("apiId"); got != "api-1" {
@@ -87,7 +86,6 @@ func TestRunGetCommand_ListsAPIKeys(t *testing.T) {
 
 	writeAPIKeyConfig(t, server.URL)
 
-	getOrgID = "org-1"
 	getAPIID = "api-1"
 	getDisplayName = ""
 	getPlatform = ""
@@ -105,7 +103,7 @@ func TestRunRegenerateCommand_PostsToRegenerate(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/api-keys/key-1/regenerate" {
+		if req.URL.Path != "/api/v0.9/api-keys/key-1/regenerate" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -114,7 +112,6 @@ func TestRunRegenerateCommand_PostsToRegenerate(t *testing.T) {
 
 	writeAPIKeyConfig(t, server.URL)
 
-	regenerateOrgID = "org-1"
 	regenerateAPIKeyID = "key-1"
 	regenerateDisplayName = ""
 	regeneratePlatform = ""
@@ -132,7 +129,7 @@ func TestRunRevokeCommand_PostsToRevoke(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/api-keys/key-1/revoke" {
+		if req.URL.Path != "/api/v0.9/api-keys/key-1/revoke" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -140,7 +137,6 @@ func TestRunRevokeCommand_PostsToRevoke(t *testing.T) {
 
 	writeAPIKeyConfig(t, server.URL)
 
-	revokeOrgID = "org-1"
 	revokeAPIKeyID = "key-1"
 	revokeDisplayName = ""
 	revokePlatform = ""

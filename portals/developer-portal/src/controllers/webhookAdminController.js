@@ -67,7 +67,7 @@ async function listEvents(req, res) {
         });
     } catch (err) {
         logger.error('Failed to list events', { error: err.message });
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: 'Failed to list events' });
     }
 }
 
@@ -83,7 +83,7 @@ async function getEvent(req, res) {
         res.json(formatEvent(event));
     } catch (err) {
         logger.error('Failed to get event', { error: err.message });
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: 'Failed to get event' });
     }
 }
 

@@ -33,18 +33,17 @@ import (
 const (
 	EditCmdLiteral = "edit"
 	EditCmdExample = `# Edit an API artifact using the default artifact in the current directory
-ap devportal rest-api edit --org org_1 --api-id api_1
+ap devportal rest-api edit --api-id api_1
 
 # Edit an API artifact using a specific zip file
-ap devportal rest-api edit -f fooapi/build/devportal.zip --org org_1 --api-id api_1
+ap devportal rest-api edit -f fooapi/build/devportal.zip --api-id api_1
 
 # Edit an API artifact using a specific devportal
-ap devportal rest-api edit -f fooapi/build/devportal.zip --org org_1 --api-id api_1 --display-name my-portal --platform eu`
+ap devportal rest-api edit -f fooapi/build/devportal.zip --api-id api_1 --display-name my-portal --platform eu`
 )
 
 var (
 	editFilePath string
-	editOrgID    string
 	editAPIID    string
 	editName     string
 	editPlatform string
@@ -66,12 +65,10 @@ var editCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(editCmd, utils.FlagFile, &editFilePath, "", "Path to the API artifact file")
-	utils.AddStringFlag(editCmd, utils.FlagOrgID, &editOrgID, "", "Organization ID")
 	utils.AddStringFlag(editCmd, utils.FlagAPIID, &editAPIID, "", "API ID")
 	utils.AddStringFlag(editCmd, utils.FlagName, &editName, "", "DevPortal display name")
 	utils.AddStringFlag(editCmd, utils.FlagPlatform, &editPlatform, "", "Platform name")
 	editCmd.Flags().BoolVar(&editInsecure, "insecure", false, "Skip TLS certificate verification")
-	_ = editCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = editCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
@@ -79,11 +76,6 @@ func runEditCommand() error {
 	artifactPath, err := internaldevportal.ResolveArtifactPath(editFilePath)
 	if err != nil {
 		return err
-	}
-
-	orgID := strings.TrimSpace(editOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
 	}
 
 	apiID := strings.TrimSpace(editAPIID)
@@ -102,7 +94,7 @@ func runEditCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, editInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "apis/"+url.PathEscape(apiID))
+	path := internaldevportal.ResourcePath("apis/" + url.PathEscape(apiID))
 	resp, err := client.PutMultipartFile(path, "artifact", artifactPath)
 	if err != nil {
 		return internaldevportal.WrapRequestError("edit api artifact", err, editInsecure)

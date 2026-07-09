@@ -34,14 +34,13 @@ import (
 const (
 	CreateCmdLiteral = "create"
 	CreateCmdExample = `# Create a platform subscription
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold
+ap devportal subscription create --api-id api_1 --subscription-plan gold
 
 # Create using a specific devportal
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --display-name my-portal --platform eu`
+ap devportal subscription create --api-id api_1 --subscription-plan gold --display-name my-portal --platform eu`
 )
 
 var (
-	createOrgID            string
 	createAPIID            string
 	createSubscriptionPlan string
 	createName             string
@@ -63,22 +62,15 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(createCmd, utils.FlagOrgID, &createOrgID, "", "Organization ID")
 	utils.AddStringFlag(createCmd, utils.FlagAPIID, &createAPIID, "", "API ID")
 	utils.AddStringFlag(createCmd, utils.FlagSubscriptionPlan, &createSubscriptionPlan, "", "Subscription plan name")
 	utils.AddStringFlag(createCmd, utils.FlagName, &createName, "", "DevPortal display name")
 	utils.AddStringFlag(createCmd, utils.FlagPlatform, &createPlatform, "", "Platform name")
 	createCmd.Flags().BoolVar(&createInsecure, utils.FlagInsecure, false, "Skip TLS certificate verification")
-	_ = createCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = createCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
 func runCreateCommand() error {
-	orgID := strings.TrimSpace(createOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	payload, err := buildCreatePayload()
 	if err != nil {
 		return err
@@ -95,7 +87,7 @@ func runCreateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, createInsecure)
-	resp, err := client.PostJSON(internaldevportal.OrgScopedPath(orgID, "subscriptions"), payload)
+	resp, err := client.PostJSON(internaldevportal.ResourcePath("subscriptions"), payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create platform subscription", err, createInsecure)
 	}
@@ -119,7 +111,7 @@ func buildCreatePayload() ([]byte, error) {
 		"apiId": apiID,
 	}
 	if subscriptionPlan != "" {
-		payload["subscriptionPlanName"] = subscriptionPlan
+		payload["subscriptionPlanId"] = subscriptionPlan
 	}
 
 	data, err := json.Marshal(payload)

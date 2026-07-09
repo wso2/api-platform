@@ -34,14 +34,13 @@ import (
 const (
 	RevokeCmdLiteral = "revoke"
 	RevokeCmdExample = `# Revoke an API key
-ap devportal api-key revoke --org org_1 --api-key-id key_1
+ap devportal api-key revoke --api-key-id key_1
 
 # Revoke using a specific devportal
-ap devportal api-key revoke --org org_1 --api-key-id key_1 --display-name my-portal --platform eu`
+ap devportal api-key revoke --api-key-id key_1 --display-name my-portal --platform eu`
 )
 
 var (
-	revokeOrgID       string
 	revokeAPIKeyID    string
 	revokeDisplayName string
 	revokePlatform    string
@@ -63,21 +62,14 @@ var revokeCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(revokeCmd, utils.FlagOrgID, &revokeOrgID, "", "Organization ID")
 	utils.AddStringFlag(revokeCmd, utils.FlagAPIKeyID, &revokeAPIKeyID, "", "API key ID")
 	utils.AddStringFlag(revokeCmd, utils.FlagName, &revokeDisplayName, "", "DevPortal display name")
 	utils.AddStringFlag(revokeCmd, utils.FlagPlatform, &revokePlatform, "", "Platform name")
 	utils.AddBoolFlag(revokeCmd, utils.FlagInsecure, &revokeInsecure, false, "Skip TLS certificate verification")
-	_ = revokeCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = revokeCmd.MarkFlagRequired(utils.FlagAPIKeyID)
 }
 
 func runRevokeCommand() error {
-	orgID := strings.TrimSpace(revokeOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	apiKeyID := strings.TrimSpace(revokeAPIKeyID)
 	if apiKeyID == "" {
 		return fmt.Errorf("api key ID is required")
@@ -95,7 +87,7 @@ func runRevokeCommand() error {
 
 	client := internaldevportal.NewClientWithOptions(devPortal, revokeInsecure)
 	baseURL := strings.TrimSuffix(devPortal.URL, "/")
-	path := internaldevportal.OrgScopedPath(orgID, "api-keys/"+url.PathEscape(apiKeyID)+"/revoke")
+	path := internaldevportal.ResourcePath("api-keys/" + url.PathEscape(apiKeyID) + "/revoke")
 	req, err := http.NewRequest(http.MethodPost, baseURL+path, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

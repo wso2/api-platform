@@ -34,14 +34,13 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# List API keys for an API
-ap devportal api-key get --org org_1 --api-id api_1
+ap devportal api-key get --api-id api_1
 
 # List API keys from a specific devportal
-ap devportal api-key get --org org_1 --api-id api_1 --display-name my-portal --platform eu`
+ap devportal api-key get --api-id api_1 --display-name my-portal --platform eu`
 )
 
 var (
-	getOrgID       string
 	getAPIID       string
 	getDisplayName string
 	getPlatform    string
@@ -62,21 +61,14 @@ var getCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(getCmd, utils.FlagOrgID, &getOrgID, "", "Organization ID")
 	utils.AddStringFlag(getCmd, utils.FlagAPIID, &getAPIID, "", "Developer Portal API ID")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getDisplayName, "", "DevPortal display name")
 	utils.AddStringFlag(getCmd, utils.FlagPlatform, &getPlatform, "", "Platform name")
 	utils.AddBoolFlag(getCmd, utils.FlagInsecure, &getInsecure, false, "Skip TLS certificate verification")
-	_ = getCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = getCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
 func runGetCommand() error {
-	orgID := strings.TrimSpace(getOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	apiID := strings.TrimSpace(getAPIID)
 	if apiID == "" {
 		return fmt.Errorf("api ID is required")
@@ -93,7 +85,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "api-keys?apiId="+url.QueryEscape(apiID))
+	path := internaldevportal.ResourcePath("api-keys?apiId=" + url.QueryEscape(apiID))
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("get API keys", err, getInsecure)

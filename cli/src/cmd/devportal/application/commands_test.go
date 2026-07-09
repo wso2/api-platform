@@ -37,7 +37,7 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/applications" {
+		if req.URL.Path != "/api/v0.9/applications" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		body, err := io.ReadAll(req.Body)
@@ -52,7 +52,6 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 
 	writeApplicationConfig(t, server.URL)
 
-	createOrgID = "org-1"
 	createAppName = "Weather App"
 	createType = "WEB"
 	createDescription = "Calls the Weather APIs"
@@ -85,7 +84,6 @@ func TestRunCreateCommand_OmitsDescriptionWhenEmpty(t *testing.T) {
 
 	writeApplicationConfig(t, server.URL)
 
-	createOrgID = "org-1"
 	createAppName = "Weather App"
 	createType = "WEB"
 	createDescription = ""
@@ -109,7 +107,7 @@ func TestRunUpdateCommand_SendsJSONPayload(t *testing.T) {
 		if req.Method != http.MethodPut {
 			t.Fatalf("expected PUT request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/applications/app-1" {
+		if req.URL.Path != "/api/v0.9/applications/app-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		body, err := io.ReadAll(req.Body)
@@ -123,7 +121,6 @@ func TestRunUpdateCommand_SendsJSONPayload(t *testing.T) {
 
 	writeApplicationConfig(t, server.URL)
 
-	updateOrgID = "org-1"
 	updateAppID = "app-1"
 	updateAppName = "Weather App"
 	updateType = "WEB"
@@ -145,13 +142,13 @@ func TestRunGetCommand_ListAllAndSingle(t *testing.T) {
 
 	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
-		case "/o/org-1/devportal/v1/applications":
+		case "/api/v0.9/applications":
 			if req.Method != http.MethodGet {
 				t.Fatalf("expected GET request, got %s", req.Method)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[{"applicationId":"app-1"}]`))
-		case "/o/org-1/devportal/v1/applications/app-1":
+		case "/api/v0.9/applications/app-1":
 			if req.Method != http.MethodGet {
 				t.Fatalf("expected GET request, got %s", req.Method)
 			}
@@ -164,7 +161,6 @@ func TestRunGetCommand_ListAllAndSingle(t *testing.T) {
 
 	writeApplicationConfig(t, server.URL)
 
-	getOrgID = "org-1"
 	getAppID = ""
 	getName = ""
 	getPlatform = ""
@@ -197,7 +193,7 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 		if req.Method != http.MethodDelete {
 			t.Fatalf("expected DELETE request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/applications/app-1" {
+		if req.URL.Path != "/api/v0.9/applications/app-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -206,7 +202,6 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 
 	writeApplicationConfig(t, server.URL)
 
-	deleteOrgID = "org-1"
 	deleteAppID = "app-1"
 	deleteName = ""
 	deletePlatform = ""

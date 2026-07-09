@@ -226,6 +226,7 @@ const HTTP_CODE_TO_CATALOG = {
     403: 'FORBIDDEN',
     404: 'RESOURCE_NOT_FOUND',
     409: 'CONFLICT',
+    413: 'PAYLOAD_TOO_LARGE',
     500: 'INTERNAL_SERVER_ERROR',
 };
 
@@ -309,10 +310,38 @@ const unzipDirectory = async (zipPath, extractPath) => {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
     }
     const extractedFiles = [];
-    const maxFileSize = 10 * 1024 * 1024; // 10MB (limit for individual file size)
-    const maxTotalSize = 50 * 1024 * 1024; // 50MB (limit for total extracted data)
-    const maxDepth = 10; // Limit to prevent excessive nesting
-    let totalExtractedSize = 0; // Total extracted data size
+    // Archive-extraction limits (config-sourced, with safe defaults).
+    const maxFileSize = config.uploads?.maxBytes || 10485760;      // per-entry byte ceiling
+    const maxTotalSize = config.uploads?.maxTotalBytes || 52428800; // total extracted ceiling
+    const maxDepth = config.uploads?.maxDepth || 10;                // nesting guard
+    const maxEntries = config.uploads?.maxZipEntries || 500;        // entry-count guard
+    let totalExtractedSize = 0; // Total extracted data size (measured from bytes actually read)
+    let entryCount = 0;
+
+    // Streams each entry to disk, capping on bytes actually read rather than the
+    // declared header size. Rejects the outer promise on the first violation.
+    const writeEntryWithLimit = (entry, destPath, perEntryLimit, reject) => new Promise((resolveWrite, rejectWrite) => {
+        let bytesWritten = 0;
+        const out = fs.createWriteStream(destPath);
+        entry.on('data', chunk => {
+            bytesWritten += chunk.length;
+            if (bytesWritten > perEntryLimit || totalExtractedSize + bytesWritten > maxTotalSize) {
+                entry.unpipe(out);
+                out.destroy();
+                entry.destroy();
+                const limitErr = new CustomError(400, 'Error unzipping directory',
+                    'Archive entry exceeded the allowed size.');
+                rejectWrite(limitErr);
+                return reject(limitErr);
+            }
+        });
+        out.on('error', rejectWrite);
+        out.on('finish', () => {
+            totalExtractedSize += bytesWritten;
+            resolveWrite();
+        });
+        entry.pipe(out);
+    });
 
     await new Promise((resolve, reject) => {
         const streams = [];
@@ -325,23 +354,39 @@ const unzipDirectory = async (zipPath, extractPath) => {
                     const entryDepth = entryPath.split(path.sep).length;
 
                     if (!entryPath.includes('__MACOSX')) {
-                        const filePath = path.resolve(extractPath, entryPath);
-                        // Prevent path traversal
-                        const normalizedFilePath = path.normalize(filePath);
-                        if (!normalizedFilePath.startsWith(path.resolve(extractPath))) {
+                        // Reject absolute paths, null bytes, and traversal sequences in entry names.
+                        if (path.isAbsolute(entryPath) || entryPath.includes('..') || entryPath.includes('\0')) {
                             entry.autodrain();
                             return reject(new CustomError(400, 'Error unzipping directory'
                                 , 'File access outside working directory detected.'));
                         }
 
-                        // Validate depth (to avoid zip bombs with excessive nesting)
-                        // and reject files that are too large
-                        // and check if adding this file would exceed the total size limit
+                        const filePath = path.resolve(extractPath, entryPath);
+                        // Ensure the resolved path stays within the extraction root (trailing
+                        // separator avoids matching a sibling dir with the same prefix).
+                        const normalizedFilePath = path.normalize(filePath);
+                        const rootWithSep = path.resolve(extractPath) + path.sep;
+                        if (normalizedFilePath !== path.resolve(extractPath)
+                            && !normalizedFilePath.startsWith(rootWithSep)) {
+                            entry.autodrain();
+                            return reject(new CustomError(400, 'Error unzipping directory'
+                                , 'File access outside working directory detected.'));
+                        }
+
+                        // Cap the entry count.
+                        entryCount += 1;
+                        if (entryCount > maxEntries) {
+                            entry.autodrain();
+                            return reject(new CustomError(400, 'Error unzipping directory'
+                                , 'Archive exceeded the maximum entry count.'));
+                        }
+
+                        // Early reject on declared depth/size; real-byte enforcement below is authoritative.
                         if ((entryDepth > maxDepth) || (entrySize > maxFileSize)
                             || (totalExtractedSize + entrySize > maxTotalSize)) {
                             entry.autodrain();
                             return reject(new CustomError(400, 'Error unzipping directory'
-                                , 'File size exceeded the limit of 50 MB'));
+                                , 'Archive entry exceeded the allowed size.'));
                         }
 
                         const dirName = path.dirname(normalizedFilePath);
@@ -350,14 +395,7 @@ const unzipDirectory = async (zipPath, extractPath) => {
                             entry.autodrain();
                         } else {
                             extractedFiles.push(normalizedFilePath);
-                            const stream = new Promise((resolve, reject) => {
-                                entry.pipe(fs.createWriteStream(normalizedFilePath))
-                                    .on('finish', resolve)
-                                    .on('error', reject);
-                            });
-                            streams.push(stream);
-                            // Update the total extracted size
-                            totalExtractedSize += entrySize;
+                            streams.push(writeEntryWithLimit(entry, normalizedFilePath, maxFileSize, reject));
                         }
                     } else {
                         entry.autodrain();

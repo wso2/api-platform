@@ -406,6 +406,99 @@ Feature: LLM Provider Management
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 
+  Scenario: Create LLM provider referencing a non-existent policy is rejected
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: LlmProvider
+        metadata:
+          name: bad-policy-name-provider
+        spec:
+          displayName: Bad Policy Name Provider
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://mock-openapi-https:9443/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-test
+          accessControl:
+            mode: allow_all
+          globalPolicies:
+            - name: this-policy-does-not-exist
+              version: v1
+        """
+    Then the response status code should be 400
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+
+  Scenario: Create LLM provider referencing a non-existent policy version is rejected
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: LlmProvider
+        metadata:
+          name: bad-policy-version-provider
+        spec:
+          displayName: Bad Policy Version Provider
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://mock-openapi-https:9443/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-test
+          accessControl:
+            mode: allow_all
+          globalPolicies:
+            - name: basic-ratelimit
+              version: v999
+        """
+    Then the response status code should be 400
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+
+  # An empty policy version is a valid input: it resolves to the latest loaded version.
+  Scenario: Create LLM provider with an empty policy version resolves to the latest
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: LlmProvider
+        metadata:
+          name: empty-version-policy-provider
+        spec:
+          displayName: Empty Version Policy Provider
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://mock-openapi-https:9443/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-test
+          accessControl:
+            mode: allow_all
+          globalPolicies:
+            - name: basic-ratelimit
+              version: ""
+              params:
+                limits:
+                  - requests: 10
+                    duration: "1h"
+        """
+    Then the response status code should be 201
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "empty-version-policy-provider"
+    Then the response status code should be 200
+
   Scenario: Retrieve non-existent LLM provider
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "non-existent-provider"
