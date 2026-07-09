@@ -61,14 +61,10 @@ import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import type { MCPServer } from '../../../../utils/types';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
+import { getErrorMessage } from '../../../../utils/apiError';
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
-  return (
-    (error as any)?.response?.data?.description ||
-    (error as any)?.response?.data?.message ||
-    (error instanceof Error ? error.message : null) ||
-    fallbackMessage
-  );
+  return getErrorMessage(error, fallbackMessage);
 }
 
 export default function ExternalServersList(): React.JSX.Element {
