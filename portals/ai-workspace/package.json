@@ -27,7 +27,7 @@
     "@wso2/oxygen-ui-icons-react": "0.5.0",
     "date-fns": "4.1.0",
     "install": "0.13.0",
-    "js-yaml": "4.1.1",
+    "js-yaml": "4.2.0",
     "lucide-react": "0.545.0",
     "moesif-browser-js": "1.8.13",
     "monaco-editor": "0.55.1",
@@ -49,5 +49,10 @@
     "cypress": "13.17.0",
     "typescript": "5.9.3",
     "vite": "5.4.21"
+  },
+  "overrides": {
+    "swagger-ui-react": {
+      "js-yaml": "4.2.0"
+    }
   }
 }
