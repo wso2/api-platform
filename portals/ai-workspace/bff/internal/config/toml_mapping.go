@@ -53,6 +53,7 @@ var tomlKeyToEnv = map[string]string{
 
 	// --- BFF listener & TLS ---
 	"bff_addr":        "BFF_ADDR",
+	"tls_enabled":     "BFF_TLS_ENABLED",
 	"tls_self_signed": "BFF_TLS_SELF_SIGNED",
 	"tls_cert_file":   "BFF_TLS_CERT_FILE",
 	"tls_key_file":    "BFF_TLS_KEY_FILE",

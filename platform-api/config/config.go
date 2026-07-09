@@ -168,8 +168,12 @@ type Gateway struct {
 	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// TLS holds TLS certificate configuration.
+// TLS holds TLS listener configuration.
 type TLS struct {
+	// Enabled terminates TLS on the Platform API listener. Defaults to true.
+	// Set to false only when a trusted upstream (ingress, service-mesh sidecar)
+	// terminates TLS; certificates are then neither read nor generated.
+	Enabled bool   `koanf:"enabled"`
 	CertDir string `koanf:"cert_dir"`
 }
 
@@ -719,6 +723,8 @@ func envToKoanfKey(s string) string {
 		return "artifact_limits.max_webbroker_apis_per_org"
 
 	// TLS
+	case "tls_enabled":
+		return "tls.enabled"
 	case "tls_cert_dir":
 		return "tls.cert_dir"
 

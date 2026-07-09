@@ -124,11 +124,23 @@ func main() {
 	}
 }
 
-// buildTLS returns the listener TLS config, or nil for plain HTTP. Priority:
-// mounted cert/key files (when both exist), then in-memory self-signed, then
-// disabled. In demo mode a missing mounted cert is not fatal — it falls back to
-// a self-signed cert; outside demo mode an operator-provided cert is required.
+// buildTLS returns the listener TLS config, or nil for plain HTTP. When TLS is
+// disabled no certificate is read, generated, or required. Otherwise the priority
+// is: mounted cert/key files (when both exist), then in-memory self-signed. In
+// demo mode a missing mounted cert is not fatal — it falls back to a self-signed
+// cert; outside demo mode an operator-provided cert is required.
 func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
+	if !c.Enabled {
+		// Plain HTTP is only safe when something upstream terminates TLS.
+		if !demoMode {
+			slog.Warn("TLS: disabled (BFF_TLS_ENABLED=false) while APIP_DEMO_MODE=false — " +
+				"serving plain HTTP. Terminate TLS at an ingress or service-mesh sidecar and " +
+				"never expose this listener directly to untrusted networks.")
+		} else {
+			slog.Info("TLS: disabled (BFF_TLS_ENABLED=false) — serving plain HTTP")
+		}
+		return nil, nil
+	}
 	// A partial mount (exactly one of cert/key present) is a misconfiguration, not
 	// a request for plain HTTP — fail loudly instead of silently downgrading.
 	if fileExists(c.CertFile) != fileExists(c.KeyFile) {
@@ -146,7 +158,8 @@ func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
 	// convenience — outside demo mode, require the operator to mount a real cert.
 	if !demoMode {
 		return nil, fmt.Errorf("APIP_DEMO_MODE=false requires a mounted TLS certificate: "+
-			"set BFF_TLS_CERT_FILE (%q) and BFF_TLS_KEY_FILE (%q) to existing files. "+
+			"set BFF_TLS_CERT_FILE (%q) and BFF_TLS_KEY_FILE (%q) to existing files, "+
+			"or set BFF_TLS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy. "+
 			"Self-signed certificates are only auto-generated in demo mode", c.CertFile, c.KeyFile)
 	}
 	if c.SelfSigned {

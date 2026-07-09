@@ -82,7 +82,16 @@ scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_poli
 # ---------------------------------------------------------------------------
 # TLS
 # ---------------------------------------------------------------------------
+# enabled (default true) terminates TLS on the Platform API listener. Set it to
+# false only when a trusted upstream — an ingress controller or a service-mesh
+# sidecar — terminates TLS for you; the listener then serves plain HTTP and no
+# certificate is read or generated, so cert_dir can be left unmounted.
+# Override with the TLS_ENABLED / TLS_CERT_DIR env vars.
+#
+# cert_dir must contain cert.pem and key.pem when enabled = true and
+# APIP_DEMO_MODE=false. In demo mode a self-signed pair is generated there.
 # [tls]
+# enabled  = true
 # cert_dir = "/app/data/certs"
 
 # ---------------------------------------------------------------------------

@@ -71,6 +71,10 @@ type Config struct {
 
 // TLSConfig controls how the BFF terminates TLS.
 type TLSConfig struct {
+	// Enabled terminates TLS on the BFF listener. Defaults to true. Set to false
+	// only when a trusted upstream (ingress, service-mesh sidecar) terminates TLS;
+	// no certificate is then read, generated, or required.
+	Enabled    bool
 	SelfSigned bool
 	CertFile   string
 	KeyFile    string
@@ -181,6 +185,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	tlsEnabled, err := getbool("BFF_TLS_ENABLED", true)
+	if err != nil {
+		return nil, err
+	}
 	platformTLSSkipVerify, err := getbool("PLATFORM_API_TLS_SKIP_VERIFY", false)
 	if err != nil {
 		return nil, err
@@ -208,6 +216,7 @@ func Load() (*Config, error) {
 		LogLevel:  strings.ToLower(getenv("LOG_LEVEL", "info")),
 		LogFormat: strings.ToLower(getenv("LOG_FORMAT", "text")),
 		TLS: TLSConfig{
+			Enabled:    tlsEnabled,
 			SelfSigned: selfSigned,
 			// Convention matches the legacy entrypoint.sh mount path. buildTLS
 			// falls back to a self-signed cert when these files are absent.

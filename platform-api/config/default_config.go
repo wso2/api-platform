@@ -133,6 +133,7 @@ func defaultConfig() *Server {
 		// (config file key artifact_limits.max_* or env ARTIFACT_LIMITS_MAX_*).
 		ArtifactLimits: ArtifactLimits{},
 		TLS: TLS{
+			Enabled: true,
 			CertDir: "./data/certs",
 		},
 		APIKey: APIKey{

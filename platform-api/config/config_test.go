@@ -220,3 +220,23 @@ func TestValidateAuthModeExclusivity(t *testing.T) {
 		})
 	}
 }
+
+// TLS terminates on the listener unless an operator explicitly opts out, so a
+// deployment that forgets the knob never silently downgrades to plain HTTP.
+func TestLoadConfig_TLSEnabled_DefaultsToTrue(t *testing.T) {
+	t.Setenv("APIP_DEMO_MODE", "true")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.True(t, cfg.TLS.Enabled, "tls.enabled must default to true when unset")
+}
+
+// TLS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
+func TestLoadConfig_TLSEnabled_EnvOverrideDisables(t *testing.T) {
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("TLS_ENABLED", "false")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.False(t, cfg.TLS.Enabled, "TLS_ENABLED=false must disable TLS termination")
+}

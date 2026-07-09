@@ -731,19 +731,28 @@ func generateSelfSignedCert(certPath, keyPath string, logger *slog.Logger) (tls.
 	return cert, nil
 }
 
-// Start starts the HTTPS server
-func (s *Server) Start(port string, certDir string) error {
-	if port == "" {
-		s.logger.Error("Port cannot be empty")
-		return fmt.Errorf("port cannot be empty")
+// buildTLSConfig resolves the listener TLS configuration, or nil when TLS is
+// disabled. Certificates are only read (or generated) when tls.enabled is true,
+// so a plain-HTTP deployment never needs a cert mounted.
+func (s *Server) buildTLSConfig(tlsCfg config.TLS) (*tls.Config, error) {
+	if !tlsCfg.Enabled {
+		// Plain HTTP is only safe when something upstream (ingress, service mesh
+		// sidecar) terminates TLS. Say so loudly outside demo mode.
+		if !demoMode() {
+			s.logger.Warn("TLS is disabled (TLS_ENABLED=false) while APIP_DEMO_MODE=false: " +
+				"the Platform API is serving plain HTTP. Terminate TLS at an ingress or service-mesh " +
+				"sidecar and never expose this listener directly to untrusted networks.")
+		} else {
+			s.logger.Info("TLS is disabled (TLS_ENABLED=false): serving plain HTTP")
+		}
+		return nil, nil
 	}
 
-	// Build certificate paths
+	certDir := tlsCfg.CertDir
 	certPath := filepath.Join(certDir, "cert.pem")
 	keyPath := filepath.Join(certDir, "key.pem")
 
 	var cert tls.Certificate
-	certGenerated := false
 
 	// Try to load existing certificates first
 	if _, certErr := os.Stat(certPath); certErr == nil {
@@ -761,9 +770,10 @@ func (s *Server) Start(port string, certDir string) error {
 	// Generate new certificate if not loaded
 	if cert.Certificate == nil {
 		if !demoMode() {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
-					"mount real certificates or set TLS_CERT_DIR to a directory containing cert.pem and key.pem; "+
+					"mount real certificates, set TLS_CERT_DIR to a directory containing cert.pem and key.pem, "+
+					"or set TLS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy; "+
 					"self-signed certificate generation is only permitted in demo mode",
 				certDir,
 			)
@@ -772,15 +782,33 @@ func (s *Server) Start(port string, certDir string) error {
 		// Ensure cert directory exists
 		if err := os.MkdirAll(certDir, 0755); err != nil {
 			s.logger.Error("Failed to create cert directory", "error", err)
-			return fmt.Errorf("failed to create cert directory: %v", err)
+			return nil, fmt.Errorf("failed to create cert directory: %v", err)
 		}
 		generatedCert, err := generateSelfSignedCert(certPath, keyPath, s.logger)
 		if err != nil {
 			s.logger.Error("Failed to generate self-signed certificate", "error", err)
-			return fmt.Errorf("failed to generate self-signed certificate: %v", err)
+			return nil, fmt.Errorf("failed to generate self-signed certificate: %v", err)
 		}
 		cert = generatedCert
-		certGenerated = true
+		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
+
+// Start starts the server, over HTTPS when TLS is enabled and plain HTTP otherwise.
+func (s *Server) Start(port string, tlsCfg config.TLS) error {
+	if port == "" {
+		s.logger.Error("Port cannot be empty")
+		return fmt.Errorf("port cannot be empty")
+	}
+
+	tlsConfig, err := s.buildTLSConfig(tlsCfg)
+	if err != nil {
+		return err
 	}
 
 	// Add a health endpoint. Routes added to s.mux after startup are reachable
@@ -789,12 +817,6 @@ func (s *Server) Start(port string, certDir string) error {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
 
-	// CreateOrganization TLS configuration
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
-
 	address := fmt.Sprintf(":%s", port)
 	httpServer := &http.Server{
 		Addr:      address,
@@ -802,10 +824,11 @@ func (s *Server) Start(port string, certDir string) error {
 		TLSConfig: tlsConfig,
 	}
 
-	s.logger.Info("Starting HTTPS server", "address", "https://localhost:"+port)
-	if certGenerated {
-		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
+	scheme := "http"
+	if tlsConfig != nil {
+		scheme = "https"
 	}
+	s.logger.Info("Starting server", "address", scheme+"://localhost:"+port)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -814,7 +837,11 @@ func (s *Server) Start(port string, certDir string) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- httpServer.ListenAndServeTLS("", "")
+		if tlsConfig != nil {
+			errCh <- httpServer.ListenAndServeTLS("", "")
+			return
+		}
+		errCh <- httpServer.ListenAndServe()
 	}()
 
 	mode := "PRODUCTION"

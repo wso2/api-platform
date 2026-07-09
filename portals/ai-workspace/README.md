@@ -420,7 +420,7 @@ rather than run insecurely:
 | Service | Demo mode (`true`, default) | Production (`false`) |
 |---|---|---|
 | **AI Workspace (BFF)** — auth | Basic / file-based auth allowed | Basic auth **rejected** — OIDC required (`VITE_AUTH_MODE=oidc` + the `OIDC_*` values) |
-| **AI Workspace (BFF)** — TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`BFF_TLS_CERT_FILE` / `BFF_TLS_KEY_FILE`) |
+| **AI Workspace (BFF)** — TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`BFF_TLS_CERT_FILE` / `BFF_TLS_KEY_FILE`), or TLS turned off with `BFF_TLS_ENABLED=false` when an ingress terminates it |
 | **Platform API** — secrets | Generates an ephemeral encryption key when none is set | A stable key is **required** (`PLATFORM_SECRET_ENCRYPTION_KEY` or `DATABASE_ENCRYPTION_KEY`) |
 
 So before flipping `APIP_DEMO_MODE=false`, make sure you have:

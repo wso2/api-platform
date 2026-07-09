@@ -379,7 +379,8 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 |---|---|---|
 | `PORT` | `9243` | HTTP/HTTPS server port |
 | `LOG_LEVEL` | `DEBUG` | Log verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
-| `TLS_CERT_DIR` | `./data/certs` | Directory for TLS certificates |
+| `TLS_ENABLED` | `true` | Terminate TLS on the listener. Set `false` to serve plain HTTP when an ingress or service-mesh sidecar terminates TLS — no certificate is then read or generated |
+| `TLS_CERT_DIR` | `./data/certs` | Directory holding `cert.pem` / `key.pem` (used only when `TLS_ENABLED=true`) |
 | `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
 | `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
 | `ARTIFACT_LIMITS_MAX_LLM_PROVIDERS_PER_ORG` | _unlimited_ | Max LLM providers per organization (`0` or unset = unlimited) |
