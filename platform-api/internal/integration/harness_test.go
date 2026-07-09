@@ -1,8 +1,6 @@
 //go:build integration
 
 /*
- *  Copyright (c) 2026, WSO2 LLC.
-/*
  *  Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  *  WSO2 LLC. licenses this file to you under the Apache License,
@@ -26,10 +24,6 @@
 // data-access behavior — pagination, multi-table writes and delete cascades —
 // so backend-specific bugs (e.g. SQL Server LIMIT/cascade-path issues) are
 // caught instead of being hidden behind the SQLite unit-test path.
-//
-//
-//go:build integration
-
 package integration
 
 import (
