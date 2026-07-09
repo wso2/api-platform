@@ -135,7 +135,9 @@ func (h *GatewayHandler) ListGateways(w http.ResponseWriter, r *http.Request) er
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
 
-	gateways, err := h.gatewayService.ListGateways(&organizationID)
+	opts := parseListOptions(r)
+
+	gateways, err := h.gatewayService.ListGateways(&organizationID, opts)
 	if err != nil {
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to list gateways")
 	}
@@ -293,7 +295,9 @@ func (h *GatewayHandler) ListTokens(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New("Gateway ID is required")
 	}
 
-	tokens, err := h.gatewayService.ListTokens(gatewayId, orgId)
+	limit, offset := parsePagination(r)
+
+	tokens, err := h.gatewayService.ListTokens(gatewayId, orgId, limit, offset)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -500,12 +504,22 @@ func (h *GatewayHandler) ListCustomPolicies(w http.ResponseWriter, r *http.Reque
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
 
-	policies, err := h.gatewayService.ListCustomPolicies(orgId)
+	limit, offset := parsePagination(r)
+
+	policies, total, err := h.gatewayService.ListCustomPolicies(orgId, limit, offset)
 	if err != nil {
 		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to list custom policies, orgID=%s", orgId))
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, policies)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"count": len(policies),
+		"list":  policies,
+		"pagination": api.Pagination{
+			Total:  total,
+			Offset: offset,
+			Limit:  limit,
+		},
+	})
 	return nil
 }
 

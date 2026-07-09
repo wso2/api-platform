@@ -167,25 +167,30 @@ func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project,
 	return s.modelToAPI(projectModel, orgHandle)
 }
 
-func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api.Project, error) {
+func (s *ProjectService) GetProjectsByOrganization(organizationID string, opts repository.ListOptions) ([]api.Project, int, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(organizationID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if org == nil {
-		return nil, apperror.OrganizationNotFound.New()
+		return nil, 0, apperror.OrganizationNotFound.New()
 	}
 
-	projectModels, err := s.projectRepo.GetProjectsByOrganizationID(organizationID)
+	total, err := s.projectRepo.CountProjects(organizationID, opts.Search)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	projectModels, err := s.projectRepo.ListProjects(organizationID, opts)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	projects := make([]api.Project, 0)
 	for _, projectModel := range projectModels {
 		apiProj, err := s.modelToAPI(projectModel, org.Handle)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if apiProj == nil {
 			s.slogger.Warn("Failed to convert project model to API", "organizationId", organizationID)
@@ -195,7 +200,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]api
 		apiProj.UpdatedBy = nil
 		projects = append(projects, *apiProj)
 	}
-	return projects, nil
+	return projects, total, nil
 }
 
 func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, actor string) (*api.Project, error) {
@@ -279,7 +284,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	// applications no longer cascade-delete with the project (the project_uuid foreign key was
 	// removed), so refuse deletion while any application still references this project. The caller
 	// must reassign or delete those applications first.
-	appCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgId)
+	appCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgId, "")
 	if err != nil {
 		return err
 	}

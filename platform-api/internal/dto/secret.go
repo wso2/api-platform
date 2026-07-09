@@ -63,6 +63,7 @@ type SecretSummary struct {
 
 // SecretListResponse wraps the paginated list of secrets.
 type SecretListResponse struct {
+	Count      int              `json:"count"`
 	List       []*SecretSummary `json:"list"`
 	Pagination Pagination       `json:"pagination"`
 }

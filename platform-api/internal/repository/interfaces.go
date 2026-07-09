@@ -46,7 +46,8 @@ type ProjectRepository interface {
 	GetProjectsByOrganizationID(orgID string) ([]*model.Project, error)
 	UpdateProject(project *model.Project) error
 	DeleteProject(projectId string) error
-	ListProjects(orgID string, limit, offset int) ([]*model.Project, error)
+	ListProjects(orgID string, opts ListOptions) ([]*model.Project, error)
+	CountProjects(orgID, search string) (int, error)
 }
 
 type ArtifactRepository interface {
@@ -74,9 +75,9 @@ type ApplicationRepository interface {
 	GetLLMProxyProjectUUID(artifactUUID, orgID string) (string, error)
 	GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error)
 	GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error)
-	GetApplicationsByProjectIDPaginated(projectID, orgID string, limit, offset int) ([]*model.Application, error)
+	GetApplicationsByProjectIDPaginated(projectID, orgID string, opts ListOptions) ([]*model.Application, error)
 	GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error)
-	CountApplicationsByProjectID(projectID, orgID string) (int, error)
+	CountApplicationsByProjectID(projectID, orgID, search string) (int, error)
 	CountApplicationsByOrganizationID(orgID string) (int, error)
 	GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error)
 	CheckApplicationHandleExists(handle, orgID string) (bool, error)
@@ -103,6 +104,8 @@ type APIRepository interface {
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
 	GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error)
 	GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) ([]*model.API, error)
+	GetAPIsByOrganizationUUIDPaginated(orgUUID, projectUUID string, opts ListOptions) ([]*model.API, error)
+	CountAPIsByOrganizationUUID(orgUUID, projectUUID, search string) (int, error)
 	GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
 	DeleteAPI(apiUUID, orgUUID string) error
@@ -158,6 +161,8 @@ type GatewayRepository interface {
 	GetByOrganizationID(orgID string) ([]*model.Gateway, error)
 	GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error)
 	List() ([]*model.Gateway, error)
+	ListPaginated(orgID string, opts ListOptions) ([]*model.Gateway, error)
+	CountGateways(orgID, search string) (int, error)
 	Delete(gatewayID, organizationID string) error
 	UpdateGateway(gateway *model.Gateway) error
 	UpdateActiveStatus(gatewayId string, isActive bool) error
@@ -190,6 +195,7 @@ type SubscriptionPlanRepository interface {
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
 	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
+	CountByOrganization(orgUUID string) (int, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)

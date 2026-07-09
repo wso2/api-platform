@@ -182,7 +182,7 @@ func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*a
 	return s.modelToApplicationResponse(app)
 }
 
-func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle string, limit, offset int) (*api.ApplicationListResponse, error) {
+func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle string, opts repository.ListOptions) (*api.ApplicationListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
 		return nil, err
@@ -191,14 +191,14 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	if limit <= 0 {
-		limit = 20
+	if opts.Limit <= 0 {
+		opts.Limit = 20
 	}
-	if limit > 100 {
-		limit = 100
+	if opts.Limit > 100 {
+		opts.Limit = 100
 	}
-	if offset < 0 {
-		offset = 0
+	if opts.Offset < 0 {
+		opts.Offset = 0
 	}
 	if strings.TrimSpace(projectHandle) == "" {
 		return nil, constants.ErrProjectNotFound
@@ -212,35 +212,23 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 		return nil, constants.ErrProjectNotFound
 	}
 
-	apps, err := s.appRepo.GetApplicationsByProjectID(project.ID, orgID)
+	totalCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgID, opts.Search)
 	if err != nil {
 		return nil, err
 	}
 
-	totalCount := len(apps)
-	if offset > totalCount {
-		offset = totalCount
+	pagedApps, err := s.appRepo.GetApplicationsByProjectIDPaginated(project.ID, orgID, opts)
+	if err != nil {
+		return nil, err
 	}
-
-	end := totalCount
-	effectiveLimit := totalCount
-	if limit > 0 {
-		effectiveLimit = limit
-		end = offset + limit
-		if end > totalCount {
-			end = totalCount
-		}
-	}
-
-	pagedApps := apps[offset:end]
 
 	response := &api.ApplicationListResponse{
 		Count: len(pagedApps),
 		List:  make([]api.Application, 0, len(pagedApps)),
 		Pagination: api.Pagination{
 			Total:  totalCount,
-			Offset: offset,
-			Limit:  effectiveLimit,
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
 		},
 	}
 
@@ -838,25 +826,10 @@ func (s *ApplicationService) buildApplicationAssociationListPaginated(applicatio
 		return nil, err
 	}
 
-	if offset < 0 {
-		offset = 0
-	}
-
+	// Associations for one application are a small, bounded set, so the total is
+	// the full count and the requested window is applied in memory.
 	total := len(associations)
-	if offset > total {
-		offset = total
-	}
-
-	pagedAssociations := associations
-	effectiveLimit := len(associations)
-	if limit > 0 {
-		effectiveLimit = limit
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		pagedAssociations = associations[offset:end]
-	}
+	pagedAssociations := paginateSlice(associations, limit, offset)
 
 	response := &ApplicationAssociationListResponse{
 		Count: len(pagedAssociations),
@@ -864,7 +837,7 @@ func (s *ApplicationService) buildApplicationAssociationListPaginated(applicatio
 		Pagination: api.Pagination{
 			Total:  total,
 			Offset: offset,
-			Limit:  effectiveLimit,
+			Limit:  limit,
 		},
 	}
 
@@ -887,26 +860,10 @@ func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID stri
 }
 
 func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.ApplicationAPIKey, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
-
-	if offset < 0 {
-		offset = 0
-	}
-
+	// Mapped API keys for one application are a small, bounded set, so the total
+	// is the full count and the requested window is applied in memory.
 	total := len(keys)
-	if offset > total {
-		offset = total
-	}
-
-	pagedKeys := keys
-	effectiveLimit := len(keys)
-	if limit > 0 {
-		effectiveLimit = limit
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		pagedKeys = keys[offset:end]
-	}
+	pagedKeys := paginateSlice(keys, limit, offset)
 
 	response := &api.MappedAPIKeyListResponse{
 		Count: len(pagedKeys),
@@ -914,7 +871,7 @@ func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.Application
 		Pagination: api.Pagination{
 			Total:  total,
 			Offset: offset,
-			Limit:  effectiveLimit,
+			Limit:  limit,
 		},
 	}
 

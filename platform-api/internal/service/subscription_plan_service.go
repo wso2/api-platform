@@ -153,6 +153,11 @@ func (s *SubscriptionPlanService) ListPlans(orgUUID string, limit, offset int) (
 	return s.planRepo.ListByOrganization(orgUUID, limit, offset)
 }
 
+// CountPlans returns the total number of subscription plans in an organization.
+func (s *SubscriptionPlanService) CountPlans(orgUUID string) (int, error) {
+	return s.planRepo.CountByOrganization(orgUUID)
+}
+
 // UpdatePlan updates a subscription plan
 func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
 	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)

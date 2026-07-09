@@ -152,7 +152,8 @@ func (s *SecretService) List(orgID string, limit, offset int, updatedAfter *time
 	}
 
 	return &dto.SecretListResponse{
-		List: summaries,
+		Count: len(summaries),
+		List:  summaries,
 		Pagination: dto.Pagination{
 			Total:  total,
 			Limit:  limit,

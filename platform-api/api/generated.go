@@ -99,6 +99,11 @@ const (
 	DeploymentResponseStatusUNDEPLOYING DeploymentResponseStatus = "UNDEPLOYING"
 )
 
+// Defines values for ErrorStatus.
+const (
+	ErrorStatusError ErrorStatus = "error"
+)
+
 // Defines values for ExtractionIdentifierLocation.
 const (
 	ExtractionIdentifierLocationHeader     ExtractionIdentifierLocation = "header"
@@ -339,6 +344,42 @@ const (
 	DeploymentStatusQUNDEPLOYING DeploymentStatusQ = "UNDEPLOYING"
 )
 
+// Defines values for SortByQ.
+const (
+	SortByQCreatedAt SortByQ = "createdAt"
+	SortByQName      SortByQ = "name"
+)
+
+// Defines values for SortOrderQ.
+const (
+	SortOrderQAsc  SortOrderQ = "asc"
+	SortOrderQDesc SortOrderQ = "desc"
+)
+
+// Defines values for ListApplicationsParamsSortBy.
+const (
+	ListApplicationsParamsSortByCreatedAt ListApplicationsParamsSortBy = "createdAt"
+	ListApplicationsParamsSortByName      ListApplicationsParamsSortBy = "name"
+)
+
+// Defines values for ListApplicationsParamsSortOrder.
+const (
+	ListApplicationsParamsSortOrderAsc  ListApplicationsParamsSortOrder = "asc"
+	ListApplicationsParamsSortOrderDesc ListApplicationsParamsSortOrder = "desc"
+)
+
+// Defines values for ListGatewaysParamsSortBy.
+const (
+	ListGatewaysParamsSortByCreatedAt ListGatewaysParamsSortBy = "createdAt"
+	ListGatewaysParamsSortByName      ListGatewaysParamsSortBy = "name"
+)
+
+// Defines values for ListGatewaysParamsSortOrder.
+const (
+	ListGatewaysParamsSortOrderAsc  ListGatewaysParamsSortOrder = "asc"
+	ListGatewaysParamsSortOrderDesc ListGatewaysParamsSortOrder = "desc"
+)
+
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
 	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
@@ -374,6 +415,30 @@ const (
 	LlmProvider ListUserAPIKeysParamsType = "LlmProvider"
 	LlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
 	RestApi     ListUserAPIKeysParamsType = "RestApi"
+)
+
+// Defines values for ListProjectsParamsSortBy.
+const (
+	ListProjectsParamsSortByCreatedAt ListProjectsParamsSortBy = "createdAt"
+	ListProjectsParamsSortByName      ListProjectsParamsSortBy = "name"
+)
+
+// Defines values for ListProjectsParamsSortOrder.
+const (
+	ListProjectsParamsSortOrderAsc  ListProjectsParamsSortOrder = "asc"
+	ListProjectsParamsSortOrderDesc ListProjectsParamsSortOrder = "desc"
+)
+
+// Defines values for ListRESTAPIsParamsSortBy.
+const (
+	CreatedAt ListRESTAPIsParamsSortBy = "createdAt"
+	Name      ListRESTAPIsParamsSortBy = "name"
+)
+
+// Defines values for ListRESTAPIsParamsSortOrder.
+const (
+	Asc  ListRESTAPIsParamsSortOrder = "asc"
+	Desc ListRESTAPIsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
@@ -913,6 +978,16 @@ type CreateSubscriptionRequestKind string
 // CreateSubscriptionRequestStatus Subscription status (default ACTIVE)
 type CreateSubscriptionRequestStatus string
 
+// CustomPolicyListResponse defines model for CustomPolicyListResponse.
+type CustomPolicyListResponse struct {
+	// Count Number of custom policies in current response
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List List of custom policies
+	List       []CustomPolicyResponse `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination             `json:"pagination" yaml:"pagination"`
+}
+
 // CustomPolicyResponse A custom policy stored in the platform's custom policy registry.
 type CustomPolicyResponse struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
@@ -955,11 +1030,12 @@ type DeployRequest struct {
 
 // DeploymentListResponse defines model for DeploymentListResponse.
 type DeploymentListResponse struct {
-	// Count Total number of deployments
+	// Count Number of deployments in current response
 	Count int `binding:"required" json:"count" yaml:"count"`
 
 	// List List of deployments
-	List []DeploymentResponse `binding:"required" json:"list" yaml:"list"`
+	List       []DeploymentResponse `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination           `json:"pagination" yaml:"pagination"`
 }
 
 // DeploymentResponse defines model for DeploymentResponse.
@@ -1007,19 +1083,29 @@ type DeploymentResponse struct {
 // - ARCHIVED: Historical deployment, can be rolled back
 type DeploymentResponseStatus string
 
-// Error defines model for Error.
+// Error The single error shape returned by every failed request across the API.
 type Error struct {
-	Code int64 `binding:"required" json:"code" yaml:"code"`
+	// Code Stable, machine-readable error code from the error catalog, in the form `<DOMAIN>_<REASON>` (e.g. `REST_API_NOT_FOUND`). Clients and agents should branch on this, not on the HTTP status.
+	Code string `binding:"required" json:"code" yaml:"code"`
 
-	// Details A detailed description about the error message
-	Details *string `json:"details,omitempty" yaml:"details,omitempty"`
+	// Details Optional structured metadata specific to this error condition (e.g. the resources referencing a secret that blocked its deletion). Shape varies by `code`; absent when not applicable.
+	Details *map[string]interface{} `json:"details,omitempty" yaml:"details,omitempty"`
 
-	// Errors List of specific errors (useful for validation errors)
-	Errors *[]map[string]interface{} `json:"errors,omitempty" yaml:"errors,omitempty"`
+	// Errors Per-field validation failures. Present when the error is a validation failure.
+	Errors *[]FieldError `json:"errors,omitempty" yaml:"errors,omitempty"`
 
-	// Title Error message
-	Title string `binding:"required" json:"title" yaml:"title"`
+	// Message Human-readable description of the error.
+	Message string `binding:"required" json:"message" yaml:"message"`
+
+	// Status Always the literal "error".
+	Status ErrorStatus `binding:"required" json:"status" yaml:"status"`
+
+	// TrackingId Correlation ID for server-side failures. Present only on 5xx responses; quote it when reporting the error so operators can find the corresponding server log entry.
+	TrackingId *openapi_types.UUID `json:"trackingId,omitempty" yaml:"trackingId,omitempty"`
 }
+
+// ErrorStatus Always the literal "error".
+type ErrorStatus string
 
 // ExpirationDuration defines model for ExpirationDuration.
 type ExpirationDuration struct {
@@ -1041,6 +1127,15 @@ type ExtractionIdentifier struct {
 
 // ExtractionIdentifierLocation Where to find the token information
 type ExtractionIdentifierLocation string
+
+// FieldError defines model for FieldError.
+type FieldError struct {
+	// Field Path of the offending field.
+	Field string `binding:"required" json:"field" yaml:"field"`
+
+	// Message Why the field failed validation.
+	Message string `binding:"required" json:"message" yaml:"message"`
+}
 
 // GatewayListResponse defines model for GatewayListResponse.
 type GatewayListResponse struct {
@@ -1136,6 +1231,16 @@ type GatewayStatusResponse struct {
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
+}
+
+// GatewayTokenListResponse defines model for GatewayTokenListResponse.
+type GatewayTokenListResponse struct {
+	// Count Number of tokens in current response
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List List of active tokens
+	List       []TokenInfoResponse `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
 // LLMAccessControl defines model for LLMAccessControl.
@@ -1266,11 +1371,12 @@ type LLMProvider struct {
 
 // LLMProviderAPIKeyListResponse defines model for LLMProviderAPIKeyListResponse.
 type LLMProviderAPIKeyListResponse struct {
-	// Count Total number of API keys returned
+	// Count Number of API keys in current response
 	Count int `binding:"required" json:"count" yaml:"count"`
 
-	// Items List of API keys
-	Items []APIKeyItem `binding:"required" json:"items" yaml:"items"`
+	// List List of API keys
+	List       []APIKeyItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination   `json:"pagination" yaml:"pagination"`
 }
 
 // LLMProviderListItem defines model for LLMProviderListItem.
@@ -1512,11 +1618,12 @@ type LLMProxy struct {
 
 // LLMProxyAPIKeyListResponse defines model for LLMProxyAPIKeyListResponse.
 type LLMProxyAPIKeyListResponse struct {
-	// Count Total number of API keys returned
+	// Count Number of API keys in current response
 	Count int `binding:"required" json:"count" yaml:"count"`
 
-	// Items List of API keys
-	Items []APIKeyItem `binding:"required" json:"items" yaml:"items"`
+	// List List of API keys
+	List       []APIKeyItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination   `json:"pagination" yaml:"pagination"`
 }
 
 // LLMProxyListItem defines model for LLMProxyListItem.
@@ -2123,18 +2230,10 @@ type SecretCreateRequest struct {
 // SecretCreateRequestType defines model for SecretCreateRequest.Type.
 type SecretCreateRequestType string
 
-// SecretDeleteConflict defines model for SecretDeleteConflict.
-type SecretDeleteConflict struct {
-	Error      *string `json:"error,omitempty" yaml:"error,omitempty"`
-	References *[]struct {
-		Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
-		Name   *string `json:"name,omitempty" yaml:"name,omitempty"`
-		Type   *string `json:"type,omitempty" yaml:"type,omitempty"`
-	} `json:"references,omitempty" yaml:"references,omitempty"`
-}
-
 // SecretListResponse defines model for SecretListResponse.
 type SecretListResponse struct {
+	// Count Number of secrets in current response
+	Count      int             `binding:"required" json:"count" yaml:"count"`
 	List       []SecretSummary `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination      `json:"pagination" yaml:"pagination"`
 }
@@ -2253,9 +2352,11 @@ type SubscriptionStatus string
 // SubscriptionListResponse defines model for SubscriptionListResponse.
 type SubscriptionListResponse struct {
 	// Count Number of subscriptions in current response
-	Count         int            `binding:"required" json:"count" yaml:"count"`
-	Pagination    Pagination     `json:"pagination" yaml:"pagination"`
-	Subscriptions []Subscription `binding:"required" json:"subscriptions" yaml:"subscriptions"`
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List List of subscriptions in current response
+	List       []Subscription `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination     `json:"pagination" yaml:"pagination"`
 }
 
 // SubscriptionPlan defines model for SubscriptionPlan.
@@ -2316,8 +2417,12 @@ type SubscriptionPlanLimitTimeUnit string
 
 // SubscriptionPlanListResponse defines model for SubscriptionPlanListResponse.
 type SubscriptionPlanListResponse struct {
-	Count             *int                `json:"count,omitempty" yaml:"count,omitempty"`
-	SubscriptionPlans *[]SubscriptionPlan `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	// Count Number of subscription plans in current response
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List List of subscription plans in current response
+	List       []SubscriptionPlan `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
 // TimeUnit Time unit for API key expiration duration
@@ -2493,11 +2598,12 @@ type UserAPIKeyItemStatus string
 
 // UserAPIKeyListResponse defines model for UserAPIKeyListResponse.
 type UserAPIKeyListResponse struct {
-	// Count Total number of API keys returned
+	// Count Number of API keys in current response
 	Count int `binding:"required" json:"count" yaml:"count"`
 
-	// Items List of API keys
-	Items []UserAPIKeyItem `binding:"required" json:"items" yaml:"items"`
+	// List List of API keys
+	List       []UserAPIKeyItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
 // ApiId defines model for apiId.
@@ -2524,8 +2630,14 @@ type GatewayId = string
 // GatewayIdQ defines model for gatewayId-Q.
 type GatewayIdQ = string
 
+// LimitQ defines model for limit-Q.
+type LimitQ = int
+
 // MappedKeyId defines model for mappedKeyId.
 type MappedKeyId = string
+
+// OffsetQ defines model for offset-Q.
+type OffsetQ = int
 
 // ProjectId defines model for projectId.
 type ProjectId = string
@@ -2533,28 +2645,40 @@ type ProjectId = string
 // ProjectIdQ defines model for projectId-Q.
 type ProjectIdQ = string
 
+// QueryQ defines model for query-Q.
+type QueryQ = string
+
+// SortByQ defines model for sortBy-Q.
+type SortByQ string
+
+// SortOrderQ defines model for sortOrder-Q.
+type SortOrderQ string
+
 // TokenId defines model for tokenId.
 type TokenId = openapi_types.UUID
 
-// BadRequest defines model for BadRequest.
+// BadRequest The single error shape returned by every failed request across the API.
 type BadRequest = Error
 
-// Conflict defines model for Conflict.
+// Conflict The single error shape returned by every failed request across the API.
 type Conflict = Error
 
-// Forbidden defines model for Forbidden.
+// Forbidden The single error shape returned by every failed request across the API.
 type Forbidden = Error
 
-// InternalServerError defines model for InternalServerError.
+// GatewayConnectionUnavailable The single error shape returned by every failed request across the API.
+type GatewayConnectionUnavailable = Error
+
+// InternalServerError The single error shape returned by every failed request across the API.
 type InternalServerError = Error
 
-// NotFound defines model for NotFound.
+// NotFound The single error shape returned by every failed request across the API.
 type NotFound = Error
 
-// ServiceUnavailable defines model for ServiceUnavailable.
+// ServiceUnavailable The single error shape returned by every failed request across the API.
 type ServiceUnavailable = Error
 
-// Unauthorized defines model for Unauthorized.
+// Unauthorized The single error shape returned by every failed request across the API.
 type Unauthorized = Error
 
 // ListApplicationsParams defines parameters for ListApplications.
@@ -2562,20 +2686,35 @@ type ListApplicationsParams struct {
 	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
-	// Limit Maximum number of applications to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of applications to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListApplicationsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListApplicationsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
+
+// ListApplicationsParamsSortBy defines parameters for ListApplications.
+type ListApplicationsParamsSortBy string
+
+// ListApplicationsParamsSortOrder defines parameters for ListApplications.
+type ListApplicationsParamsSortOrder string
 
 // ListApplicationAPIKeysParams defines parameters for ListApplicationAPIKeys.
 type ListApplicationAPIKeysParams struct {
-	// Limit Maximum number of mapped API keys to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of mapped API keys to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // RemoveApplicationAPIKeyParams defines parameters for RemoveApplicationAPIKey.
@@ -2586,20 +2725,29 @@ type RemoveApplicationAPIKeyParams struct {
 
 // ListApplicationAssociationsParams defines parameters for ListApplicationAssociations.
 type ListApplicationAssociationsParams struct {
-	// Limit Maximum number of associations to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of associations to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // ListApplicationAssociationAPIKeysParams defines parameters for ListApplicationAssociationAPIKeys.
 type ListApplicationAssociationAPIKeysParams struct {
-	// Limit Maximum number of mapped API keys to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of mapped API keys to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListGatewayCustomPoliciesParams defines parameters for ListGatewayCustomPolicies.
+type ListGatewayCustomPoliciesParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // SyncCustomPolicyParams defines parameters for SyncCustomPolicy.
@@ -2614,16 +2762,49 @@ type SyncCustomPolicyParams struct {
 	PolicyVersion string `form:"policyVersion" json:"policyVersion" yaml:"policyVersion"`
 }
 
+// ListGatewaysParams defines parameters for ListGateways.
+type ListGatewaysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListGatewaysParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListGatewaysParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListGatewaysParamsSortBy defines parameters for ListGateways.
+type ListGatewaysParamsSortBy string
+
+// ListGatewaysParamsSortOrder defines parameters for ListGateways.
+type ListGatewaysParamsSortOrder string
+
+// ListGatewayTokensParams defines parameters for ListGatewayTokens.
+type ListGatewayTokensParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
 	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av2.0).
 	Query *string `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 
-	// Limit Maximum number of LLM provider templates to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of LLM provider templates to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // CopyLLMProviderTemplateVersionParams defines parameters for CopyLLMProviderTemplateVersion.
@@ -2645,11 +2826,20 @@ type SetLLMProviderTemplateVersionEnabledJSONBody struct {
 
 // ListLLMProvidersParams defines parameters for ListLLMProviders.
 type ListLLMProvidersParams struct {
-	// Limit Maximum number of LLM providers to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of LLM providers to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListLLMProviderAPIKeysParams defines parameters for ListLLMProviderAPIKeys.
+type ListLLMProviderAPIKeysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
@@ -2659,6 +2849,12 @@ type GetLLMProviderDeploymentsParams struct {
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetLLMProviderDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetLLMProviderDeploymentsParamsStatus defines parameters for GetLLMProviderDeployments.
@@ -2678,11 +2874,11 @@ type UndeployLLMProviderDeploymentParams struct {
 
 // ListLLMProxiesByProviderParams defines parameters for ListLLMProxiesByProvider.
 type ListLLMProxiesByProviderParams struct {
-	// Limit Maximum number of LLM proxies to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of LLM proxies to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // ListLLMProxiesParams defines parameters for ListLLMProxies.
@@ -2690,11 +2886,20 @@ type ListLLMProxiesParams struct {
 	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
-	// Limit Maximum number of LLM proxies to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of LLM proxies to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListLLMProxyAPIKeysParams defines parameters for ListLLMProxyAPIKeys.
+type ListLLMProxyAPIKeysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
@@ -2704,6 +2909,12 @@ type GetLLMProxyDeploymentsParams struct {
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetLLMProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetLLMProxyDeploymentsParamsStatus defines parameters for GetLLMProxyDeployments.
@@ -2726,11 +2937,11 @@ type ListMCPProxiesParams struct {
 	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
-	// Limit Maximum number of MCP proxies to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of MCP proxies to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
@@ -2740,6 +2951,12 @@ type GetMCPProxyDeploymentsParams struct {
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetMCPProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetMCPProxyDeploymentsParamsStatus defines parameters for GetMCPProxyDeployments.
@@ -2762,6 +2979,12 @@ type ListUserAPIKeysParams struct {
 	// Type Comma-separated list of artifact types to filter by.
 	// If omitted, all types are returned.
 	Type *[]ListUserAPIKeysParamsType `form:"type,omitempty" json:"type,omitempty" yaml:"type,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // ListUserAPIKeysParamsType defines parameters for ListUserAPIKeys.
@@ -2769,18 +2992,63 @@ type ListUserAPIKeysParamsType string
 
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
-	// Limit Maximum number of organizations to return per page.
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Zero-based index of the first organization to return.
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
+
+// ListProjectsParams defines parameters for ListProjects.
+type ListProjectsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListProjectsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListProjectsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListProjectsParamsSortBy defines parameters for ListProjects.
+type ListProjectsParamsSortBy string
+
+// ListProjectsParamsSortOrder defines parameters for ListProjects.
+type ListProjectsParamsSortOrder string
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
 	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListRESTAPIsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListRESTAPIsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
+
+// ListRESTAPIsParamsSortBy defines parameters for ListRESTAPIs.
+type ListRESTAPIsParamsSortBy string
+
+// ListRESTAPIsParamsSortOrder defines parameters for ListRESTAPIs.
+type ListRESTAPIsParamsSortOrder string
 
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
@@ -2789,6 +3057,12 @@ type GetDeploymentsParams struct {
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetDeploymentsParamsStatus defines parameters for GetDeployments.
@@ -2806,16 +3080,37 @@ type UndeployDeploymentParams struct {
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
+// GetRESTAPIGatewaysParams defines parameters for GetRESTAPIGateways.
+type GetRESTAPIGatewaysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
 // AddGatewaysToAPIJSONBody defines parameters for AddGatewaysToAPI.
 type AddGatewaysToAPIJSONBody = []AddGatewayToRESTAPIRequest
 
 // ListSecretsParams defines parameters for ListSecrets.
 type ListSecretsParams struct {
-	Limit  *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 
 	// UpdatedAfter RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.
 	UpdatedAfter *time.Time `form:"updatedAfter,omitempty" json:"updatedAfter,omitempty" yaml:"updatedAfter,omitempty"`
+}
+
+// ListSubscriptionPlansParams defines parameters for ListSubscriptionPlans.
+type ListSubscriptionPlansParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
@@ -2832,11 +3127,11 @@ type ListSubscriptionsParams struct {
 	// Status Filter by status (ACTIVE, INACTIVE, REVOKED)
 	Status *ListSubscriptionsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 
-	// Limit Maximum number of subscriptions to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
-	// Offset Number of subscriptions to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // ListSubscriptionsParamsStatus defines parameters for ListSubscriptions.

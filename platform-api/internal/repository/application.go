@@ -234,15 +234,21 @@ func (r *ApplicationRepo) GetApplicationsByOrganizationID(orgID string) ([]*mode
 	return scanApplications(rows)
 }
 
-func (r *ApplicationRepo) GetApplicationsByProjectIDPaginated(projectID, orgID string, _, _ int) ([]*model.Application, error) {
-	// TODO: Re-enable DB-level pagination when query placeholders and syntax are verified
-	// across all supported database drivers.
-	rows, err := r.db.Query(r.db.Rebind(`
+func (r *ApplicationRepo) GetApplicationsByProjectIDPaginated(projectID, orgID string, opts ListOptions) ([]*model.Application, error) {
+	query := `
 		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
-		WHERE project_uuid = ? AND organization_uuid = ?
-		ORDER BY created_at DESC, display_name ASC
-	`), projectID, orgID)
+		WHERE project_uuid = ? AND organization_uuid = ?`
+	args := []any{projectID, orgID}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " ORDER BY " + col + " " + dir + ", handle ASC " + pageClause
+	args = append(args, pageArgs...)
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -251,15 +257,15 @@ func (r *ApplicationRepo) GetApplicationsByProjectIDPaginated(projectID, orgID s
 	return scanApplications(rows)
 }
 
-func (r *ApplicationRepo) GetApplicationsByOrganizationIDPaginated(orgID string, _, _ int) ([]*model.Application, error) {
-	// TODO: Re-enable DB-level pagination when query placeholders and syntax are verified
-	// across all supported database drivers.
-	rows, err := r.db.Query(r.db.Rebind(`
+func (r *ApplicationRepo) GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query := `
 		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC, display_name ASC
-	`), orgID)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -268,14 +274,18 @@ func (r *ApplicationRepo) GetApplicationsByOrganizationIDPaginated(orgID string,
 	return scanApplications(rows)
 }
 
-func (r *ApplicationRepo) CountApplicationsByProjectID(projectID, orgID string) (int, error) {
-	var count int
-	err := r.db.QueryRow(r.db.Rebind(`
+func (r *ApplicationRepo) CountApplicationsByProjectID(projectID, orgID, search string) (int, error) {
+	query := `
 		SELECT COUNT(*)
 		FROM applications
-		WHERE project_uuid = ? AND organization_uuid = ?
-	`), projectID, orgID).Scan(&count)
-	if err != nil {
+		WHERE project_uuid = ? AND organization_uuid = ?`
+	args := []any{projectID, orgID}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	var count int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count); err != nil {
 		return 0, err
 	}
 

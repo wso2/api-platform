@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -116,33 +115,9 @@ func (h *ApplicationHandler) ListApplications(w http.ResponseWriter, r *http.Req
 		return apperror.ValidationFailed.New("Project ID is required")
 	}
 
-	var limitStr string
-	if v := r.URL.Query().Get("limit"); v != "" {
-		limitStr = v
-	} else {
-		limitStr = "20"
-	}
-	var offsetStr string
-	if v := r.URL.Query().Get("offset"); v != "" {
-		offsetStr = v
-	} else {
-		offsetStr = "0"
-	}
+	opts := parseListOptions(r)
 
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
-
-	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID, limit, offset)
+	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID, opts)
 	if err != nil {
 		return h.mapApplicationError(err).
 			WithLogMessage(fmt.Sprintf("failed to list applications for project %s in org %s", projectID, orgID))
@@ -220,24 +195,7 @@ func (h *ApplicationHandler) ListApplicationAssociations(w http.ResponseWriter, 
 		return apperror.ValidationFailed.New("Application ID is required")
 	}
 
-	limit := 20
-	if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err == nil && parsedLimit > 0 {
-			if parsedLimit > 100 {
-				parsedLimit = 100
-			}
-			limit = parsedLimit
-		}
-	}
-
-	offset := 0
-	if offsetStr := strings.TrimSpace(r.URL.Query().Get("offset")); offsetStr != "" {
-		parsedOffset, err := strconv.Atoi(offsetStr)
-		if err == nil && parsedOffset >= 0 {
-			offset = parsedOffset
-		}
-	}
+	limit, offset := parsePagination(r)
 
 	associations, err := h.applicationService.ListApplicationAssociations(appID, orgID, limit, offset)
 	if err != nil {
@@ -316,24 +274,7 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(w http.ResponseWriter, r *ht
 		return apperror.ValidationFailed.New("Application ID is required")
 	}
 
-	limit := 20
-	if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err == nil && parsedLimit > 0 {
-			if parsedLimit > 100 {
-				parsedLimit = 100
-			}
-			limit = parsedLimit
-		}
-	}
-
-	offset := 0
-	if offsetStr := strings.TrimSpace(r.URL.Query().Get("offset")); offsetStr != "" {
-		parsedOffset, err := strconv.Atoi(offsetStr)
-		if err == nil && parsedOffset >= 0 {
-			offset = parsedOffset
-		}
-	}
+	limit, offset := parsePagination(r)
 
 	keys, err := h.applicationService.ListMappedAPIKeys(appID, orgID, limit, offset)
 	if err != nil {
@@ -361,24 +302,7 @@ func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(w http.ResponseWr
 		return apperror.ValidationFailed.New("Association ID is required")
 	}
 
-	limit := 20
-	if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err == nil && parsedLimit > 0 {
-			if parsedLimit > 100 {
-				parsedLimit = 100
-			}
-			limit = parsedLimit
-		}
-	}
-
-	offset := 0
-	if offsetStr := strings.TrimSpace(r.URL.Query().Get("offset")); offsetStr != "" {
-		parsedOffset, err := strconv.Atoi(offsetStr)
-		if err == nil && parsedOffset >= 0 {
-			offset = parsedOffset
-		}
-	}
+	limit, offset := parsePagination(r)
 
 	keys, err := h.applicationService.ListMappedAPIKeysForAssociation(appID, associationID, orgID, limit, offset)
 	if err != nil {

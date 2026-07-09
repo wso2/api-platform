@@ -65,6 +65,7 @@ func NewLLMProviderAPIKeyService(
 func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 	ctx context.Context,
 	providerID, orgID, userID string,
+	limit, offset int,
 ) (*api.LLMProviderAPIKeyListResponse, error) {
 
 	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
@@ -106,9 +107,15 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		items = append(items, item)
 	}
 
+	// API keys for one provider (scoped to the caller) are a small, bounded set,
+	// so the total is the full count and the window is applied in memory.
+	total := len(items)
+	page := paginateSlice(items, limit, offset)
+
 	return &api.LLMProviderAPIKeyListResponse{
-		Items: items,
-		Count: len(items),
+		List:       page,
+		Count:      len(page),
+		Pagination: api.Pagination{Total: total, Offset: offset, Limit: limit},
 	}, nil
 }
 

@@ -65,6 +65,7 @@ func NewLLMProxyAPIKeyService(
 func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	ctx context.Context,
 	proxyID, orgID, userID string,
+	limit, offset int,
 ) (*api.LLMProxyAPIKeyListResponse, error) {
 
 	proxy, err := s.llmProxyRepo.GetByID(proxyID, orgID)
@@ -106,9 +107,15 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 		items = append(items, item)
 	}
 
+	// API keys for one proxy (scoped to the caller) are a small, bounded set,
+	// so the total is the full count and the window is applied in memory.
+	total := len(items)
+	page := paginateSlice(items, limit, offset)
+
 	return &api.LLMProxyAPIKeyListResponse{
-		Items: items,
-		Count: len(items),
+		List:       page,
+		Count:      len(page),
+		Pagination: api.Pagination{Total: total, Offset: offset, Limit: limit},
 	}, nil
 }
 

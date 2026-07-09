@@ -283,6 +283,71 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	return apis, rows.Err()
 }
 
+// GetAPIsByOrganizationUUIDPaginated retrieves a single page of APIs for an
+// organization with an optional project filter, applying LIMIT/OFFSET at the
+// database via the dialect-aware pagination clause.
+func (r *APIRepo) GetAPIsByOrganizationUUIDPaginated(orgUUID, projectUUID string, opts ListOptions) ([]*model.API, error) {
+	query := `
+		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
+			project_uuid, organization_uuid, lifecycle_status, configuration, origin, created_at, updated_at
+		FROM rest_apis
+		WHERE organization_uuid = ?`
+	args := []interface{}{orgUUID}
+
+	if projectUUID != "" {
+		query += " AND project_uuid = ?"
+		args = append(args, projectUUID)
+	}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	query += " ORDER BY " + col + " " + dir + ", handle ASC"
+
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " " + pageClause
+	args = append(args, pageArgs...)
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		api, err := r.scanAPI(rows)
+		if err != nil {
+			return nil, err
+		}
+		apis = append(apis, api)
+	}
+
+	return apis, rows.Err()
+}
+
+// CountAPIsByOrganizationUUID returns the total number of APIs for an
+// organization (with an optional project filter), independent of pagination.
+func (r *APIRepo) CountAPIsByOrganizationUUID(orgUUID, projectUUID, search string) (int, error) {
+	query := `SELECT COUNT(*) FROM rest_apis WHERE organization_uuid = ?`
+	args := []interface{}{orgUUID}
+	if projectUUID != "" {
+		query += " AND project_uuid = ?"
+		args = append(args, projectUUID)
+	}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+
+	var total int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // GetAPIsByGatewayUUID retrieves all APIs associated with a specific gateway
 func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `

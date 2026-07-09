@@ -24,7 +24,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -208,27 +207,7 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 			WithLogMessage("organization claim not found in token")
 	}
 
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr == "" {
-		limitStr = "20"
-	}
-	offsetStr := r.URL.Query().Get("offset")
-	if offsetStr == "" {
-		offsetStr = "0"
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	limit, offset := parsePagination(r)
 
 	q, familyScoped := parseTemplateQuery(r.URL.Query().Get("query"))
 	if familyScoped {
@@ -464,27 +443,7 @@ func (h *LLMHandler) ListLLMProviders(w http.ResponseWriter, r *http.Request) er
 			WithLogMessage("organization claim not found in token")
 	}
 
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr == "" {
-		limitStr = "20"
-	}
-	offsetStr := r.URL.Query().Get("offset")
-	if offsetStr == "" {
-		offsetStr = "0"
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	limit, offset := parsePagination(r)
 
 	resp, err := h.providerService.List(orgID, limit, offset)
 	if err != nil {
@@ -654,27 +613,7 @@ func (h *LLMHandler) ListLLMProxies(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New("projectId query parameter is required")
 	}
 
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr == "" {
-		limitStr = "20"
-	}
-	offsetStr := r.URL.Query().Get("offset")
-	if offsetStr == "" {
-		offsetStr = "0"
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	limit, offset := parsePagination(r)
 
 	resp, err := h.proxyService.List(orgID, &projectID, limit, offset)
 	if err != nil {
@@ -696,27 +635,7 @@ func (h *LLMHandler) ListLLMProxiesByProvider(w http.ResponseWriter, r *http.Req
 	}
 	providerID := r.PathValue("llmProviderId")
 
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr == "" {
-		limitStr = "20"
-	}
-	offsetStr := r.URL.Query().Get("offset")
-	if offsetStr == "" {
-		offsetStr = "0"
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	limit, offset := parsePagination(r)
 
 	resp, err := h.proxyService.ListByProvider(orgID, providerID, limit, offset)
 	if err != nil {

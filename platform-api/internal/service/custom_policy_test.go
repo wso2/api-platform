@@ -655,7 +655,7 @@ func TestListCustomPolicies(t *testing.T) {
 			}
 			svc := newTestGatewayService(&mockGatewayRepoForPolicy{}, cpRepo)
 
-			policies, err := svc.ListCustomPolicies(orgID)
+			policies, _, err := svc.ListCustomPolicies(orgID, 20, 0)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListCustomPolicies() error = %v, wantErr %v", err, tt.wantErr)

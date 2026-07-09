@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	api "github.com/wso2/api-platform/platform-api/api"
@@ -233,28 +232,12 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 			WithLogMessage("organization claim not found in token")
 	}
 
-	var limitStr string
-	if v := r.URL.Query().Get("limit"); v != "" {
-		limitStr = v
-	} else {
-		limitStr = "20"
-	}
-	var offsetStr string
-	if v := r.URL.Query().Get("offset"); v != "" {
-		offsetStr = v
-	} else {
-		offsetStr = "0"
-	}
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
+	limit, offset := parsePagination(r)
+
+	total, err := h.planService.CountPlans(orgId)
+	if err != nil {
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to count subscription plans for org %s", orgId))
 	}
 
 	list, err := h.planService.ListPlans(orgId, limit, offset)
@@ -271,7 +254,15 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 		}
 		items = append(items, item)
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"subscriptionPlans": items, "count": len(items)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"list":  items,
+		"count": len(items),
+		"pagination": api.Pagination{
+			Total:  total,
+			Offset: offset,
+			Limit:  limit,
+		},
+	})
 	return nil
 }
 

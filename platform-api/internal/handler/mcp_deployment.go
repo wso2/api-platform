@@ -329,6 +329,8 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(w http.ResponseWriter
 		statusVal = string(*params.Status)
 	}
 
+	limit, offset := parsePagination(r)
+
 	deployments, err := h.deploymentService.GetDeploymentsByHandle(proxyId, gatewayVal, statusVal, orgId)
 	if err != nil {
 		switch {
@@ -342,6 +344,7 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(w http.ResponseWriter
 		}
 	}
 
+	paginateDeploymentList(deployments, limit, offset)
 	httputil.WriteJSON(w, http.StatusOK, deployments)
 	return nil
 }

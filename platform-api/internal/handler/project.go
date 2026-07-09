@@ -119,7 +119,9 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) er
 			WithLogMessage("organization claim not found in token")
 	}
 
-	projects, err := h.projectService.GetProjectsByOrganization(orgID)
+	opts := parseListOptions(r)
+
+	projects, total, err := h.projectService.GetProjectsByOrganization(orgID, opts)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -134,9 +136,9 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) er
 		Count: len(projects),
 		List:  projects,
 		Pagination: api.Pagination{
-			Total:  len(projects),
-			Offset: 0,
-			Limit:  len(projects),
+			Total:  total,
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
 		},
 	})
 	return nil
