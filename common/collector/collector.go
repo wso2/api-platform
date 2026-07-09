@@ -61,15 +61,15 @@ func MigrateDeprecatedCapture(analyticsEnabled bool, deprecated CaptureFlags, co
 		return
 	}
 	if deprecated.SendRequestBody && !*collectorSendRequestBody {
-		slog.Warn("analytics.send_request_body is deprecated; use collector.send_request_body instead")
+		slog.Warn("analytics.send_request_body is deprecated; use collector.request_body instead")
 		*collectorSendRequestBody = true
 	}
 	if deprecated.SendResponseBody && !*collectorSendResponseBody {
-		slog.Warn("analytics.send_response_body is deprecated; use collector.send_response_body instead")
+		slog.Warn("analytics.send_response_body is deprecated; use collector.response_body instead")
 		*collectorSendResponseBody = true
 	}
 	if deprecated.AllowPayloads {
-		slog.Warn("analytics.allow_payloads is deprecated; use collector.send_request_body and collector.send_response_body instead")
+		slog.Warn("analytics.allow_payloads is deprecated; use collector.request_body and collector.response_body instead")
 		if !*collectorSendRequestBody && !*collectorSendResponseBody {
 			*collectorSendRequestBody = true
 			*collectorSendResponseBody = true
@@ -82,7 +82,7 @@ func MigrateDeprecatedCapture(analyticsEnabled bool, deprecated CaptureFlags, co
 // analytics.access_logs_service on the policy-engine) onto the collector's
 // transport config when the collector's copy is still at its default, so
 // existing configs keep working after transport tuning moved to
-// [collector.als]. It is generic over the two modules' differing transport
+// [collector.server]. It is generic over the two modules' differing transport
 // struct shapes (T is only ever compared and assigned, never inspected). This
 // is analytics's own deprecated field, so it is only honored while
 // analyticsEnabled is true — otherwise a stale value left over from a
@@ -96,9 +96,9 @@ func MigrateDeprecatedTransport[T comparable](analyticsEnabled bool, deprecated 
 		return
 	}
 	if *collectorCfg == def {
-		slog.Warn(deprecatedKey + " is deprecated; migrating it to collector.als")
+		slog.Warn(deprecatedKey + " is deprecated; migrating it to collector.server")
 		*collectorCfg = deprecated
 	} else {
-		slog.Warn(deprecatedKey + " is deprecated and collector.als is already configured; ignoring the " + deprecatedKey + " override")
+		slog.Warn(deprecatedKey + " is deprecated and collector.server is already configured; ignoring the " + deprecatedKey + " override")
 	}
 }

@@ -105,7 +105,7 @@ func validConfig() *Config {
 		// Transport defaults mirror production so collector-gated grpc validation
 		// passes and the deprecated [analytics] alias stays neutral.
 		Collector: CollectorConfig{
-			GRPCEventServerCfg: defaultGRPCEventServerConfig(),
+			Server: defaultGRPCEventServerConfig(),
 		},
 		Analytics: AnalyticsConfig{
 			GRPCEventServerCfg: defaultGRPCEventServerConfig(),
@@ -1213,11 +1213,11 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Analytics enabled with valid UDS config (default mode)",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Collector.GRPCEventServerCfg.Mode = "uds"
-				cfg.Collector.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Collector.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Collector.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Collector.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "uds"
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr: false,
 		},
@@ -1225,12 +1225,12 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Analytics enabled with valid TCP config",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Collector.GRPCEventServerCfg.Mode = "tcp"
-				cfg.Collector.GRPCEventServerCfg.Port = 18090
-				cfg.Collector.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Collector.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Collector.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Collector.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "tcp"
+				cfg.Collector.Server.Port = 18090
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr: false,
 		},
@@ -1238,11 +1238,11 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Analytics enabled with empty mode defaults to UDS",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Collector.GRPCEventServerCfg.Mode = ""
-				cfg.Collector.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Collector.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Collector.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Collector.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = ""
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr: false,
 		},
@@ -1250,49 +1250,49 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Invalid mode value",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Collector.GRPCEventServerCfg.Mode = "invalid"
-				cfg.Collector.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Collector.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Collector.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Collector.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "invalid"
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr:     true,
-			errContains: "collector.als.mode must be 'uds' or 'tcp'",
+			errContains: "collector.server.mode must be 'uds' or 'tcp'",
 		},
 		{
 			name:    "TCP mode - invalid port",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Collector.GRPCEventServerCfg.Mode = "tcp"
-				cfg.Collector.GRPCEventServerCfg.Port = 0
-				cfg.Collector.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Collector.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Collector.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Collector.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "tcp"
+				cfg.Collector.Server.Port = 0
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr:     true,
-			errContains: "collector.als.port must be between 1 and 65535",
+			errContains: "collector.server.port must be between 1 and 65535",
 		},
 		{
 			name:    "Invalid server port",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Collector.GRPCEventServerCfg.Mode = "uds"
-				cfg.Collector.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Collector.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Collector.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Collector.GRPCEventServerCfg.ServerPort = 0
+				cfg.Collector.Server.Mode = "uds"
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+				cfg.Collector.Server.ServerPort = 0
 			},
 			wantErr:     true,
-			errContains: "collector.als.server_port must be between 1 and 65535",
+			errContains: "collector.server.server_port must be between 1 and 65535",
 		},
 		{
 			name:    "Invalid buffer flush interval",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Collector.GRPCEventServerCfg.Mode = "uds"
-				cfg.Collector.GRPCEventServerCfg.BufferFlushInterval = 0
-				cfg.Collector.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "uds"
+				cfg.Collector.Server.BufferFlushInterval = 0
+				cfg.Collector.Server.ServerPort = 18090
 			},
 			wantErr:     true,
 			errContains: "invalid gRPC event server configuration",
@@ -1407,8 +1407,8 @@ func TestConfig_ValidateAnalyticsPayloadMigration(t *testing.T) {
 			err := cfg.Validate()
 			require.NoError(t, err)
 			// Deprecated analytics body aliases now migrate onto the collector.
-			assert.Equal(t, tt.wantSendReq, cfg.Collector.SendRequestBody)
-			assert.Equal(t, tt.wantSendResp, cfg.Collector.SendResponseBody)
+			assert.Equal(t, tt.wantSendReq, cfg.Collector.RequestBody)
+			assert.Equal(t, tt.wantSendResp, cfg.Collector.ResponseBody)
 		})
 	}
 }
@@ -1426,8 +1426,8 @@ func TestConfig_ValidateAnalyticsPayloadMigration_SkippedWhenAnalyticsDisabled(t
 
 	err := cfg.Validate()
 	require.NoError(t, err)
-	assert.False(t, cfg.Collector.SendRequestBody)
-	assert.False(t, cfg.Collector.SendResponseBody)
+	assert.False(t, cfg.Collector.RequestBody)
+	assert.False(t, cfg.Collector.ResponseBody)
 }
 
 // TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled guards
@@ -1447,7 +1447,7 @@ func TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled
 
 	err := cfg.Validate()
 	require.NoError(t, err)
-	assert.Equal(t, defaultGRPCEventServerConfig(), cfg.Collector.GRPCEventServerCfg)
+	assert.Equal(t, defaultGRPCEventServerConfig(), cfg.Collector.Server)
 }
 
 func TestConfig_ValidateAuthConfig(t *testing.T) {

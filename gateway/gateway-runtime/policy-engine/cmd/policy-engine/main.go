@@ -272,7 +272,7 @@ func main() {
 	// collector is the shared transport that carries collected data to its
 	// consumers (analytics, traffic logging).
 	var alsServer *grpc.Server
-	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.AccessLogsServiceCfg)
+	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.Server)
 	if cfg.IsCollectorEnabled() {
 		// Start the access log service server
 		slog.Info("Starting the ALS gRPC server...")

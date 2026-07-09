@@ -1,8 +1,8 @@
 [collector]
-send_request_body = false
-send_response_body = false
-send_request_headers = false
-send_response_headers = false
+request_body = false
+response_body = false
+request_headers = false
+response_headers = false
 
 [analytics]
 enabled = true

@@ -55,15 +55,15 @@ type Config struct {
 // whenever a consumer is enabled — see Config.IsCollectorEnabled. This section
 // tunes capture and transport; it has no on/off flag of its own.
 type CollectorConfig struct {
-	// SendRequestBody / SendResponseBody attach captured request/response bodies
+	// RequestBody / ResponseBody attach captured request/response bodies
 	// onto the collected event.
-	SendRequestBody  bool `koanf:"send_request_body"`
-	SendResponseBody bool `koanf:"send_response_body"`
-	// AccessLogsServiceCfg tunes the policy-engine ALS receiver (the gRPC server
-	// that ingests collected access logs). It is part of the collector transport
-	// and is configured under the shared [collector.als] section (the controller
+	RequestBody  bool `koanf:"request_body"`
+	ResponseBody bool `koanf:"response_body"`
+	// Server tunes the policy-engine ALS receiver (the gRPC server that ingests
+	// collected access logs). It is part of the collector transport and is
+	// configured under the shared [collector.server] section (the controller
 	// reads the same section to configure Envoy's sender side).
-	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"als"`
+	Server AccessLogsServiceConfig `koanf:"server"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -73,12 +73,12 @@ type AnalyticsConfig struct {
 	Publishers         AnalyticsPublishersConfig `koanf:"publishers"`
 	GRPCEventServerCfg map[string]interface{}    `koanf:"grpc_event_server"`
 	// AccessLogsServiceCfg is a deprecated alias. ALS receiver tuning moved to
-	// [collector.als]; when set here it is migrated onto the collector during
-	// validation (with a warning). Prefer [collector.als].
+	// [collector.server]; when set here it is migrated onto the collector during
+	// validation (with a warning). Prefer [collector.server].
 	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
 	// AllowPayloads, SendRequestBody and SendResponseBody are deprecated aliases.
 	// Body capture now lives under [collector]. When set, these are mapped onto
-	// collector.send_request_body / collector.send_response_body during validation
+	// collector.request_body / collector.response_body during validation
 	// (with a warning). Prefer the [collector] fields directly.
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
@@ -403,9 +403,9 @@ func defaultConfig() *Config {
 			TracingServiceName: "policy-engine",
 		},
 		Collector: CollectorConfig{
-			SendRequestBody:      false,
-			SendResponseBody:     false,
-			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
+			RequestBody:  false,
+			ResponseBody: false,
+			Server:       defaultAccessLogsServiceConfig(),
 		},
 		TrafficLogging: TrafficLoggingConfig{
 			Enabled:        false,
@@ -607,7 +607,7 @@ func (c *Config) validateCollectorConfig() error {
 	c.migrateDeprecatedAnalyticsTransport()
 
 	if c.IsCollectorEnabled() {
-		if err := validateAccessLogsServiceConfig(c.Collector.AccessLogsServiceCfg); err != nil {
+		if err := validateAccessLogsServiceConfig(c.Collector.Server); err != nil {
 			return err
 		}
 	}
@@ -630,7 +630,7 @@ func (c *Config) migrateDeprecatedAnalyticsTransport() {
 	collector.MigrateDeprecatedTransport(
 		c.Analytics.Enabled,
 		c.Analytics.AccessLogsServiceCfg,
-		&c.Collector.AccessLogsServiceCfg,
+		&c.Collector.Server,
 		defaultAccessLogsServiceConfig(),
 		"analytics.access_logs_service",
 	)
@@ -643,22 +643,22 @@ func validateAccessLogsServiceConfig(als AccessLogsServiceConfig) error {
 		// UDS mode (default) - port is unused
 	case "tcp":
 		if als.ServerPort <= 0 || als.ServerPort > 65535 {
-			return fmt.Errorf("collector.als.server_port must be between 1 and 65535, got %d", als.ServerPort)
+			return fmt.Errorf("collector.server.server_port must be between 1 and 65535, got %d", als.ServerPort)
 		}
 	default:
-		return fmt.Errorf("collector.als.mode must be 'uds' or 'tcp', got: %s", als.Mode)
+		return fmt.Errorf("collector.server.mode must be 'uds' or 'tcp', got: %s", als.Mode)
 	}
 	if als.ShutdownTimeout <= 0 {
-		return fmt.Errorf("collector.als.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)
+		return fmt.Errorf("collector.server.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)
 	}
 	if als.ExtProcMaxMessageSize <= 0 {
-		return fmt.Errorf("collector.als.max_message_size must be positive, got %d", als.ExtProcMaxMessageSize)
+		return fmt.Errorf("collector.server.max_message_size must be positive, got %d", als.ExtProcMaxMessageSize)
 	}
 	if als.ExtProcMaxHeaderLimit <= 0 {
-		return fmt.Errorf("collector.als.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
+		return fmt.Errorf("collector.server.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
 	}
 	if als.ExtProcMaxHeaderLimit > math.MaxUint32 {
-		return fmt.Errorf("collector.als.max_header_limit must be <= %d, got %d", uint64(math.MaxUint32), als.ExtProcMaxHeaderLimit)
+		return fmt.Errorf("collector.server.max_header_limit must be <= %d, got %d", uint64(math.MaxUint32), als.ExtProcMaxHeaderLimit)
 	}
 	return nil
 }
@@ -677,8 +677,8 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 			SendResponseBody: c.Analytics.SendResponseBody,
 			AllowPayloads:    c.Analytics.AllowPayloads,
 		},
-		&c.Collector.SendRequestBody,
-		&c.Collector.SendResponseBody,
+		&c.Collector.RequestBody,
+		&c.Collector.ResponseBody,
 	)
 }
 

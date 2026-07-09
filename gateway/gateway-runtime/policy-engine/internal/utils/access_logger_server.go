@@ -90,15 +90,15 @@ func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 		Timeout: 20 * time.Second,
 	}
 	maxHeaderListSize, err := checkedUInt32FromPositiveInt(
-		"collector.als.max_header_limit",
-		cfg.Collector.AccessLogsServiceCfg.ExtProcMaxHeaderLimit,
+		"collector.server.max_header_limit",
+		cfg.Collector.Server.ExtProcMaxHeaderLimit,
 	)
 	if err != nil {
 		panic(err)
 	}
-	server, err := CreateGRPCServer(cfg.Collector.AccessLogsServiceCfg.PublicKeyPath,
-		cfg.Collector.AccessLogsServiceCfg.PrivateKeyPath, cfg.Collector.AccessLogsServiceCfg.ALSPlainText,
-		grpc.MaxRecvMsgSize(cfg.Collector.AccessLogsServiceCfg.ExtProcMaxMessageSize),
+	server, err := CreateGRPCServer(cfg.Collector.Server.PublicKeyPath,
+		cfg.Collector.Server.PrivateKeyPath, cfg.Collector.Server.ALSPlainText,
+		grpc.MaxRecvMsgSize(cfg.Collector.Server.ExtProcMaxMessageSize),
 		grpc.MaxHeaderListSize(maxHeaderListSize),
 		grpc.KeepaliveParams(kaParams))
 	if err != nil {
@@ -109,7 +109,7 @@ func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 
 	// Create listener based on mode (same pattern as ext_proc in main.go)
 	var listener net.Listener
-	alsMode := cfg.Collector.AccessLogsServiceCfg.Mode
+	alsMode := cfg.Collector.Server.Mode
 	if alsMode == "" {
 		alsMode = "uds"
 	}
@@ -139,14 +139,14 @@ func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 			}
 		}()
 	case "tcp":
-		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Collector.AccessLogsServiceCfg.ServerPort))
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Collector.Server.ServerPort))
 		if err != nil {
-			slog.Error("Failed to listen on ALS TCP port", "port", cfg.Collector.AccessLogsServiceCfg.ServerPort)
+			slog.Error("Failed to listen on ALS TCP port", "port", cfg.Collector.Server.ServerPort)
 			panic(err)
 		}
 
 		go func() {
-			slog.Info("Starting to serve access log service server", "mode", "tcp", "port", cfg.Collector.AccessLogsServiceCfg.ServerPort)
+			slog.Info("Starting to serve access log service server", "mode", "tcp", "port", cfg.Collector.Server.ServerPort)
 			if err := server.Serve(listener); err != nil {
 				slog.Error("ALS server exited", "error", err)
 			}

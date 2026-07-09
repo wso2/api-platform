@@ -1330,7 +1330,7 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Collector.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "uds",
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
@@ -1357,7 +1357,7 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Collector.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "",
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
@@ -1383,7 +1383,7 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Collector.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "tcp",
 			Port:                18090,
 			BufferFlushInterval: 1000000000,
@@ -1415,7 +1415,7 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
-	cfg.Collector.GRPCEventServerCfg = config.GRPCEventServerConfig{
+	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
 		Port:                18090,
 		BufferFlushInterval: 1000,
@@ -1433,7 +1433,7 @@ func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
-	cfg.Collector.GRPCEventServerCfg = config.GRPCEventServerConfig{
+	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
 		Port:                18090,
 		BufferFlushInterval: 1000,

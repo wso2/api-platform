@@ -142,11 +142,21 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		}
 	}
 
-	// When a fields selection is configured it is authoritative over presence:
-	// the per-flow Headers/Payload booleans are ignored and applyFieldsProjection
-	// in Publish decides what survives. Global masking always applies; per-API
-	// maskedHeaders are merged in here and passed down.
-	hasFieldsSelection := dir.Fields != nil && (len(dir.Fields.Only) > 0 || len(dir.Fields.Exclude) > 0)
+	// fields.only is a whitelist and is always authoritative over presence: every
+	// field gets attached here and applyFieldsProjection in Publish alone decides
+	// what survives, regardless of the per-flow Headers/Payload booleans.
+	//
+	// fields.exclude is different: when a flow (Request/Response) is explicitly
+	// configured, its Headers/Payload booleans keep governing presence as normal —
+	// exclude only trims already-present fields/sub-keys (e.g. one header) on top
+	// of that. This is what makes an unrelated `fields.exclude:
+	// [requestHeaders.cookie]` entry not silently defeat `request.payload: false`.
+	// Only when a flow isn't configured at all does exclude fall back to its
+	// "present unless named" convenience behavior, so `fields.exclude` alone (with
+	// no request/response block) still works as a blanket "log everything except
+	// X" shorthand.
+	hasOnlySelection := dir.Fields != nil && len(dir.Fields.Only) > 0
+	hasExcludeSelection := dir.Fields != nil && len(dir.Fields.Only) == 0 && len(dir.Fields.Exclude) > 0
 
 	// Effective header mask: global config merged with any per-API additions.
 	mask := l.maskedHeaders
@@ -163,7 +173,8 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 
 	// Request flow
 	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok {
-		if hasFieldsSelection || (dir.Request != nil && dir.Request.Headers) {
+		headersOn := dir.Request != nil && dir.Request.Headers
+		if fieldEnabled(hasOnlySelection, hasExcludeSelection, dir.Request, headersOn) {
 			if headers := parseHeadersFromString(raw); headers != nil {
 				masked := l.maskHeaders(headers, mask)
 				if dir.Request != nil {
@@ -174,14 +185,16 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyRequestPayload].(string); ok && p != "" {
-		if hasFieldsSelection || (dir.Request != nil && dir.Request.Payload) {
+		payloadOn := dir.Request != nil && dir.Request.Payload
+		if fieldEnabled(hasOnlySelection, hasExcludeSelection, dir.Request, payloadOn) {
 			tl.RequestBody = l.truncatePayload(p)
 		}
 	}
 
 	// Response flow
 	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok {
-		if hasFieldsSelection || (dir.Response != nil && dir.Response.Headers) {
+		headersOn := dir.Response != nil && dir.Response.Headers
+		if fieldEnabled(hasOnlySelection, hasExcludeSelection, dir.Response, headersOn) {
 			if headers := parseHeadersFromString(raw); headers != nil {
 				masked := l.maskHeaders(headers, mask)
 				if dir.Response != nil {
@@ -192,7 +205,8 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyResponsePayload].(string); ok && p != "" {
-		if hasFieldsSelection || (dir.Response != nil && dir.Response.Payload) {
+		payloadOn := dir.Response != nil && dir.Response.Payload
+		if fieldEnabled(hasOnlySelection, hasExcludeSelection, dir.Response, payloadOn) {
 			tl.ResponseBody = l.truncatePayload(p)
 		}
 	}
@@ -202,4 +216,19 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	}
 
 	return tl
+}
+
+// fieldEnabled decides whether a request/response header or payload field should
+// be attached to the traffic-log event, before any Fields projection trims it
+// back down. See the comment above hasOnlySelection/hasExcludeSelection in
+// toTrafficLogEvent for the reasoning.
+func fieldEnabled(hasOnlySelection, hasExcludeSelection bool, flow *dto.TrafficLogFlow, boolValue bool) bool {
+	switch {
+	case hasOnlySelection:
+		return true
+	case flow != nil:
+		return boolValue
+	default:
+		return hasExcludeSelection
+	}
 }

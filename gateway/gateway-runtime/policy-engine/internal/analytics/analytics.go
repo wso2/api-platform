@@ -491,13 +491,13 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	// Optionally attach request and response payloads when enabled via the collector.
-	if c.cfg.Collector.SendRequestBody {
+	if c.cfg.Collector.RequestBody {
 		if requestPayload, ok := keyValuePairsFromMetadata[dto.PropKeyRequestPayload]; ok && requestPayload != "" {
 			event.Properties[dto.PropKeyRequestPayload] = requestPayload
 			slog.Debug("Analytics request payload captured", "size_bytes", len(requestPayload))
 		}
 	}
-	if c.cfg.Collector.SendResponseBody {
+	if c.cfg.Collector.ResponseBody {
 		if responsePayload, ok := keyValuePairsFromMetadata[dto.PropKeyResponsePayload]; ok && responsePayload != "" {
 			event.Properties[dto.PropKeyResponsePayload] = responsePayload
 			slog.Debug("Analytics response payload captured", "size_bytes", len(responsePayload))

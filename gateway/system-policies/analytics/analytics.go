@@ -905,7 +905,7 @@ func convertToInt64(value interface{}) (int64, error) {
 }
 
 // getPayloadFlags derives per-direction payload capture flags from policy parameters.
-// New parameters send_request_body and send_response_body take precedence. When neither
+// New parameters request_body and response_body take precedence. When neither
 // is provided, the deprecated allow_payloads flag is used as a fallback, mapping to
 // both directions for backward compatibility.
 func getPayloadFlags(params map[string]interface{}) (sendRequestBody, sendResponseBody bool) {
@@ -915,11 +915,11 @@ func getPayloadFlags(params map[string]interface{}) (sendRequestBody, sendRespon
 
 	hasReq, hasResp := false, false
 
-	if raw, ok := params["send_request_body"]; ok {
+	if raw, ok := params["request_body"]; ok {
 		sendRequestBody = parseBoolLike(raw)
 		hasReq = true
 	}
-	if raw, ok := params["send_response_body"]; ok {
+	if raw, ok := params["response_body"]; ok {
 		sendResponseBody = parseBoolLike(raw)
 		hasResp = true
 	}
@@ -959,10 +959,10 @@ func getHeaderFlags(params map[string]interface{}) (sendRequestHeaders, sendResp
 	if params == nil {
 		return false, false
 	}
-	if raw, ok := params["send_request_headers"]; ok {
+	if raw, ok := params["request_headers"]; ok {
 		sendRequestHeaders = parseBoolLike(raw)
 	}
-	if raw, ok := params["send_response_headers"]; ok {
+	if raw, ok := params["response_headers"]; ok {
 		sendResponseHeaders = parseBoolLike(raw)
 	}
 	return sendRequestHeaders, sendResponseHeaders

@@ -178,47 +178,47 @@ func TestInjectSystemPolicies_BodyFlagsPropagated(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{Enabled: true},
 		Collector: config.CollectorConfig{
-			SendRequestBody:  true,
-			SendResponseBody: true,
+			RequestBody:  true,
+			ResponseBody: true,
 		},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
-	assert.Equal(t, true, result[0].Parameters["send_request_body"])
-	assert.Equal(t, true, result[0].Parameters["send_response_body"])
+	assert.Equal(t, true, result[0].Parameters["request_body"])
+	assert.Equal(t, true, result[0].Parameters["response_body"])
 }
 
 func TestInjectSystemPolicies_BodyFlagsDefaultFalse(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{Enabled: true},
 		Collector: config.CollectorConfig{
-			SendRequestBody:  false,
-			SendResponseBody: false,
+			RequestBody:  false,
+			ResponseBody: false,
 		},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
-	assert.Equal(t, false, result[0].Parameters["send_request_body"])
-	assert.Equal(t, false, result[0].Parameters["send_response_body"])
+	assert.Equal(t, false, result[0].Parameters["request_body"])
+	assert.Equal(t, false, result[0].Parameters["response_body"])
 }
 
 func TestInjectSystemPolicies_HeaderFlagsPropagated(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{Enabled: true},
 		Collector: config.CollectorConfig{
-			SendRequestHeaders:  true,
-			SendResponseHeaders: true,
+			RequestHeaders:  true,
+			ResponseHeaders: true,
 		},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
-	assert.Equal(t, true, result[0].Parameters["send_request_headers"])
-	assert.Equal(t, true, result[0].Parameters["send_response_headers"])
+	assert.Equal(t, true, result[0].Parameters["request_headers"])
+	assert.Equal(t, true, result[0].Parameters["response_headers"])
 }
 
 func TestInjectSystemPolicies_HeaderFlagsDefaultFalse(t *testing.T) {
@@ -230,8 +230,8 @@ func TestInjectSystemPolicies_HeaderFlagsDefaultFalse(t *testing.T) {
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
-	assert.Equal(t, false, result[0].Parameters["send_request_headers"])
-	assert.Equal(t, false, result[0].Parameters["send_response_headers"])
+	assert.Equal(t, false, result[0].Parameters["request_headers"])
+	assert.Equal(t, false, result[0].Parameters["response_headers"])
 }
 
 func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {

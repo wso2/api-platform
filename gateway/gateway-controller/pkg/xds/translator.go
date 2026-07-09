@@ -562,7 +562,7 @@ func (t *Translator) TranslateConfigs(
 	clusters = append(clusters, policyEngineCluster)
 
 	// Add ALS cluster if the collector is active (it ships access logs over gRPC)
-	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.GRPCEventServerCfg))
+	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.Server))
 	if t.config.IsCollectorEnabled() {
 		log.Info("collector is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
@@ -2156,7 +2156,7 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 // createALSCluster creates an Envoy cluster for the gRPC access log service
 func (t *Translator) createALSCluster() *cluster.Cluster {
-	grpcConfig := t.config.Collector.GRPCEventServerCfg
+	grpcConfig := t.config.Collector.Server
 
 	// Build the endpoint address (UDS or TCP)
 	var address *core.Address
@@ -2802,8 +2802,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
-	grpcConfig := t.config.Collector.GRPCEventServerCfg
-	bufferSizeBytes, err := checkedUInt32FromPositiveInt("collector.als.buffer_size_bytes", grpcConfig.BufferSizeBytes)
+	grpcConfig := t.config.Collector.Server
+	bufferSizeBytes, err := checkedUInt32FromPositiveInt("collector.server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
 	if err != nil {
 		return nil, err
 	}

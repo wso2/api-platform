@@ -201,10 +201,10 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 			// For the analytics (collector) system policy, propagate the payload and
 			// header capture flags from the collector config.
 			if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
-				effectiveDefaults["send_request_body"] = cfg.Collector.SendRequestBody
-				effectiveDefaults["send_response_body"] = cfg.Collector.SendResponseBody
-				effectiveDefaults["send_request_headers"] = cfg.Collector.SendRequestHeaders
-				effectiveDefaults["send_response_headers"] = cfg.Collector.SendResponseHeaders
+				effectiveDefaults["request_body"] = cfg.Collector.RequestBody
+				effectiveDefaults["response_body"] = cfg.Collector.ResponseBody
+				effectiveDefaults["request_headers"] = cfg.Collector.RequestHeaders
+				effectiveDefaults["response_headers"] = cfg.Collector.ResponseHeaders
 			}
 
 			// Merge parameters efficiently

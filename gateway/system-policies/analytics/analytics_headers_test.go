@@ -16,9 +16,9 @@ func TestGetHeaderFlags(t *testing.T) {
 	}{
 		{"nil params", nil, false, false},
 		{"absent", map[string]interface{}{}, false, false},
-		{"bool true", map[string]interface{}{"send_request_headers": true, "send_response_headers": true}, true, true},
-		{"string true", map[string]interface{}{"send_request_headers": "true"}, true, false},
-		{"mixed", map[string]interface{}{"send_request_headers": false, "send_response_headers": "yes"}, false, true},
+		{"bool true", map[string]interface{}{"request_headers": true, "response_headers": true}, true, true},
+		{"string true", map[string]interface{}{"request_headers": "true"}, true, false},
+		{"mixed", map[string]interface{}{"request_headers": false, "response_headers": "yes"}, false, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

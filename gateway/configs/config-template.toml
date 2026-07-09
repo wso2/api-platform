@@ -293,15 +293,15 @@ host = "localhost"
 # Capture request/response payloads (bodies) into the collected event. Bodies are
 # captured in full; per-consumer size caps are applied on output (see
 # traffic_logging.max_payload_size).
-send_request_body = false
-send_response_body = false
+request_body = false
+response_body = false
 # Capture ALL request/response headers into the collected event (request_headers/
 # response_headers). Applies to every API via the collector system policy, so no
 # per-API header policy is needed. Sensitive values are redacted on output by
-# consumers that support it (e.g. traffic_logging.masked_headers) 
+# consumers that support it (e.g. traffic_logging.masked_headers)
 # Off by default; enable deliberately per consumer.
-send_request_headers = false
-send_response_headers = false
+request_headers = false
+response_headers = false
 
 # ALS transport tuning (advanced; defaults are sensible). One section read by BOTH
 # ends of the Envoy → policy-engine access-log stream:
@@ -310,7 +310,7 @@ send_response_headers = false
 # Shared keys (server_port, TLS, message/header limits) must match on both ends and
 # live here once. Envoy-sender-only keys (buffer_*, grpc_request_timeout) are read
 # only by the controller and ignored by the policy-engine.
-[collector.als]
+[collector.server]
 mode = "uds"                       # "uds" (default) or "tcp"
 server_port = 18090                # engine listens here; Envoy dials it (tcp mode)
 buffer_flush_interval = 1000000000 # Envoy sender only (nanoseconds)

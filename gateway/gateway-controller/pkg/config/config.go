@@ -67,20 +67,20 @@ type Config struct {
 // Config.IsCollectorEnabled. This section tunes capture and transport; it has no
 // on/off flag of its own.
 type CollectorConfig struct {
-	// SendRequestBody / SendResponseBody capture request/response bodies into the
+	// RequestBody / ResponseBody capture request/response bodies into the
 	// collected event.
-	SendRequestBody  bool `koanf:"send_request_body"`
-	SendResponseBody bool `koanf:"send_response_body"`
-	// SendRequestHeaders / SendResponseHeaders, when true, make the collector
+	RequestBody  bool `koanf:"request_body"`
+	ResponseBody bool `koanf:"response_body"`
+	// RequestHeaders / ResponseHeaders, when true, make the collector
 	// capture ALL request / response headers, so every API's headers flow into
 	// the collected event without attaching a per-API header policy.
-	SendRequestHeaders  bool `koanf:"send_request_headers"`
-	SendResponseHeaders bool `koanf:"send_response_headers"`
-	// GRPCEventServerCfg tunes the Envoy→policy-engine gRPC access-log (ALS)
+	RequestHeaders  bool `koanf:"request_headers"`
+	ResponseHeaders bool `koanf:"response_headers"`
+	// Server tunes the Envoy→policy-engine gRPC access-log (ALS)
 	// transport that ships collected data. It is part of the collector and is
-	// configured under the shared [collector.als] section (the policy-engine reads
+	// configured under the shared [collector.server] section (the policy-engine reads
 	// the same section to configure its receiving ALS server).
-	GRPCEventServerCfg GRPCEventServerConfig `koanf:"als"`
+	Server GRPCEventServerConfig `koanf:"server"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -89,12 +89,12 @@ type AnalyticsConfig struct {
 	EnabledPublishers []string                  `koanf:"enabled_publishers"`
 	Publishers        AnalyticsPublishersConfig `koanf:"publishers"`
 	// GRPCEventServerCfg is a deprecated alias. ALS transport tuning moved to
-	// [collector.als]; when set here it is migrated onto the collector during
-	// validation (with a warning). Prefer [collector.als].
+	// [collector.server]; when set here it is migrated onto the collector during
+	// validation (with a warning). Prefer [collector.server].
 	GRPCEventServerCfg GRPCEventServerConfig `koanf:"grpc_event_server"`
 	// AllowPayloads, SendRequestBody and SendResponseBody are deprecated aliases.
 	// Body/header capture now lives under [collector]. When set, these are mapped
-	// onto collector.send_request_body / collector.send_response_body during
+	// onto collector.request_body / collector.response_body during
 	// validation (with a warning) for backward compatibility. Prefer the
 	// [collector] fields directly.
 	AllowPayloads    bool `koanf:"allow_payloads"`
@@ -974,11 +974,11 @@ func defaultConfig() *Config {
 			SendResponseBody:   false,
 		},
 		Collector: CollectorConfig{
-			SendRequestBody:     false,
-			SendResponseBody:    false,
-			SendRequestHeaders:  false,
-			SendResponseHeaders: false,
-			GRPCEventServerCfg:  defaultGRPCEventServerConfig(),
+			RequestBody:     false,
+			ResponseBody:    false,
+			RequestHeaders:  false,
+			ResponseHeaders: false,
+			Server:          defaultGRPCEventServerConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled:        false,
@@ -1760,7 +1760,7 @@ func (c *Config) validateCollectorConfig() error {
 	c.migrateDeprecatedAnalyticsTransport()
 
 	if c.IsCollectorEnabled() {
-		if err := validateGRPCEventServerConfig(c.Collector.GRPCEventServerCfg); err != nil {
+		if err := validateGRPCEventServerConfig(c.Collector.Server); err != nil {
 			return err
 		}
 	}
@@ -1784,7 +1784,7 @@ func (c *Config) migrateDeprecatedAnalyticsTransport() {
 	collector.MigrateDeprecatedTransport(
 		c.Analytics.Enabled,
 		c.Analytics.GRPCEventServerCfg,
-		&c.Collector.GRPCEventServerCfg,
+		&c.Collector.Server,
 		defaultGRPCEventServerConfig(),
 		"analytics.grpc_event_server",
 	)
@@ -1804,8 +1804,8 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 			SendResponseBody: c.Analytics.SendResponseBody,
 			AllowPayloads:    c.Analytics.AllowPayloads,
 		},
-		&c.Collector.SendRequestBody,
-		&c.Collector.SendResponseBody,
+		&c.Collector.RequestBody,
+		&c.Collector.ResponseBody,
 	)
 }
 
@@ -1818,10 +1818,10 @@ func validateGRPCEventServerConfig(cfg GRPCEventServerConfig) error {
 	case "tcp":
 		// TCP mode - validate port (host is derived from policy_engine.host)
 		if cfg.Port <= 0 || cfg.Port > 65535 {
-			return fmt.Errorf("collector.als.port must be between 1 and 65535 when mode is tcp, got %d", cfg.Port)
+			return fmt.Errorf("collector.server.port must be between 1 and 65535 when mode is tcp, got %d", cfg.Port)
 		}
 	default:
-		return fmt.Errorf("collector.als.mode must be 'uds' or 'tcp', got: %s", cfg.Mode)
+		return fmt.Errorf("collector.server.mode must be 'uds' or 'tcp', got: %s", cfg.Mode)
 	}
 
 	// Validate buffer and timeout settings
@@ -1836,7 +1836,7 @@ func validateGRPCEventServerConfig(cfg GRPCEventServerConfig) error {
 
 	// Validate server port
 	if cfg.ServerPort <= 0 || cfg.ServerPort > 65535 {
-		return fmt.Errorf("collector.als.server_port must be between 1 and 65535, got %d", cfg.ServerPort)
+		return fmt.Errorf("collector.server.server_port must be between 1 and 65535, got %d", cfg.ServerPort)
 	}
 	return nil
 }

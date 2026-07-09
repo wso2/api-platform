@@ -64,7 +64,7 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 		Analytics: analytics,
 	}
 	cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
-	cfg.Collector.AccessLogsServiceCfg = config.AccessLogsServiceConfig{
+	cfg.Collector.Server = config.AccessLogsServiceConfig{
 		Mode:                  "uds",
 		ShutdownTimeout:       600 * time.Second,
 		ExtProcMaxMessageSize: 1000000,
@@ -614,8 +614,8 @@ func TestPrepareAnalyticEvent_WithRequestResponseHeaders(t *testing.T) {
 func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 	cfg := &config.Config{
 		Collector: config.CollectorConfig{
-			SendRequestBody:  true,
-			SendResponseBody: true,
+			RequestBody:  true,
+			ResponseBody: true,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -640,8 +640,8 @@ func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 	cfg := &config.Config{
 		Collector: config.CollectorConfig{
-			SendRequestBody:  false,
-			SendResponseBody: false,
+			RequestBody:  false,
+			ResponseBody: false,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -663,8 +663,8 @@ func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 func TestPrepareAnalyticEvent_RequestPayloadOnly(t *testing.T) {
 	cfg := &config.Config{
 		Collector: config.CollectorConfig{
-			SendRequestBody:  true,
-			SendResponseBody: false,
+			RequestBody:  true,
+			ResponseBody: false,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -687,8 +687,8 @@ func TestPrepareAnalyticEvent_RequestPayloadOnly(t *testing.T) {
 func TestPrepareAnalyticEvent_ResponsePayloadOnly(t *testing.T) {
 	cfg := &config.Config{
 		Collector: config.CollectorConfig{
-			SendRequestBody:  false,
-			SendResponseBody: true,
+			RequestBody:  false,
+			ResponseBody: true,
 		},
 	}
 	analytics := NewAnalytics(cfg)

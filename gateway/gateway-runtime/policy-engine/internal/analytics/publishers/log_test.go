@@ -401,6 +401,41 @@ func TestLog_Publish_FieldsExclude(t *testing.T) {
 	assert.Contains(t, decoded, "requestHeaders", "requestHeaders kept (not excluded)")
 }
 
+// An unrelated fields.exclude entry (dropping one header sub-key) must not defeat
+// an explicitly configured flow's payload:false/headers:true booleans. Regression
+// test for a bug where any fields.exclude entry made the per-flow booleans
+// globally inert, silently re-enabling payload logging that request.payload:false
+// was supposed to suppress.
+func TestLog_Publish_FieldsExcludeDoesNotOverrideExplicitFlowBooleans(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"Cookie":"sid=1","x-foo":"bar"}`
+	event.Properties["request_payload"] = "secret-request-body"
+	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
+	event.Properties["response_payload"] = "secret-response-body"
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Request:  &dto.TrafficLogFlow{Headers: true, Payload: false},
+		Response: &dto.TrafficLogFlow{Headers: true, Payload: false},
+		Fields:   &dto.TrafficLogFields{Exclude: []string{"requestHeaders.Cookie"}},
+	}
+
+	l.Publish(event)
+	decoded := decodeLine(t, read())
+
+	_, hasReqBody := decoded["requestBody"]
+	assert.False(t, hasReqBody, "request.payload:false must still suppress the request body")
+	_, hasRespBody := decoded["responseBody"]
+	assert.False(t, hasRespBody, "response.payload:false must still suppress the response body")
+
+	reqH := headerMap(t, decoded["requestHeaders"])
+	_, hasCookie := reqH["Cookie"]
+	assert.False(t, hasCookie, "excluded header sub-key still dropped")
+	assert.Equal(t, "bar", reqH["x-foo"], "other request headers still present")
+
+	respH := headerMap(t, decoded["responseHeaders"])
+	assert.Equal(t, "baz", respH["x-bar"], "response headers still present per headers:true")
+}
+
 // requestBody and properties are top-level keys like any other and can be selected
 // explicitly via fields.only.
 func TestLog_Publish_FieldsIncludeRequestBodyAndProperties(t *testing.T) {

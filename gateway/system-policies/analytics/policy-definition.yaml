@@ -10,14 +10,14 @@ parameters:
   type: object
   additionalProperties: false
   properties:
-    send_request_body:
+    request_body:
       type: boolean
       default: false
       description: >
         When true, the analytics system policy will capture the request body
         into analytics metadata as request_payload, which is then forwarded
         through the analytics pipeline (including publishers like Moesif).
-    send_response_body:
+    response_body:
       type: boolean
       default: false
       description: >
@@ -25,7 +25,7 @@ parameters:
         into analytics metadata as response_payload, for both buffered and
         streaming responses, which is then forwarded through the analytics
         pipeline (including publishers like Moesif).
-    send_request_headers:
+    request_headers:
       type: boolean
       default: false
       description: >
@@ -34,7 +34,7 @@ parameters:
         the analytics pipeline (including the stdout/log and Moesif publishers).
         Sensitive values are not masked here; the log publisher's masked_headers
         setting redacts them on output.
-    send_response_headers:
+    response_headers:
       type: boolean
       default: false
       description: >
@@ -45,10 +45,10 @@ parameters:
       type: boolean
       default: false
       description: >
-        Deprecated: use send_request_body and send_response_body instead.
-        When true, and when send_request_body and send_response_body are not
+        Deprecated: use request_body and response_body instead.
+        When true, and when request_body and response_body are not
         explicitly set, the analytics system policy behaves as if both
-        send_request_body and send_response_body are true, capturing request
+        request_body and response_body are true, capturing request
         and response bodies into analytics metadata as request_payload and
         response_payload, which are then forwarded through the analytics
         pipeline (including publishers like Moesif). When false, payloads are

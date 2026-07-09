@@ -36,7 +36,7 @@ const maskedHeaderValue = "****"
 // stdout as a single JSON line. It is intended for log-scraping pipelines
 // (Fluent Bit, Loki, ELK, etc.) and as a lightweight alternative to a SaaS
 // analytics backend. The event already carries the rich metadata, headers and
-// (when send_request_body/send_response_body are enabled) payloads attached by
+// (when request_body/response_body are enabled) payloads attached by
 // the analytics engine, so this publisher only serializes it.
 type Log struct {
 	// maskedHeaders holds lower-cased header names whose values are redacted in
@@ -230,8 +230,11 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 
 // maskHeaders redacts header values whose names appear in mask (case-insensitive).
 // Returns a new map; the input is not modified. To drop a header entirely rather
-// than redacting its value, use the per-flow excludeHeaders directive (see
-// dropHeaders) or a dotted fields.exclude path (e.g. "requestHeaders.authorization").
+// than redacting its value, prefer the per-flow excludeHeaders directive (see
+// dropHeaders), which matches header names case-insensitively. A dotted
+// fields.exclude path (e.g. "requestHeaders.Authorization") can also drop a field,
+// but it matches the emitted key case-sensitively — so it must reproduce the exact
+// casing Envoy delivered, and is not a reliable way to drop a header by name.
 func (l *Log) maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {

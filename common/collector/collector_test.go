@@ -101,5 +101,5 @@ func TestMigrateDeprecatedTransport_DoesNotClobberExplicitCollectorConfig(t *tes
 
 	MigrateDeprecatedTransport(true, deprecated, &collectorCfg, def, "analytics.grpc_event_server")
 
-	assert.Equal(t, explicit, collectorCfg, "an explicit [collector.als] override must never be clobbered by the deprecated alias")
+	assert.Equal(t, explicit, collectorCfg, "an explicit [collector.server] override must never be clobbered by the deprecated alias")
 }
