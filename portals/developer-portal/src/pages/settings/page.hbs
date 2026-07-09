@@ -46,6 +46,13 @@
         </a>
       </div>
 
+      <div class="cfg-nav-section">APPEARANCE</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-theming" class="cfg-nav-item" data-panel="cfg-theming">
+          <i class="bi bi-palette"></i><span>Theming</span>
+        </a>
+      </div>
+
       <div class="cfg-nav-section">MANAGEMENT</div>
       <div class="cfg-nav-items">
         <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
@@ -91,6 +98,13 @@
       <div class="cfg-panel" id="cfg-workflows">
         <div id="workflowsTabContent">
           {{> api-workflows}}
+        </div>
+      </div>
+
+      <!-- ══ Theming ══ -->
+      <div class="cfg-panel" id="cfg-theming">
+        <div id="themingTabContent">
+          {{> theming}}
         </div>
       </div>
 
@@ -919,6 +933,21 @@
   </div>
 </div>
 
+<!-- Reset Theme modal -->
+<div class="cfg-modal-overlay" id="cfg-reset-theme-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-arrow-counterclockwise"></i></span>
+      <h2 class="cfg-modal-title">Reset Theme</h2>
+    </div>
+    <p class="cfg-modal-body">Reset <strong id="cfg-reset-theme-view-txt"></strong> to the built-in default theme? Its custom CSS, layout, partials, and images will be removed. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-reset-theme-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-reset-theme-confirm">Reset theme</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add / Edit View modal -->
 <div class="cfg-modal-overlay" id="cfg-view-modal" style="display:none;">
   <div class="cfg-form-modal">
@@ -1151,7 +1180,7 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-plans', 'cfg-webhooks', 'cfg-keymanagers', 'cfg-organizations', 'cfg-views', 'cfg-labels'];
+  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-theming', 'cfg-apis', 'cfg-plans', 'cfg-webhooks', 'cfg-keymanagers', 'cfg-organizations', 'cfg-views', 'cfg-labels'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 

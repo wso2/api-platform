@@ -179,6 +179,9 @@ const loadSettingsPage = async (req, res) => {
         // orgName + views let the client rebuild view-scoped URLs when the selector changes.
         templateContent.llmsConfigContext = { orgId, orgName, viewName, csrfToken, baseUrl, views };
 
+        const hasCustomTheme = await orgDao.hasThemeContent(orgId, viewName);
+        templateContent.themingContext = { orgId, orgName, viewName, csrfToken, baseUrl, views, hasCustomTheme };
+
         templateContent.profile = req.user;
         const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
         const dbLayout = orgId ? await loadLayoutFromAPI(orgId, viewName) : '';

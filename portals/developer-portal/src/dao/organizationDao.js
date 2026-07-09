@@ -28,6 +28,7 @@ const { WebhookSubscriber } = require('../models/webhookSubscriber');
 const View = require('../models/view');
 const Labels = require('../models/label');
 const Tags = require('../models/tag');
+const constants = require('../utils/constants');
 
 const create = async (orgData, t) => {
     let devPortalId = "";
@@ -346,19 +347,35 @@ const deleteContent = async (orgId, viewName, fileName) => {
     }
 };
 
-const deleteAllContent = async (orgId, viewName, t) => {
+// Deletes only theme-related content rows (style/layout/partial/markDown/template/image) for
+// the view — scoped so a theme reset/replace never touches unrelated per-view assets like
+// llms-config.json, which shares this same table.
+const deleteThemeContent = async (orgId, viewName, t) => {
     const viewId = await viewDao.getId(orgId, viewName);
     try {
         return await OrgContent.destroy({
             where: {
                 org_uuid: orgId,
-                view_uuid: viewId
+                view_uuid: viewId,
+                file_type: constants.THEME_FILE_TYPES
             },
             transaction: t
         });
     } catch (error) {
         throw new Sequelize.DatabaseError(error);
     }
+};
+
+const hasThemeContent = async (orgId, viewName) => {
+    const viewId = await viewDao.getId(orgId, viewName);
+    const count = await OrgContent.count({
+        where: {
+            org_uuid: orgId,
+            view_uuid: viewId,
+            file_type: constants.THEME_FILE_TYPES
+        }
+    });
+    return count > 0;
 };
 
 module.exports = {
@@ -373,5 +390,6 @@ module.exports = {
     updateContent,
     getContent,
     deleteContent,
-    deleteAllContent,
+    deleteThemeContent,
+    hasThemeContent,
 };

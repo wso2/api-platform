@@ -4,7 +4,8 @@
   When the org has more than one view, the pill on the right becomes a searchable
   switcher: each option is a plain link to ?view=<id>#<hash> so navigation is native;
   the JS in page.hbs handles open/close, type-to-filter, and keyboard nav.
-  Params: hash = target panel id (e.g. "cfg-llm").
+  Params: hash = target panel id (e.g. "cfg-llm"). label = noun phrase describing what's
+  being edited (e.g. "instructions", "workflows", "the theme") — defaults to "settings".
 --}}
 <div class="cfg-view-banner">
   <div class="cfg-view-banner-info">
@@ -13,9 +14,9 @@
       <div class="cfg-view-banner-caption">View-scoped setting</div>
       <div class="cfg-view-banner-sub">
         {{#compare views.length ">" 1}}
-          You're editing instructions for one of {{views.length}} views
+          You're editing {{#unless label}}settings{{else}}{{label}}{{/unless}} for one of {{views.length}} views
         {{else}}
-          You're editing instructions for one view
+          You're editing {{#unless label}}settings{{else}}{{label}}{{/unless}} for one view
         {{/compare}}
       </div>
     </div>

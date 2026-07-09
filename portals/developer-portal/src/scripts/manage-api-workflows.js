@@ -2176,9 +2176,12 @@ function initLlmsConfig() {
     const saveBtn = document.getElementById('saveLlmsConfigBtn');
     if (saveBtn) saveBtn.addEventListener('click', saveLlmsConfig);
 
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-        new bootstrap.Tooltip(el);
-    });
+    const llmsPanel = document.getElementById('cfg-llm');
+    if (llmsPanel) {
+        llmsPanel.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+            new bootstrap.Tooltip(el);
+        });
+    }
 
     scheduleLlmsPreview();
 }
@@ -2253,14 +2256,192 @@ async function saveLlmsConfig() {
     }
 }
 
+// Theming Tab
+// ─────────────────────────────────────────────
+
+let themingViewName = '';
+let themingCsrfToken = '';
+let themingZipFile = null;
+
+function initTheming() {
+    const ctxEl = document.getElementById('themingContext');
+    if (!ctxEl) return;
+
+    let ctx = {};
+    try { ctx = JSON.parse(ctxEl.textContent) || {}; } catch (e) { /* ignore */ }
+
+    themingViewName = ctx.viewName || '';
+    themingCsrfToken = ctx.csrfToken || '';
+
+    const zone      = document.getElementById('theming-zip-zone');
+    const input     = document.getElementById('theming-zip-input');
+    const chip      = document.getElementById('theming-zip-chip');
+    const nameEl    = document.getElementById('theming-zip-name');
+    const removeBtn = document.getElementById('theming-zip-remove');
+    const errEl     = document.getElementById('theming-zip-error');
+    const applyBtn  = document.getElementById('theming-apply-btn');
+    const resetBtn  = document.getElementById('theming-reset-btn');
+
+    function handleThemeZipFile(f) {
+        if (!f) return;
+        if (!/\.zip$/i.test(f.name)) {
+            if (errEl) { errEl.textContent = 'Unsupported file type. Accepted: .zip'; errEl.style.display = ''; }
+            return;
+        }
+        themingZipFile = f;
+        if (nameEl) nameEl.textContent = f.name;
+        if (chip) chip.classList.add('visible');
+        if (errEl) errEl.style.display = 'none';
+        if (applyBtn) applyBtn.disabled = false;
+    }
+
+    function clearThemeZipFile() {
+        themingZipFile = null;
+        if (input) input.value = '';
+        if (chip) chip.classList.remove('visible');
+        if (applyBtn) applyBtn.disabled = true;
+    }
+
+    if (input) input.addEventListener('change', function (e) {
+        handleThemeZipFile(e.target.files && e.target.files[0]);
+    });
+    if (removeBtn) removeBtn.addEventListener('click', clearThemeZipFile);
+
+    if (zone) {
+        zone.addEventListener('dragover', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            zone.classList.add('cfg-upload-zone--active');
+        });
+        zone.addEventListener('dragleave', function (e) {
+            if (!zone.contains(e.relatedTarget)) zone.classList.remove('cfg-upload-zone--active');
+        });
+        zone.addEventListener('drop', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            zone.classList.remove('cfg-upload-zone--active');
+            const files = e.dataTransfer && e.dataTransfer.files;
+            if (files && files.length) handleThemeZipFile(files[0]);
+        });
+    }
+
+    if (applyBtn) applyBtn.addEventListener('click', applyTheme);
+
+    if (resetBtn) resetBtn.addEventListener('click', function () {
+        const viewLabel = document.getElementById('cfg-reset-theme-view-txt');
+        if (viewLabel) viewLabel.textContent = themingViewName;
+        const modal = document.getElementById('cfg-reset-theme-modal');
+        if (modal) modal.style.display = 'flex';
+    });
+    const resetCancel = document.getElementById('cfg-reset-theme-cancel');
+    if (resetCancel) resetCancel.addEventListener('click', function () {
+        document.getElementById('cfg-reset-theme-modal').style.display = 'none';
+    });
+    const resetModal = document.getElementById('cfg-reset-theme-modal');
+    if (resetModal) resetModal.addEventListener('click', function (e) {
+        if (e.target === this) this.style.display = 'none';
+    });
+    const resetConfirm = document.getElementById('cfg-reset-theme-confirm');
+    if (resetConfirm) resetConfirm.addEventListener('click', resetTheme);
+}
+
+function setThemingStatus(hasCustomTheme) {
+    const badge = document.getElementById('themingStatusBadge');
+    const hint  = document.getElementById('themingStatusHint');
+    if (badge) {
+        badge.classList.toggle('cfg-status-published', hasCustomTheme);
+        badge.classList.toggle('cfg-status-draft', !hasCustomTheme);
+        badge.innerHTML = '<span class="cfg-status-dot"></span>' + (hasCustomTheme ? 'Custom' : 'Default');
+    }
+    if (hint) {
+        hint.textContent = hasCustomTheme
+            ? 'This view is using a custom uploaded theme.'
+            : 'This view is using the built-in default theme.';
+    }
+}
+
+async function applyTheme() {
+    if (!themingZipFile) return;
+    const applyBtn = document.getElementById('theming-apply-btn');
+    if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Applying…';
+    }
+    try {
+        const fd = new FormData();
+        fd.append('file', themingZipFile);
+        const response = await fetch(window.devportalApi.root(`/views/${themingViewName}/apply-theme`), {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': themingCsrfToken },
+            credentials: 'same-origin',
+            body: fd
+        });
+        if (response.ok) {
+            showAlert('Theme applied successfully', 'success');
+            setThemingStatus(true);
+            const input = document.getElementById('theming-zip-input');
+            const chip  = document.getElementById('theming-zip-chip');
+            if (input) input.value = '';
+            if (chip) chip.classList.remove('visible');
+            themingZipFile = null;
+        } else {
+            const err = await response.json().catch(() => ({ message: 'Apply theme failed' }));
+            showAlert(err.message || 'Apply theme failed', 'error');
+        }
+    } catch (e) {
+        showAlert(e.message || 'Network error', 'error');
+    } finally {
+        if (applyBtn) {
+            applyBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Apply theme';
+            applyBtn.disabled = !themingZipFile;
+        }
+    }
+}
+
+async function resetTheme() {
+    const modal = document.getElementById('cfg-reset-theme-modal');
+    const confirmBtn = document.getElementById('cfg-reset-theme-confirm');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Resetting…';
+    }
+    try {
+        const response = await fetch(window.devportalApi.root(`/views/${themingViewName}/reset-theme`), {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': themingCsrfToken },
+            credentials: 'same-origin'
+        });
+        if (response.ok || response.status === 204) {
+            showAlert('Theme reset to default', 'success');
+            setThemingStatus(false);
+        } else {
+            const err = await response.json().catch(() => ({ message: 'Reset failed' }));
+            showAlert(err.message || 'Reset failed', 'error');
+        }
+    } catch (e) {
+        showAlert(e.message || 'Network error', 'error');
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = 'Reset theme';
+        }
+        if (modal) modal.style.display = 'none';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
-    initLlmsConfig();
+    try { initLlmsConfig(); } catch (e) { console.error('initLlmsConfig failed', e); }
+    try { initTheming(); } catch (e) { console.error('initTheming failed', e); }
 
     const llmsBtn      = document.getElementById('llms-tab-btn');
     const workflowsBtn = document.getElementById('workflows-tab-btn');
 
     function syncTabFromHash() {
-        if (window.location.hash === '#apiworkflows' && workflowsBtn) activateTab(workflowsBtn);
+        // Recognizes both the sidebar nav's current hash (#cfg-workflows) and the
+        // legacy hash (#apiworkflows) it's mapped from — see legacyMap in the sidebar
+        // nav script. Without this, this legacy tab pane toggle (still needed for the
+        // create-workflow form's arazoEditor refresh) fights the sidebar nav and hides
+        // #workflowsTabContent whenever the hash isn't the old literal value.
+        const hash = window.location.hash;
+        if ((hash === '#cfg-workflows' || hash === '#apiworkflows') && workflowsBtn) activateTab(workflowsBtn);
         else if (llmsBtn) activateTab(llmsBtn);
     }
 

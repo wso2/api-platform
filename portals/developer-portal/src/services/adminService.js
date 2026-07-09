@@ -441,7 +441,7 @@ const applyTheme = async (req, res) => {
     const viewName = req.params.viewId;
     const zipFile = req.files?.file?.[0] ?? req.file;
     const userId = util.resolveActor(req);
-    const extractPath = path.join(process.cwd(), '..', '.tmp', `${orgId}-${viewName}-${Date.now()}`);
+    const extractPath = path.join(require('os').tmpdir(), `${orgId}-${viewName}-${Date.now()}`);
     let tempZipPath;
     try {
         if (!zipFile) {
@@ -460,7 +460,7 @@ const applyTheme = async (req, res) => {
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
         await sequelize.transaction(async (t) => {
-            await orgDao.deleteAllContent(orgId, viewName, t);
+            await orgDao.deleteThemeContent(orgId, viewName, t);
             for (const { filePath, fileName, fileContent, fileType } of files) {
                 await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId, t);
             }
@@ -481,7 +481,7 @@ const resetTheme = async (req, res) => {
     const orgId = req.orgId;
     const viewName = req.params.viewId;
     try {
-        await orgDao.deleteAllContent(orgId, viewName);
+        await orgDao.deleteThemeContent(orgId, viewName);
         res.status(204).send();
     } catch (error) {
         logger.error('Reset theme failed', { error: error.message, stack: error.stack, orgId, viewName });

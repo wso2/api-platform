@@ -209,6 +209,10 @@ module.exports = {
         TEMPLATE: 'template',
         LLMS_CONFIG: 'llms-config',
     },
+    // The literal fileType values util.readFilesInDirectory assigns when unzipping an
+    // uploaded theme (style/layout/partial/markDown/template/image) — used to scope
+    // theme reset/replace to just these rows, leaving llms-config untouched.
+    THEME_FILE_TYPES: ['style', 'layout', 'partial', 'markDown', 'template', 'image'],
     KEY_TYPE: {
         PRODUCTION: 'PRODUCTION',
         SANDBOX: 'SANDBOX',

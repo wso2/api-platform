@@ -1,0 +1,68 @@
+<script type="application/json" id="themingContext">
+{{{ json themingContext }}}
+</script>
+
+<div class="cfg-panel-header">
+    <div>
+        <h2 class="cfg-panel-title">Theming</h2>
+        <p class="cfg-panel-desc">Upload a custom theme (CSS, layout, partials, images) for this view, or reset it back to the built-in default.</p>
+    </div>
+</div>
+
+{{> view-combo hash="cfg-theming" label="the theme"}}
+
+{{!-- Current theme status --}}
+<div class="llms-config-toggle-card mb-4">
+    <div class="d-flex align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="llms-toggle-icon">
+                <i class="bi bi-palette2"></i>
+            </div>
+            <div>
+                <div class="fw-semibold mb-0">Current theme</div>
+                <div class="text-muted small mt-1" id="themingStatusHint">
+                    {{#if themingContext.hasCustomTheme}}
+                    This view is using a custom uploaded theme.
+                    {{else}}
+                    This view is using the built-in default theme.
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+        <span class="cfg-status-badge {{#if themingContext.hasCustomTheme}}cfg-status-published{{else}}cfg-status-draft{{/if}}" id="themingStatusBadge">
+            <span class="cfg-status-dot"></span>{{#if themingContext.hasCustomTheme}}Custom{{else}}Default{{/if}}
+        </span>
+    </div>
+</div>
+
+{{!-- Upload --}}
+<div class="llms-section-label">Upload Theme</div>
+<p class="cfg-wstep-desc">Accepted: a single ZIP archive containing <code>styles/</code>, <code>layout/</code>, <code>partials/</code>, and/or <code>images/</code>. Uploading replaces this view's current custom theme files entirely.</p>
+
+<label class="cfg-upload-zone" id="theming-zip-zone">
+    <span class="cfg-upload-icon"><i class="bi bi-file-earmark-zip"></i></span>
+    <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
+    <span class="cfg-upload-hint">Single ZIP file · up to 10 MB</span>
+    <input type="file" id="theming-zip-input" accept=".zip" />
+</label>
+<p id="theming-zip-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;"></p>
+
+<div class="cfg-spec-chip" id="theming-zip-chip">
+    <span class="cfg-spec-icon"><i class="bi bi-file-earmark-zip-fill"></i></span>
+    <div>
+        <div class="cfg-spec-name" id="theming-zip-name"></div>
+        <div class="cfg-spec-sub">Ready to upload</div>
+    </div>
+    <button type="button" class="cfg-action-btn" id="theming-zip-remove" style="margin-left:auto;">
+        <i class="bi bi-x-lg"></i>
+    </button>
+</div>
+
+<div class="d-flex align-items-center gap-3 mt-3">
+    <button type="button" class="cfg-btn-primary" id="theming-apply-btn" disabled>
+        <i class="bi bi-cloud-upload"></i> Apply theme
+    </button>
+    <button type="button" class="cfg-btn-secondary" id="theming-reset-btn">
+        <i class="bi bi-arrow-counterclockwise"></i> Reset to default
+    </button>
+</div>
