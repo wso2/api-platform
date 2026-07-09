@@ -100,7 +100,7 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(h.cfg.Auth.JWT.SecretKey))
+	signed, err := token.SignedString([]byte(h.cfg.EncryptionKey))
 	if err != nil {
 		return apperror.Internal.Wrap(err).WithLogMessage("failed to issue token")
 	}

@@ -6,7 +6,7 @@ Backend service that powers the API Platform portals, gateways, and automation f
 
 ### Prerequisites
 
-Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) you can generate a token using the configured `AUTH_JWT_SECRET_KEY`. In IDP mode, obtain a token from your identity provider.
+Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) tokens are signed with the configured `ENCRYPTION_KEY`. In IDP mode, obtain a token from your identity provider.
 
 ### Build and Run
 
@@ -242,20 +242,20 @@ AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 
 > **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
 > production-grade startup checks. With demo mode off, the server will not fall back to an
-> ephemeral secret encryption key (set `PLATFORM_SECRET_ENCRYPTION_KEY` or
-> `DATABASE_ENCRYPTION_KEY`) and warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
+> ephemeral encryption key — you must set `ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE` — and it
+> warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
 
 ---
 
 #### Local JWT Mode (default)
 
-The server validates HMAC-signed tokens using `AUTH_JWT_SECRET_KEY`. Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
+The server signs and validates HMAC login tokens using `ENCRYPTION_KEY` (the same key used for at-rest encryption; see [Encryption](#encryption)). Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
 
-| Variable | Default | Description |
-|---|---|---|
-| `AUTH_JWT_SECRET_KEY` | `your-secret-key-change-in-production` | HMAC signing key for token verification |
-| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value |
-| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only** |
+| Variable | Default | Description                                                         |
+|---|---|---------------------------------------------------------------------|
+| `ENCRYPTION_KEY` | _(empty)_ | 32-byte key; signs HMAC login tokens and verification                           |
+| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
+| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
 | `DEV_MODE` | `false` | Suppresses the startup warning when `AUTH_JWT_SKIP_VALIDATION=true` |
 
 Local development with no token issuer:
@@ -267,7 +267,7 @@ go run ./cmd/main.go
 
 Production with HMAC verification:
 ```bash
-export AUTH_JWT_SECRET_KEY=<strong-random-key>
+export ENCRYPTION_KEY=<strong-random-key>
 export AUTH_JWT_ISSUER=https://your-token-issuer
 go run ./cmd/main.go
 ```
@@ -276,7 +276,6 @@ go run ./cmd/main.go
 
 | Old name | New name |
 |---|---|
-| `JWT_SECRET_KEY` | `AUTH_JWT_SECRET_KEY` |
 | `JWT_ISSUER` | `AUTH_JWT_ISSUER` |
 | `JWT_SKIP_VALIDATION` | `AUTH_JWT_SKIP_VALIDATION` |
 | `JWT_SKIP_PATHS` | `AUTH_SKIP_PATHS` |
@@ -369,7 +368,19 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `DATABASE_PASSWORD` | _(empty)_ | Postgres password |
 | `DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
 | `DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
-| `DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY` | _(empty)_ | 32-byte key (64 hex or 44 base64 chars) for AES-256-GCM token encryption. |
+
+---
+
+### Encryption
+
+A single key protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets) and signs local HMAC login JWTs. Provide **exactly one** of `ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENCRYPTION_KEY` | _(empty)_ | 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. |
+| `ENCRYPTION_KEY_FILE` | _(empty)_ | Path to a 32-byte binary key file (read on every start). Mutually exclusive with `ENCRYPTION_KEY`. |
+
+In **demo mode** (default), if neither is set a key file is auto-generated next to the SQLite database (`<db-dir>/secret-encryption.key`) and reused on restart. In **production** (`APIP_DEMO_MODE=false`), one of the two must be provided or startup fails — a key is never auto-generated.
 
 ---
 

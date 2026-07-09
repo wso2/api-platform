@@ -19,6 +19,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,156 +28,255 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TC-35: Missing PLATFORM_SECRET_ENCRYPTION_KEY with APIP_DEMO_MODE=true →
-// server starts successfully with an auto-generated ephemeral key.
-func TestLoadConfig_MissingSecretEncryptionKey_DemoMode_GeneratesEphemeralKey(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "true")
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
-	// Ensure the koanf env-var alias doesn't accidentally provide a value.
-	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
+// A valid inline encryption key: 64 hex chars decoding to 32 bytes.
+const validInlineKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 
-	cfg, err := LoadConfig("")
-	require.NoError(t, err, "LoadConfig must succeed in DEMO_MODE even without a secret encryption key")
-	assert.NotEmpty(t, cfg.Database.SecretEncryptionKey,
-		"an ephemeral key must be generated when PLATFORM_SECRET_ENCRYPTION_KEY is absent in DEMO_MODE")
+// clearKeyEnv resets all encryption-related env vars to empty so each test starts clean.
+// t.Setenv restores the previous value automatically at test end.
+func clearKeyEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "")
+	t.Setenv("ENCRYPTION_KEY_FILE", "")
+	t.Setenv("DATABASE_DB_PATH", "")
+	t.Setenv("APIP_DEMO_MODE", "")
 }
 
-// TC-35 (negative): Missing key WITHOUT demo mode → fatal error returned.
-// JWT auth is disabled so the JWT-key check doesn't fire before the encryption-key check.
-func TestLoadConfig_MissingSecretEncryptionKey_NonDemoMode_ReturnsError(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "false")
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
-	t.Setenv("AUTH_JWT_ENABLED", "false")
-	// Use a blocking file as parent so the key file path resolves but can't be
-	// created, ensuring LoadConfig reaches the missing-key error path.
-	blockingFile := filepath.Join(t.TempDir(), "not-a-dir")
-	require.NoError(t, os.WriteFile(blockingFile, []byte("block"), 0600))
-	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", filepath.Join(blockingFile, "secret-encryption.key"))
-
-	_, err := LoadConfig("")
-	assert.Error(t, err, "LoadConfig must return an error when no encryption key is configured and DEMO_MODE is off")
-	assert.Contains(t, err.Error(), "failed to load secret key file")
+// writeValidKeyFile writes a 32-byte binary key file and returns its path and the
+// expected hex-encoded key value.
+func writeValidKeyFile(t *testing.T, dir, name string) (path, hexKey string) {
+	t.Helper()
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	path = filepath.Join(dir, name)
+	require.NoError(t, os.WriteFile(path, key, 0600))
+	return path, hex.EncodeToString(key)
 }
 
-// Missing key with APIP_DEMO_MODE unset → demo mode is the default, so an
-// ephemeral key is generated and LoadConfig succeeds.
-func TestLoadConfig_MissingSecretEncryptionKey_UnsetDemoMode_DefaultsToDemo(t *testing.T) {
-	os.Unsetenv("APIP_DEMO_MODE")
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
-
-	cfg, err := LoadConfig("")
-	require.NoError(t, err, "LoadConfig must succeed when APIP_DEMO_MODE is unset (demo is the default)")
-	assert.NotEmpty(t, cfg.Database.SecretEncryptionKey,
-		"an ephemeral key must be generated when no key is configured and APIP_DEMO_MODE is unset")
-}
-
-// TC-35: Ephemeral key must be unique each LoadConfig call (i.e. truly random, not a constant).
-// Without an explicit key file path (e.g. postgres with no DATABASE_SECRET_ENCRYPTION_KEY_FILE and no DB path),
-// no persistence is possible and the key is still ephemeral — each LoadConfig call produces a different value.
-func TestLoadConfig_EphemeralKey_IsRandomPerCall_NoDatabasePath(t *testing.T) {
-	// Use a temp file as the "parent directory" — os.MkdirAll can't create a
-	// directory where a file already exists, so persistence always fails.
-	blockingFile := filepath.Join(t.TempDir(), "not-a-dir")
-	require.NoError(t, os.WriteFile(blockingFile, []byte("block"), 0600))
-	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", filepath.Join(blockingFile, "secret-encryption.key"))
-	t.Setenv("APIP_DEMO_MODE", "true")
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
-
-	cfg1, err := LoadConfig("")
-	require.NoError(t, err)
-	cfg2, err := LoadConfig("")
-	require.NoError(t, err)
-
-	assert.NotEqual(t, cfg1.Database.SecretEncryptionKey, cfg2.Database.SecretEncryptionKey,
-		"without a database path, ephemeral keys must differ between independent LoadConfig calls")
-}
-
-// With a key file path configured, the first LoadConfig generates and persists a 32-byte
-// binary key file; subsequent calls load the same key — secrets survive restarts.
-func TestLoadConfig_DemoMode_PersistsAndReloadsKey(t *testing.T) {
+// setDemoDBPath points DATABASE_DB_PATH at a fresh temp file and returns the default
+// key-file path (alongside the DB) that demo-mode resolution would use.
+func setDemoDBPath(t *testing.T) (defaultKeyFile string) {
+	t.Helper()
 	dir := t.TempDir()
-	keyFile := filepath.Join(dir, "secret-encryption.key")
+	t.Setenv("DATABASE_DB_PATH", filepath.Join(dir, "api_platform.db"))
+	return filepath.Join(dir, "secret-encryption.key")
+}
 
+// --- Demo mode ---
+
+// 1.i — Demo, neither provided, DB path present → a key is generated, persisted to the default
+// key file, and reloaded (identical) on the next start.
+func TestResolveKey_Demo_NeitherProvided_GeneratesAndPersists(t *testing.T) {
+	clearKeyEnv(t)
 	t.Setenv("APIP_DEMO_MODE", "true")
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
-	t.Setenv("DATABASE_SECRET_ENCRYPTION_KEY_FILE", keyFile)
+	keyFile := setDemoDBPath(t)
 
 	cfg1, err := LoadConfig("")
 	require.NoError(t, err)
-	require.NotEmpty(t, cfg1.Database.SecretEncryptionKey)
+	require.NotEmpty(t, cfg1.EncryptionKey)
+	assert.Equal(t, keyFile, cfg1.EncryptionKeyFile, "key file path must default alongside the DB")
 
-	// Key file must be a 32-byte binary file.
 	data, readErr := os.ReadFile(keyFile)
-	require.NoError(t, readErr, "key file must exist after first LoadConfig")
+	require.NoError(t, readErr, "key file must be created on first start")
 	assert.Len(t, data, 32, "key file must contain exactly 32 bytes")
 
-	// Second call must load the same key.
 	cfg2, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.Equal(t, cfg1.Database.SecretEncryptionKey, cfg2.Database.SecretEncryptionKey,
-		"second LoadConfig must reuse the persisted key so secrets remain readable after restart")
+	assert.Equal(t, cfg1.EncryptionKey, cfg2.EncryptionKey,
+		"the persisted key must be reloaded identically on restart")
 }
 
-// TestLoadConfig_ExplicitSecretEncryptionKey verifies the normal path where the
-// env var is set — no ephemeral generation occurs and the value is passed through.
-func TestLoadConfig_ExplicitSecretEncryptionKey_UsedAsIs(t *testing.T) {
-	const stableKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", stableKey)
+// 1.i (edge) — Demo, neither provided, no DB path → falls back to an ephemeral key that differs
+// per call (nothing to persist). Exercised directly since empty env values can't clear the
+// default Database.Path (koanf skips empty env values).
+func TestResolveKey_Demo_NeitherProvided_NoDBPath_Ephemeral(t *testing.T) {
+	t.Setenv("APIP_DEMO_MODE", "true")
+
+	cfg1 := &Server{} // no EncryptionKey, no EncryptionKeyFile, empty Database.Path
+	require.NoError(t, resolveEncryptionKey(cfg1))
+	cfg2 := &Server{}
+	require.NoError(t, resolveEncryptionKey(cfg2))
+
+	require.NotEmpty(t, cfg1.EncryptionKey)
+	assert.Empty(t, cfg1.EncryptionKeyFile, "no key file path can be derived without a DB path")
+	assert.NotEqual(t, cfg1.EncryptionKey, cfg2.EncryptionKey,
+		"without a persistable path, demo keys must be ephemeral and differ per call")
+}
+
+// 1.ii — Demo, only ENCRYPTION_KEY (valid) → used as-is; never written to the key file.
+func TestResolveKey_Demo_InlineKeyValid_NotPersisted(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "true")
+	keyFile := setDemoDBPath(t)
+	t.Setenv("ENCRYPTION_KEY", validInlineKey)
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, validInlineKey, cfg.EncryptionKey)
+
+	_, statErr := os.Stat(keyFile)
+	assert.True(t, os.IsNotExist(statErr), "an inline key must never be written to the key file")
+}
+
+// 1.ii — Demo, only ENCRYPTION_KEY (invalid) → error, no fallback.
+func TestResolveKey_Demo_InlineKeyInvalid_Errors(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("ENCRYPTION_KEY", "not-a-valid-32-byte-key")
+
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid ENCRYPTION_KEY")
+}
+
+// 1.iii — Demo, only ENCRYPTION_KEY_FILE (valid) → read from file and used.
+func TestResolveKey_Demo_KeyFileValid_Used(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "true")
+	path, expected := writeValidKeyFile(t, t.TempDir(), "my.key")
+	t.Setenv("ENCRYPTION_KEY_FILE", path)
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, expected, cfg.EncryptionKey)
+}
+
+// 1.iii — Demo, only ENCRYPTION_KEY_FILE (wrong size) → error, never auto-generated.
+func TestResolveKey_Demo_KeyFileInvalidSize_Errors(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "true")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.key")
+	require.NoError(t, os.WriteFile(path, []byte("too-short"), 0600))
+	t.Setenv("ENCRYPTION_KEY_FILE", path)
+
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load ENCRYPTION_KEY_FILE")
+}
+
+// 1.iii — Demo, only ENCRYPTION_KEY_FILE (missing) → error, never auto-generated at that path.
+func TestResolveKey_Demo_KeyFileMissing_Errors(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("ENCRYPTION_KEY_FILE", filepath.Join(t.TempDir(), "does-not-exist.key"))
+
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load ENCRYPTION_KEY_FILE")
+}
+
+// 1.iv / 2.iv — Both provided → error in demo mode.
+func TestResolveKey_Demo_BothProvided_Errors(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "true")
+	path, _ := writeValidKeyFile(t, t.TempDir(), "my.key")
+	t.Setenv("ENCRYPTION_KEY", validInlineKey)
+	t.Setenv("ENCRYPTION_KEY_FILE", path)
+
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only one of ENCRYPTION_KEY or ENCRYPTION_KEY_FILE")
+}
+
+// --- Non-demo (production) mode ---
+
+// 2.i — Non-demo, neither provided → fatal error; never auto-generated.
+func TestResolveKey_NonDemo_NeitherProvided_Errors(t *testing.T) {
+	clearKeyEnv(t)
 	t.Setenv("APIP_DEMO_MODE", "false")
-	t.Setenv("AUTH_JWT_ENABLED", "false")
+	setDemoDBPath(t) // even with a DB path, non-demo must not generate.
+
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no encryption key configured")
+}
+
+// 2.ii — Non-demo, only ENCRYPTION_KEY (valid) → used.
+func TestResolveKey_NonDemo_InlineKeyValid_Used(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "false")
+	t.Setenv("ENCRYPTION_KEY", validInlineKey)
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.Equal(t, stableKey, cfg.Database.SecretEncryptionKey)
+	assert.Equal(t, validInlineKey, cfg.EncryptionKey)
 }
 
-// Ensure APIP_DEMO_MODE="1" is also accepted as a truthy value.
-func TestLoadConfig_DemoModeOne_AcceptedAsTruthy(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "1")
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+// 2.ii — Non-demo, only ENCRYPTION_KEY (invalid) → error.
+func TestResolveKey_NonDemo_InlineKeyInvalid_Errors(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "false")
+	t.Setenv("ENCRYPTION_KEY", "short")
+
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid ENCRYPTION_KEY")
+}
+
+// 2.iii — Non-demo, only ENCRYPTION_KEY_FILE (valid) → read and used.
+func TestResolveKey_NonDemo_KeyFileValid_Used(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "false")
+	path, expected := writeValidKeyFile(t, t.TempDir(), "prod.key")
+	t.Setenv("ENCRYPTION_KEY_FILE", path)
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.NotEmpty(t, cfg.Database.SecretEncryptionKey)
+	assert.Equal(t, expected, cfg.EncryptionKey)
 }
 
-// Ensure APIP_DEMO_MODE with surrounding whitespace is handled gracefully.
-func TestLoadConfig_DemoModeWhitespace_Trimmed(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "  true  ")
-	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
-	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+// 2.iv — Both provided → error in non-demo mode.
+func TestResolveKey_NonDemo_BothProvided_Errors(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "false")
+	path, _ := writeValidKeyFile(t, t.TempDir(), "prod.key")
+	t.Setenv("ENCRYPTION_KEY", validInlineKey)
+	t.Setenv("ENCRYPTION_KEY_FILE", path)
+
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only one of ENCRYPTION_KEY or ENCRYPTION_KEY_FILE")
+}
+
+// --- APIP_DEMO_MODE parsing ---
+
+// APIP_DEMO_MODE unset → defaults to demo, so neither-provided generates a key.
+func TestResolveKey_DemoModeUnset_DefaultsToDemo(t *testing.T) {
+	clearKeyEnv(t)
+	os.Unsetenv("APIP_DEMO_MODE")
+	setDemoDBPath(t)
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.NotEmpty(t, cfg.Database.SecretEncryptionKey)
+	assert.NotEmpty(t, cfg.EncryptionKey)
 }
 
-// cleanEnvForTest clears all environment variables that LoadConfig reads from the
-// environment so each test starts from a known baseline.
-func init() {
-	// Clear vars that would leak from the host environment and break assertions.
-	for _, v := range []string{
-		"PLATFORM_SECRET_ENCRYPTION_KEY",
-		"APIP_DATABASE_SECRET_ENCRYPTION_KEY",
-		"APIP_DEMO_MODE",
-	} {
-		os.Unsetenv(v)
+// APIP_DEMO_MODE="1" and whitespace-padded values are treated as truthy (demo).
+func TestResolveKey_DemoModeTruthyVariants(t *testing.T) {
+	for _, v := range []string{"1", "  true  "} {
+		t.Run(v, func(t *testing.T) {
+			clearKeyEnv(t)
+			t.Setenv("APIP_DEMO_MODE", v)
+			setDemoDBPath(t)
+
+			cfg, err := LoadConfig("")
+			require.NoError(t, err)
+			assert.NotEmpty(t, cfg.EncryptionKey)
+		})
 	}
+}
+
+// --- validEncryptionKey unit coverage ---
+
+func TestValidEncryptionKey(t *testing.T) {
+	require.True(t, validEncryptionKey(validInlineKey), "64 hex chars must be valid")
+	// 32 bytes base64-encoded (standard encoding, 44 chars).
+	require.True(t, validEncryptionKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))
+	require.False(t, validEncryptionKey(""), "empty must be invalid")
+	require.False(t, validEncryptionKey("short"), "short strings must be invalid")
+	require.False(t, validEncryptionKey("zz"+validInlineKey[2:]), "non-hex 64-char must be invalid")
 }
 
 // validateAuthModeExclusivity: IDP (JWKS) auth must not be enabled alongside the

@@ -15,7 +15,7 @@
 #
 # QUICK START (file-based auth mode — no external IDP needed):
 #   1. Copy this file to config-platform-api.toml.
-#   2. Set [auth.jwt] secret_key to a random string (or use AUTH_JWT_SECRET_KEY env var).
+#   2. Set encryption_key to a 32-byte key (or use the ENCRYPTION_KEY env var): openssl rand -hex 32.
 #   3. Set [auth.file_based] enabled = true and configure users.
 #   4. Run: docker compose up
 #
@@ -32,6 +32,18 @@ port      = "9243"   # HTTP/HTTPS listen port for Platform API
 # Scope-based authorization for API endpoints.
 # Set to false only to temporarily bypass during development.
 enable_scope_validation = true
+
+# ---------------------------------------------------------------------------
+# Encryption
+# ---------------------------------------------------------------------------
+# Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
+# (secrets, subscription tokens, WebSub HMAC secrets) and for signing local HMAC
+# login JWTs. Provide exactly ONE of encryption_key / encryption_key_file
+# (env: ENCRYPTION_KEY / ENCRYPTION_KEY_FILE). Generate with: openssl rand -hex 32.
+# In demo mode, if neither is set a key file is auto-created next to the database
+# and reused on restart; in production one of them is required.
+# encryption_key = ""
+# encryption_key_file = ""
 
 # Controls authentication for POST /api/v0.9/organizations.
 # When true, the endpoint requires both a valid Bearer JWT and the
@@ -58,9 +70,8 @@ path = "/app/data/api_platform.db"
 # max_idle_conns    = 10    # maximum idle connections in the pool
 # conn_max_lifetime = 300   # seconds before a connection is recycled
 
-# Encryption key for subscription tokens stored in the database (32-byte hex string).
-# Required when subscription tokens are used; auto-generated if left empty.
-# subscription_token_encryption_key = ""
+# (Encryption is configured once at the top of this file via encryption_key /
+# encryption_key_file — it covers subscription tokens, secrets, and HMAC secrets.)
 
 # ---------------------------------------------------------------------------
 # Authentication
@@ -71,7 +82,7 @@ path = "/app/data/api_platform.db"
 [auth.jwt]
 enabled    = true
 issuer     = "platform-api"
-# secret_key = "change-me-to-a-random-secret"   # or use AUTH_JWT_SECRET_KEY env var
+# Login JWTs are signed with the top-level encryption_key (ENCRYPTION_KEY).
 # skip_validation = false   # NEVER set true in production
 
 # IDP (JWKS-based) — enable instead of JWT when using Asgardeo, Keycloak, Auth0, etc.

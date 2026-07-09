@@ -595,7 +595,7 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 }
 
 func TestMain(m *testing.M) {
-	// Allow GetConfig() to generate an ephemeral secret_encryption_key without failing.
+	// Allow GetConfig() to auto-provision an encryption key without failing.
 	os.Setenv("APIP_DEMO_MODE", "true")
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)

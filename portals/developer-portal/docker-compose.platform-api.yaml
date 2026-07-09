@@ -28,8 +28,8 @@
 #   4. Open http://localhost:3000
 #      Login: admin / admin
 #
-# Set AUTH_JWT_SECRET_KEY in your shell or a .env file to keep sessions alive
-# across Platform API restarts. When unset a random key is generated at startup.
+# Set ENCRYPTION_KEY in your shell or a .env file to keep sessions and encrypted data
+# alive across Platform API restarts. When unset a demo key is used.
 
 services:
   platform-api:
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data

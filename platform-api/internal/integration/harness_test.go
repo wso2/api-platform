@@ -1,3 +1,7 @@
+//go:build integration
+
+/*
+ *  Copyright (c) 2026, WSO2 LLC.
 /*
  *  Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
@@ -23,7 +27,6 @@
 // so backend-specific bugs (e.g. SQL Server LIMIT/cascade-path issues) are
 // caught instead of being hidden behind the SQLite unit-test path.
 //
-// Build-tagged `integration` so it is excluded from the default `go test ./...`.
 //
 //go:build integration
 
@@ -44,8 +47,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Allow GetConfig() to generate an ephemeral secret_encryption_key so tests
-	// that exercise subscription_repository.go don't panic at startup.
+	// Allow GetConfig() to auto-provision an encryption key so tests that exercise
+	// subscription_repository.go don't fail at startup.
 	os.Setenv("APIP_DEMO_MODE", "true")
 	os.Exit(m.Run())
 }

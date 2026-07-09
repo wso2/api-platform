@@ -421,13 +421,13 @@ rather than run insecurely:
 |---|---|---|
 | **AI Workspace (BFF)** — auth | Basic / file-based auth allowed | Basic auth **rejected** — OIDC required (`VITE_AUTH_MODE=oidc` + the `OIDC_*` values) |
 | **AI Workspace (BFF)** — TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`BFF_TLS_CERT_FILE` / `BFF_TLS_KEY_FILE`) |
-| **Platform API** — secrets | Generates an ephemeral encryption key when none is set | A stable key is **required** (`PLATFORM_SECRET_ENCRYPTION_KEY` or `DATABASE_ENCRYPTION_KEY`) |
+| **Platform API** — secrets | Generates an ephemeral encryption key (or persists one next to the DB) when none is set | A stable key is **required** (`ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE`) |
 
 So before flipping `APIP_DEMO_MODE=false`, make sure you have:
 
 1. **OIDC configured on both services** — follow [Testing with an IDP locally](#testing-with-an-idp-locally) (uncomment the OIDC blocks on both compose services and set the `OIDC_*` values). Basic auth is no longer a fallback.
 2. **A real TLS certificate mounted** on the BFF (and the Platform API) — follow [Custom TLS certificates](#custom-tls-certificates-optional) above and uncomment the cert volume lines. The self-signed fallback is gone.
-3. **A stable secret encryption key** for the Platform API — set `PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)` in your `.env` (otherwise encrypted secrets become unreadable after a restart). See [platform-api/README.md](../../platform-api/README.md).
+3. **A stable encryption key** for the Platform API — set `ENCRYPTION_KEY=$(openssl rand -hex 32)` in your `.env` (otherwise encrypted secrets become unreadable after a restart). See [platform-api/README.md](../../platform-api/README.md).
 
 If any of these is missing, the corresponding service exits at startup with a message naming
 exactly what to provide.

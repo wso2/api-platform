@@ -91,7 +91,7 @@ Sensitive values (JWT signing key, database password) must be passed as environm
 
 | Platform API env variable | Description |
 |--------------------------|-------------|
-| `AUTH_JWT_SECRET_KEY` | JWT signing key (required when `auth.jwt.enabled = true`) |
+| `ENCRYPTION_KEY` | 32-byte key (64 hex / base64) — encrypts secrets & subscription tokens and signs login JWTs (or use `ENCRYPTION_KEY_FILE`) |
 | `DATABASE_PASSWORD` | Database password |
 
 ## Environment Variable Override

@@ -274,7 +274,7 @@ The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platfo
 ```toml
 [platform_api]
 base_url = "https://platform-api:9243"   # env: APIP_DP_PLATFORMAPI_BASEURL
-jwt_secret = ""                           # same as AUTH_JWT_SECRET_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
+jwt_secret = ""                           # same as the Platform API's ENCRYPTION_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
 insecure = false                          # set true when Platform API uses a self-signed cert
 ```
 
