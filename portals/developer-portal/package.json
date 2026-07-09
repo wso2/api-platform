@@ -27,7 +27,7 @@
   "homepage": "https://github.com/api-developer-portal-core#readme",
   "dependencies": {
     "async-lock": "1.4.1",
-    "axios": "1.11.0",
+    "axios": "1.16.1",
     "basic-ftp": "5.2.0",
     "better-sqlite3": "^12.10.0",
     "bootstrap-icons": "1.11.3",
