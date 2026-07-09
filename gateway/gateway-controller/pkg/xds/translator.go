@@ -171,6 +171,14 @@ func (t *Translator) GetCertStore() *certstore.CertStore {
 	return t.certStore
 }
 
+// appendMCPResourcePathToBackend reports whether the legacy behaviour of appending the
+// "/mcp" resource path to the MCP backend upstream is enabled via configuration. When
+// enabled, MCP "/mcp" routes fall through to the standard rewrite (which preserves the
+// operation path on the upstream), matching the previous gateway version's behaviour.
+func (t *Translator) appendMCPResourcePathToBackend() bool {
+	return t.config != nil && t.config.MCP.AppendResourcePathToBackend
+}
+
 // SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
 // When a transformer is available for a config's kind, the translator will
 // produce a RuntimeDeployConfig first, then convert it to Envoy resources.
@@ -228,7 +236,11 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	// For MCP proxies the "/mcp" path is only the gateway-facing endpoint marker; it must
 	// NOT be appended to the backend. The upstream is expected to be the full MCP endpoint
 	// URL, so the request is forwarded to exactly the configured upstream path. See below.
-	isMCPResourceRoute := rdc.Metadata.Kind == string(models.KindMcp) && operationPath == constants.MCP_RESOURCE_PATH
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := rdc.Metadata.Kind == string(models.KindMcp) &&
+		operationPath == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
@@ -1787,7 +1799,11 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// path is only the gateway-facing endpoint marker; it must NOT be appended to the
 	// backend. The upstream is expected to be the full MCP endpoint URL, so the request
 	// is forwarded to exactly the configured upstream path. See below for the rewrite.
-	isMCPResourceRoute := apiKind == string(models.KindMcp) && path == constants.MCP_RESOURCE_PATH
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := apiKind == string(models.KindMcp) &&
+		path == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {

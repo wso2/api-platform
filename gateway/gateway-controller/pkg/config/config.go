@@ -55,6 +55,19 @@ type Config struct {
 	// When nil, subscription validation system policy remains disabled.
 	Subscriptions    *SubscriptionsConfig   `koanf:"subscriptions"`
 	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
+	MCP              MCPConfig              `koanf:"mcp"`
+}
+
+// MCPConfig holds configuration for MCP (Model Context Protocol) proxies.
+type MCPConfig struct {
+	// AppendResourcePathToBackend preserves the legacy behaviour where the "/mcp"
+	// gateway resource path is appended to the MCP backend upstream path. Older
+	// gateway versions forwarded a request for "<context>/mcp" to "<upstream>/mcp".
+	// The current default forwards to exactly the configured upstream path (the
+	// upstream is expected to be the full MCP endpoint URL). Enable this only if
+	// existing MCP API definitions rely on the "/mcp" suffix being appended to the
+	// backend.
+	AppendResourcePathToBackend bool `koanf:"append_resource_path_to_backend"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -943,6 +956,11 @@ func defaultConfig() *Config {
 		ImmutableGateway: ImmutableGatewayConfig{
 			Enabled:      false,
 			ArtifactsDir: "/etc/api-platform-gateway/immutable_gateway/artifacts",
+		},
+		MCP: MCPConfig{
+			// Default to the current behaviour: the "/mcp" resource path is NOT appended
+			// to the MCP backend upstream. Set to true to restore the legacy behaviour.
+			AppendResourcePathToBackend: false,
 		},
 	}
 }

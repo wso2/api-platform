@@ -836,6 +836,66 @@ func TestTranslator_MCPUpstreamRewriteFromRDC(t *testing.T) {
 	}
 }
 
+// TestTranslator_MCPAppendResourcePathToBackend verifies that when
+// mcp.append_resource_path_to_backend is enabled, MCP "/mcp" routes fall back to the
+// legacy behaviour of appending "/mcp" to the backend upstream path. This preserves
+// compatibility for MCP API definitions authored against the previous gateway version.
+func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.MCP.AppendResourcePathToBackend = true
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	mcpKind := string(models.KindMcp)
+	mcpPath := constants.MCP_RESOURCE_PATH
+
+	tests := []struct {
+		name         string
+		context      string
+		upstreamPath string
+		request      string
+		wantUpstream string
+	}{
+		// Legacy behaviour: "/mcp" IS appended to the configured upstream path.
+		{"root upstream", "/mcpauth", "", "/mcpauth/mcp", "/mcp"},
+		{"base-path upstream", "/mcpauth", "/api/v2", "/mcpauth/mcp", "/api/v2/mcp"},
+		{"trailing slash request", "/mcpauth", "/api/v2", "/mcpauth/mcp/", "/api/v2/mcp/"},
+	}
+
+	for _, tt := range tests {
+		t.Run("createRoute/"+tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestMCP", "v1.0", tt.context,
+				"POST", mcpPath, "test-cluster", tt.upstreamPath,
+				"localhost", mcpKind, "", "", nil, "", nil,
+				false, nil,
+			)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+
+		t.Run("createRouteFromRDC/"+tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				Metadata: models.Metadata{Kind: mcpKind},
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.upstreamPath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "POST",
+				Path:            tt.context + mcpPath,
+				OperationPath:   mcpPath,
+				AutoHostRewrite: true,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("POST|"+tt.context+mcpPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
 func TestTranslator_SanitizeClusterName(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
