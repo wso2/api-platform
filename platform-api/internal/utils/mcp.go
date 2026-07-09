@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
@@ -290,7 +291,9 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 
 	// Check HTTP status code
 	if resp.StatusCode == http.StatusUnauthorized {
-		return "", nil, constants.ErrMCPServerUnauthorized
+		return "", nil, apperror.ValidationFailed.New(
+			"The MCP server returned 401 Unauthorized. Check the provided credentials.").
+			WithLogMessage("MCP server returned 401 Unauthorized to the initialize request")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", nil, fmt.Errorf("initialize request failed with status %d: %s", resp.StatusCode, string(body))

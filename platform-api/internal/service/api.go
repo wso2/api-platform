@@ -101,7 +101,7 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		return nil, err
 	}
 	if project == nil {
-		return nil, constants.ErrProjectNotFound
+		return nil, apperror.ProjectNotFound.New()
 	}
 
 	// Handle the API handle (user-facing identifier)
@@ -193,10 +193,10 @@ func (s *APIService) GetAPIByUUID(apiUUID, orgUUID string) (*api.RESTAPI, error)
 		return nil, fmt.Errorf("failed to get api: %w", err)
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	return s.modelToRESTAPI(apiModel)
@@ -236,7 +236,7 @@ func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) 
 		return "", err
 	}
 	if metadata == nil {
-		return "", constants.ErrAPINotFound
+		return "", apperror.RESTAPINotFound.New()
 	}
 
 	return metadata.ID, nil
@@ -253,7 +253,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string,
 			return nil, 0, err
 		}
 		if project == nil {
-			return nil, 0, constants.ErrProjectNotFound
+			return nil, 0, apperror.ProjectNotFound.New()
 		}
 		projectUUID = project.ID
 	}
@@ -295,10 +295,10 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 		return nil, err
 	}
 	if existingAPIModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if existingAPIModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	// Apply updates using shared helper
@@ -351,7 +351,11 @@ func (s *APIService) ensureRESTRuntimeArtifactUnchanged(existing, updated *model
 	}
 	existingArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(existing)
 	if err != nil {
-		return constants.ErrArtifactRuntimeImmutable
+		// Fail closed: without the existing runtime artifact we cannot prove the update
+		// leaves it unchanged, so treat it as a change the control plane may not make.
+		return apperror.ArtifactRuntimeImmutable.Wrap(err,
+			"The update changes the gateway runtime configuration, which is owned by the data-plane "+
+				"gateway and cannot be modified from the control plane.")
 	}
 	updatedArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(updated)
 	if err != nil {
@@ -372,10 +376,10 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 		return err
 	}
 	if api == nil {
-		return constants.ErrAPINotFound
+		return apperror.RESTAPINotFound.New()
 	}
 	if api.OrganizationID != orgUUID {
-		return constants.ErrAPINotFound
+		return apperror.RESTAPINotFound.New()
 	}
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
@@ -471,7 +475,7 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 		return nil, err
 	}
 	if apiModel == nil || apiModel.OrganizationID != orgId {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgId)
@@ -507,10 +511,10 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 		return nil, err
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	var validGateways []*model.Gateway
 	for _, gatewayId := range gatewayIds {
@@ -519,7 +523,7 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 			return nil, err
 		}
 		if gateway == nil {
-			return nil, constants.ErrGatewayNotFound
+			return nil, apperror.GatewayNotFound.New()
 		}
 		validGateways = append(validGateways, gateway)
 	}
@@ -560,10 +564,10 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewa
 		return nil, err
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 	if err != nil {
@@ -599,17 +603,17 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 			return err
 		}
 		if handleExists {
-			return constants.ErrHandleExists
+			return apperror.RESTAPIExists.New("An API with this id already exists.")
 		}
 	}
 	if req.DisplayName == "" {
-		return constants.ErrInvalidAPIName
+		return apperror.ValidationFailed.New("The displayName field is required.")
 	}
 	if !s.isValidContext(req.Context) {
-		return constants.ErrInvalidAPIContext
+		return apperror.ValidationFailed.New("Invalid API context format.")
 	}
 	if !s.isValidVersion(req.Version) {
-		return constants.ErrInvalidAPIVersion
+		return apperror.ValidationFailed.New("Invalid API version format.")
 	}
 	if strings.TrimSpace(req.ProjectId) == "" {
 		return apperror.ValidationFailed.New("project id is required")
@@ -620,17 +624,17 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		return err
 	}
 	if nameVersionExists {
-		return constants.ErrAPINameVersionAlreadyExists
+		return apperror.RESTAPIExists.New("An API with the same name and version already exists in the organization.")
 	}
 
 	// Validate lifecycle status if provided
 	if req.LifeCycleStatus != nil && !constants.ValidLifecycleStates[string(*req.LifeCycleStatus)] {
-		return constants.ErrInvalidLifecycleState
+		return apperror.ValidationFailed.New("Invalid lifecycle status.")
 	}
 
 	// Validate API type if provided
 	if req.Kind != nil && !strings.EqualFold(*req.Kind, constants.RestApi) {
-		return constants.ErrInvalidAPIType
+		return apperror.ValidationFailed.New("Invalid API type.")
 	}
 
 	// Type-specific validations
@@ -656,7 +660,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	if req.Transport != nil && len(*req.Transport) > 0 {
 		for _, transport := range *req.Transport {
 			if !constants.ValidTransports[strings.ToLower(transport)] {
-				return constants.ErrInvalidTransport
+				return apperror.ValidationFailed.New(fmt.Sprintf("Invalid transport protocol %q.", transport))
 			}
 		}
 	}
@@ -689,12 +693,14 @@ func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID st
 		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
+				return apperror.ValidationFailed.Wrap(err, fmt.Sprintf(
+					"Subscription plan %q was not found or is not active.", handle))
 			}
 			return err
 		}
 		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
-			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
+			return apperror.ValidationFailed.New(fmt.Sprintf(
+				"Subscription plan %q was not found or is not active.", handle))
 		}
 	}
 	return nil
@@ -750,25 +756,25 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 			return err
 		}
 		if nameVersionExists {
-			return constants.ErrAPINameVersionAlreadyExists
+			return apperror.RESTAPIExists.New("An API with the same name and version already exists in the organization.")
 		}
 	}
 
 	// Validate lifecycle status if provided
 	if req.LifeCycleStatus != nil && !constants.ValidLifecycleStates[string(*req.LifeCycleStatus)] {
-		return constants.ErrInvalidLifecycleState
+		return apperror.ValidationFailed.New("Invalid lifecycle status.")
 	}
 
 	// Validate API type if provided
 	if req.Kind != nil && !strings.EqualFold(*req.Kind, constants.RestApi) {
-		return constants.ErrInvalidAPIType
+		return apperror.ValidationFailed.New("Invalid API type.")
 	}
 
 	// Validate transport protocols if provided
 	if req.Transport != nil {
 		for _, transport := range *req.Transport {
 			if !constants.ValidTransports[strings.ToLower(transport)] {
-				return constants.ErrInvalidTransport
+				return apperror.ValidationFailed.New(fmt.Sprintf("Invalid transport protocol %q.", transport))
 			}
 		}
 	}

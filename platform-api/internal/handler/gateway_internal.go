@@ -21,16 +21,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/dto"
-	"github.com/wso2/api-platform/platform-api/internal/model"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
@@ -77,7 +78,7 @@ func (h *GatewayInternalAPIHandler) SetHmacSecretService(svc hmacSecretDecrypter
 // authenticateGateway validates the API key and returns the authenticated gateway.
 func (h *GatewayInternalAPIHandler) authenticateGateway(apiKey string) (*model.Gateway, error) {
 	if apiKey == "" {
-		return nil, constants.ErrMissingAPIKey
+		return nil, apperror.Unauthorized.New().WithLogMessage("api-key header absent")
 	}
 	return h.gatewayService.VerifyToken(apiKey)
 }
@@ -92,19 +93,21 @@ func (h *GatewayInternalAPIHandler) authenticateRequest(w http.ResponseWriter, r
 
 	gateway, err := h.authenticateGateway(apiKey)
 	if err != nil {
-		if errors.Is(err, constants.ErrMissingAPIKey) {
-			h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-			httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized",
-				"API key is required. Provide 'api-key' header."))
-		} else if errors.Is(err, constants.ErrInvalidAPIToken) {
-			h.slogger.Warn("Authentication failed - Invalid API key", "clientIP", clientIP)
-			httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized",
-				"Invalid or expired API key"))
-		} else {
-			h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
-			httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error",
-				"Error while validating API key"))
+		// Unified authentication failure (error-handling.md): a missing key, an
+		// unknown key, and an expired key must be indistinguishable to the caller,
+		// or the endpoint becomes a token-probing oracle. The specific reason is
+		// carried by the error's LogMessage and recorded here only.
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) && appErr.HTTPStatus == http.StatusUnauthorized {
+			h.slogger.Warn("Gateway authentication failed",
+				"clientIP", clientIP, "detail", appErr.LogMessage)
+			httputil.WriteJSON(w, http.StatusUnauthorized,
+				apperror.NewErrorResponseWithCode(apperror.CodeCommonUnauthorized, "Invalid or expired credentials."))
+			return "", "", false
 		}
+		h.slogger.Error("Gateway authentication errored", "clientIP", clientIP, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			apperror.NewErrorResponseWithCode(apperror.CodeCommonInternalError, "An unexpected error occurred."))
 		return "", "", false
 	}
 	return gateway.OrganizationID, gateway.ID, true
@@ -126,12 +129,12 @@ func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Reques
 
 	api, err := h.gatewayInternalService.GetActiveDeploymentByGateway(apiID, orgID, gatewayID)
 	if err != nil {
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
+		if apperror.DeploymentNotActive.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this API on this gateway"))
 			return
 		}
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.RESTAPINotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"API not found"))
 			return
@@ -214,12 +217,12 @@ func (h *GatewayInternalAPIHandler) GetLLMProvider(w http.ResponseWriter, r *htt
 
 	provider, err := h.gatewayInternalService.GetActiveLLMProviderDeploymentByGateway(providerID, orgID, gatewayID)
 	if err != nil {
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
+		if apperror.DeploymentNotActive.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this LLM provider on this gateway"))
 			return
 		}
-		if errors.Is(err, constants.ErrLLMProviderNotFound) {
+		if apperror.LLMProviderNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"LLM provider not found"))
 			return
@@ -264,12 +267,12 @@ func (h *GatewayInternalAPIHandler) GetLLMProxy(w http.ResponseWriter, r *http.R
 
 	proxy, err := h.gatewayInternalService.GetActiveLLMProxyDeploymentByGateway(proxyID, orgID, gatewayID)
 	if err != nil {
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
+		if apperror.DeploymentNotActive.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this LLM proxy on this gateway"))
 			return
 		}
-		if errors.Is(err, constants.ErrLLMProxyNotFound) {
+		if apperror.LLMProxyNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"LLM proxy not found"))
 			return
@@ -321,7 +324,7 @@ func (h *GatewayInternalAPIHandler) GetGatewayDeployments(w http.ResponseWriter,
 
 	deployments, err := h.gatewayInternalService.GetDeploymentsByGateway(orgID, gatewayID, since)
 	if err != nil {
-		if errors.Is(err, constants.ErrGatewayNotFound) {
+		if apperror.GatewayNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
@@ -367,7 +370,7 @@ func (h *GatewayInternalAPIHandler) BatchFetchDeployments(w http.ResponseWriter,
 	// Fetch deployment content
 	contentMap, err := h.gatewayInternalService.GetDeploymentContentBatch(orgID, gatewayID, req.DeploymentIDs)
 	if err != nil {
-		if errors.Is(err, constants.ErrGatewayNotFound) {
+		if apperror.GatewayNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
@@ -420,7 +423,7 @@ func (h *GatewayInternalAPIHandler) GetSubscriptions(w http.ResponseWriter, r *h
 	}
 
 	if err := h.gatewayInternalService.IsAPIDeployedOnGateway(apiID, gatewayID, orgID); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.RESTAPINotFound.Is(err) {
 			h.slogger.Error("API not found when listing subscriptions",
 				"apiId", apiID,
 				"organizationId", orgID,
@@ -430,7 +433,7 @@ func (h *GatewayInternalAPIHandler) GetSubscriptions(w http.ResponseWriter, r *h
 				"API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
+		if apperror.DeploymentNotActive.Is(err) {
 			h.slogger.Error("Subscription list denied - API has no active deployment status on gateway",
 				"apiId", apiID,
 				"organizationId", orgID,
@@ -451,7 +454,7 @@ func (h *GatewayInternalAPIHandler) GetSubscriptions(w http.ResponseWriter, r *h
 
 	subs, err := h.gatewayInternalService.ListSubscriptionsForAPI(apiID, orgID)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.RESTAPINotFound.Is(err) {
 			h.slogger.Error("API not found when listing subscriptions",
 				"apiId", apiID,
 				"organizationId", orgID,
@@ -512,13 +515,13 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(w http.ResponseWriter, r *http.R
 		if i := strings.LastIndex(clientIP, ":"); i != -1 {
 			clientIP = clientIP[:i]
 		}
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
+		if apperror.DeploymentNotActive.Is(err) {
 			h.slogger.Error("No active deployment found for MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this MCP proxy on this gateway"))
 			return
 		}
-		if errors.Is(err, constants.ErrMCPProxyNotFound) {
+		if apperror.MCPProxyNotFound.Is(err) {
 			h.slogger.Error("MCP proxy not found", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
@@ -569,13 +572,13 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.
 		if i := strings.LastIndex(clientIP, ":"); i != -1 {
 			clientIP = clientIP[:i]
 		}
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
+		if apperror.DeploymentNotActive.Is(err) {
 			h.slogger.Error("No active deployment found for WebSub API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this WebSub API on this gateway"))
 			return
 		}
-		if errors.Is(err, constants.ErrWebSubAPINotFound) {
+		if apperror.WebSubAPINotFound.Is(err) {
 			h.slogger.Error("WebSub API not found", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"WebSub API not found"))
@@ -626,13 +629,13 @@ func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *ht
 		if i := strings.LastIndex(clientIP, ":"); i != -1 {
 			clientIP = clientIP[:i]
 		}
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
+		if apperror.DeploymentNotActive.Is(err) {
 			h.slogger.Error("No active deployment found for WebBroker API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this WebBroker API on this gateway"))
 			return
 		}
-		if errors.Is(err, constants.ErrWebBrokerAPINotFound) {
+		if apperror.WebBrokerAPINotFound.Is(err) {
 			h.slogger.Error("WebBroker API not found", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found",
 				"WebBroker API not found"))
@@ -682,23 +685,19 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(w http.ResponseWriter
 	}
 
 	if err := h.gatewayService.ReceiveGatewayManifest(orgID, gatewayID, body.Version, body.FunctionalityType, body.Policies); err != nil {
-		if errors.Is(err, constants.ErrGatewayVersionMismatch) {
-			h.slogger.Warn("Gateway manifest rejected: version mismatch", "gatewayID", gatewayID, "error", err)
-			httputil.WriteJSON(w, http.StatusConflict, apperror.NewErrorResponse(409, "Conflict", err.Error()))
-			return
-		}
-		if errors.Is(err, constants.ErrGatewayFunctionalityTypeMismatch) {
-			h.slogger.Warn("Gateway manifest rejected: functionality type mismatch", "gatewayID", gatewayID, "error", err)
-			httputil.WriteJSON(w, http.StatusConflict, apperror.NewErrorResponse(409, "Conflict", err.Error()))
-			return
-		}
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", err.Error()))
+		// A catalog error already carries the status, code, and a client-sterile
+		// message (version/type mismatches attach the registered vs reported values
+		// as structured details). Previously this echoed err.Error() into the body.
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			h.slogger.Warn("Gateway manifest rejected",
+				"gatewayID", gatewayID, "code", appErr.Code, "detail", appErr.LogMessage)
+			apperror.WriteHTTP(w, appErr, "")
 			return
 		}
 		h.slogger.Error("Failed to store gateway manifest", "gatewayID", gatewayID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error",
-			"Failed to store gateway manifest"))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			apperror.NewErrorResponseWithCode(apperror.CodeCommonInternalError, "An unexpected error occurred."))
 		return
 	}
 
@@ -962,7 +961,7 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(w http.ResponseWriter,
 
 	plaintext, err := h.secretService.Decrypt(orgID, handle)
 	if err != nil {
-		if errors.Is(err, constants.ErrSecretNotFound) {
+		if apperror.SecretNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "Secret not found"))
 			return
 		}

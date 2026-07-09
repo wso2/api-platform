@@ -76,8 +76,7 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to list LLM provider API keys for provider %s in org %s", providerID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to list LLM provider API keys for provider %s in org %s", providerID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
@@ -108,17 +107,7 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 	}
 
 	if err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.ArtifactNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrAPIKeyNotFound) {
-			return apperror.LLMProviderAPIKeyNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrAPIKeyForbidden) {
-			return apperror.LLMProviderAPIKeyForbidden.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to delete LLM provider API key %s for provider %s in org %s", keyName, providerID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to delete LLM provider API key %s for provider %s in org %s", keyName, providerID, orgID))
 	}
 
 	h.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID)
@@ -163,8 +152,7 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.R
 			return err
 		}
 
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to create LLM provider API key for provider %s in org %s", providerID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to create LLM provider API key for provider %s in org %s", providerID, orgID))
 	}
 
 	h.slogger.Info("Successfully created LLM provider API key", "providerId", providerID, "organizationId", orgID, "keyId", response.Id)

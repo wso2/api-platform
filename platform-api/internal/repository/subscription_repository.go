@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -125,7 +125,7 @@ func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
 	)
 	if err != nil {
 		if isSubscriptionUniqueViolation(err) {
-			return constants.ErrSubscriptionAlreadyExists
+			return apperror.SubscriptionExists.New()
 		}
 		return fmt.Errorf("failed to insert subscription: %w", err)
 	}
@@ -175,7 +175,7 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrSubscriptionNotFound
+			return nil, apperror.SubscriptionNotFound.New()
 		}
 		return nil, err
 	}
@@ -324,7 +324,7 @@ func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 	return nil
 }
@@ -355,13 +355,13 @@ func (r *SubscriptionRepo) UpdateToken(subscriptionID, orgUUID, newToken string)
 	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now(), subscriptionID, orgUUID)
 	if err != nil {
 		if isSubscriptionUniqueViolation(err) {
-			return constants.ErrSubscriptionAlreadyExists
+			return apperror.SubscriptionExists.New()
 		}
 		return fmt.Errorf("failed to update subscription token: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 	return nil
 }
@@ -375,7 +375,7 @@ func (r *SubscriptionRepo) Delete(subscriptionID, orgUUID string) error {
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 	return nil
 }

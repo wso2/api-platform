@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -247,7 +247,7 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (r *DeploymentRepo) Delete(deploymentID, artifactUUID, orgUUID string) erro
 	}
 
 	if rowsAffected == 0 {
-		return constants.ErrDeploymentNotFound
+		return apperror.DeploymentNotFound.New()
 	}
 
 	return nil
@@ -592,7 +592,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 		return nil, err
 	}
@@ -814,7 +814,7 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 		FROM deployment_status s
 		INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
 		INNER JOIN (
-			`+r.reg.UnionAllSelect("uuid", "handle", "origin")+`
+			` + r.reg.UnionAllSelect("uuid", "handle", "origin") + `
 		) src ON src.uuid = s.artifact_uuid
 		WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
 			AND src.origin <> 'gateway_api'`

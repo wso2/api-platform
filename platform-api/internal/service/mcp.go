@@ -30,6 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -111,17 +112,17 @@ func (s *MCPProxyService) WithSecretService(ss *SecretService) {
 // Create creates a new MCP proxy
 func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	if req.DisplayName == "" || req.Version == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
 	if err := validatePolicyVersions(req.Policies); err != nil {
 		return nil, err
 	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The upstream main url field is required.")
 	}
 
 	// req.ProjectId is the project handle; resolve it to the project UUID so the
@@ -138,7 +139,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil || project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectRefNotFound.New()
 		}
 		projectUUID = &project.ID
 	}
@@ -152,7 +153,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			return nil, fmt.Errorf("failed to check MCP proxy exists: %w", err)
 		}
 		if exists {
-			return nil, constants.ErrMCPProxyExists
+			return nil, apperror.MCPProxyExists.New()
 		}
 	} else {
 		var err error
@@ -172,7 +173,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		return nil, fmt.Errorf("failed to count existing MCP proxies: %w", err)
 	}
 	if config.LimitReached(proxyCount, s.cfg.ArtifactLimits.MaxMCPProxiesPerOrg) {
-		return nil, constants.ErrMCPProxyLimitReached
+		return nil, apperror.MCPProxyLimitReached.New()
 	}
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
@@ -213,13 +214,13 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			Policies:     mapMCPPoliciesAPIToModel(req.Policies),
 			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		},
-		Origin: constants.OriginCP,
+		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
 	}
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, constants.ErrMCPProxyExists
+			return nil, apperror.MCPProxyExists.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to create MCP proxy: %w", err)
 	}
@@ -277,7 +278,7 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 		return nil, fmt.Errorf("failed to validate project: %w", err)
 	}
 	if project == nil || project.OrganizationID != orgUUID {
-		return nil, constants.ErrProjectNotFound
+		return nil, apperror.ProjectRefNotFound.New()
 	}
 	projectUUID := project.ID
 
@@ -318,7 +319,7 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 // Get retrieves an MCP proxy by its handle
 func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 	if handle == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The MCP proxy id is required.")
 	}
 
 	m, err := s.repo.GetByHandle(handle, orgUUID)
@@ -326,7 +327,7 @@ func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 		return nil, fmt.Errorf("failed to get MCP proxy: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrMCPProxyNotFound
+		return nil, apperror.MCPProxyNotFound.New()
 	}
 
 	return s.toMCPProxyAPI(m)
@@ -335,17 +336,17 @@ func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 // Update updates an existing MCP proxy
 func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
 	if handle == "" || req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The MCP proxy id and a request body are required.")
 	}
 	if req.DisplayName == "" || req.Version == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
 	if err := validatePolicyVersions(req.Policies); err != nil {
 		return nil, err
 	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The upstream main url field is required.")
 	}
 
 	// Get existing proxy
@@ -354,7 +355,7 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		return nil, fmt.Errorf("failed to get MCP proxy: %w", err)
 	}
 	if existing == nil {
-		return nil, constants.ErrMCPProxyNotFound
+		return nil, apperror.MCPProxyNotFound.New()
 	}
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
@@ -422,7 +423,7 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrMCPProxyNotFound
+			return nil, apperror.MCPProxyNotFound.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to update MCP proxy: %w", err)
 	}
@@ -434,7 +435,7 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 // Delete deletes an MCP proxy by its handle
 func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The MCP proxy id is required.")
 	}
 
 	// Get the MCP proxy UUID before deletion (needed for deployment lookup)
@@ -443,7 +444,7 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to get MCP proxy: %w", err)
 	}
 	if mcpProxy == nil {
-		return constants.ErrMCPProxyNotFound
+		return apperror.MCPProxyNotFound.New()
 	}
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
@@ -467,7 +468,7 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrMCPProxyNotFound
+			return apperror.MCPProxyNotFound.Wrap(err)
 		}
 		return fmt.Errorf("failed to delete MCP proxy: %w", err)
 	}
@@ -496,7 +497,7 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 // When proxyId is not provided, url is required and auth is optional.
 func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfoFetchRequest) (*api.MCPServerInfoFetchResponse, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 
 	var url string
@@ -513,7 +514,7 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			return nil, fmt.Errorf("failed to get MCP proxy: %w", err)
 		}
 		if proxy == nil {
-			return nil, constants.ErrMCPProxyNotFound
+			return nil, apperror.MCPProxyNotFound.New()
 		}
 
 		// Use stored URL from proxy configuration
@@ -523,7 +524,7 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 
 		normalizedURL, err := ensureMCPEndpointURL(url)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
+			return nil, apperror.ValidationFailed.Wrap(err, "The configured MCP server URL is invalid.")
 		}
 		url = normalizedURL
 
@@ -535,7 +536,7 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 	} else {
 		// No proxyId - initial creation flow, url is required
 		if req.Url == nil || *req.Url == "" {
-			return nil, constants.ErrInvalidInput
+			return nil, apperror.ValidationFailed.New("The url field is required when proxyId is not provided.")
 		}
 		url = *req.Url
 
@@ -547,11 +548,13 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 	}
 
 	if err := utils.ValidateURL(url); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
+		return nil, apperror.ValidationFailed.Wrap(err, "The provided URL is invalid.").
+			WithLogMessage(fmt.Sprintf("invalid MCP server URL: %s", url))
 	}
 
 	if err := utils.CheckURLReachability(url, 10*time.Second); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrURLUnreachable, err)
+		return nil, apperror.ValidationFailed.Wrap(err, "The provided URL is unreachable.").
+			WithLogMessage(fmt.Sprintf("MCP server URL is unreachable: %s", url))
 	}
 
 	return utils.FetchMCPServerInfo(url, headerName, headerValue)

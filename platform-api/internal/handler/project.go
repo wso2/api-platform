@@ -176,15 +176,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) e
 	}
 	project, err := h.projectService.UpdateProject(projectId, &req, orgID, actor)
 	if err != nil {
-		var appErr *apperror.Error
-		if errors.As(err, &appErr) {
-			return err
-		}
-		if errors.Is(err, constants.ErrHandleImmutable) {
-			return apperror.ValidationFailed.Wrap(err, "Project id is immutable and cannot be changed")
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to update project %s in org %s", projectId, orgID))
+		return serviceError(err, fmt.Sprintf("failed to update project %s in org %s", projectId, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, project)

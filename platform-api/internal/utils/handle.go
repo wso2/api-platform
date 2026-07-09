@@ -18,10 +18,11 @@
 package utils
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 
 	"github.com/google/uuid"
 )
@@ -56,7 +57,7 @@ func ValidateHandleImmutable(pathHandle string, bodyHandle *string) error {
 // request body to explicitly include a handle/id value matching the path handle.
 func ValidateHandleImmutableRequired(pathHandle, bodyHandle string) error {
 	if bodyHandle == "" || bodyHandle != pathHandle {
-		return constants.ErrHandleImmutable
+		return apperror.ValidationFailed.New("The id is immutable and cannot be changed.")
 	}
 	return nil
 }
@@ -71,16 +72,19 @@ func ValidateHandleImmutableRequired(pathHandle, bodyHandle string) error {
 // - Length between 3 and 63 characters
 func ValidateHandle(handle string) error {
 	if handle == "" {
-		return constants.ErrHandleEmpty
+		return apperror.ValidationFailed.New("The id cannot be empty.")
 	}
 	if len(handle) < handleMinLength {
-		return constants.ErrHandleTooShort
+		return apperror.ValidationFailed.New(
+			fmt.Sprintf("The id must be at least %d characters.", handleMinLength))
 	}
 	if len(handle) > handleMaxLength {
-		return constants.ErrHandleTooLong
+		return apperror.ValidationFailed.New(
+			fmt.Sprintf("The id must be at most %d characters.", handleMaxLength))
 	}
 	if !validHandleRegex.MatchString(handle) {
-		return constants.ErrInvalidHandle
+		return apperror.ValidationFailed.New("The id must be lowercase alphanumeric with hyphens only " +
+			"(no consecutive hyphens, cannot start or end with a hyphen).")
 	}
 	return nil
 }
@@ -98,7 +102,8 @@ func ValidateHandle(handle string) error {
 //   - Error if source is empty or all retries exhausted
 func GenerateHandle(source string, existsCheck func(string) bool) (string, error) {
 	if strings.TrimSpace(source) == "" {
-		return "", constants.ErrHandleSourceEmpty
+		return "", apperror.Internal.New().
+			WithLogMessage("source string cannot be empty for handle generation")
 	}
 
 	// Generate base handle from source
@@ -135,7 +140,8 @@ func GenerateHandle(source string, existsCheck func(string) bool) (string, error
 		}
 	}
 
-	return "", constants.ErrHandleGenerationFailed
+	return "", apperror.Internal.New().
+		WithLogMessage(fmt.Sprintf("failed to generate a unique handle for %q after %d retries", source, maxRetries))
 }
 
 // sanitizeToHandle converts a string to a valid handle format

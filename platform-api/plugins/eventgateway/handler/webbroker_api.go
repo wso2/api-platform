@@ -21,7 +21,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -214,26 +213,12 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.
 
 // handleServiceError maps service errors to HTTP responses
 func (h *WebBrokerAPIHandler) handleServiceError(w http.ResponseWriter, err error) {
-	if respondArtifactGuardError(w, err) {
+	// The service builds every client-facing failure from the error catalog, so
+	// the error already carries its status, code, and sterile client message.
+	// Anything reaching the fallback is an unmapped internal failure.
+	if respondCatalogError(w, h.slogger, err) {
 		return
 	}
-	switch {
-	case errors.Is(err, constants.ErrHandleImmutable):
-		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", err.Error()))
-	case errors.Is(err, constants.ErrInvalidInput):
-		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", err.Error()))
-	case errors.Is(err, constants.ErrWebBrokerAPINotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
-	case errors.Is(err, constants.ErrWebBrokerAPIExists):
-		httputil.WriteJSON(w, http.StatusConflict, apperror.NewErrorResponse(409, "Conflict", "WebBroker API with this ID already exists"))
-	case errors.Is(err, constants.ErrWebBrokerAPILimitReached):
-		httputil.WriteJSON(w, http.StatusConflict, apperror.NewErrorResponse(409, "Conflict", "WebBroker API limit reached for the organization"))
-	case errors.Is(err, constants.ErrProjectNotFound):
-		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "Project not found"))
-	case errors.Is(err, constants.ErrDevPortalNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "DevPortal not found"))
-	default:
-		h.slogger.Error("WebBroker API service error", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
-	}
+	h.slogger.Error("WebBroker API service error", "error", err)
+	httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 }

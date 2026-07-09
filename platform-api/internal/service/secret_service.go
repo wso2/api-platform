@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -38,7 +39,7 @@ type SecretInUseError struct {
 }
 
 func (e *SecretInUseError) Error() string {
-	return constants.ErrSecretInUse.Error()
+	return "secret is referenced by one or more resources"
 }
 
 type SecretService struct {
@@ -91,7 +92,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 	if secretType == "" {
 		secretType = model.SecretTypeGeneric
 	} else if secretType != model.SecretTypeGeneric && secretType != model.SecretTypeCertificate {
-		return nil, apperror.ValidationFailed.Wrap(constants.ErrInvalidSecretType, "Invalid secret type: must be GENERIC or CERTIFICATE")
+		return nil, apperror.ValidationFailed.New("The secret type must be one of GENERIC or CERTIFICATE.")
 	}
 
 	exists, err := s.repo.Exists(orgID, req.Handle)
@@ -99,7 +100,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		return nil, fmt.Errorf("failed to check secret existence: %w", err)
 	}
 	if exists {
-		return nil, apperror.SecretExists.Wrap(constants.ErrSecretAlreadyExists)
+		return nil, apperror.SecretExists.New()
 	}
 
 	ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
@@ -239,8 +240,8 @@ func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 	}
 
 	if len(missing) > 0 {
-		return apperror.ValidationFailed.Wrap(fmt.Errorf("%w: %v", constants.ErrSecretRefMissing, missing),
-			"One or more referenced secrets do not exist")
+		return apperror.ValidationFailed.New(fmt.Sprintf(
+			"The following referenced secrets do not exist: %s.", strings.Join(missing, ", ")))
 	}
 	return nil
 }

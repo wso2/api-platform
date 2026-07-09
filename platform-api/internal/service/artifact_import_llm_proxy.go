@@ -20,6 +20,7 @@ package service
 import (
 	"fmt"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -117,14 +118,14 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 // does not exist, instead of letting a missing reference surface as a raw FK error.
 func (i *llmProxyImporter) resolveProviderUUID(providerHandle, orgID string) (string, error) {
 	if providerHandle == "" {
-		return "", fmt.Errorf("%w: LLM proxy import requires a provider reference", constants.ErrInvalidInput)
+		return "", apperror.ValidationFailed.New("The LLM proxy import requires a provider reference.")
 	}
 	art, err := i.artifactRepo.GetByHandle(providerHandle, orgID)
 	if err != nil {
 		return "", fmt.Errorf("failed to validate referenced LLM provider %q: %w", providerHandle, err)
 	}
 	if art == nil || art.Type != constants.LLMProvider {
-		return "", fmt.Errorf("%w: referenced LLM provider %q does not exist", constants.ErrInvalidInput, providerHandle)
+		return "", apperror.ValidationFailed.New(fmt.Sprintf("The referenced LLM provider %q does not exist.", providerHandle))
 	}
 	return art.UUID, nil
 }

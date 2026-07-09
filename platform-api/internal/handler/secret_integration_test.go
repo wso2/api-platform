@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"mime/multipart"
@@ -31,7 +30,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -923,7 +922,7 @@ func TestSecretService_ValidateSecretRefs_DeprecatedHandleRejected(t *testing.T)
 	if err == nil {
 		t.Fatal("expected validation error for DEPRECATED secret ref, got nil")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected ErrSecretRefMissing, got %v", err)
 	}
 }

@@ -19,11 +19,11 @@ package service
 
 import (
 	"database/sql"
-	"errors"
 	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -171,8 +171,8 @@ func (m *mockLLMProviderTemplateCRUDRepo) DeleteVersion(templateID, orgUUID, ver
 func validTemplateRequest(name string) *api.LLMProviderTemplate {
 	endpoint := "https://api.example.com"
 	return &api.LLMProviderTemplate{
-		DisplayName:    name,
-		Version: "v1.0",
+		DisplayName: name,
+		Version:     "v1.0",
 		Metadata: &api.LLMProviderTemplateMetadata{
 			EndpointUrl: &endpoint,
 		},
@@ -206,7 +206,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsMissingEndpoint(t *testing.T) {
 
 	// No metadata at all.
 	req := &api.LLMProviderTemplate{DisplayName: "No Endpoint", Version: "v1.0"}
-	if _, err := svc.Create("org-1", "alice", req); !errors.Is(err, constants.ErrInvalidInput) {
+	if _, err := svc.Create("org-1", "alice", req); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput when endpoint is missing, got: %v", err)
 	}
 
@@ -214,10 +214,10 @@ func TestLLMProviderTemplateServiceCreate_RejectsMissingEndpoint(t *testing.T) {
 	blank := "   "
 	req2 := &api.LLMProviderTemplate{
 		DisplayName: "Blank Endpoint",
-		Version:  "v1.0",
-		Metadata: &api.LLMProviderTemplateMetadata{EndpointUrl: &blank},
+		Version:     "v1.0",
+		Metadata:    &api.LLMProviderTemplateMetadata{EndpointUrl: &blank},
 	}
-	if _, err := svc.Create("org-1", "alice", req2); !errors.Is(err, constants.ErrInvalidInput) {
+	if _, err := svc.Create("org-1", "alice", req2); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput when endpoint is blank, got: %v", err)
 	}
 	if repo.createCalled {
@@ -231,7 +231,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsEmptyName(t *testing.T) {
 
 	req := validTemplateRequest("")
 	_, err := svc.Create("org-1", "alice", req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 	if repo.createCalled {
@@ -246,7 +246,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsInvalidVersion(t *testing.T) {
 	req := validTemplateRequest("My Provider")
 	req.Version = "not-a-version"
 	_, err := svc.Create("org-1", "alice", req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 	if repo.createCalled {
@@ -262,7 +262,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsReservedManagedBy(t *testing.T)
 	req := validTemplateRequest("My Provider")
 	req.ManagedBy = &wso2
 	_, err := svc.Create("org-1", "alice", req)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved) {
+	if !apperror.LLMProviderTemplateManagedByReserved.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateManagedByReserved, got: %v", err)
 	}
 	if repo.createCalled {
@@ -275,7 +275,7 @@ func TestLLMProviderTemplateServiceCreate_ReturnsConflictForDuplicateHandle(t *t
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.Create("org-1", "alice", validTemplateRequest("My Provider"))
-	if !errors.Is(err, constants.ErrLLMProviderTemplateExists) {
+	if !apperror.LLMProviderTemplateExists.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateExists, got: %v", err)
 	}
 	if repo.createCalled {
@@ -293,7 +293,7 @@ func TestLLMProviderTemplateServiceUpdate_RejectsReservedManagedBy(t *testing.T)
 	req := validTemplateRequest("My Provider")
 	req.ManagedBy = &wso2
 	_, err := svc.Update("org-1", "my-provider", "alice", req)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved) {
+	if !apperror.LLMProviderTemplateManagedByReserved.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateManagedByReserved, got: %v", err)
 	}
 	if repo.updated != nil {
@@ -309,7 +309,7 @@ func TestLLMProviderTemplateServiceUpdate_RejectsReadOnlyBuiltin(t *testing.T) {
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.Update("org-1", "openai", "alice", validTemplateRequest("OpenAI"))
-	if !errors.Is(err, constants.ErrLLMProviderTemplateReadOnly) {
+	if !apperror.LLMProviderTemplateReadOnly.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateReadOnly, got: %v", err)
 	}
 	if repo.updated != nil {
@@ -322,7 +322,7 @@ func TestLLMProviderTemplateServiceUpdate_ReturnsNotFoundWhenTemplateMissing(t *
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.Update("org-1", "does-not-exist", "alice", validTemplateRequest("Name"))
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if !apperror.LLMProviderTemplateNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
 }
@@ -427,7 +427,7 @@ func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *te
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v2.0"}
 	_, err := svc.CreateVersion("org-1", "does-not-exist", "test-user", req)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if !apperror.LLMProviderTemplateNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
 }
@@ -435,13 +435,13 @@ func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *te
 func TestLLMProviderTemplateServiceCreateVersion_ConflictWhenVersionExists(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		countVersionsResult: 1,
-		createNewVersionErr: constants.ErrLLMProviderTemplateVersionExists,
+		createNewVersionErr: apperror.LLMProviderTemplateVersionExists.New(),
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v1.0"}
 	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateVersionExists) {
+	if !apperror.LLMProviderTemplateVersionExists.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateVersionExists, got: %v", err)
 	}
 }
@@ -452,7 +452,7 @@ func TestLLMProviderTemplateServiceCreateVersion_RejectsInvalidVersionFormat(t *
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "2.0"}
 	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 	if repo.createdVersion != nil {
@@ -467,7 +467,7 @@ func TestLLMProviderTemplateServiceCreateVersion_RejectsV0(t *testing.T) {
 	// Versions start at v1.0; v0.x is not creatable.
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v0.0"}
 	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput for v0.0, got: %v", err)
 	}
 	if repo.createdVersion != nil {
@@ -525,7 +525,7 @@ func TestLLMProviderTemplateServiceCopyVersion_NotFoundWhenSourceMissing(t *test
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.CopyVersion("org-1", "nope-v1-0", "nope-v2-0", "v2.0", "test-user", nil)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if !apperror.LLMProviderTemplateNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
 }
@@ -538,7 +538,7 @@ func TestLLMProviderTemplateServiceCopyVersion_RejectsMismatchedToTemplateID(t *
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.CopyVersion("org-1", "mistralai-v1-0", "other-family-v2-0", "v2.0", "test-user", nil)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput for mismatched toTemplateId, got: %v", err)
 	}
 	if repo.createdVersion != nil {
@@ -553,7 +553,7 @@ func TestLLMProviderTemplateServiceListVersions_NotFoundWhenNoVersions(t *testin
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.ListVersions("org-1", "does-not-exist", 10, 0)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if !apperror.LLMProviderTemplateNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
 }
@@ -586,7 +586,7 @@ func TestLLMProviderTemplateServiceGetVersion_NotFound(t *testing.T) {
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.GetVersion("org-1", "mistralai", "v9.0")
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if !apperror.LLMProviderTemplateNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
 }
@@ -640,7 +640,7 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_NotFound(t *testing.T) {
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.SetVersionEnabled("org-1", "does-not-exist", "v1.0", true)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if !apperror.LLMProviderTemplateNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
 }
@@ -655,7 +655,7 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_DisableBlocksWhenInUse(t *t
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	_, err := svc.SetVersionEnabled("org-1", "openai", "v1.0", false)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateInUse) {
+	if !apperror.LLMProviderTemplateInUse.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateInUse, got: %v", err)
 	}
 	if repo.countProvidersUsingTemplateVersion != "v1.0" {
@@ -698,7 +698,7 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_RejectsCustomTemplate(t *te
 	// Enable/disable is reserved for built-in ('wso2') templates; a custom
 	// ('customer') template must be rejected and never touch SetEnabled.
 	_, err := svc.SetVersionEnabled("org-1", "openai", "v2.0", false)
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotToggleable) {
+	if !apperror.LLMProviderTemplateNotToggleable.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotToggleable, got: %v", err)
 	}
 	if repo.setEnabledCalled || repo.countProvidersUsingTemplateCalled {
@@ -717,7 +717,7 @@ func TestLLMProviderTemplateServiceDeleteVersion_NotFoundWhenVersionMissing(t *t
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	err := svc.DeleteVersion("org-1", "mistralai", "v9.0")
-	if !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if !apperror.LLMProviderTemplateNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
 }
@@ -731,7 +731,7 @@ func TestLLMProviderTemplateServiceDeleteVersion_BlocksReadOnlyBuiltin(t *testin
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	err := svc.DeleteVersion("org-1", "openai", "v1.0")
-	if !errors.Is(err, constants.ErrLLMProviderTemplateReadOnly) {
+	if !apperror.LLMProviderTemplateReadOnly.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateReadOnly, got: %v", err)
 	}
 	if repo.deleteVersionCalled {
@@ -749,7 +749,7 @@ func TestLLMProviderTemplateServiceDeleteVersion_BlocksWhenInUse(t *testing.T) {
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	err := svc.DeleteVersion("org-1", "mistralai-v2-0", "v2.0")
-	if !errors.Is(err, constants.ErrLLMProviderTemplateInUse) {
+	if !apperror.LLMProviderTemplateInUse.Is(err) {
 		t.Fatalf("expected ErrLLMProviderTemplateInUse, got: %v", err)
 	}
 	if repo.countProvidersUsingTemplateVersion != "v2.0" {

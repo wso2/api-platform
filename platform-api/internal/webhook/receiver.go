@@ -210,34 +210,26 @@ func (r *Receiver) resolveOrgUUID(env *Envelope) error {
 		return err
 	}
 	if org == nil {
-		return constants.ErrOrganizationNotFound
+		return apperror.OrganizationNotFound.New()
 	}
 	env.OrgID = org.ID
 	return nil
 }
 
-// mapWebhookError maps domain errors returned by the reused services to the matching apperror
-// catalog entry, preserving the same HTTP status classification the old statusForError gave them.
+// mapWebhookError maps errors raised while processing a webhook event to an
+// apperror catalog entry. The services this receiver reuses now build their
+// failures from the catalog, so a domain error already carries the right code
+// and status and passes through untouched; only the receiver's own envelope
+// sentinels and unclassified failures need mapping here.
 func mapWebhookError(err error) *apperror.Error {
-	// Services that have migrated to the apperror catalog return typed errors
-	// directly — pass them through untouched.
 	var appErr *apperror.Error
 	if errors.As(err, &appErr) {
 		return appErr
 	}
-	switch {
-	case errors.Is(err, ErrInvalidEnvelope), errors.Is(err, ErrUnsupportedEvent), errors.Is(err, ErrDecryptionFailed):
+	// Envelope-level failures are the receiver's own sentinels, not catalog errors.
+	if errors.Is(err, ErrInvalidEnvelope) || errors.Is(err, ErrUnsupportedEvent) || errors.Is(err, ErrDecryptionFailed) {
 		return apperror.ValidationFailed.Wrap(err, "Failed to process event")
-	case errors.Is(err, constants.ErrOrganizationNotFound):
-		return apperror.OrganizationNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrSubscriptionNotFound):
-		return apperror.SubscriptionNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrSubscriptionPlanNotFound), errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive):
-		return apperror.SubscriptionPlanNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrAPINotFound), errors.Is(err, constants.ErrAPIKeyNotFound):
-		return apperror.ArtifactNotFound.Wrap(err)
-	default:
-		// Storage/EventHub failures and unexpected errors are retryable.
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to process webhook event")
 	}
+	// Storage/EventHub failures and unexpected errors are retryable.
+	return apperror.Internal.Wrap(err).WithLogMessage("failed to process webhook event")
 }

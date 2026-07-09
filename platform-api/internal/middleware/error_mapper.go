@@ -18,7 +18,6 @@
 package middleware
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -66,56 +65,11 @@ func MapErrors(slogger *slog.Logger, next ErrorHandlerFunc) http.HandlerFunc {
 // client-facing response. Errors that are not *apperror.Error fall back to a
 // generic 500 per the "zero internal details" rule in error-handling.md.
 //
-// Severity split: a 4xx is a client outcome, not a system fault — it logs at
-// WARN without the stack. A 5xx is a system fault — it logs at ERROR with the
-// origin stack, and the tracking ID is echoed in the response body so the
-// client can quote it back for correlation.
+// The log-then-respond severity split lives in apperror.LogAndWrite so this
+// mapper and the event-gateway plugin's respondCatalogError share one
+// implementation.
 func writeMappedError(w http.ResponseWriter, r *http.Request, slogger *slog.Logger, err error) {
-	trackID := uuid.NewString()
-	var appErr *apperror.Error
-	if !errors.As(err, &appErr) {
-		appErr = apperror.Internal.Wrap(err)
-	}
-	// A handler fallback may have wrapped a more specific typed error produced
-	// deeper in the stack (service layer) in a generic Internal — prefer the
-	// specific one so service-origin errors keep their code and status.
-	for appErr.Code == apperror.CodeCommonInternalError && appErr.Cause != nil {
-		var inner *apperror.Error
-		if !errors.As(appErr.Cause, &inner) {
-			break
-		}
-		appErr = inner
-	}
-
-	logFields := []any{
-		"trackingId", trackID,
-		"code", appErr.Code,
-		"status", appErr.HTTPStatus,
+	apperror.LogAndWrite(w, slogger, apperror.FromError(err),
 		"path", r.URL.Path,
-		"method", r.Method,
-	}
-	if appErr.LogMessage != "" {
-		logFields = append(logFields, "detail", appErr.LogMessage)
-	}
-	if appErr.Cause != nil {
-		logFields = append(logFields, "cause", appErr.Cause.Error())
-	}
-	// origin is the file:line where the error was actually constructed
-	// (Def.New/Def.Wrap call site) — not to be confused with slog's own
-	// "source" attribute, which always points at this mapper's log call.
-	if origin := appErr.Origin(); origin != "" {
-		logFields = append(logFields, "origin", origin)
-	}
-
-	if appErr.HTTPStatus >= http.StatusInternalServerError {
-		if len(appErr.Stack) > 0 {
-			logFields = append(logFields, "stack", appErr.StackString())
-		}
-		slogger.Error("request failed", logFields...)
-		apperror.WriteHTTP(w, appErr, trackID)
-		return
-	}
-
-	slogger.Warn("request failed", logFields...)
-	apperror.WriteHTTP(w, appErr, "")
+		"method", r.Method)
 }

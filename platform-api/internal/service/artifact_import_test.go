@@ -19,7 +19,6 @@ package service
 
 import (
 	"database/sql"
-	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -28,6 +27,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
@@ -211,7 +211,7 @@ func TestArtifactImport_UnsupportedKind(t *testing.T) {
 	req.Configuration.Kind = "Nonexistent"
 
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
-	if !errors.Is(err, constants.ErrArtifactInvalidKind) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrArtifactInvalidKind", err)
 	}
 }
@@ -222,7 +222,7 @@ func TestArtifactImport_MissingProjectForProjectScopedKind(t *testing.T) {
 	req.Configuration.Metadata.Annotations = nil // REST requires a project
 
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput", err)
 	}
 }
@@ -235,7 +235,7 @@ func TestArtifactImport_NonexistentProject(t *testing.T) {
 
 	// Project provided but not present in the org -> the import fails with ErrProjectNotFound
 	// and no artifact is created.
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); !errors.Is(err, constants.ErrProjectNotFound) {
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); !apperror.ProjectNotFound.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrProjectNotFound", err)
 	}
 	art, err := d.artifactRepo.GetByHandle("x", importTestOrgID)
@@ -446,7 +446,7 @@ func TestArtifactImport_Enforcement_ReadOnlyAndDeletion(t *testing.T) {
 	}
 
 	// Update of a DP artifact is blocked.
-	if err := ensureOriginMutable(api.Origin); !errors.Is(err, constants.ErrArtifactReadOnly) {
+	if err := ensureOriginMutable(api.Origin); !apperror.ArtifactReadOnly.Is(err) {
 		t.Errorf("ensureOriginMutable = %v, want ErrArtifactReadOnly", err)
 	}
 
@@ -458,7 +458,7 @@ func TestArtifactImport_Enforcement_ReadOnlyAndDeletion(t *testing.T) {
 	if !active {
 		t.Fatal("HasActiveDeployment = false, want true for a deployed artifact")
 	}
-	if err := ensureOriginDeletable(d.deployment, api.Origin, cpID, importTestOrgID); !errors.Is(err, constants.ErrArtifactDeployed) {
+	if err := ensureOriginDeletable(d.deployment, api.Origin, cpID, importTestOrgID); !apperror.ArtifactDeployed.Is(err) {
 		t.Errorf("ensureOriginDeletable (deployed) = %v, want ErrArtifactDeployed", err)
 	}
 
@@ -528,7 +528,7 @@ func TestArtifactImport_ProxyMissingProvider(t *testing.T) {
 	}
 
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput for a missing provider reference", err)
 	}
 }
@@ -627,7 +627,7 @@ func TestArtifactImport_RedeployNoMetadataUpdateOnStalePush(t *testing.T) {
 func TestArtifactImport_GatewayNotFound(t *testing.T) {
 	d := setupImportTest(t)
 	_, err := d.svc.Import(importTestOrgID, "nonexistent-gateway", restImportRequest("a0000000-0000-0000-0000-000000000000", "x", "X"))
-	if !errors.Is(err, constants.ErrGatewayNotFound) {
+	if !apperror.GatewayNotFound.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrGatewayNotFound", err)
 	}
 }

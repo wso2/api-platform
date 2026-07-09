@@ -200,33 +200,33 @@ func (s *LLMProxyService) toProxyAPI(m *model.LLMProxy) (*api.LLMProxy, error) {
 
 func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	if req.DisplayName == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName field is required.")
 	}
 	if req.Metadata == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The metadata field is required.")
 	}
 	if err := utils.ValidateURL(strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid URL.")
 	}
 
 	baseHandle, err := utils.GenerateHandle(req.DisplayName, nil)
 	if err != nil || baseHandle == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName must contain at least one alphanumeric character.")
 	}
 	version := "v1.0"
 	if v := req.Version; v != "" {
 		normalized, ok := normalizeTemplateVersion(v)
 		if !ok || normalized != version {
-			return nil, constants.ErrInvalidInput
+			return nil, apperror.ValidationFailed.New("The version must match the v<major>.<minor> pattern (e.g. v1.0).")
 		}
 	}
 	handle := makeTemplateHandle(baseHandle, version)
 
 	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
-		return nil, apperror.LLMProviderTemplateManagedByReserved.Wrap(constants.ErrLLMProviderTemplateManagedByReserved)
+		return nil, apperror.LLMProviderTemplateManagedByReserved.New()
 	}
 
 	exists, err := s.repo.Exists(handle, orgUUID)
@@ -234,7 +234,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		return nil, fmt.Errorf("failed to check template exists: %w", err)
 	}
 	if exists {
-		return nil, apperror.LLMProviderTemplateExists.Wrap(constants.ErrLLMProviderTemplateExists)
+		return nil, apperror.LLMProviderTemplateExists.New()
 	}
 
 	m := &model.LLMProviderTemplate{
@@ -264,7 +264,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, apperror.LLMProviderTemplateExists.Wrap(constants.ErrLLMProviderTemplateExists)
+			return nil, apperror.LLMProviderTemplateExists.New()
 		}
 		return nil, fmt.Errorf("failed to create template: %w", err)
 	}
@@ -310,27 +310,27 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, lat
 
 func (s *LLMProviderTemplateService) Get(orgUUID, handle string) (*api.LLMProviderTemplate, error) {
 	if handle == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The template id is required.")
 	}
 	m, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template: %w", err)
 	}
 	if m == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	return s.toTemplateAPI(m)
 }
 
 func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
 	if handle == "" || req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The template id and a request body are required.")
 	}
 	if req.DisplayName == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName field is required.")
 	}
 	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
-		return nil, apperror.LLMProviderTemplateManagedByReserved.Wrap(constants.ErrLLMProviderTemplateManagedByReserved)
+		return nil, apperror.LLMProviderTemplateManagedByReserved.New()
 	}
 
 	existing, err := s.repo.GetByID(handle, orgUUID)
@@ -338,14 +338,14 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if existing == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	if existing.ManagedBy == "wso2" {
-		return nil, apperror.LLMProviderTemplateReadOnly.Wrap(constants.ErrLLMProviderTemplateReadOnly)
+		return nil, apperror.LLMProviderTemplateReadOnly.New()
 	}
 
 	if req.Version != "" && req.Version != existing.Version {
-		return nil, fmt.Errorf("%w: template version cannot be changed via update; use the versions endpoint", constants.ErrInvalidInput)
+		return nil, apperror.ValidationFailed.New("The template version cannot be changed via update; use the versions endpoint.")
 	}
 
 	managedBy := existing.ManagedBy
@@ -393,7 +393,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+			return nil, apperror.LLMProviderTemplateNotFound.New()
 		}
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
@@ -413,7 +413,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to fetch updated template: %w", err)
 	}
 	if updated == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider_template", orgUUID, updatedBy)
@@ -482,14 +482,14 @@ func templateVersionCreatable(v string) bool {
 
 func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
 	if groupID == "" || req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The template group id and a request body are required.")
 	}
 	if utils.ValueOrEmpty(req.DisplayName) == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName field is required.")
 	}
 	version, ok := normalizeTemplateVersion(req.Version)
 	if !ok || !templateVersionCreatable(version) {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The version must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0).")
 	}
 
 	managedBy := defaultTemplateManagedBy(req.ManagedBy)
@@ -502,7 +502,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 		return nil, fmt.Errorf("failed to check template family: %w", err)
 	}
 	if count == 0 {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	baseHandle := groupID
 
@@ -534,9 +534,9 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	if err := s.repo.CreateNewVersion(m); err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
-		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
-			return nil, apperror.LLMProviderTemplateVersionExists.Wrap(constants.ErrLLMProviderTemplateVersionExists)
+			return nil, apperror.LLMProviderTemplateNotFound.New()
+		case errors.Is(err, apperror.LLMProviderTemplateVersionExists.New()):
+			return nil, apperror.LLMProviderTemplateVersionExists.New()
 		default:
 			return nil, fmt.Errorf("failed to create new template version: %w", err)
 		}
@@ -548,11 +548,11 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemplateID, toVersion, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
 	fromTemplateID = strings.TrimSpace(fromTemplateID)
 	if fromTemplateID == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The source template id is required.")
 	}
 	version, ok := normalizeTemplateVersion(toVersion)
 	if !ok || !templateVersionCreatable(version) {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The target version must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0).")
 	}
 
 	source, err := s.repo.GetByID(fromTemplateID, orgUUID)
@@ -560,12 +560,12 @@ func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemp
 		return nil, fmt.Errorf("failed to resolve source template version: %w", err)
 	}
 	if source == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	groupID := source.GroupID
 
 	if h := strings.TrimSpace(toTemplateID); h != "" && h != makeTemplateHandle(groupID, version) {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The toTemplateId must match the template family and target version.")
 	}
 
 	seed := mapTemplateModelToAPI(source)
@@ -625,14 +625,14 @@ func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemp
 
 func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
 	if groupID == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The template group id is required.")
 	}
 	total, err := s.repo.CountVersions(groupID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count template versions: %w", err)
 	}
 	if total == 0 {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	items, err := s.repo.ListVersions(groupID, orgUUID, limit, offset)
 	if err != nil {
@@ -660,11 +660,11 @@ func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit
 func (s *LLMProviderTemplateService) GetVersion(orgUUID, groupID, version string) (*api.LLMProviderTemplate, error) {
 	v := strings.TrimSpace(version)
 	if groupID == "" || v == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The template group id and version are required.")
 	}
 	normalized, ok := normalizeTemplateVersion(v)
 	if !ok {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The version must match the v<major>.<minor> pattern (e.g. v1.0).")
 	}
 	v = normalized
 	m, err := s.repo.GetByVersion(groupID, orgUUID, v)
@@ -672,7 +672,7 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, groupID, version string
 		return nil, fmt.Errorf("failed to get template version: %w", err)
 	}
 	if m == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	return s.toTemplateAPI(m)
 }
@@ -680,11 +680,11 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, groupID, version string
 func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version string, enabled bool) (*api.LLMProviderTemplate, error) {
 	v := strings.TrimSpace(version)
 	if groupID == "" || v == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The template group id and version are required.")
 	}
 	normalized, ok := normalizeTemplateVersion(v)
 	if !ok {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The version must match the v<major>.<minor> pattern (e.g. v1.0).")
 	}
 	v = normalized
 
@@ -693,12 +693,12 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 		return nil, fmt.Errorf("failed to resolve template version: %w", err)
 	}
 	if target == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	// Enable/disable is reserved for built-in ('wso2') templates only. Custom
 	// templates are managed via update/delete and cannot be toggled.
 	if target.ManagedBy != constants.PolicyManagedByWSO2 {
-		return nil, apperror.LLMProviderTemplateNotToggleable.Wrap(constants.ErrLLMProviderTemplateNotToggleable)
+		return nil, apperror.LLMProviderTemplateNotToggleable.New()
 	}
 	if err := ensureOriginMutable(target.Origin); err != nil {
 		return nil, err
@@ -709,12 +709,12 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 			return nil, fmt.Errorf("failed to check template version usage: %w", err)
 		}
 		if inUse > 0 {
-			return nil, apperror.LLMProviderTemplateInUse.Wrap(constants.ErrLLMProviderTemplateInUse)
+			return nil, apperror.LLMProviderTemplateInUse.New()
 		}
 	}
 	if err := s.repo.SetEnabled(groupID, orgUUID, v, enabled); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+			return nil, apperror.LLMProviderTemplateNotFound.New()
 		}
 		return nil, fmt.Errorf("failed to set template version enabled: %w", err)
 	}
@@ -723,7 +723,7 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 		return nil, fmt.Errorf("failed to reload template version: %w", err)
 	}
 	if m == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	return s.toTemplateAPI(m)
 }
@@ -731,11 +731,11 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version string) error {
 	v := strings.TrimSpace(version)
 	if groupID == "" || v == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The template group id and version are required.")
 	}
 	normalized, ok := normalizeTemplateVersion(v)
 	if !ok {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The version must match the v<major>.<minor> pattern (e.g. v1.0).")
 	}
 	v = normalized
 	target, err := s.repo.GetByVersion(groupID, orgUUID, v)
@@ -743,10 +743,10 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 		return fmt.Errorf("failed to resolve template version: %w", err)
 	}
 	if target == nil {
-		return apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return apperror.LLMProviderTemplateNotFound.New()
 	}
 	if target.ManagedBy == "wso2" {
-		return apperror.LLMProviderTemplateReadOnly.Wrap(constants.ErrLLMProviderTemplateReadOnly)
+		return apperror.LLMProviderTemplateReadOnly.New()
 	}
 	// Block deletion while any provider built from this specific version still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
@@ -754,11 +754,11 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 		return fmt.Errorf("failed to check template version usage: %w", err)
 	}
 	if inUse > 0 {
-		return apperror.LLMProviderTemplateInUse.Wrap(constants.ErrLLMProviderTemplateInUse)
+		return apperror.LLMProviderTemplateInUse.New()
 	}
 	if err := s.repo.DeleteVersion(groupID, orgUUID, v); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+			return apperror.LLMProviderTemplateNotFound.New()
 		}
 		return fmt.Errorf("failed to delete template version: %w", err)
 	}
@@ -769,38 +769,38 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 // The handle is resolved to its (groupId, version) and the existing version-level rules apply (built-ins are read-only).
 func (s *LLMProviderTemplateService) SetEnabledByHandle(orgUUID, handle string, enabled bool) (*api.LLMProviderTemplate, error) {
 	if strings.TrimSpace(handle) == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The template id is required.")
 	}
 	target, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if target == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 	return s.SetVersionEnabled(orgUUID, target.GroupID, target.Version, enabled)
 }
 
 func (s *LLMProviderTemplateService) DeleteByHandle(orgUUID, handle string) error {
 	if strings.TrimSpace(handle) == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The template id is required.")
 	}
 	target, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if target == nil {
-		return apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return apperror.LLMProviderTemplateNotFound.New()
 	}
 	return s.DeleteVersion(orgUUID, target.GroupID, target.Version)
 }
 
 func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName, version and template fields are required.")
 	}
 	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
 		return nil, err
@@ -820,7 +820,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 			return nil, fmt.Errorf("failed to validate organization: %w", err)
 		}
 		if org == nil {
-			return nil, constants.ErrOrganizationNotFound
+			return nil, apperror.OrganizationNotFound.New()
 		}
 	}
 
@@ -847,7 +847,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		}
 	}
 	if tpl == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateRefNotFound.New()
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -859,7 +859,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 			return nil, fmt.Errorf("failed to check provider exists: %w", err)
 		}
 		if exists {
-			return nil, constants.ErrLLMProviderExists
+			return nil, apperror.LLMProviderExists.New()
 		}
 	} else {
 		var err error
@@ -888,11 +888,11 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err != nil {
 		return nil, fmt.Errorf("failed to count providers: %w", err)
 	}
-	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, constants.ErrLLMProviderLimitReached); err != nil {
+	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, apperror.LLMProviderLimitReached.New()); err != nil {
 		return nil, err
 	}
 	if !tpl.Enabled {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The referenced LLM provider template version is disabled.")
 	}
 
 	openapiSpec := utils.ValueOrEmpty(req.Openapi)
@@ -936,7 +936,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, constants.ErrLLMProviderExists
+			return nil, apperror.LLMProviderExists.New()
 		}
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
@@ -946,7 +946,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, fmt.Errorf("failed to fetch created provider: %w", err)
 	}
 	if created == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	_ = s.auditRepo.Record("CREATE", created.UUID, "llm_provider", orgUUID, createdBy)
@@ -1010,14 +1010,14 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 
 func (s *LLMProviderService) Get(orgUUID, handle string) (*api.LLMProvider, error) {
 	if handle == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The LLM provider id is required.")
 	}
 	m, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provider: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 	// Look up template handle from UUID
 	tplHandle := ""
@@ -1035,7 +1035,7 @@ func (s *LLMProviderService) Get(orgUUID, handle string) (*api.LLMProvider, erro
 
 func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
 	if handle == "" || req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The LLM provider id and a request body are required.")
 	}
 	// Fetch existing provider to preserve sensitive fields on update
 	existing, err := s.repo.GetByID(handle, orgUUID)
@@ -1043,10 +1043,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		return nil, fmt.Errorf("failed to fetch existing provider: %w", err)
 	}
 	if existing == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName, version and template fields are required.")
 	}
 	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
 		return nil, err
@@ -1073,7 +1073,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		return nil, fmt.Errorf("failed to validate template: %w", err)
 	}
 	if tpl == nil {
-		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return nil, apperror.LLMProviderTemplateRefNotFound.New()
 	}
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
@@ -1145,7 +1145,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrLLMProviderNotFound
+			return nil, apperror.LLMProviderNotFound.New()
 		}
 		return nil, fmt.Errorf("failed to update provider: %w", err)
 	}
@@ -1155,7 +1155,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		return nil, fmt.Errorf("failed to fetch updated provider: %w", err)
 	}
 	if updated == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider", orgUUID, updatedBy)
@@ -1165,7 +1165,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 
 func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The LLM provider id is required.")
 	}
 
 	// Get the provider UUID before deletion (needed for deployment lookup)
@@ -1174,7 +1174,7 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to get LLM provider: %w", err)
 	}
 	if provider == nil {
-		return constants.ErrLLMProviderNotFound
+		return apperror.LLMProviderNotFound.New()
 	}
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
@@ -1198,7 +1198,7 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrLLMProviderNotFound
+			return apperror.LLMProviderNotFound.New()
 		}
 		return fmt.Errorf("failed to delete provider: %w", err)
 	}
@@ -1225,10 +1225,10 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 
 func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName, version, provider id and projectId fields are required.")
 	}
 	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
 		return nil, err
@@ -1248,7 +1248,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil || project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectNotFound.New()
 		}
 		projectUUID = project.ID
 	}
@@ -1259,7 +1259,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, fmt.Errorf("failed to validate provider: %w", err)
 	}
 	if prov == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -1271,7 +1271,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 			return nil, fmt.Errorf("failed to check proxy exists: %w", err)
 		}
 		if exists {
-			return nil, constants.ErrLLMProxyExists
+			return nil, apperror.LLMProxyExists.New()
 		}
 	} else {
 		var err error
@@ -1289,7 +1289,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to count proxies: %w", err)
 	}
-	if err := validateLLMResourceLimit(proxyCount, s.cfg.ArtifactLimits.MaxLLMProxiesPerOrg, constants.ErrLLMProxyLimitReached); err != nil {
+	if err := validateLLMResourceLimit(proxyCount, s.cfg.ArtifactLimits.MaxLLMProxiesPerOrg, apperror.LLMProxyLimitReached.New()); err != nil {
 		return nil, err
 	}
 
@@ -1328,7 +1328,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, constants.ErrLLMProxyExists
+			return nil, apperror.LLMProxyExists.New()
 		}
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
@@ -1339,7 +1339,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, fmt.Errorf("failed to fetch created proxy: %w", err)
 	}
 	if created == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 	return s.toProxyAPI(created)
 }
@@ -1348,14 +1348,14 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 	var resolvedProjectUUID *string
 	if projectHandle != nil && *projectHandle != "" {
 		if s.projectRepo == nil {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectNotFound.New()
 		}
 		project, err := s.projectRepo.GetProjectByHandleAndOrgID(*projectHandle, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil || project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectNotFound.New()
 		}
 		resolvedProjectUUID = &project.ID
 	}
@@ -1423,7 +1423,7 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 
 func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offset int) (*api.LLMProxyListResponse, error) {
 	if providerID == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The LLM provider id is required.")
 	}
 	if s.providerRepo == nil {
 		return nil, fmt.Errorf("could not initialize llmprovider repository")
@@ -1433,7 +1433,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		return nil, fmt.Errorf("failed to validate provider: %w", err)
 	}
 	if prov == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	items, err := s.repo.ListByProvider(orgUUID, prov.UUID, limit, offset)
@@ -1488,24 +1488,24 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 
 func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 	if handle == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The LLM proxy id is required.")
 	}
 	m, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get proxy: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 	return s.toProxyAPI(m)
 }
 
 func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if handle == "" || req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The LLM proxy id and a request body are required.")
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName, version and provider id fields are required.")
 	}
 	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
 		return nil, err
@@ -1522,7 +1522,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, fmt.Errorf("failed to get existing proxy: %w", err)
 	}
 	if existing == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 
 	// Validate provider exists
@@ -1531,7 +1531,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, fmt.Errorf("failed to validate provider: %w", err)
 	}
 	if prov == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
@@ -1587,7 +1587,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrLLMProxyNotFound
+			return nil, apperror.LLMProxyNotFound.New()
 		}
 		return nil, fmt.Errorf("failed to update proxy: %w", err)
 	}
@@ -1597,7 +1597,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, fmt.Errorf("failed to fetch updated proxy: %w", err)
 	}
 	if updated == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 	_ = s.auditRepo.Record("UPDATE", existing.UUID, "llm_proxy", orgUUID, updatedBy)
 	return s.toProxyAPI(updated)
@@ -1605,7 +1605,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 
 func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The LLM proxy id is required.")
 	}
 
 	// Get the proxy UUID before deletion (needed for deployment lookup)
@@ -1614,7 +1614,7 @@ func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to get LLM proxy: %w", err)
 	}
 	if proxy == nil {
-		return constants.ErrLLMProxyNotFound
+		return apperror.LLMProxyNotFound.New()
 	}
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
@@ -1638,7 +1638,7 @@ func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
 
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrLLMProxyNotFound
+			return apperror.LLMProxyNotFound.New()
 		}
 		return fmt.Errorf("failed to delete proxy: %w", err)
 	}
@@ -1675,7 +1675,7 @@ func validateUpstream(u api.Upstream) error {
 	mainUrl := utils.ValueOrEmpty(u.Main.Url)
 	mainRef := utils.ValueOrEmpty(u.Main.Ref)
 	if strings.TrimSpace(mainUrl) == "" && strings.TrimSpace(mainRef) == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The upstream main must specify either a url or a ref.")
 	}
 	return nil
 }
@@ -2382,7 +2382,7 @@ func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) (
 	}
 	resource, isValid := utils.NormalizeAndValidateLLMResourcePath(in.Resource)
 	if !isValid {
-		return nil, fmt.Errorf("%w: resource mapping resource must be a valid path pattern", constants.ErrInvalidInput)
+		return nil, apperror.ValidationFailed.New("The resource mapping resource must be a valid path pattern.")
 	}
 	return &model.LLMProviderTemplateResourceMapping{
 		Resource: resource,
@@ -2609,17 +2609,17 @@ func validateModelProviders(template string, providers *[]api.LLMModelProvider) 
 		"azureaifoundry": true,
 	}
 	if !aggregatorTemplates[template] && len(*providers) > 1 {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("Only aggregator templates support more than one provider.")
 	}
 
 	seenProviders := make(map[string]struct{}, len(*providers))
 	for _, p := range *providers {
 		providerID := strings.TrimSpace(utils.ValueOrEmpty(p.Id))
 		if providerID == "" {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("Each provider must specify a non-empty id.")
 		}
 		if _, ok := seenProviders[providerID]; ok {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("Duplicate provider id in the request.")
 		}
 		seenProviders[providerID] = struct{}{}
 
@@ -2631,10 +2631,10 @@ func validateModelProviders(template string, providers *[]api.LLMModelProvider) 
 		for _, m := range models {
 			modelID := strings.TrimSpace(utils.ValueOrEmpty(m.Id))
 			if modelID == "" {
-				return constants.ErrInvalidInput
+				return apperror.ValidationFailed.New("Each model must specify a non-empty id.")
 			}
 			if _, ok := seenModels[modelID]; ok {
-				return constants.ErrInvalidInput
+				return apperror.ValidationFailed.New("Duplicate model id in the request.")
 			}
 			seenModels[modelID] = struct{}{}
 		}
@@ -2793,7 +2793,7 @@ func validateRateLimitingScope(scope *api.RateLimitingScopeConfig) error {
 		return nil
 	}
 	if (scope.Global == nil && scope.ResourceWise == nil) || (scope.Global != nil && scope.ResourceWise != nil) {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("Exactly one of global or resourceWise rate limiting must be set.")
 	}
 	if scope.Global != nil {
 		return validateRateLimitingLimit(scope.Global)
@@ -2803,13 +2803,13 @@ func validateRateLimitingScope(scope *api.RateLimitingScopeConfig) error {
 
 func validateResourceWiseRateLimiting(cfg *api.ResourceWiseRateLimitingConfig) error {
 	if cfg == nil {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("A rate limiting configuration is required.")
 	}
 	if err := validateRateLimitingLimit(&cfg.Default); err != nil {
 		return err
 	}
 	if len(cfg.Resources) == 0 {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("At least one resource is required for resource-wise rate limiting.")
 	}
 	for _, r := range cfg.Resources {
 		if err := validateRateLimitingLimit(&r.Limit); err != nil {
@@ -2825,7 +2825,7 @@ func boolPtrTrue(b *bool) bool {
 
 func validateRateLimitingLimit(cfg *api.RateLimitingLimitConfig) error {
 	if cfg == nil {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("A rate limiting limit configuration is required.")
 	}
 	requestEnabled := cfg.Request != nil && boolPtrTrue(cfg.Request.Enabled)
 	tokenEnabled := cfg.Token != nil && boolPtrTrue(cfg.Token.Enabled)
@@ -2837,26 +2837,26 @@ func validateRateLimitingLimit(cfg *api.RateLimitingLimitConfig) error {
 
 	if requestEnabled {
 		if cfg.Request.Count == nil || *cfg.Request.Count <= 0 || cfg.Request.Reset == nil || cfg.Request.Reset.Duration <= 0 {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("The request rate limit requires a positive count and reset duration.")
 		}
 		if !isValidResetUnit(string(cfg.Request.Reset.Unit)) {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("The request rate limit reset unit is invalid.")
 		}
 	}
 	if tokenEnabled {
 		if cfg.Token.Count == nil || *cfg.Token.Count <= 0 || cfg.Token.Reset == nil || cfg.Token.Reset.Duration <= 0 {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("The token rate limit requires a positive count and reset duration.")
 		}
 		if !isValidResetUnit(string(cfg.Token.Reset.Unit)) {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("The token rate limit reset unit is invalid.")
 		}
 	}
 	if costEnabled {
 		if cfg.Cost.Amount == nil || *cfg.Cost.Amount < 0 || cfg.Cost.Reset == nil || cfg.Cost.Reset.Duration <= 0 {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("The cost rate limit requires a non-negative amount and a positive reset duration.")
 		}
 		if !isValidResetUnit(string(cfg.Cost.Reset.Unit)) {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New("The cost rate limit reset unit is invalid.")
 		}
 	}
 	return nil
@@ -3037,13 +3037,13 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 			return nil, fmt.Errorf("failed to validate associated gateway %q: %w", ag.Id, err)
 		}
 		if gw == nil {
-			return nil, constants.ErrGatewayNotFound
+			return nil, apperror.GatewayNotFound.New()
 		}
 
 		// Associations are a set (enforced by the artifact_gateway_mappings primary key).
 		// Reject duplicate gateways up-front rather than letting the repo insert fail.
 		if _, dup := seen[gw.ID]; dup {
-			return nil, fmt.Errorf("%w: duplicate associated gateway %q", constants.ErrInvalidInput, ag.Id)
+			return nil, apperror.ValidationFailed.New(fmt.Sprintf("Duplicate associated gateway %q.", ag.Id))
 		}
 		seen[gw.ID] = struct{}{}
 

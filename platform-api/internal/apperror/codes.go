@@ -176,3 +176,25 @@ const (
 	CodeApplicationAPIKeyNotFound  = "APPLICATION_API_KEY_NOT_FOUND"
 	CodeApplicationAPIKeyForbidden = "APPLICATION_API_KEY_FORBIDDEN"
 )
+
+// WebSub and WebBroker API domain codes, raised by the event-gateway plugin
+// and by the two gateway-internal artifact lookups.
+const (
+	CodeWebSubAPINotFound        = "WEBSUB_API_NOT_FOUND"
+	CodeWebSubAPIExists          = "WEBSUB_API_EXISTS"
+	CodeWebSubAPILimitReached    = "WEBSUB_API_LIMIT_REACHED"
+	CodeWebBrokerAPINotFound     = "WEBBROKER_API_NOT_FOUND"
+	CodeWebBrokerAPIExists       = "WEBBROKER_API_EXISTS"
+	CodeWebBrokerAPILimitReached = "WEBBROKER_API_LIMIT_REACHED"
+)
+
+// HMAC secret domain codes (WebSub subscriber callback signing secrets).
+// HMAC_SECRET_NOT_CONFIGURED is a 503 rather than a 500: the encryption key is
+// a deployment-time setting, so the condition is transient from the client's
+// point of view and resolvable without a code change.
+const (
+	CodeHmacSecretNotFound      = "HMAC_SECRET_NOT_FOUND"
+	CodeHmacSecretExists        = "HMAC_SECRET_EXISTS"
+	CodeHmacSecretInvalidValue  = "HMAC_SECRET_INVALID_VALUE"
+	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
+)

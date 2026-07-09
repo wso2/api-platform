@@ -1,14 +1,13 @@
 package service
 
 import (
-	"errors"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -42,7 +41,7 @@ func TestMapTemplateResourceMappingAPI_RejectsEmptyResource(t *testing.T) {
 	if mapped != nil {
 		t.Fatal("expected mapped resource to be nil when validation fails")
 	}
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 }
@@ -60,7 +59,7 @@ func TestMapTemplateResourceMappingsAPI_StopsOnInvalidResource(t *testing.T) {
 	if mapped != nil {
 		t.Fatal("expected mapped resources to be nil when validation fails")
 	}
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 }
@@ -272,29 +271,29 @@ func TestMapProxyModelToAPI_DoesNotExposeProviderAuthValue(t *testing.T) {
 
 func TestValidateLLMResourceLimit(t *testing.T) {
 	t.Run("below limit should pass", func(t *testing.T) {
-		err := validateLLMResourceLimit(4, 5, constants.ErrLLMProviderLimitReached)
+		err := validateLLMResourceLimit(4, 5, apperror.LLMProviderLimitReached.New())
 		if err != nil {
 			t.Fatalf("expected no error below limit, got: %v", err)
 		}
 	})
 
 	t.Run("at limit should fail", func(t *testing.T) {
-		err := validateLLMResourceLimit(5, 5, constants.ErrLLMProviderLimitReached)
-		if err != constants.ErrLLMProviderLimitReached {
+		err := validateLLMResourceLimit(5, 5, apperror.LLMProviderLimitReached.New())
+		if !apperror.LLMProviderLimitReached.Is(err) {
 			t.Fatalf("expected ErrLLMProviderLimitReached, got: %v", err)
 		}
 	})
 
 	t.Run("above limit should fail", func(t *testing.T) {
-		err := validateLLMResourceLimit(6, 5, constants.ErrLLMProxyLimitReached)
-		if err != constants.ErrLLMProxyLimitReached {
+		err := validateLLMResourceLimit(6, 5, apperror.LLMProxyLimitReached.New())
+		if !apperror.LLMProxyLimitReached.Is(err) {
 			t.Fatalf("expected ErrLLMProxyLimitReached, got: %v", err)
 		}
 	})
 
 	t.Run("unlimited (limit <= 0) should always pass", func(t *testing.T) {
 		for _, limit := range []int{0, -1} {
-			if err := validateLLMResourceLimit(1_000_000, limit, constants.ErrLLMProviderLimitReached); err != nil {
+			if err := validateLLMResourceLimit(1_000_000, limit, apperror.LLMProviderLimitReached.New()); err != nil {
 				t.Fatalf("expected no error for unlimited (limit=%d), got: %v", limit, err)
 			}
 		}
@@ -1116,7 +1115,7 @@ func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(
 	}
 
 	_, err := service.Create("org-1", "alice", request)
-	if err != constants.ErrInvalidInput {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 	if providerRepo.createCalled {
@@ -1246,7 +1245,7 @@ func TestLLMProviderServiceCreateRejectsInvalidGlobalPolicyVersion(t *testing.T)
 	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1258,7 +1257,7 @@ func TestLLMProviderServiceCreateRejectsInvalidOperationPolicyVersion(t *testing
 	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1270,7 +1269,7 @@ func TestLLMProviderServiceCreateRejectsInvalidLegacyPolicyVersion(t *testing.T)
 	request.Policies = &[]api.LLMPolicy{{Name: "basic-ratelimit", Version: "V1"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1287,7 +1286,7 @@ func TestLLMProviderServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
 	_, err := service.Update("org-1", "provider-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1302,7 +1301,7 @@ func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T)
 	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	_, err := service.Create("org-1", "alice", validProviderRequest("openai"))
-	if err != constants.ErrLLMProviderExists {
+	if !apperror.LLMProviderExists.Is(err) {
 		t.Fatalf("expected ErrLLMProviderExists, got: %v", err)
 	}
 }
@@ -1374,7 +1373,7 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
-	if err != constants.ErrLLMProviderNotFound {
+	if !apperror.LLMProviderNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
 	}
 }
@@ -1392,7 +1391,7 @@ func TestLLMProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1410,7 +1409,7 @@ func TestLLMProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
 
 	_, err := service.Update("org-1", "proxy-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1425,7 +1424,7 @@ func TestLLMProxyServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
-	if err != constants.ErrLLMProxyExists {
+	if !apperror.LLMProxyExists.Is(err) {
 		t.Fatalf("expected ErrLLMProxyExists, got: %v", err)
 	}
 }
@@ -1522,10 +1521,10 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 
 func validProviderRequest(template string) *api.LLMProvider {
 	return &api.LLMProvider{
-		Id:       strPointer("provider-1"),
-		DisplayName:     "Test Provider",
-		Version:  "v1.0",
-		Template: template,
+		Id:          strPointer("provider-1"),
+		DisplayName: "Test Provider",
+		Version:     "v1.0",
+		Template:    template,
 		Upstream: api.Upstream{
 			Main: api.UpstreamDefinition{Url: stringPtr("https://example.com/openai/v1")},
 		},
@@ -1535,10 +1534,10 @@ func validProviderRequest(template string) *api.LLMProvider {
 
 func validProxyRequest(providerID, projectID string) *api.LLMProxy {
 	return &api.LLMProxy{
-		Id:        strPointer("proxy-1"),
-		DisplayName:      "Test Proxy",
-		Version:   "v1.0",
-		ProjectId: projectID,
+		Id:          strPointer("proxy-1"),
+		DisplayName: "Test Proxy",
+		Version:     "v1.0",
+		ProjectId:   projectID,
 		Provider: api.LLMProxyProvider{
 			Id: providerID,
 		},
