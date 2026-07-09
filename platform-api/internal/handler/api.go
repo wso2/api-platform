@@ -183,7 +183,9 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) error {
 		return apperror.ValidationFailed.New("projectId query parameter is required")
 	}
 
-	apis, err := h.apiService.GetAPIsByOrganization(orgId, projectId)
+	opts := parseListOptions(r)
+
+	apis, total, err := h.apiService.GetAPIsByOrganization(orgId, projectId, opts)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			return apperror.ProjectNotFound.Wrap(err).
@@ -197,9 +199,9 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) error {
 		Count: len(apis),
 		List:  apis,
 		Pagination: api.Pagination{
-			Total:  len(apis),
-			Offset: 0,
-			Limit:  len(apis),
+			Total:  total,
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
 		},
 	}
 
@@ -366,7 +368,9 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New("API ID is required")
 	}
 
-	gatewaysResponse, err := h.apiService.GetAPIGatewaysByHandle(apiId, orgId)
+	limit, offset := parsePagination(r)
+
+	gatewaysResponse, err := h.apiService.GetAPIGatewaysByHandle(apiId, orgId, limit, offset)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			return apperror.RESTAPINotFound.Wrap(err).

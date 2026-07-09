@@ -24,13 +24,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -483,8 +483,17 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 }
 
 // ListCustomPolicies returns all custom policies synced for the given organization.
-func (s *GatewayService) ListCustomPolicies(orgID string) ([]*model.CustomPolicy, error) {
-	return s.customPolicyRepo.ListCustomPolicyByOrganization(orgID)
+// ListCustomPolicies returns a page of custom policies for an organization
+// together with the total count across all pages.
+func (s *GatewayService) ListCustomPolicies(orgID string, limit, offset int) ([]*model.CustomPolicy, int, error) {
+	policies, err := s.customPolicyRepo.ListCustomPolicyByOrganization(orgID)
+	if err != nil {
+		return nil, 0, err
+	}
+	// Custom policies for one organization are a small, bounded set, so the total
+	// is the full count and the requested window is applied in memory.
+	total := len(policies)
+	return paginateSlice(policies, limit, offset), total, nil
 }
 
 // GetCustomPolicyByUUID returns a custom policy by UUID, verifying org ownership and version.
@@ -627,17 +636,19 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 }
 
 // ListGateways retrieves all gateways with constitution-compliant envelope structure
-func (s *GatewayService) ListGateways(orgID *string) (*api.GatewayListResponse, error) {
-	var gateways []*model.Gateway
-	var err error
-
-	// If orgID provided and non-empty, filter by organization
-	if orgID != nil && *orgID != "" {
-		gateways, err = s.gatewayRepo.GetByOrganizationID(*orgID)
-	} else {
-		gateways, err = s.gatewayRepo.List()
+func (s *GatewayService) ListGateways(orgID *string, opts repository.ListOptions) (*api.GatewayListResponse, error) {
+	// Empty orgID scopes to all organizations (internal/admin usage).
+	scope := ""
+	if orgID != nil {
+		scope = *orgID
 	}
 
+	total, err := s.gatewayRepo.CountGateways(scope, opts.Search)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count gateways: %w", err)
+	}
+
+	gateways, err := s.gatewayRepo.ListPaginated(scope, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list gateways: %w", err)
 	}
@@ -661,9 +672,9 @@ func (s *GatewayService) ListGateways(orgID *string) (*api.GatewayListResponse, 
 		Count: len(responses),
 		List:  responses,
 		Pagination: api.Pagination{
-			Total:  len(responses),
-			Offset: 0,
-			Limit:  len(responses),
+			Total:  total,
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
 		},
 	}, nil
 }
@@ -773,8 +784,8 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 	return gateway, nil
 }
 
-// ListTokens retrieves all active tokens for a gateway
-func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoResponse, error) {
+// ListTokens retrieves the active tokens for a gateway as a paginated list response.
+func (s *GatewayService) ListTokens(gatewayId, orgId string, limit, offset int) (*api.GatewayTokenListResponse, error) {
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
@@ -805,7 +816,16 @@ func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoRes
 		})
 	}
 
-	return tokens, nil
+	// A gateway has at most two active tokens, so the total is the full count
+	// and the requested window is applied in memory.
+	total := len(tokens)
+	page := paginateSlice(tokens, limit, offset)
+
+	return &api.GatewayTokenListResponse{
+		Count:      len(page),
+		List:       page,
+		Pagination: api.Pagination{Total: total, Offset: offset, Limit: limit},
+	}, nil
 }
 
 // RotateToken generates a new token for a gateway (max 2 active tokens)

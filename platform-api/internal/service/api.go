@@ -244,30 +244,35 @@ func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) 
 
 // GetAPIsByOrganization retrieves all APIs for an organization with optional project filter.
 // projectHandle, when provided, is the project's handle (not UUID).
-func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string) ([]api.RESTAPI, error) {
+func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string, opts repository.ListOptions) ([]api.RESTAPI, int, error) {
 	projectUUID := ""
 	// If project handle is provided, resolve it and validate that it belongs to the organization
 	if projectHandle != "" {
 		project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if project == nil {
-			return nil, constants.ErrProjectNotFound
+			return nil, 0, constants.ErrProjectNotFound
 		}
 		projectUUID = project.ID
 	}
 
-	apiModels, err := s.apiRepo.GetAPIsByOrganizationUUID(orgUUID, projectUUID)
+	total, err := s.apiRepo.CountAPIsByOrganizationUUID(orgUUID, projectUUID, opts.Search)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get apis: %w", err)
+		return nil, 0, fmt.Errorf("failed to count apis: %w", err)
+	}
+
+	apiModels, err := s.apiRepo.GetAPIsByOrganizationUUIDPaginated(orgUUID, projectUUID, opts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get apis: %w", err)
 	}
 
 	apis := make([]api.RESTAPI, 0)
 	for _, apiModel := range apiModels {
 		apiResponse, err := s.modelToRESTAPI(apiModel)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if apiResponse != nil {
 			// updatedBy is detail-only; omit it from list responses.
@@ -275,7 +280,7 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string)
 			apis = append(apis, *apiResponse)
 		}
 	}
-	return apis, nil
+	return apis, total, nil
 }
 
 // UpdateAPI updates an existing API
@@ -453,13 +458,46 @@ func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string
 	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId)
 }
 
-// GetAPIGatewaysByHandle retrieves all gateways associated with an API identified by handle
-func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string) (*api.RESTAPIGatewayListResponse, error) {
+// GetAPIGatewaysByHandle retrieves a page of gateways associated with an API
+// identified by handle, applying the requested limit/offset window.
+func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset int) (*api.RESTAPIGatewayListResponse, error) {
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	return s.GetAPIGateways(apiUUID, orgId)
+
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgId)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil || apiModel.OrganizationID != orgId {
+		return nil, constants.ErrAPINotFound
+	}
+
+	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgId)
+	if err != nil {
+		return nil, err
+	}
+	org, err := s.orgRepo.GetOrganizationByUUID(orgId)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
+
+	// The gateways associated with a single API are a small, bounded set, so the
+	// requested window is applied in memory while the total reflects the full set.
+	total := len(gatewayDetails)
+	page := paginateSlice(gatewayDetails, limit, offset)
+
+	response, err := apiGatewayDetailsToAPIList(page, orgHandle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert API gateway details: %w", err)
+	}
+	response.Pagination = api.Pagination{Total: total, Offset: offset, Limit: limit}
+	return response, nil
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API

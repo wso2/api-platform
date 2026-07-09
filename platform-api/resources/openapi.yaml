@@ -89,23 +89,8 @@ paths:
       tags:
         - Organizations
       parameters:
-        - name: limit
-          in: query
-          required: false
-          description: Maximum number of organizations to return per page.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          required: false
-          description: Zero-based index of the first organization to return.
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Organizations retrieved successfully
@@ -235,6 +220,12 @@ paths:
             - ap:project:manage
       tags:
         - Projects
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: Projects retrieved successfully
@@ -365,6 +356,11 @@ paths:
         - REST APIs
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: REST APIs retrieved successfully
@@ -543,6 +539,8 @@ paths:
         - Gateways
       parameters:
         - $ref: '#/components/parameters/apiId'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of gateways associated with the API, including deployment details
@@ -809,6 +807,8 @@ paths:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -1080,21 +1080,8 @@ paths:
           schema:
             type: string
           example: groupId:openai&version:v2.0
-        - name: limit
-          in: query
-          description: Maximum number of LLM provider templates to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM provider templates to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: >-
@@ -1466,21 +1453,8 @@ paths:
       tags:
         - LLM Providers
       parameters:
-        - name: limit
-          in: query
-          description: Maximum number of LLM providers to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM providers to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of LLM providers
@@ -1673,6 +1647,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -1898,21 +1874,8 @@ paths:
           description: Unique identifier of the LLM provider
           schema:
             type: string
-        - name: limit
-          in: query
-          description: Maximum number of LLM proxies to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM proxies to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of LLM proxies
@@ -2000,6 +1963,8 @@ paths:
           schema:
             type: string
           example: wso2-openai-provider
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of API keys retrieved successfully
@@ -2108,21 +2073,8 @@ paths:
         - LLM Proxies
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - name: limit
-          in: query
-          description: Maximum number of LLM proxies to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM proxies to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of LLM proxies
@@ -2315,6 +2267,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -2591,6 +2545,8 @@ paths:
           schema:
             type: string
           example: wso2-openai-proxy
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of API keys retrieved successfully
@@ -2697,21 +2653,8 @@ paths:
         - MCP Proxies
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - name: limit
-          in: query
-          description: Maximum number of MCP proxies to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of MCP proxies to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of MCP proxies
@@ -2902,6 +2845,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -3199,6 +3144,12 @@ paths:
             - ap:gateway:manage
       tags:
         - Gateways
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: Gateways retrieved successfully
@@ -3330,15 +3281,15 @@ paths:
         - Gateway Tokens
       parameters:
         - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of active tokens
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TokenInfoResponse'
+                $ref: '#/components/schemas/GatewayTokenListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -3462,15 +3413,16 @@ paths:
             - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of custom policies
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CustomPolicyResponse'
+                $ref: '#/components/schemas/CustomPolicyListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -3684,21 +3636,11 @@ paths:
         - Applications
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - name: limit
-          in: query
-          description: Maximum number of applications to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of applications to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: Applications retrieved successfully
@@ -3826,21 +3768,8 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/appId'
-        - name: limit
-          in: query
-          description: Maximum number of mapped API keys to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of mapped API keys to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Mapped API keys retrieved successfully
@@ -3945,21 +3874,8 @@ paths:
         - Applications
       parameters:
         - $ref: '#/components/parameters/appId'
-        - name: limit
-          in: query
-          description: Maximum number of associations to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of associations to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Application associations retrieved successfully
@@ -4061,21 +3977,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/appId'
         - $ref: '#/components/parameters/associationId'
-        - name: limit
-          in: query
-          description: Maximum number of mapped API keys to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of mapped API keys to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Mapped API keys retrieved successfully
@@ -4139,6 +4042,9 @@ paths:
             - ap:subscription_plan:manage
       tags:
         - SubscriptionPlans
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of subscription plans
@@ -4331,21 +4237,8 @@ paths:
           schema:
             type: string
             enum: [ACTIVE, INACTIVE, REVOKED]
-        - name: limit
-          in: query
-          description: Maximum number of subscriptions to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of subscriptions to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of subscriptions
@@ -4519,6 +4412,8 @@ paths:
           style: form
           explode: false
           example: LlmProxy,LlmProvider
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of API keys retrieved successfully
@@ -4591,19 +4486,8 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 25
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
         - name: updatedAfter
           in: query
           description: RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.
@@ -4962,47 +4846,56 @@ components:
     UserAPIKeyListResponse:
       type: object
       required:
-        - items
+        - list
         - count
+        - pagination
       properties:
-        items:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/UserAPIKeyItem'
           description: List of API keys
         count:
           type: integer
-          description: Total number of API keys returned
+          description: Number of API keys in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     LLMProviderAPIKeyListResponse:
       type: object
       required:
-        - items
+        - list
         - count
+        - pagination
       properties:
-        items:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/APIKeyItem'
           description: List of API keys
         count:
           type: integer
-          description: Total number of API keys returned
+          description: Number of API keys in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     LLMProxyAPIKeyListResponse:
       type: object
       required:
-        - items
+        - list
         - count
+        - pagination
       properties:
-        items:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/APIKeyItem'
           description: List of API keys
         count:
           type: integer
-          description: Total number of API keys returned
+          description: Number of API keys in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     Organization:
       type: object
@@ -6486,13 +6379,21 @@ components:
 
     SubscriptionPlanListResponse:
       type: object
+      required:
+        - list
+        - count
+        - pagination
       properties:
-        subscriptionPlans:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/SubscriptionPlan'
+          description: List of subscription plans in current response
         count:
           type: integer
+          description: Number of subscription plans in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     CreateSubscriptionRequest:
       type: object
@@ -6593,14 +6494,15 @@ components:
     SubscriptionListResponse:
       type: object
       required:
-        - subscriptions
+        - list
         - count
         - pagination
       properties:
-        subscriptions:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/Subscription'
+          description: List of subscriptions in current response
         count:
           type: integer
           description: Number of subscriptions in current response
@@ -6763,15 +6665,18 @@ components:
       required:
         - count
         - list
+        - pagination
       properties:
         count:
           type: integer
-          description: Total number of deployments
+          description: Number of deployments in current response
         list:
           type: array
           items:
             $ref: '#/components/schemas/DeploymentResponse'
           description: List of deployments
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     Upstream:
       type: object
@@ -8449,13 +8354,53 @@ components:
     SecretListResponse:
       type: object
       required:
+        - count
         - list
         - pagination
       properties:
+        count:
+          type: integer
+          description: Number of secrets in current response
         list:
           type: array
           items:
             $ref: '#/components/schemas/SecretSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    GatewayTokenListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of tokens in current response
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenInfoResponse'
+          description: List of active tokens
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CustomPolicyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of custom policies in current response
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomPolicyResponse'
+          description: List of custom policies
         pagination:
           $ref: '#/components/schemas/Pagination'
 
@@ -8686,6 +8631,68 @@ components:
           - FAILED
           - ARCHIVED
       description: Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
+
+    limit-Q:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return per page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        example: 20
+
+    offset-Q:
+      name: offset
+      in: query
+      required: false
+      description: Zero-based index of the first item to return.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+        example: 0
+
+    sortBy-Q:
+      name: sortBy
+      in: query
+      required: false
+      description: >-
+        Field to sort the collection by. An unrecognized value falls back to the
+        default sort (createdAt).
+      schema:
+        type: string
+        enum:
+          - name
+          - createdAt
+        default: createdAt
+        example: createdAt
+
+    sortOrder-Q:
+      name: sortOrder
+      in: query
+      required: false
+      description: Sort direction applied to `sortBy`.
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+        example: desc
+
+    query-Q:
+      name: query
+      in: query
+      required: false
+      description: >-
+        Case-insensitive substring filter matched against the resource id
+        (handle).
+      schema:
+        type: string
+        example: payment
 
 tags:
   - name: Health

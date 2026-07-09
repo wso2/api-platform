@@ -342,6 +342,8 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 		status = string(*params.Status)
 	}
 
+	limit, offset := parsePagination(r)
+
 	deployments, err := h.deploymentService.GetDeploymentsByHandle(apiId, gatewayId, status, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -354,6 +356,7 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 			WithLogMessage(fmt.Sprintf("failed to get deployments for API %s", apiId))
 	}
 
+	paginateDeploymentList(deployments, limit, offset)
 	httputil.WriteJSON(w, http.StatusOK, deployments)
 	return nil
 }

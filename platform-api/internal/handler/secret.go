@@ -21,7 +21,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -104,21 +103,7 @@ func (h *SecretHandler) ListSecrets(w http.ResponseWriter, r *http.Request) erro
 			WithLogMessage("organization claim not found in token")
 	}
 
-	limit := 25
-	offset := 0
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
-			if v > 100 {
-				v = 100
-			}
-			limit = v
-		}
-	}
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
-			offset = v
-		}
-	}
+	limit, offset := parsePagination(r)
 
 	var updatedAfter *time.Time
 	if ua := r.URL.Query().Get("updatedAfter"); ua != "" {

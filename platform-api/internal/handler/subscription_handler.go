@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	api "github.com/wso2/api-platform/platform-api/api"
@@ -150,29 +149,7 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 		}
 		statusPtr = &status
 	}
-	var limitStr string
-	if v := r.URL.Query().Get("limit"); v != "" {
-		limitStr = v
-	} else {
-		limitStr = "20"
-	}
-	var offsetStr string
-	if v := r.URL.Query().Get("offset"); v != "" {
-		offsetStr = v
-	} else {
-		offsetStr = "0"
-	}
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	limit, offset := parsePagination(r)
 	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr, limit, offset)
 	if err != nil {
 		var appErr *apperror.Error
@@ -226,8 +203,8 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap, createdByMap))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"subscriptions": items,
-		"count":         len(items),
+		"list":  items,
+		"count": len(items),
 		"pagination": map[string]any{
 			"total":  total,
 			"offset": offset,

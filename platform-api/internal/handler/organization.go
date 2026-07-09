@@ -22,8 +22,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -164,22 +162,7 @@ func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http
 
 // ListOrganizations handles GET /api/v0.9/organizations
 func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) error {
-	limit := 20
-	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset := 0
-	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-			offset = parsed
-		}
-	}
+	limit, offset := parsePagination(r)
 
 	orgs, total, err := h.orgService.ListOrganizations(limit, offset)
 	if err != nil {

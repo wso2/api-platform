@@ -68,7 +68,9 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 		return err
 	}
 
-	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID)
+	limit, offset := parsePagination(r)
+
+	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID, limit, offset)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {

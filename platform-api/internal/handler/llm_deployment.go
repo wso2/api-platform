@@ -296,6 +296,8 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.Response
 		status = &v
 	}
 
+	limit, offset := parsePagination(r)
+
 	deployments, err := h.deploymentService.GetLLMProviderDeployments(providerId, orgId, gatewayId, status)
 	if err != nil {
 		switch {
@@ -309,6 +311,7 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.Response
 		}
 	}
 
+	paginateDeploymentList(deployments, limit, offset)
 	httputil.WriteJSON(w, http.StatusOK, deployments)
 	return nil
 }
@@ -562,6 +565,8 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter
 		status = &v
 	}
 
+	limit, offset := parsePagination(r)
+
 	deployments, err := h.deploymentService.GetLLMProxyDeployments(proxyId, orgId, gatewayId, status)
 	if err != nil {
 		switch {
@@ -575,6 +580,7 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter
 		}
 	}
 
+	paginateDeploymentList(deployments, limit, offset)
 	httputil.WriteJSON(w, http.StatusOK, deployments)
 	return nil
 }

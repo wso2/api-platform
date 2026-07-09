@@ -26,7 +26,9 @@ import type {
   CreateLLMProxyAPIKeyRequest,
   CreateLLMProxyAPIKeyResponse,
   APIKeyListResponse,
+  UserAPIKey,
 } from '../utils/types';
+import { fetchAllPages } from '../utils/pagination';
 
 // ============================================================================
 // LLM Proxy Deployment API Functions
@@ -259,12 +261,14 @@ export async function getLLMProxyAPIKeys(
   organizationId: string
 ): Promise<APIKeyListResponse> {
   try {
-    const response = await get<APIKeyListResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys`,
-      undefined,
-      PLATFORM_API_BASE_URL
+    return await fetchAllPages<UserAPIKey>((limit, offset) =>
+      get<APIKeyListResponse>(
+        `/llm-proxies/${encodeURIComponent(proxyId)}/api-keys` +
+          `?limit=${limit}&offset=${offset}`,
+        undefined,
+        PLATFORM_API_BASE_URL
+      )
     );
-    return response;
   } catch (error) {
     logger.error(`Failed to fetch API keys for LLM proxy ${proxyId}:`, error);
     throw error;

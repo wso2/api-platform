@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -234,6 +235,77 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	defer rows.Close()
 
 	return aggregateGatewayJoinRows(rows)
+}
+
+// ListPaginated returns a single page of gateways. Pagination is applied to the
+// gateways table in an inner query BEFORE the endpoint join, so LIMIT/OFFSET
+// count distinct gateways rather than joined endpoint rows. When orgID is empty
+// all organizations are included. Endpoints for the selected page are then
+// aggregated by aggregateGatewayJoinRows.
+func (r *GatewayRepo) ListPaginated(orgID string, opts ListOptions) ([]*model.Gateway, error) {
+	inner := `SELECT uuid FROM gateways`
+	var args []interface{}
+	var conditions []string
+	if orgID != "" {
+		conditions = append(conditions, `organization_uuid = ?`)
+		args = append(args, orgID)
+	}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		// Trim the leading " AND " — this is the first/only place the clause is joined.
+		conditions = append(conditions, strings.TrimPrefix(searchClause, " AND "))
+		args = append(args, searchArgs...)
+	}
+	if len(conditions) > 0 {
+		inner += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	inner += ` ORDER BY ` + col + ` ` + dir + `, handle ASC`
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	inner += ` ` + pageClause
+	args = append(args, pageArgs...)
+
+	// The outer ORDER BY must mirror the inner one so the paged gateways retain
+	// their order after the endpoint join; ge.id ASC keeps endpoint rows stable
+	// within each gateway for aggregateGatewayJoinRows.
+	query := fmt.Sprintf(`
+		SELECT %s
+		FROM gateways g
+		LEFT JOIN gateway_endpoints ge ON ge.gateway_uuid = g.uuid
+		WHERE g.uuid IN (%s)
+		ORDER BY g.%s %s, g.handle ASC, ge.id ASC
+	`, gatewaySelectColumns, inner, col, dir)
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return aggregateGatewayJoinRows(rows)
+}
+
+// CountGateways returns the total number of gateways, optionally scoped to an
+// organization (empty orgID counts all), independent of any pagination.
+func (r *GatewayRepo) CountGateways(orgID, search string) (int, error) {
+	query := `SELECT COUNT(*) FROM gateways`
+	var args []interface{}
+	var conditions []string
+	if orgID != "" {
+		conditions = append(conditions, `organization_uuid = ?`)
+		args = append(args, orgID)
+	}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		conditions = append(conditions, strings.TrimPrefix(searchClause, " AND "))
+		args = append(args, searchArgs...)
+	}
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+	var total int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // Delete removes a gateway with organization isolation and cleans up all associations

@@ -64,7 +64,9 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Reque
 		types = strings.Split(typeParam, ",")
 	}
 
-	response, err := h.apiKeyUserService.ListAPIKeysByUser(r.Context(), orgID, callerUserID, types)
+	limit, offset := parsePagination(r)
+
+	response, err := h.apiKeyUserService.ListAPIKeysByUser(r.Context(), orgID, callerUserID, types, limit, offset)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to list API keys for user in org " + orgID)

@@ -36,8 +36,10 @@ import type {
   CreateLLMProviderAPIKeyRequest,
   CreateLLMProviderAPIKeyResponse,
   APIKeyListResponse,
+  UserAPIKey,
 } from '../utils/types';
 import { buildFullProviderRequest } from '../utils/tmpSPRequest';
+import { fetchAllPages } from '../utils/pagination';
 
 const sanitizeRateLimitEntry = (entry: unknown) => {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -579,12 +581,14 @@ export async function getLLMProviderAPIKeys(
   organizationId: string
 ): Promise<APIKeyListResponse> {
   try {
-    const response = await get<APIKeyListResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/api-keys`,
-      undefined,
-      PLATFORM_API_BASE_URL
+    return await fetchAllPages<UserAPIKey>((limit, offset) =>
+      get<APIKeyListResponse>(
+        `/llm-providers/${encodeURIComponent(providerId)}/api-keys` +
+          `?limit=${limit}&offset=${offset}`,
+        undefined,
+        PLATFORM_API_BASE_URL
+      )
     );
-    return response;
   } catch (error) {
     logger.error(`Failed to fetch API keys for provider ${providerId}:`, error);
     throw error;

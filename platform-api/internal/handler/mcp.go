@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -105,29 +104,7 @@ func (h *MCPProxyHandler) ListMCPProxies(w http.ResponseWriter, r *http.Request)
 		return apperror.ValidationFailed.New("projectId query parameter is required")
 	}
 
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr == "" {
-		limitStr = "20"
-	}
-	offsetStr := r.URL.Query().Get("offset")
-	if offsetStr == "" {
-		offsetStr = "0"
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		h.slogger.Warn("Invalid limit query parameter, defaulting to 20", "input", limitStr)
-		limit = 20
-	}
-	if limit > 100 {
-		h.slogger.Warn("Limit query parameter exceeds maximum, capping to 100", "input", limit)
-		limit = 100
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	limit, offset := parsePagination(r)
 
 	resp, err := h.service.ListByProject(orgID, projectID, limit, offset)
 	if err != nil {
