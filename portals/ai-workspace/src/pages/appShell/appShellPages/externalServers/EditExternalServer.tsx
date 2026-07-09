@@ -45,7 +45,6 @@ import { useMemo } from 'react';
 
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
-const MAX_VERSION_LENGTH = 50;
 const MAX_CONTEXT_LENGTH = 255;
 
 function getErrorDescription(error: unknown, fallback: string): string {
@@ -53,10 +52,9 @@ function getErrorDescription(error: unknown, fallback: string): string {
 }
 
 // Backend field names (from MCPServer's update payload) mapped onto this form's state keys.
-const FIELD_NAME_MAP: Record<string, 'name' | 'description' | 'version' | 'context'> = {
+const FIELD_NAME_MAP: Record<string, 'name' | 'description' | 'context'> = {
   displayName: 'name',
   description: 'description',
-  version: 'version',
   context: 'context',
 };
 
@@ -93,7 +91,6 @@ export default function EditExternalServer() {
   const [isLoading, setIsLoading] = useState(true);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [version, setVersion] = useState('');
   const [context, setContext] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -113,7 +110,6 @@ export default function EditExternalServer() {
           setServer(response);
           setName(response.displayName || '');
           setDescription(response.description || '');
-          setVersion(response.version || '');
           setContext(response.context || '');
         }
       } catch {
@@ -130,21 +126,19 @@ export default function EditExternalServer() {
     };
   }, [serverId, organizationId, apimBaseUrl]);
 
-  const isContextOrVersionChanged =
-    server !== null &&
-    (version !== (server.version || '') || context !== (server.context || ''));
+  const isContextChanged =
+    server !== null && context !== (server.context || '');
 
   const isFormValid = (): boolean => {
     if (!name || name.trim().length === 0) return false;
     if (name.length > MAX_NAME_LENGTH) return false;
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
-    if (version.length > MAX_VERSION_LENGTH) return false;
     if (context.length > MAX_CONTEXT_LENGTH) return false;
     return true;
   };
 
   const handleSubmit = async () => {
-    // Allowed even for gateway-created MCP proxies: name/version/context stay locked
+    // Allowed even for gateway-created MCP proxies: name/context stay locked
     // (part of the runtime artifact), so only the description can change, which the
     // control plane accepts without altering the gateway runtime artifact.
     if (!serverId || !server) return;
@@ -156,7 +150,6 @@ export default function EditExternalServer() {
         ...server,
         displayName: name,
         description: description || undefined,
-        version: version || undefined,
         context: context || undefined,
       };
       // Remove read-only fields before sending
@@ -264,16 +257,16 @@ export default function EditExternalServer() {
           <Stack spacing={3}>
             {isReadOnlyServer ? (
               <Alert severity="info">
-                This MCP proxy was created from a gateway. The name, version and
+                This MCP proxy was created from a gateway. The name and
                 context are part of the gateway runtime configuration and are
                 read-only here; only the description can be edited.
               </Alert>
             ) : null}
-            {isContextOrVersionChanged && (
+            {isContextChanged && (
               <Alert severity="warning">
-                You have modified the context or version of this MCP Proxy.
-                After updating, you will need to redeploy on the gateway for
-                the changes to take effect.
+                You have modified the context of this MCP Proxy. After
+                updating, you will need to redeploy on the gateway for the
+                changes to take effect.
               </Alert>
             )}
             <Box sx={{ display: 'flex', gap: 2 }}>
@@ -294,27 +287,6 @@ export default function EditExternalServer() {
                     fieldErrors.name ||
                     (name.length > MAX_NAME_LENGTH
                       ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
-                      : '')
-                  }
-                />
-              </FormControl>
-
-              <FormControl sx={{ flex: 0.4 }}>
-                <FormLabel>Version</FormLabel>
-                <TextField
-                  fullWidth
-                  value={version}
-                  disabled={isReadOnlyServer}
-                  onChange={(e) => {
-                    setVersion(e.target.value);
-                    setFieldErrors((prev) => ({ ...prev, version: '' }));
-                  }}
-                  placeholder="e.g., 1.0"
-                  error={version.length > MAX_VERSION_LENGTH || Boolean(fieldErrors.version)}
-                  helperText={
-                    fieldErrors.version ||
-                    (version.length > MAX_VERSION_LENGTH
-                      ? `Version must not exceed ${MAX_VERSION_LENGTH} characters (${version.length}/${MAX_VERSION_LENGTH})`
                       : '')
                   }
                 />
