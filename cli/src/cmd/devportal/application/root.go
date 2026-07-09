@@ -23,19 +23,19 @@ import "github.com/spf13/cobra"
 const (
 	ApplicationCmdLiteral = "application"
 	ApplicationCmdExample = `# Create an application
-ap devportal application create --org org_1 --name "Weather App" --type WEB
+ap devportal application create --name "Weather App" --type WEB
 
 # List applications
-ap devportal application get --org org_1
+ap devportal application get
 
 # Get a single application
-ap devportal application get --org org_1 --app-id app_1
+ap devportal application get --app-id app_1
 
 # Update an application
-ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB
+ap devportal application update --app-id app_1 --name "Weather App" --type WEB
 
 # Delete an application
-ap devportal application delete --org org_1 --app-id app_1`
+ap devportal application delete --app-id app_1`
 )
 
 // ApplicationCmd represents the DevPortal application command group.

@@ -34,15 +34,14 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete a subscription plan by policy ID
-ap devportal sub-plan delete --policy-id plan_1 --org org_1
+ap devportal sub-plan delete --policy-id plan_1
 
 # Delete using a specific devportal
-ap devportal sub-plan delete --policy-id plan_1 --org org_1 --display-name my-portal --platform eu`
+ap devportal sub-plan delete --policy-id plan_1 --display-name my-portal --platform eu`
 )
 
 var (
 	deletePolicyID string
-	deleteOrgID    string
 	deleteName     string
 	deletePlatform string
 	deleteInsecure bool
@@ -63,23 +62,16 @@ var deleteCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(deleteCmd, utils.FlagPolicyId, &deletePolicyID, "", "Subscription plan policy ID")
-	utils.AddStringFlag(deleteCmd, utils.FlagOrgID, &deleteOrgID, "", "Organization ID")
 	utils.AddStringFlag(deleteCmd, utils.FlagName, &deleteName, "", "DevPortal display name")
 	utils.AddStringFlag(deleteCmd, utils.FlagPlatform, &deletePlatform, "", "Platform name")
 	utils.AddBoolFlag(deleteCmd, utils.FlagInsecure, &deleteInsecure, false, "Skip TLS certificate verification")
 	_ = deleteCmd.MarkFlagRequired(utils.FlagPolicyId)
-	_ = deleteCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runDeleteCommand() error {
 	policyID := strings.TrimSpace(deletePolicyID)
 	if policyID == "" {
 		return fmt.Errorf("policy ID is required")
-	}
-
-	orgID := strings.TrimSpace(deleteOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
 	}
 
 	cfg, err := config.LoadConfig()
@@ -93,7 +85,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "subscription-policies/"+url.PathEscape(policyID))
+	path := internaldevportal.ResourcePath("subscription-plans/" + url.PathEscape(policyID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete subscription plan", err, deleteInsecure)

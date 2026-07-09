@@ -23,10 +23,10 @@ import "github.com/spf13/cobra"
 const (
 	SubscriptionCmdLiteral = "subscription"
 	SubscriptionCmdExample = `# Create a platform subscription
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1
+ap devportal subscription create --api-id api_1 --subscription-plan gold --application-id app_1
 
 # Get a platform subscription
-ap devportal subscription get --org org_1 --sub-id sub_1`
+ap devportal subscription get --sub-id sub_1`
 )
 
 // SubscriptionCmd represents the platform subscription command group.
