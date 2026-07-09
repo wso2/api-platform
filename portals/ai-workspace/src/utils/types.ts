@@ -727,10 +727,7 @@ export interface CreateLLMProxyAPIKeyResponse {
 /**
  * API Key list response for LLM providers
  */
-export interface APIKeyListResponse {
-  count: number;
-  items: UserAPIKey[];
-}
+export type APIKeyListResponse = ApiListResponse<UserAPIKey>;
 
 // ============================================================================
 // MCP Server Types
@@ -1061,7 +1058,4 @@ export interface UserAPIKey {
 /**
  * User API Key list response
  */
-export interface UserAPIKeyListResponse {
-  count: number;
-  items: UserAPIKey[];
-}
+export type UserAPIKeyListResponse = ApiListResponse<UserAPIKey>;

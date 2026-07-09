@@ -18,8 +18,10 @@
 
 import { get, del } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
+import { fetchAllPages } from '../utils/pagination';
 
 import type {
+  UserAPIKey,
   UserAPIKeyListResponse,
 } from '../utils/types';
 
@@ -66,16 +68,14 @@ export async function listUserAPIKeys(
   type?: string
 ): Promise<UserAPIKeyListResponse> {
   try {
-    let url = `/me/api-keys?organizationId=${encodeURIComponent(organizationId)}`;
-    if (type) {
-      url += `&type=${encodeURIComponent(type)}`;
-    }
-    const response = await get<UserAPIKeyListResponse>(
-      url,
-      undefined,
-      baseUrl
-    );
-    return response;
+    return await fetchAllPages<UserAPIKey>(async (limit, offset) => {
+      let url = `/me/api-keys?organizationId=${encodeURIComponent(organizationId)}`;
+      if (type) {
+        url += `&type=${encodeURIComponent(type)}`;
+      }
+      url += `&limit=${limit}&offset=${offset}`;
+      return get<UserAPIKeyListResponse>(url, undefined, baseUrl);
+    });
   } catch (error) {
     logger.error('Failed to list user API keys:', error);
     throw error;

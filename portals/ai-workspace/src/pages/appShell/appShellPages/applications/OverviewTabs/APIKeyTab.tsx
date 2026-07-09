@@ -206,7 +206,7 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
         currentOrganization?.uuid ?? '',
         apimBaseUrl
       );
-      setAvailableKeys(response.items ?? []);
+      setAvailableKeys(response.list ?? []);
     } catch (error) {
       showSnackbar(
         getErrorDescription(error, 'Failed to load available API keys.'),

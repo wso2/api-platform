@@ -100,7 +100,7 @@ type LoadEntityKeysArgs = {
     entityId: string,
     orgUuid: string
   ) => Promise<{
-    items?: UserAPIKey[];
+    list?: UserAPIKey[];
   }>;
   preselectLatest?: boolean;
   unavailableKeyNames?: Set<string>;
@@ -356,7 +356,7 @@ async function loadEntityKeys({
 
   try {
     const response = await fetchKeys(entityId, orgUuid);
-    const activeKeys = (response.items ?? []).filter(
+    const activeKeys = (response.list ?? []).filter(
       (key) => key.status === 'active'
     );
     const latestKey = getLatestSelectableKey(activeKeys, unavailableKeyNames);
