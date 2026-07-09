@@ -38,7 +38,7 @@ Feature: Test MCP CRUD and connectivity
               context: /everything
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -76,7 +76,7 @@ Feature: Test MCP CRUD and connectivity
               context: /everything
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -110,7 +110,7 @@ Feature: Test MCP CRUD and connectivity
               context: /invalid-tools
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -200,7 +200,7 @@ Feature: Test MCP CRUD and connectivity
               context: /labeled-mcp
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -240,7 +240,7 @@ Feature: Test MCP CRUD and connectivity
               context: /invalid-mcp
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -332,7 +332,7 @@ Feature: Test MCP CRUD and connectivity
               context: /duplicate-mcp
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -352,7 +352,7 @@ Feature: Test MCP CRUD and connectivity
               context: /duplicate-mcp
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -390,7 +390,7 @@ Feature: Test MCP CRUD and connectivity
               context: /filter-test-mcp
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -420,7 +420,7 @@ Feature: Test MCP CRUD and connectivity
               context: /version-test-mcp
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
