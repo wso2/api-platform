@@ -645,6 +645,64 @@ func TestApplyAPIUpdatesPreservesUpstreamAuthOnEmptyValue(t *testing.T) {
 	}
 }
 
+// TestApplyAPIUpdatesDoesNotReuseSecretAcrossAuthTypeChange proves that
+// changing the auth Type without resending a Value does not reattach the
+// old secret — the old secret was encrypted/formatted for the previous auth
+// scheme (e.g. a bearer token) and must not be silently reused as, say, a
+// basic-auth credential.
+func TestApplyAPIUpdatesDoesNotReuseSecretAcrossAuthTypeChange(t *testing.T) {
+	service := &APIService{
+		apiRepo:     &mockAPIRepository{},
+		projectRepo: &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
+		apiUtil:     &utils.APIUtil{},
+		identity:    newTestIdentityService(),
+	}
+
+	existing := &model.API{
+		Handle:    "pets-api",
+		ProjectID: "11111111-1111-1111-1111-111111111111",
+		Version:   "v1",
+		Configuration: model.RestAPIConfig{
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL:  "https://backend.internal/api",
+					Auth: &model.UpstreamAuth{Type: "bearer", Header: "Authorization", Value: `{{ secret "bearer-handle" }}`},
+				},
+			},
+		},
+	}
+
+	// Client switches auth Type from bearer to basic but does not resend a
+	// Value (e.g. redacted-field round-trip, or simply an oversight).
+	basicType := api.UpstreamAuthType("basic")
+	req := &api.RESTAPI{
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{
+				Url: utils.StringPtrIfNotEmpty("https://backend.internal/api"),
+				Auth: &api.UpstreamAuth{
+					Type:   &basicType,
+					Header: utils.StringPtrIfNotEmpty("Authorization"),
+				},
+			},
+		},
+	}
+
+	updated, err := service.applyAPIUpdates(existing, req, "org-1")
+	if err != nil {
+		t.Fatalf("applyAPIUpdates() error = %v", err)
+	}
+
+	if updated.Upstream.Main.Auth == nil {
+		t.Fatal("expected auth block to be present")
+	}
+	if updated.Upstream.Main.Auth.Type == nil || *updated.Upstream.Main.Auth.Type != basicType {
+		t.Errorf("expected auth type to be %q, got %v", basicType, updated.Upstream.Main.Auth.Type)
+	}
+	if updated.Upstream.Main.Auth.Value != nil && *updated.Upstream.Main.Auth.Value != "" {
+		t.Errorf("expected old bearer secret to NOT be reused for the new basic auth type, got value %q", *updated.Upstream.Main.Auth.Value)
+	}
+}
+
 // TestAPIServiceUpdate_CleansUpRotatedSecret proves that rotating an API's
 // upstream auth to a new secret deprecates the secret it replaced.
 func TestAPIServiceUpdate_CleansUpRotatedSecret(t *testing.T) {

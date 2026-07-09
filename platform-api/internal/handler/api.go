@@ -133,6 +133,9 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").
 				WithLogMessage(fmt.Sprintf("subscription plan not found or not active in org %s", orgId))
 		}
+		if errors.Is(err, constants.ErrSecretRefMissing) {
+			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
+		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to create API in org %s", orgId))
 	}
@@ -267,6 +270,9 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
 			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").
 				WithLogMessage(fmt.Sprintf("subscription plan not found or not active for API %s in org %s", apiId, orgId))
+		}
+		if errors.Is(err, constants.ErrSecretRefMissing) {
+			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
 		}
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to update API %s in org %s", apiId, orgId))

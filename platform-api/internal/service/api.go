@@ -813,7 +813,10 @@ func preserveUpstreamAuthOnAPIUpdate(existing model.UpstreamConfig, updated api.
 }
 
 // preserveAPIUpstreamAuth backfills updated's Value from existing's stored
-// value when updated is nil or has an empty value.
+// value when updated is nil or has an empty value. The stored value is only
+// reused when updated's Type matches existing's (or leaves Type unspecified);
+// an explicit Type change means the old secret is for a different auth
+// scheme and must not be silently reattached.
 func preserveAPIUpstreamAuth(existing *model.UpstreamEndpoint, updated *api.UpstreamAuth) *api.UpstreamAuth {
 	if existing == nil || existing.Auth == nil || existing.Auth.Value == "" {
 		return updated
@@ -826,7 +829,8 @@ func preserveAPIUpstreamAuth(existing *model.UpstreamEndpoint, updated *api.Upst
 			Value:  utils.StringPtrIfNotEmpty(existing.Auth.Value),
 		}
 	}
-	if updated.Value == nil || *updated.Value == "" {
+	typeChanged := updated.Type != nil && string(*updated.Type) != existing.Auth.Type
+	if !typeChanged && (updated.Value == nil || *updated.Value == "") {
 		updated.Value = utils.StringPtrIfNotEmpty(existing.Auth.Value)
 	}
 	return updated

@@ -262,7 +262,7 @@ func (s *SecretService) cleanupRotatedSecret(orgUUID, oldValue, newValue, update
 	if oldHandle == extractSecretHandle(newValue) {
 		return
 	}
-	if err := s.Delete(orgUUID, oldHandle, updatedBy); err != nil {
+	if err := s.Delete(orgUUID, oldHandle, updatedBy); err != nil && logger != nil {
 		logger.Warn("could not delete rotated-out secret", "handle", oldHandle, "err", err)
 	}
 }
