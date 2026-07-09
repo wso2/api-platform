@@ -1663,6 +1663,11 @@ const deleteView = async (req, res) => {
     const orgId = req.orgId;
     const name = req.params.viewId;
     try {
+        // The "default" view can't be deleted — required as a fallback view for the
+        // portal/settings UI. Rejected here regardless of what the UI already hides.
+        if (name === 'default') {
+            throw new CustomError(400, constants.ERROR_CODE[400], "The default view cannot be deleted");
+        }
         const viewUuid = await viewDao.getId(orgId, name);
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {

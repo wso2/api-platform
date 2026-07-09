@@ -27,6 +27,7 @@ const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const constants = require('../utils/constants');
@@ -441,7 +442,7 @@ const applyTheme = async (req, res) => {
     const viewName = req.params.viewId;
     const zipFile = req.files?.file?.[0] ?? req.file;
     const userId = util.resolveActor(req);
-    const extractPath = path.join(require('os').tmpdir(), `${orgId}-${viewName}-${Date.now()}`);
+    const extractPath = path.join(require('os').tmpdir(), `theme-extract-${crypto.randomUUID()}`);
     let tempZipPath;
     try {
         if (!zipFile) {

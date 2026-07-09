@@ -668,11 +668,17 @@
           </div>
           <div class="cfg-form-group">
             <label for="org-idp-ref">IDP reference ID</label>
-            <input type="text" id="org-idp-ref" class="cfg-form-input" value="{{currentOrg.idpRefId}}" />
+            <input type="text" id="org-idp-ref" class="cfg-form-input" value="{{currentOrg.idpRefId}}" readonly />
           </div>
           <div class="cfg-form-group">
             <label for="org-cp-ref">Control plane reference ID</label>
-            <input type="text" id="org-cp-ref" class="cfg-form-input" value="{{currentOrg.cpRefId}}" />
+            <input type="text" id="org-cp-ref" class="cfg-form-input" value="{{currentOrg.cpRefId}}" readonly />
+          </div>
+          <div class="cfg-form-group" style="grid-column:1/-1;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;">
+              <input type="checkbox" id="cfg-idp-cp-unlock" />
+              Unlock IDP / Control plane reference IDs for editing (changing these can break organization linkage)
+            </label>
           </div>
         </div>
         <div style="margin-top:20px;">
@@ -2224,20 +2230,32 @@
   var saveBtn = g('cfg-save-org-btn');
   if (!saveBtn) return;
 
+  var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  var unlockRefs = g('cfg-idp-cp-unlock');
+  if (unlockRefs) {
+    unlockRefs.addEventListener('change', function () {
+      g('org-idp-ref').readOnly = !unlockRefs.checked;
+      g('org-cp-ref').readOnly = !unlockRefs.checked;
+    });
+  }
+
   saveBtn.addEventListener('click', async function () {
     var handle = saveBtn.dataset.handle;
     var name = g('org-display').value.trim();
     if (!name) { await showAlert('Name is required.', 'error'); return; }
+    var oe = g('org-owner-email').value.trim();
+    if (oe && !emailRe.test(oe)) { await showAlert('Business owner email is not a valid email address.', 'error'); return; }
     // displayName, id and idpRefId are required by the update schema; send them always.
     var body = {
       displayName: name,
       id: handle,
       idpRefId: g('org-idp-ref').value.trim(),
     };
-    // Optional fields — only send non-blank (businessOwnerEmail is format-validated).
+    // Optional fields — only send non-blank (businessOwnerEmail is format-validated above).
     var owner = g('org-owner').value.trim();         if (owner) body.businessOwner = owner;
     var oc    = g('org-owner-contact').value.trim(); if (oc)    body.businessOwnerContact = oc;
-    var oe    = g('org-owner-email').value.trim();   if (oe)    body.businessOwnerEmail = oe;
+    if (oe) body.businessOwnerEmail = oe;
     var cp    = g('org-cp-ref').value.trim();         if (cp)    body.cpRefId = cp;
     saveBtn.disabled = true;
     try {
@@ -2316,11 +2334,22 @@
   g('cfg-view-modal-cancel').addEventListener('click', closeModal);
   modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
 
+  /* ── auto-slug display → handle ── */
+  var viewHandleRe = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+  g('view-display').addEventListener('input', function () {
+    if (editHandle) return;
+    g('view-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  });
+
   g('cfg-view-modal-save').addEventListener('click', async function () {
     var handle  = g('view-handle').value.trim();
     var display = g('view-display').value.trim();
     var labels  = getSelectedLabels();
     if (!handle) { await showAlert('Handle is required.', 'error'); return; }
+    if (!viewHandleRe.test(handle)) {
+      await showAlert('Handle must be lowercase letters, numbers and hyphens only.', 'error');
+      return;
+    }
     try {
       var res;
       if (editHandle) {

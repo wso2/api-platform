@@ -185,6 +185,19 @@ const ensureAuthenticated = async (req, res, next) => {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
                 if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+                    // Reject cross-org access: the URL's :orgName must match the org the
+                    // authenticated (local-auth) user actually belongs to, never trust it bare.
+                    const isDevportalRoot = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
+                    if (!isDevportalRoot && orgId !== undefined) {
+                        const authorizedOrgs = req.user.authorizedOrgs;
+                        const belongsToOrg = req.user.userOrg === orgId
+                            || (Array.isArray(authorizedOrgs) && authorizedOrgs.includes(orgId));
+                        if (!belongsToOrg) {
+                            const err = new Error('Forbidden');
+                            err.status = 403;
+                            return next(err);
+                        }
+                    }
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
