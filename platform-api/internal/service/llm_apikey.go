@@ -83,28 +83,9 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
 
-	items := make([]api.APIKeyItem, 0, len(keys))
-	for _, k := range keys {
-		if k.CreatedBy != userID {
-			continue
-		}
-		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
-		item := api.APIKeyItem{
-			Id:             &k.Name,
-			DisplayName:    k.DisplayName,
-			MaskedApiKey:   k.MaskedAPIKey,
-			Status:         api.APIKeyItemStatus(k.Status),
-			CreatedAt:      k.CreatedAt,
-			CreatedBy:      createdBy,
-			UpdatedAt:      k.UpdatedAt,
-			ExpiresAt:      k.ExpiresAt,
-			Issuer:         k.Issuer,
-			AllowedTargets: k.AllowedTargets,
-		}
-		items = append(items, item)
+	items, err := ownedAPIKeyItems(keys, userID, s.identity)
+	if err != nil {
+		return nil, err
 	}
 
 	// API keys for one provider (scoped to the caller) are a small, bounded set,
@@ -117,6 +98,34 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		Count:      len(page),
 		Pagination: api.Pagination{Total: total, Offset: offset, Limit: limit},
 	}, nil
+}
+
+// ownedAPIKeyItems keeps only the keys created by userID and maps them to their
+// API representation, resolving each creator UUID to its raw identity.
+func ownedAPIKeyItems(keys []*model.APIKey, userID string, identity *IdentityService) ([]api.APIKeyItem, error) {
+	items := make([]api.APIKeyItem, 0, len(keys))
+	for _, k := range keys {
+		if k.CreatedBy != userID {
+			continue
+		}
+		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
+		if err := identity.ResolveIdentityField(&createdBy); err != nil {
+			return nil, err
+		}
+		items = append(items, api.APIKeyItem{
+			Id:             &k.Name,
+			DisplayName:    k.DisplayName,
+			MaskedApiKey:   k.MaskedAPIKey,
+			Status:         api.APIKeyItemStatus(k.Status),
+			CreatedAt:      k.CreatedAt,
+			CreatedBy:      createdBy,
+			UpdatedAt:      k.UpdatedAt,
+			ExpiresAt:      k.ExpiresAt,
+			Issuer:         k.Issuer,
+			AllowedTargets: k.AllowedTargets,
+		})
+	}
+	return items, nil
 }
 
 // DeleteLLMProviderAPIKey deletes the API key from the database and broadcasts a revoke event to gateways.

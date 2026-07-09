@@ -17,23 +17,14 @@
 
 package service
 
+import "github.com/wso2/api-platform/platform-api/internal/pagination"
+
 // paginateSlice returns the window [offset, offset+limit) of items, clamped to
 // the slice bounds. It is used for small, bounded collections whose endpoints
 // declare limit/offset query parameters but return a bare array (no pagination
 // envelope), so honoring the parameters at the database is unnecessary. For
 // large collections, pagination is pushed into SQL at the repository layer
-// instead. A non-positive limit yields an empty window; a negative offset is
-// treated as 0.
+// instead.
 func paginateSlice[T any](items []T, limit, offset int) []T {
-	if offset < 0 {
-		offset = 0
-	}
-	if offset >= len(items) || limit <= 0 {
-		return items[:0]
-	}
-	end := offset + limit
-	if end > len(items) {
-		end = len(items)
-	}
-	return items[offset:end]
+	return pagination.Window(items, limit, offset)
 }

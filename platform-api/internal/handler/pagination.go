@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/pagination"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
@@ -37,21 +38,16 @@ const (
 )
 
 // parsePagination extracts and normalizes the `limit` and `offset` query
-// parameters according to the spec contract. Missing, malformed, or
-// out-of-range values fall back to the documented defaults/bounds rather than
-// erroring, so a client can never push the API outside its safe window.
+// parameters according to the spec contract. A missing or malformed value falls
+// back to the documented default; a well-formed but out-of-range value is
+// clamped into the documented window on either side. Neither errors, so a client
+// can never push the API outside its safe window.
 func parsePagination(r *http.Request) (limit, offset int) {
 	limit = defaultPageLimit
 	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil {
-			limit = parsed
+			limit = min(max(parsed, minPageLimit), maxPageLimit)
 		}
-	}
-	if limit < minPageLimit {
-		limit = defaultPageLimit
-	}
-	if limit > maxPageLimit {
-		limit = maxPageLimit
 	}
 
 	offset = defaultPageOffset
@@ -90,21 +86,10 @@ func parseListOptions(r *http.Request) repository.ListOptions {
 	}
 }
 
-// pageWindow returns the [offset, offset+limit) slice of items, clamped to the
-// bounds. Used to window a fully-materialized, bounded collection in the handler
+// pageWindow windows a fully-materialized, bounded collection in the handler
 // before responding.
 func pageWindow[T any](items []T, limit, offset int) []T {
-	if offset < 0 {
-		offset = 0
-	}
-	if offset >= len(items) || limit <= 0 {
-		return items[:0]
-	}
-	end := offset + limit
-	if end > len(items) {
-		end = len(items)
-	}
-	return items[offset:end]
+	return pagination.Window(items, limit, offset)
 }
 
 // paginateDeploymentList windows a fully-materialized deployment list response
