@@ -17,21 +17,6 @@ let currentContentType = 'ARAZZO';
 let createPathFormat = 'arazzo'; // 'arazzo' | 'md'
 let currentStep = 1;
 
-function activateTab(activeBtn) {
-    const tabMap = [
-        { btnId: 'llms-tab-btn',      paneId: 'llmsTabContent' },
-        { btnId: 'workflows-tab-btn', paneId: 'workflowsTabContent' },
-    ];
-    tabMap.forEach(({ btnId, paneId }) => {
-        const btn  = document.getElementById(btnId);
-        const pane = document.getElementById(paneId);
-        const isActive = btn === activeBtn;
-        if (btn)  { btn.classList.toggle('active', isActive); btn.setAttribute('aria-selected', String(isActive)); }
-        if (pane) pane.style.display = isActive ? '' : 'none';
-    });
-    if (activeBtn?.id === 'workflows-tab-btn') arazoEditor?.refresh();
-}
-
 function initializeApiWorkflowsData() {
     try {
         const dataContainer = document.getElementById('apiWorkflowsDataContainer');
@@ -87,9 +72,7 @@ document.addEventListener('DOMContentLoaded', function () {
         listSection.style.display = 'block';
         formSection.style.display = 'none';
         resetApiWorkflowForm();
-        // Switch to the API Workflows tab when returning to the list.
-        const wfBtn = document.getElementById('workflows-tab-btn');
-        if (wfBtn) activateTab(wfBtn);
+        arazoEditor?.refresh();
     }
 
     function handleCreateClick() {
@@ -2430,25 +2413,4 @@ async function resetTheme() {
 document.addEventListener('DOMContentLoaded', function () {
     try { initLlmsConfig(); } catch (e) { console.error('initLlmsConfig failed', e); }
     try { initTheming(); } catch (e) { console.error('initTheming failed', e); }
-
-    const llmsBtn      = document.getElementById('llms-tab-btn');
-    const workflowsBtn = document.getElementById('workflows-tab-btn');
-
-    function syncTabFromHash() {
-        // Recognizes both the sidebar nav's current hash (#cfg-workflows) and the
-        // legacy hash (#apiworkflows) it's mapped from — see legacyMap in the sidebar
-        // nav script. Without this, this legacy tab pane toggle (still needed for the
-        // create-workflow form's arazoEditor refresh) fights the sidebar nav and hides
-        // #workflowsTabContent whenever the hash isn't the old literal value.
-        const hash = window.location.hash;
-        if ((hash === '#cfg-workflows' || hash === '#apiworkflows') && workflowsBtn) activateTab(workflowsBtn);
-        else if (llmsBtn) activateTab(llmsBtn);
-    }
-
-    // On fresh page load: activate the correct tab based on URL hash.
-    syncTabFromHash();
-
-    // On same-page hash navigation (e.g. clicking the Settings sidebar link
-    // while already on the configure page): re-sync without a full reload.
-    window.addEventListener('hashchange', syncTabFromHash);
 });

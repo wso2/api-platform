@@ -10,12 +10,6 @@
     <script src='/technical-scripts/manage-api-workflows.js' defer></script>
 {{/pageScripts}}
 
-<!-- Hidden tab buttons kept for manage-api-workflows.js compatibility -->
-<div style="display:none;" aria-hidden="true">
-  <button id="llms-tab-btn"      aria-controls="llmsTabContent"     type="button"></button>
-  <button id="workflows-tab-btn" aria-controls="workflowsTabContent" type="button"></button>
-</div>
-
 <!-- Server-side data for JS -->
 <script type="application/json" id="cfg-org-apis-data">{{{ json orgAPIs }}}</script>
 <script type="application/json" id="cfg-plans-data">{{{ json orgPlans }}}</script>
@@ -1188,10 +1182,6 @@
     if (!PANELS.includes(id)) id = 'cfg-llm';
     navItems.forEach(function(a) { a.classList.toggle('active', a.dataset.panel === id); });
     panels.forEach(function(p)   { p.style.display = p.id === id ? 'flex' : 'none'; });
-    if (id === 'cfg-llm') {
-      var el = document.getElementById('llmsTabContent');
-      if (el) el.style.display = 'block';
-    }
     history.replaceState(null, '', location.pathname + '#' + id);
   }
 
