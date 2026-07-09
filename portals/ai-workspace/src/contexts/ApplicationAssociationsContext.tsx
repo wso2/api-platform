@@ -37,6 +37,7 @@ import { applicationApis } from '../apis/applicationApis';
 import { useAppShell } from './AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../config.env';
 import { logger } from '../utils/logger';
+import { getErrorMessage } from '../utils/apiError';
 
 const EMPTY_ASSOCIATIONS_RESPONSE: ApplicationAssociationListResponse = {
   count: 0,
@@ -134,11 +135,7 @@ export function ApplicationAssociationsProvider({
         `Failed to fetch associations for application ${applicationId}:`,
         err
       );
-      setError(
-        (err as any)?.response?.data?.description ||
-          (err instanceof Error ? err.message : null) ||
-          'Failed to load associations.'
-      );
+      setError(getErrorMessage(err, 'Failed to load associations.'));
     } finally {
       setIsLoading(false);
     }

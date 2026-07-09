@@ -8534,7 +8534,8 @@ components:
           example:
             status: error
             code: SERVICE_UNAVAILABLE
-            message: Secrets management is not configured. Set PLATFORM_SECRET_ENCRYPTION_KEY.
+            message: Secrets management is not configured.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
     GatewayConnectionUnavailable:
       description: Service Unavailable. No gateway connections are currently available to service this request.
@@ -8546,6 +8547,7 @@ components:
             status: error
             code: GATEWAY_CONNECTION_UNAVAILABLE
             message: No gateway connections are currently available.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
   examples:
     GatewayNotFoundExample:

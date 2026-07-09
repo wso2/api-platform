@@ -35,6 +35,13 @@ import { ProjectsProvider, useProjects } from '../../../../contexts/ProjectsCont
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { getErrorMessage, getFieldErrors, fieldErrorsToMap } from '../../../../utils/apiError';
+
+// Backend field names (from CreateProjectRequest) mapped onto this form's state keys.
+const FIELD_NAME_MAP: Record<string, 'name' | 'description'> = {
+  displayName: 'name',
+  description: 'description',
+};
 
 function AddNewProjectForm() {
   const navigate = useNavigate();
@@ -47,6 +54,7 @@ function AddNewProjectForm() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleCreate = async () => {
     const trimmedName = name.trim();
@@ -54,6 +62,7 @@ function AddNewProjectForm() {
 
     try {
       setIsSubmitting(true);
+      setFieldErrors({});
       await createProject({
         displayName: trimmedName,
         ...(description.trim() ? { description: description.trim() } : {}),
@@ -61,12 +70,24 @@ function AddNewProjectForm() {
       showSnackbar('Project created successfully.', 'success');
       if (projectsListPath) navigate(projectsListPath);
     } catch (error) {
-      const message =
-        (error as any)?.response?.data?.description ||
-        (error as any)?.response?.data?.message ||
-        (error instanceof Error ? error.message : null) ||
-        'Failed to create project.';
-      showSnackbar(message, 'error');
+      const backendFieldErrors = getFieldErrors(error);
+      const mappedErrors: Record<string, string> = {};
+      let hasUnmapped = false;
+      backendFieldErrors?.forEach(({ field, message }) => {
+        const formField = FIELD_NAME_MAP[field];
+        if (formField) {
+          mappedErrors[formField] = message;
+        } else {
+          hasUnmapped = true;
+        }
+      });
+      if (Object.keys(mappedErrors).length > 0) {
+        setFieldErrors(mappedErrors);
+      }
+      if (hasUnmapped || Object.keys(mappedErrors).length === 0) {
+        const message = getErrorMessage(error, 'Failed to create project.');
+        showSnackbar(message, 'error');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -98,8 +119,13 @@ function AddNewProjectForm() {
                 fullWidth
                 placeholder="My AI Project"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, name: '' }));
+                }}
                 autoFocus
+                error={Boolean(fieldErrors.name)}
+                helperText={fieldErrors.name}
                 data-cyid="project-name-input"
               />
             </FormControl>
@@ -114,7 +140,12 @@ function AddNewProjectForm() {
                 minRows={3}
                 placeholder="Short description of the project."
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, description: '' }));
+                }}
+                error={Boolean(fieldErrors.description)}
+                helperText={fieldErrors.description}
                 data-cyid="project-description-input"
               />
             </FormControl>

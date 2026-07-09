@@ -34,6 +34,7 @@ import {
   trackHybridGatewayUpdate,
   trackHybridGatewayDelete,
 } from '../utils/app-insights';
+import { getErrorMessage } from '../utils/apiError';
 
 interface UseGatewayListReturn {
   gateways: HybridGateway[];
@@ -287,11 +288,7 @@ export function useGatewayList(
         // Track gateway delete
         trackHybridGatewayDelete(organizationId, gatewayToDelete?.id || id);
       } catch (err: any) {
-        const errorMessage =
-          err?.response?.data?.description ??
-          err?.response?.data?.message ??
-          err?.message ??
-          'Failed to delete gateway';
+        const errorMessage = getErrorMessage(err, 'Failed to delete gateway');
         showSnackbar(errorMessage, 'error');
         throw err;
       } finally {

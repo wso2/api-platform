@@ -52,18 +52,14 @@ import { applicationApis } from '../../../../apis/applicationApis';
 import type { Application } from '../../../../utils/types';
 import { ApplicationAssociationsProvider } from '../../../../contexts/ApplicationAssociationsContext';
 import AssociationsTab from './OverviewTabs/AssociationsTab';
+import { getErrorMessage } from '../../../../utils/apiError';
 
 type LocationState = {
   applicationAdded?: boolean;
 };
 
 function getErrorDescription(error: unknown, fallback: string): string {
-  return (
-    (error as any)?.response?.data?.description ||
-    (error as any)?.response?.data?.message ||
-    (error instanceof Error ? error.message : null) ||
-    fallback
-  );
+  return getErrorMessage(error, fallback);
 }
 
 
