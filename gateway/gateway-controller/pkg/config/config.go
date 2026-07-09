@@ -76,6 +76,14 @@ type CollectorConfig struct {
 	// the collected event without attaching a per-API header policy.
 	RequestHeaders  bool `koanf:"request_headers"`
 	ResponseHeaders bool `koanf:"response_headers"`
+	// IgnorePathPrefixes lists request path prefixes for which the collector
+	// produces no analytics event and no traffic-log line at all, as if the
+	// collector were disabled for that one request (e.g. health-check or
+	// metrics-scrape endpoints). Enforced by attaching an Envoy AccessLogFilter
+	// to the ALS access log (see xds.buildIgnorePathsAccessLogFilter) — Envoy
+	// itself never emits the log entry for a matching path, so the policy-engine
+	// never receives the request at all. Matched case-sensitively by prefix.
+	IgnorePathPrefixes []string `koanf:"ignore_path_prefixes"`
 	// Server tunes the Envoy→policy-engine gRPC access-log (ALS)
 	// transport that ships collected data. It is part of the collector and is
 	// configured under the shared [collector.server] section (the policy-engine reads
@@ -1758,6 +1766,7 @@ func validateDomains(field string, domains []string) error {
 func (c *Config) validateCollectorConfig() error {
 	c.migrateDeprecatedAnalyticsCapture()
 	c.migrateDeprecatedAnalyticsTransport()
+	c.Collector.IgnorePathPrefixes = normalizeIgnorePathPrefixes(c.Collector.IgnorePathPrefixes)
 
 	if c.IsCollectorEnabled() {
 		if err := validateGRPCEventServerConfig(c.Collector.Server); err != nil {
@@ -1765,6 +1774,27 @@ func (c *Config) validateCollectorConfig() error {
 		}
 	}
 	return nil
+}
+
+// normalizeIgnorePathPrefixes trims whitespace and drops empty entries from the
+// configured ignore-path prefixes. An unfiltered empty string would match every
+// path via strings.HasPrefix, silently blackholing all collector output, so
+// empty entries (including ones that are empty only after trimming) are
+// dropped rather than passed through. Returns nil if nothing survives.
+func normalizeIgnorePathPrefixes(prefixes []string) []string {
+	if len(prefixes) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // IsCollectorEnabled reports whether the collector should run. The collector is

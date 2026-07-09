@@ -1450,6 +1450,28 @@ func TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled
 	assert.Equal(t, defaultGRPCEventServerConfig(), cfg.Collector.Server)
 }
 
+func TestConfig_ValidateCollectorConfig_IgnorePathPrefixesNormalized(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []string
+		want  []string
+	}{
+		{name: "absent -> nil", input: nil, want: nil},
+		{name: "empty slice -> nil", input: []string{}, want: nil},
+		{name: "all blank -> nil", input: []string{"", "   "}, want: nil},
+		{name: "trims whitespace and drops empties", input: []string{"  /health  ", "", "/metrics"}, want: []string{"/health", "/metrics"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Collector.IgnorePathPrefixes = tt.input
+
+			require.NoError(t, cfg.Validate())
+			assert.Equal(t, tt.want, cfg.Collector.IgnorePathPrefixes)
+		})
+	}
+}
+
 func TestConfig_ValidateAuthConfig(t *testing.T) {
 	tests := []struct {
 		name        string

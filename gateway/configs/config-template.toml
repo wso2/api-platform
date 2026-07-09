@@ -303,6 +303,18 @@ response_body = false
 request_headers = false
 response_headers = false
 
+# Path prefixes for which the collector produces no analytics event and no
+# traffic-log line at all (as if disabled for that one request) — e.g. health
+# checks or metrics scrapes. Enforced by Envoy itself via an access-log filter,
+# so the policy-engine never even receives the request. Matched case-sensitively
+# against the path the client called (Envoy's x-envoy-original-path, set whenever
+# a route rewrite occurred), never against the rewritten backend path. Requests
+# without that header (no rewrite occurred) are never suppressed by this filter —
+# matching bare :path would risk suppressing traffic whose backend path merely
+# happens to share the prefix. Empty by default (no suppression).
+ignore_path_prefixes = []
+# ignore_path_prefixes = ["/health", "/metrics"]
+
 # ALS transport tuning (advanced; defaults are sensible). One section read by BOTH
 # ends of the Envoy → policy-engine access-log stream:
 #   • gateway-controller — configures Envoy's gRPC access-log sink (the sender)

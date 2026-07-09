@@ -2831,11 +2831,100 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 	}
 
 	return &accesslog.AccessLog{
-		Name: "envoy.access_loggers.http_grpc",
+		Name:   "envoy.access_loggers.http_grpc",
+		Filter: buildIgnorePathsAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},
 	}, nil
+}
+
+// envoyOriginalPathHeader is the header Envoy's router sets to the pre-rewrite,
+// client-facing path whenever a route applies a path rewrite (PrefixRewrite/
+// RegexRewrite) — which every proxied API route in this gateway does, for
+// context-path stripping. buildIgnorePathsAccessLogFilter matches against this
+// header rather than :path so that collector.ignore_path_prefixes is evaluated
+// against what the client actually called, not the rewritten backend path.
+const envoyOriginalPathHeader = "x-envoy-original-path"
+
+// buildIgnorePathsAccessLogFilter builds an Envoy AccessLogFilter that suppresses
+// the ALS access-log entry entirely for requests whose client-facing path matches
+// one of the configured prefixes, so the policy-engine never receives them (no
+// analytics event, no traffic-log line). Returns nil (no filter, log everything)
+// when no usable prefixes are configured.
+func buildIgnorePathsAccessLogFilter(prefixes []string) *accesslog.AccessLogFilter {
+	filters := make([]*accesslog.AccessLogFilter, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSpace(prefix)
+		if prefix == "" {
+			continue
+		}
+		filters = append(filters, notEffectivelyMatchesPrefix(prefix))
+	}
+	switch len(filters) {
+	case 0:
+		return nil
+	case 1:
+		return filters[0]
+	default:
+		return &accesslog.AccessLogFilter{
+			FilterSpecifier: &accesslog.AccessLogFilter_AndFilter{
+				AndFilter: &accesslog.AndFilter{Filters: filters},
+			},
+		}
+	}
+}
+
+// notEffectivelyMatchesPrefix builds the per-prefix filter: OR(origAbsent,
+// origDoesNotMatch) — i.e. suppress the log entry (filter evaluates false) only
+// when x-envoy-original-path is present AND matches the prefix; log (filter
+// evaluates true) in every other case, including when the header is absent
+// entirely. There is deliberately no fallback to matching bare :path: without
+// the original-path header we cannot distinguish a route that genuinely never
+// rewrites (where :path is the real client path) from an upstream/backend path
+// that merely happens to share the prefix, so we always log rather than risk a
+// false-positive suppression of legitimate traffic.
+func notEffectivelyMatchesPrefix(prefix string) *accesslog.AccessLogFilter {
+	origAbsent := headerPresentFilter(envoyOriginalPathHeader, false)
+	origDoesNotMatch := headerPrefixFilter(envoyOriginalPathHeader, prefix, true)
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_OrFilter{
+			OrFilter: &accesslog.OrFilter{
+				Filters: []*accesslog.AccessLogFilter{origAbsent, origDoesNotMatch},
+			},
+		},
+	}
+}
+
+// headerPrefixFilter builds an AccessLogFilter matching (or, when invert is
+// true, not matching) a header's value against a prefix.
+func headerPrefixFilter(headerName, prefix string, invert bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					InvertMatch:          invert,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PrefixMatch{PrefixMatch: prefix},
+				},
+			},
+		},
+	}
+}
+
+// headerPresentFilter builds an AccessLogFilter matching whether a header is
+// present (present=true) or absent (present=false).
+func headerPresentFilter(headerName string, present bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PresentMatch{PresentMatch: present},
+				},
+			},
+		},
+	}
 }
 
 // createTracingConfig creates tracing configuration for HCM if tracing is enabled
