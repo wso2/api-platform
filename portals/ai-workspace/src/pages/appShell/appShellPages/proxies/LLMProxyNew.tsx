@@ -68,6 +68,7 @@ import { truncateProviderDisplayName } from '../../../../utils/providerTemplateD
 import type { CreateProxyRequest, LLMProvider } from '../../../../utils/types';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
+import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 
 type FormState = {
   name: string;
@@ -75,6 +76,17 @@ type FormState = {
   providerId: string;
   version: string;
   description: string;
+};
+
+// Backend field names (from CreateProxyRequest) mapped onto this form's state keys.
+// "provider.auth.*" errors are not mapped here — best-effort only, they surface
+// via the general error banner instead of forcing an unclear match.
+const FIELD_NAME_MAP: Partial<Record<string, keyof FormState>> = {
+  displayName: 'name',
+  description: 'description',
+  version: 'version',
+  context: 'context',
+  'provider.id': 'providerId',
 };
 
 /** Derive a URL-safe proxy id from the display name (same logic as LLM provider). */
@@ -149,6 +161,7 @@ function LLMProxyNewContent({
   }));
 
   const [isCreating, setIsCreating] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [apiKeyDisplayName, setApiKeyDisplayName] = useState('');
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
@@ -332,6 +345,7 @@ function LLMProxyNewContent({
     let createdSecretHandle: string | null = null;
     try {
       setIsCreating(true);
+      setFieldErrors({});
 
       // Encrypt the provider API key as a secret before storing it in the proxy
       // config — even though it is a platform-issued key, it is still a credential
@@ -414,15 +428,30 @@ function LLMProxyNewContent({
           });
         });
       }
-      const description =
-        (error as any)?.response?.data?.description ||
-        (error as any)?.response?.data?.message ||
-        (error instanceof Error ? error.message : null) ||
-        intl.formatMessage({
-          id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.failed.to.create.proxy',
-          defaultMessage: 'Failed to create proxy',
-        });
-      showSnackbar(description, 'error');
+      const backendFieldErrors = getFieldErrors(error);
+      const mappedErrors: Partial<Record<keyof FormState, string>> = {};
+      let hasUnmapped = false;
+      backendFieldErrors?.forEach(({ field, message }) => {
+        const formField = FIELD_NAME_MAP[field];
+        if (formField) {
+          mappedErrors[formField] = message;
+        } else {
+          hasUnmapped = true;
+        }
+      });
+      if (Object.keys(mappedErrors).length > 0) {
+        setFieldErrors(mappedErrors);
+      }
+      if (hasUnmapped || Object.keys(mappedErrors).length === 0) {
+        const description = getErrorMessage(
+          error,
+          intl.formatMessage({
+            id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.failed.to.create.proxy',
+            defaultMessage: 'Failed to create proxy',
+          })
+        );
+        showSnackbar(description, 'error');
+      }
     } finally {
       setIsCreating(false);
     }
@@ -479,11 +508,7 @@ function LLMProxyNewContent({
       showSnackbar('API key generated successfully.', 'success');
     } catch (error) {
       logger.error('Failed to generate provider API key:', error);
-      const description =
-        (error as any)?.response?.data?.description ||
-        (error as any)?.response?.data?.message ||
-        (error instanceof Error ? error.message : null) ||
-        'Failed to generate API key. Please try again.';
+      const description = getErrorMessage(error, 'Failed to generate API key. Please try again.');
       setApiKeyError(description);
       showSnackbar(description, 'error');
     } finally {
@@ -550,12 +575,15 @@ function LLMProxyNewContent({
                   defaultMessage: 'WSO2 OpenAI Provider Proxy',
                 })}
                 value={formState.name}
-                onChange={(event) =>
+                onChange={(event) => {
                   setFormState((prev) => ({
                     ...prev,
                     name: event.target.value,
-                  }))
-                }
+                  }));
+                  setFieldErrors((prev) => ({ ...prev, name: undefined }));
+                }}
+                error={Boolean(fieldErrors.name)}
+                helperText={fieldErrors.name}
                 data-cyid="proxy-name-input"
               />
             </FormControl>
@@ -576,12 +604,15 @@ function LLMProxyNewContent({
                   defaultMessage: 'v1.0',
                 })}
                 value={formState.version}
-                onChange={(event) =>
+                onChange={(event) => {
                   setFormState((prev) => ({
                     ...prev,
                     version: event.target.value,
-                  }))
-                }
+                  }));
+                  setFieldErrors((prev) => ({ ...prev, version: undefined }));
+                }}
+                error={Boolean(fieldErrors.version)}
+                helperText={fieldErrors.version}
                 data-cyid="proxy-version-input"
               />
             </FormControl>
@@ -604,12 +635,15 @@ function LLMProxyNewContent({
                   defaultMessage: 'Primary OpenAI provider',
                 })}
                 value={formState.description}
-                onChange={(event) =>
+                onChange={(event) => {
                   setFormState((prev) => ({
                     ...prev,
                     description: event.target.value,
-                  }))
-                }
+                  }));
+                  setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                }}
+                error={Boolean(fieldErrors.description)}
+                helperText={fieldErrors.description}
                 data-cyid="proxy-description-input"
               />
             </FormControl>

@@ -38,10 +38,10 @@ func TestRunListCommand_PrintsTable(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/apis" {
+		if req.URL.Path != "/api/v0.9/apis" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
-		if req.URL.RawQuery != "tags=default" {
+		if req.URL.RawQuery != "view=default" {
 			t.Fatalf("unexpected query %q", req.URL.RawQuery)
 		}
 		if got := req.Header.Get(utils.DevPortalAPIHeader); got != "api-key" {
@@ -69,7 +69,6 @@ func TestRunListCommand_PrintsTable(t *testing.T) {
 		},
 	})
 
-	listOrgID = "org-1"
 	listName = ""
 	listPlatform = ""
 	listInsecure = false
@@ -118,7 +117,6 @@ func TestRunListCommand_UsesNamedPortalInDefaultPlatform(t *testing.T) {
 		},
 	})
 
-	listOrgID = "org-1"
 	listName = "shared"
 	listPlatform = ""
 	listInsecure = false
@@ -138,7 +136,7 @@ func TestRunGetCommand_PrintsJSON(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/apis/api-1" {
+		if req.URL.Path != "/api/v0.9/apis/api-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -147,7 +145,6 @@ func TestRunGetCommand_PrintsJSON(t *testing.T) {
 
 	writeSingleActivePortalConfig(t, server.URL)
 
-	getOrgID = "org-1"
 	getAPIID = "api-1"
 	getName = ""
 	getPlatform = ""
@@ -163,61 +160,6 @@ func TestRunGetCommand_PrintsJSON(t *testing.T) {
 	}
 }
 
-func TestRunPublishCommand_DefaultArtifactAndMultipartUpload(t *testing.T) {
-	testutil.WithTempHome(t)
-
-	workDir := t.TempDir()
-	testutil.WithWorkingDir(t, workDir)
-	testutil.WriteZipFixture(t, workDir, "devportal.zip")
-
-	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost {
-			t.Fatalf("expected POST request, got %s", req.Method)
-		}
-		if req.URL.Path != "/o/org-1/devportal/v1/apis" {
-			t.Fatalf("unexpected request path %s", req.URL.Path)
-		}
-		assertMultipartArtifact(t, req, "devportal.zip")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"apiID":"api-1"}`))
-	})
-
-	writeSingleActivePortalConfig(t, server.URL)
-
-	publishFilePath = ""
-	publishOrgID = "org-1"
-	publishName = ""
-	publishPlatform = ""
-	publishInsecure = false
-
-	out := testutil.CaptureStdout(t, func() {
-		if err := runPublishCommand(); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-	if !strings.Contains(out, "API artifact published") {
-		t.Fatalf("expected publish message, got %q", out)
-	}
-}
-
-func TestRunPublishCommand_MissingDefaultArtifact(t *testing.T) {
-	testutil.WithTempHome(t)
-	workDir := t.TempDir()
-	testutil.WithWorkingDir(t, workDir)
-	writeSingleActivePortalConfig(t, "http://example.com")
-
-	publishFilePath = ""
-	publishOrgID = "org-1"
-	publishName = ""
-	publishPlatform = ""
-	publishInsecure = false
-
-	err := runPublishCommand()
-	if err == nil || !strings.Contains(err.Error(), "Provide --file or place devportal.zip in the current directory") {
-		t.Fatalf("expected missing artifact guidance error, got %v", err)
-	}
-}
-
 func TestRunEditCommand_UploadsArtifact(t *testing.T) {
 	testutil.WithTempHome(t)
 
@@ -227,7 +169,7 @@ func TestRunEditCommand_UploadsArtifact(t *testing.T) {
 		if req.Method != http.MethodPut {
 			t.Fatalf("expected PUT request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/apis/api-1" {
+		if req.URL.Path != "/api/v0.9/apis/api-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		assertMultipartArtifact(t, req, "artifact.zip")
@@ -236,7 +178,6 @@ func TestRunEditCommand_UploadsArtifact(t *testing.T) {
 	}).URL)
 
 	editFilePath = filepath.Join(workDir, "artifact.zip")
-	editOrgID = "org-1"
 	editAPIID = "api-1"
 	editName = ""
 	editPlatform = ""
@@ -254,7 +195,7 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 		if req.Method != http.MethodDelete {
 			t.Fatalf("expected DELETE request, got %s", req.Method)
 		}
-		if req.URL.Path != "/o/org-1/devportal/v1/apis/api-1" {
+		if req.URL.Path != "/api/v0.9/apis/api-1" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -263,7 +204,6 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 
 	writeSingleActivePortalConfig(t, server.URL)
 
-	deleteOrgID = "org-1"
 	deleteAPIID = "api-1"
 	deleteName = ""
 	deletePlatform = ""

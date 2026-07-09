@@ -36,17 +36,16 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all APIs in an organization using the active devportal
-ap devportal rest-api list --org org_1
+ap devportal rest-api list
 
 # List all APIs using a specific devportal
-ap devportal rest-api list --org org_1 --display-name my-portal --platform eu
+ap devportal rest-api list --display-name my-portal --platform eu
 
 # List APIs from a specific view (defaults to "default")
-ap devportal rest-api list --org org_1 --view internal`
+ap devportal rest-api list --view internal`
 )
 
 var (
-	listOrgID    string
 	listName     string
 	listPlatform string
 	listView     string
@@ -78,20 +77,13 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(listCmd, utils.FlagOrgID, &listOrgID, "", "Organization ID")
 	utils.AddStringFlag(listCmd, utils.FlagName, &listName, "", "DevPortal display name")
 	utils.AddStringFlag(listCmd, utils.FlagPlatform, &listPlatform, "", "Platform name")
 	utils.AddStringFlag(listCmd, utils.FlagView, &listView, defaultView, "View to list APIs from")
 	listCmd.Flags().BoolVar(&listInsecure, "insecure", false, "Skip TLS certificate verification")
-	_ = listCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runListCommand() error {
-	orgID := strings.TrimSpace(listOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -109,7 +101,7 @@ func runListCommand() error {
 
 	client := internaldevportal.NewClientWithOptions(devPortal, listInsecure)
 	resource := "apis?view=" + url.QueryEscape(view)
-	path := internaldevportal.OrgScopedPath(orgID, resource)
+	path := internaldevportal.ResourcePath(resource)
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("list api artifacts", err, listInsecure)

@@ -34,17 +34,16 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# List applications in an organization
-ap devportal application get --org org_1
+ap devportal application get
 
 # Get a single application by ID
-ap devportal application get --org org_1 --app-id app_1
+ap devportal application get --app-id app_1
 
 # Get using a specific devportal
-ap devportal application get --org org_1 --app-id app_1 --display-name my-portal --platform eu`
+ap devportal application get --app-id app_1 --display-name my-portal --platform eu`
 )
 
 var (
-	getOrgID    string
 	getAppID    string
 	getName     string
 	getPlatform string
@@ -65,20 +64,13 @@ var getCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(getCmd, utils.FlagOrgID, &getOrgID, "", "Organization ID")
 	utils.AddStringFlag(getCmd, utils.FlagAppID, &getAppID, "", "Application ID (omit to list all applications)")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getName, "", "DevPortal display name")
 	utils.AddStringFlag(getCmd, utils.FlagPlatform, &getPlatform, "", "Platform name")
 	utils.AddBoolFlag(getCmd, utils.FlagInsecure, &getInsecure, false, "Skip TLS certificate verification")
-	_ = getCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runGetCommand() error {
-	orgID := strings.TrimSpace(getOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -90,7 +82,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "applications")
+	path := internaldevportal.ResourcePath("applications")
 	appID := strings.TrimSpace(getAppID)
 	if appID != "" {
 		path = fmt.Sprintf("%s/%s", path, url.PathEscape(appID))

@@ -18,6 +18,7 @@
 
 import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { logger } from '../utils/logger';
+import { ApiError, buildApiError } from '../utils/apiError';
 
 // ============================================================================
 // Platform API Types
@@ -72,24 +73,18 @@ const mutatingHeaders = (): Record<string, string> => ({
   [CSRF_HEADER]: CSRF_VALUE,
 });
 
-const parseErrorMessage = async (res: Response): Promise<string> => {
-  try {
-    const body = await res.json();
-    return body?.message ?? body?.error ?? `HTTP ${res.status}`;
-  } catch {
-    return `HTTP ${res.status}`;
-  }
-};
-
 /**
- * Build an Error that carries the originating HTTP status, so callers can
- * branch on it (e.g. surface a "session expired" logout flow on 401) instead
- * of string-matching the message.
+ * Parse the Platform API's standard error body from a failed Response into
+ * an `ApiError` carrying `status`, `code`, `errors`, `details`, and
+ * `trackingId` — so callers can branch on `code` (as the spec requires)
+ * instead of string-matching the message.
  */
-const httpError = (message: string, status: number): Error & { status: number } => {
-  const err = new Error(message) as Error & { status: number };
-  err.status = status;
-  return err;
+const parseApiError = async (res: Response): Promise<ApiError> => {
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch { /* body not JSON */ }
+  return buildApiError(res.status, body, `HTTP ${res.status}`);
 };
 
 // ============================================================================
@@ -115,16 +110,15 @@ export async function registerOrganization(
   });
 
   if (!response.ok) {
-    const message = await parseErrorMessage(response);
-    logger.error('registerOrganization failed:', response.status, message);
+    const err = await parseApiError(response);
+    logger.error('registerOrganization failed:', response.status, err.code, err.message, err.trackingId);
 
-    if (response.status === 409) {
-      throw httpError(`Organization with handle "${org.id}" already exists.`, 409);
+    // Fall back to a friendlier message only when the backend didn't already
+    // supply one keyed to the specific failure (e.g. an older gateway).
+    if (err.code === 'ORGANIZATION_ALREADY_EXISTS' || (response.status === 409 && !err.code)) {
+      err.message = `Organization with handle "${org.id}" already exists.`;
     }
-    if (response.status === 400) {
-      throw httpError(`Invalid organization data: ${message}`, 400);
-    }
-    throw httpError(`Failed to register organization: ${message}`, response.status);
+    throw err;
   }
 
   const created: PlatformOrganization = await response.json();
@@ -146,9 +140,9 @@ export async function getOrganization(): Promise<PlatformOrganization> {
   });
 
   if (!response.ok) {
-    const message = await parseErrorMessage(response);
-    logger.error('getOrganization failed:', response.status, message);
-    throw new Error(`Failed to get organization: ${message}`);
+    const err = await parseApiError(response);
+    logger.error('getOrganization failed:', response.status, err.code, err.message, err.trackingId);
+    throw err;
   }
 
   return response.json();
@@ -173,9 +167,9 @@ export async function getOrganizationById(
 
   if (response.status === 404) return null;
   if (!response.ok) {
-    const message = await parseErrorMessage(response);
-    logger.error('getOrganizationById failed:', response.status, message);
-    throw new Error(`Failed to get organization: ${message}`);
+    const err = await parseApiError(response);
+    logger.error('getOrganizationById failed:', response.status, err.code, err.message, err.trackingId);
+    throw err;
   }
   return response.json();
 }
@@ -198,9 +192,9 @@ export async function getOrganizationByHandle(
 
   if (response.status === 404) return null;
   if (!response.ok) {
-    const message = await parseErrorMessage(response);
-    logger.error('getOrganizationByHandle failed:', response.status, message);
-    throw new Error(`Failed to get organization: ${message}`);
+    const err = await parseApiError(response);
+    logger.error('getOrganizationByHandle failed:', response.status, err.code, err.message, err.trackingId);
+    throw err;
   }
   return response.json();
 }
@@ -224,6 +218,5 @@ export async function checkOrganizationExists(
   if (response.status === 404) return false;
   if (response.ok) return true;
 
-  const message = await parseErrorMessage(response);
-  throw httpError(`Failed to check organization: ${message}`, response.status);
+  throw await parseApiError(response);
 }

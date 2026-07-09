@@ -40,6 +40,7 @@ import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { MCPServer } from '../../../../utils/types';
+import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useMemo } from 'react';
 
 const MAX_NAME_LENGTH = 255;
@@ -47,34 +48,17 @@ const MAX_DESCRIPTION_LENGTH = 1023;
 const MAX_VERSION_LENGTH = 50;
 const MAX_CONTEXT_LENGTH = 255;
 
-type ErrorResponse = {
-  response?: {
-    data?: {
-      description?: unknown;
-      message?: unknown;
-    };
-  };
-};
-
 function getErrorDescription(error: unknown, fallback: string): string {
-  const responseData = (error as ErrorResponse)?.response?.data;
-  const description = responseData?.description;
-  const message = responseData?.message;
-
-  if (typeof description === 'string' && description.trim()) {
-    return description;
-  }
-
-  if (typeof message === 'string' && message.trim()) {
-    return message;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
+  return getErrorMessage(error, fallback);
 }
+
+// Backend field names (from MCPServer's update payload) mapped onto this form's state keys.
+const FIELD_NAME_MAP: Record<string, 'name' | 'description' | 'version' | 'context'> = {
+  displayName: 'name',
+  description: 'description',
+  version: 'version',
+  context: 'context',
+};
 
 export default function EditExternalServer() {
   const navigate = useNavigate();
@@ -112,6 +96,7 @@ export default function EditExternalServer() {
   const [version, setVersion] = useState('');
   const [context, setContext] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const isReadOnlyServer = Boolean(server?.readOnly);
 
   useEffect(() => {
@@ -165,6 +150,7 @@ export default function EditExternalServer() {
     if (!serverId || !server) return;
 
     setIsSubmitting(true);
+    setFieldErrors({});
     try {
       const fullPayload = {
         ...server,
@@ -188,10 +174,26 @@ export default function EditExternalServer() {
       const viewPath = `${listPath}/${serverId}`;
       navigate(viewPath);
     } catch (err) {
-      showSnackbar(
-        getErrorDescription(err, 'Failed to update MCP Proxy'),
-        'error'
-      );
+      const backendFieldErrors = getFieldErrors(err);
+      const mappedErrors: Record<string, string> = {};
+      let hasUnmapped = false;
+      backendFieldErrors?.forEach(({ field, message }) => {
+        const formField = FIELD_NAME_MAP[field];
+        if (formField) {
+          mappedErrors[formField] = message;
+        } else {
+          hasUnmapped = true;
+        }
+      });
+      if (Object.keys(mappedErrors).length > 0) {
+        setFieldErrors(mappedErrors);
+      }
+      if (hasUnmapped || Object.keys(mappedErrors).length === 0) {
+        showSnackbar(
+          getErrorDescription(err, 'Failed to update MCP Proxy'),
+          'error'
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -282,13 +284,17 @@ export default function EditExternalServer() {
                   required
                   value={name}
                   disabled={isReadOnlyServer}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, name: '' }));
+                  }}
                   placeholder="Enter server name"
-                  error={name.length > MAX_NAME_LENGTH}
+                  error={name.length > MAX_NAME_LENGTH || Boolean(fieldErrors.name)}
                   helperText={
-                    name.length > MAX_NAME_LENGTH
+                    fieldErrors.name ||
+                    (name.length > MAX_NAME_LENGTH
                       ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
-                      : ''
+                      : '')
                   }
                 />
               </FormControl>
@@ -299,13 +305,17 @@ export default function EditExternalServer() {
                   fullWidth
                   value={version}
                   disabled={isReadOnlyServer}
-                  onChange={(e) => setVersion(e.target.value)}
+                  onChange={(e) => {
+                    setVersion(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, version: '' }));
+                  }}
                   placeholder="e.g., 1.0"
-                  error={version.length > MAX_VERSION_LENGTH}
+                  error={version.length > MAX_VERSION_LENGTH || Boolean(fieldErrors.version)}
                   helperText={
-                    version.length > MAX_VERSION_LENGTH
+                    fieldErrors.version ||
+                    (version.length > MAX_VERSION_LENGTH
                       ? `Version must not exceed ${MAX_VERSION_LENGTH} characters (${version.length}/${MAX_VERSION_LENGTH})`
-                      : ''
+                      : '')
                   }
                 />
               </FormControl>
@@ -316,15 +326,19 @@ export default function EditExternalServer() {
               <TextField
                 fullWidth
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, description: '' }));
+                }}
                 placeholder="Enter description"
                 multiline
                 minRows={2}
-                error={description.length > MAX_DESCRIPTION_LENGTH}
+                error={description.length > MAX_DESCRIPTION_LENGTH || Boolean(fieldErrors.description)}
                 helperText={
-                  description.length > MAX_DESCRIPTION_LENGTH
+                  fieldErrors.description ||
+                  (description.length > MAX_DESCRIPTION_LENGTH
                     ? `Description must not exceed ${MAX_DESCRIPTION_LENGTH} characters (${description.length}/${MAX_DESCRIPTION_LENGTH})`
-                    : ''
+                    : '')
                 }
               />
             </FormControl>
@@ -335,13 +349,17 @@ export default function EditExternalServer() {
                 fullWidth
                 value={context}
                 disabled={isReadOnlyServer}
-                onChange={(e) => setContext(e.target.value)}
+                onChange={(e) => {
+                  setContext(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, context: '' }));
+                }}
                 placeholder="Enter context path"
-                error={context.length > MAX_CONTEXT_LENGTH}
+                error={context.length > MAX_CONTEXT_LENGTH || Boolean(fieldErrors.context)}
                 helperText={
-                  context.length > MAX_CONTEXT_LENGTH
+                  fieldErrors.context ||
+                  (context.length > MAX_CONTEXT_LENGTH
                     ? `Context must not exceed ${MAX_CONTEXT_LENGTH} characters (${context.length}/${MAX_CONTEXT_LENGTH})`
-                    : ''
+                    : '')
                 }
               />
             </FormControl>

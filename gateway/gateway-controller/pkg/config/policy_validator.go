@@ -100,31 +100,58 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 	return errors
 }
 
-// validatePolicy validates a single policy reference
-func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) []ValidationError {
+// ValidateLLMProviderPolicies validates all policy references in an LLM provider configuration.
+// Mirrors ValidateRestAPIPolicies: it checks the user-authored global, operation and (deprecated)
+// policy references against the loaded policy definitions. Policies injected later by the
+// LLM->RestAPI transform (e.g. upstream auth) are intentionally not validated here so the
+// semantics match the REST API path, which only validates user-authored policies.
+func (pv *PolicyValidator) ValidateLLMProviderPolicies(cfg *api.LLMProviderConfiguration) []ValidationError {
+	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies)
+}
+
+// ValidateLLMProxyPolicies validates all policy references in an LLM proxy configuration.
+// See ValidateLLMProviderPolicies for the rationale on validating the source configuration.
+func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfiguration) []ValidationError {
+	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies)
+}
+
+// validateLLMPolicyRefs validates the three policy collections shared by LLM providers and
+// proxies: api-level (global) policies, operation-level policies, and the deprecated policies
+// list. An empty version resolves to the latest available version (handled by ResolvePolicyVersion).
+func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) []ValidationError {
 	var errors []ValidationError
 
-	// Resolve policy version:
-	// - Accept full semantic versions as-is (vX.Y.Z)
-	// - Allow major-only versions (vX) and resolve them to a single matching
-	//   full version (vX.Y.Z) from the loaded policy definitions.
-	resolvedVersion, err := pv.resolvePolicyVersion(policy.Name, policy.Version)
-	if err != nil {
-		errors = append(errors, ValidationError{
-			Field:   fieldPath + ".version",
-			Message: err.Error(),
-		})
-		return errors
+	// Global (api-level) policies carry params, so reuse validatePolicy to also validate them.
+	if globalPolicies != nil {
+		for i, policy := range *globalPolicies {
+			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("spec.globalPolicies[%d]", i))...)
+		}
 	}
 
-	// Check if policy definition exists
-	key := policy.Name + "|" + resolvedVersion
-	policyDef, exists := pv.policyDefinitions[key]
-	if !exists {
-		errors = append(errors, ValidationError{
-			Field:   fieldPath + ".name",
-			Message: fmt.Sprintf("Policy '%s' version '%s' not found in loaded policy definitions", policy.Name, resolvedVersion),
-		})
+	// Operation-level policies: validate name + version existence.
+	if operationPolicies != nil {
+		for i, policy := range *operationPolicies {
+			_, errs := pv.validatePolicyRef(policy.Name, policy.Version, fmt.Sprintf("spec.operationPolicies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
+
+	// Deprecated policies list (still honoured): validate name + version existence.
+	if legacyPolicies != nil {
+		for i, policy := range *legacyPolicies {
+			_, errs := pv.validatePolicyRef(policy.Name, policy.Version, fmt.Sprintf("spec.policies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
+
+	return errors
+}
+
+// validatePolicy validates a single policy reference (name + version existence) and, when the
+// definition declares a parameter schema, the policy's params against that schema.
+func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) []ValidationError {
+	policyDef, errors := pv.validatePolicyRef(policy.Name, policy.Version, fieldPath)
+	if len(errors) > 0 {
 		return errors
 	}
 
@@ -137,11 +164,36 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 		}
 		schemaErrs := pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params")
 		errors = append(errors, schemaErrs...)
-	} else {
-
 	}
 
 	return errors
+}
+
+// validatePolicyRef resolves and confirms a policy reference (name + version) exists in the
+// loaded policy definitions, returning the resolved definition when found. Version resolution:
+// - Accept full semantic versions as-is (vX.Y.Z)
+// - Allow major-only versions (vX) and resolve them to a single matching full version
+// - An empty version resolves to the latest available version for that policy name
+func (pv *PolicyValidator) validatePolicyRef(name, version, fieldPath string) (*models.PolicyDefinition, []ValidationError) {
+	resolvedVersion, err := pv.resolvePolicyVersion(name, version)
+	if err != nil {
+		return nil, []ValidationError{{
+			Field:   fieldPath + ".version",
+			Message: err.Error(),
+		}}
+	}
+
+	// Check if policy definition exists
+	key := name + "|" + resolvedVersion
+	policyDef, exists := pv.policyDefinitions[key]
+	if !exists {
+		return nil, []ValidationError{{
+			Field:   fieldPath + ".name",
+			Message: fmt.Sprintf("Policy '%s' version '%s' not found in loaded policy definitions", name, resolvedVersion),
+		}}
+	}
+
+	return &policyDef, nil
 }
 
 var (

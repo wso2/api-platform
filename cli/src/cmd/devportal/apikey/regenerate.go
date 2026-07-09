@@ -34,14 +34,13 @@ import (
 const (
 	RegenerateCmdLiteral = "regenerate"
 	RegenerateCmdExample = `# Regenerate an API key
-ap devportal api-key regenerate --org org_1 --api-key-id key_1
+ap devportal api-key regenerate --api-key-id key_1
 
 # Regenerate using a specific devportal
-ap devportal api-key regenerate --org org_1 --api-key-id key_1 --display-name my-portal --platform eu`
+ap devportal api-key regenerate --api-key-id key_1 --display-name my-portal --platform eu`
 )
 
 var (
-	regenerateOrgID       string
 	regenerateAPIKeyID    string
 	regenerateDisplayName string
 	regeneratePlatform    string
@@ -63,21 +62,14 @@ var regenerateCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(regenerateCmd, utils.FlagOrgID, &regenerateOrgID, "", "Organization ID")
 	utils.AddStringFlag(regenerateCmd, utils.FlagAPIKeyID, &regenerateAPIKeyID, "", "API key ID")
 	utils.AddStringFlag(regenerateCmd, utils.FlagName, &regenerateDisplayName, "", "DevPortal display name")
 	utils.AddStringFlag(regenerateCmd, utils.FlagPlatform, &regeneratePlatform, "", "Platform name")
 	utils.AddBoolFlag(regenerateCmd, utils.FlagInsecure, &regenerateInsecure, false, "Skip TLS certificate verification")
-	_ = regenerateCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = regenerateCmd.MarkFlagRequired(utils.FlagAPIKeyID)
 }
 
 func runRegenerateCommand() error {
-	orgID := strings.TrimSpace(regenerateOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	apiKeyID := strings.TrimSpace(regenerateAPIKeyID)
 	if apiKeyID == "" {
 		return fmt.Errorf("api key ID is required")
@@ -95,7 +87,7 @@ func runRegenerateCommand() error {
 
 	client := internaldevportal.NewClientWithOptions(devPortal, regenerateInsecure)
 	baseURL := strings.TrimSuffix(devPortal.URL, "/")
-	path := internaldevportal.OrgScopedPath(orgID, "api-keys/"+url.PathEscape(apiKeyID)+"/regenerate")
+	path := internaldevportal.ResourcePath("api-keys/" + url.PathEscape(apiKeyID) + "/regenerate")
 	req, err := http.NewRequest(http.MethodPost, baseURL+path, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

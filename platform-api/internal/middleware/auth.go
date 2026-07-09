@@ -43,7 +43,6 @@ const (
 	keyOrganization  contextKey = "organization"
 	keyOrgName       contextKey = "org_name"
 	keyOrgHandle     contextKey = "org_handle"
-	keyIdpOrgRef     contextKey = "idp_org_ref"
 	keyScope         contextKey = "scope"
 	keyAudience      contextKey = "audience"
 	keyClaims        contextKey = "claims"
@@ -422,14 +421,6 @@ func GetOrgHandleFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyOrgHandle)
 }
 
-// GetIdpOrgRefFromRequest extracts the raw organization claim carried by the
-// token (the IDP's organization id in IDP mode). Unlike the organization key —
-// which OrganizationResolverMiddleware rewrites to the platform UUID — this
-// always reflects the value the token asserted. Returns false when unset.
-func GetIdpOrgRefFromRequest(r *http.Request) (string, bool) {
-	return getStringFromCtx(r, keyIdpOrgRef)
-}
-
 // OrgUUIDResolver maps a token's organization claim to the platform
 // organization UUID, returning true when a matching organization exists.
 type OrgUUIDResolver func(orgClaim string) (string, bool)
@@ -440,9 +431,10 @@ type OrgUUIDResolver func(orgClaim string) (string, bool)
 // scope their queries by the correct UUID regardless of whether the token carries
 // the platform UUID (file-based auth) or the IDP's organization id (IDP auth).
 //
-// The raw claim is preserved under a separate key (see GetIdpOrgRefFromRequest)
-// for callers that need the original IDP reference — notably organization
-// registration, where no organization exists yet to resolve against.
+// When the claim does not resolve to an existing organization (e.g. during
+// registration of a brand-new organization), the context is left holding the
+// raw claim, so GetOrganizationFromRequest still returns the IDP's original
+// organization reference in that case.
 func OrganizationResolverMiddleware(resolve OrgUUIDResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -451,7 +443,7 @@ func OrganizationResolverMiddleware(resolve OrgUUIDResolver) func(http.Handler) 
 				next.ServeHTTP(w, r)
 				return
 			}
-			ctx := context.WithValue(r.Context(), keyIdpOrgRef, claim)
+			ctx := r.Context()
 			if uuid, found := resolve(claim); found {
 				ctx = context.WithValue(ctx, keyOrganization, uuid)
 			}

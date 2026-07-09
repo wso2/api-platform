@@ -20,7 +20,6 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -81,11 +80,12 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	if err != nil {
 		return err
 	}
-	// The IDP's organization UUID is derived server-side from the token's raw
-	// organization claim (the IDP org id), never client-supplied. This uses the
-	// unresolved claim rather than the resolved platform UUID, since the
-	// organization being created does not exist yet. Empty in file-based mode.
-	idpOrgRefUUID, _ := middleware.GetIdpOrgRefFromRequest(r)
+	// The IDP's organization UUID is derived server-side from the token's
+	// organization claim, never client-supplied. Since the organization being
+	// created does not exist yet, OrganizationResolverMiddleware has nothing to
+	// resolve the claim against, so this still reflects the raw IDP org id.
+	// Empty in file-based mode.
+	idpOrgRefUUID, _ := middleware.GetOrganizationFromRequest(r)
 	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, idpOrgRefUUID, performedBy)
 	if err != nil {
 		var appErr *apperror.Error
@@ -101,30 +101,46 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	return nil
 }
 
-// HeadOrganization handles HEAD /api/v0.9/organizations/{organizationId}
-func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Request) error {
+// resolveOrganizationForRequest resolves the organization strictly from the trusted
+// token/context organization ID (a UUID), never from the user-supplied path handle,
+// then verifies the path handle refers to that same organization. Comparing a handle
+// field against the context's UUID directly is always false and would forbid every
+// request, so the lookup must go through the UUID first.
+//
+// Returns apperror.Unauthorized if the token has no organization claim,
+// apperror.OrganizationNotFound (404) if the token's organization no longer exists,
+// and apperror.Forbidden (403) if pathHandle does not match the caller's organization.
+func (h *OrganizationHandler) resolveOrganizationForRequest(r *http.Request, pathHandle string) (*api.Organization, error) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		return apperror.Unauthorized.New().
+		return nil, apperror.Unauthorized.New().
 			WithLogMessage("organization claim not found in token")
 	}
-	handle := r.PathValue("organizationId")
 
-	h.slogger.Debug("Organization from token", "organizationId", organizationIdFromContext)
-
-	if handle != organizationIdFromContext {
-		return apperror.Forbidden.New().
-			WithLogMessage("Organization ID in token does not match the requested organization ID")
-	}
-
-	_, err := h.orgService.GetOrganizationByHandle(handle)
+	org, err := h.orgService.GetOrganizationByUUID(organizationIdFromContext)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
-			return err
+			return nil, err
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get organization by handle %s", handle))
+		return nil, apperror.Internal.Wrap(err).
+			WithLogMessage("failed to get organization from token context")
+	}
+
+	if org.Id == nil || *org.Id != pathHandle {
+		return nil, apperror.Forbidden.New().
+			WithLogMessage("organization in token does not match the requested organization")
+	}
+
+	return org, nil
+}
+
+// HeadOrganization handles HEAD /api/v0.9/organizations/{organizationId}
+func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Request) error {
+	handle := r.PathValue("organizationId")
+
+	if _, err := h.resolveOrganizationForRequest(r, handle); err != nil {
+		return err
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -135,14 +151,9 @@ func (h *OrganizationHandler) HeadOrganization(w http.ResponseWriter, r *http.Re
 func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http.Request) error {
 	handle := r.PathValue("organizationId")
 
-	org, err := h.orgService.GetOrganizationByHandle(handle)
+	org, err := h.resolveOrganizationForRequest(r, handle)
 	if err != nil {
-		var appErr *apperror.Error
-		if errors.As(err, &appErr) {
-			return err
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get organization by handle %s", handle))
+		return err
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, org)

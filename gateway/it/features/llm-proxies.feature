@@ -267,6 +267,49 @@ Feature: LLM Proxy Management Operations
     Then the response should be a client error
     And the response should be valid JSON
 
+  Scenario: Create LLM proxy referencing a non-existent policy version is rejected
+    # First create the provider the proxy references
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: proxy-policy-provider
+      spec:
+        displayName: Proxy Policy Provider
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: bad-policy-version-proxy
+      spec:
+        displayName: Bad Policy Version Proxy
+        version: v1.0
+        provider:
+          id: proxy-policy-provider
+        globalPolicies:
+          - name: basic-ratelimit
+            version: v999
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    # Cleanup
+    When I delete the LLM provider "proxy-policy-provider"
+    Then the response status code should be 200
+
   Scenario: Update LLM proxy with invalid JSON body returns error
     When I send a PUT request to the "gateway-controller" service at "/llm-proxies/some-proxy" with body:
       """
