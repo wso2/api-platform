@@ -4339,8 +4339,11 @@ components:
           description: Path matching semantics for the operation route
           enum: [Exact, PathPrefix]
           example: Exact
-        directResponse:
-          $ref: "#/components/schemas/OperationDirectResponse"
+        matchHeaders:
+          type: array
+          description: Header matchers ANDed with the path match for Envoy route selection
+          items:
+            $ref: "#/components/schemas/OperationHeaderMatch"
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
@@ -4349,24 +4352,7 @@ components:
         resilience:
           $ref: "#/components/schemas/Resilience"
 
-    OperationDirectResponse:
-      type: object
-      required:
-        - statusCode
-      properties:
-        statusCode:
-          type: integer
-          description: HTTP status code returned directly without contacting an upstream
-          minimum: 100
-          maximum: 599
-          example: 302
-        headers:
-          type: array
-          description: Optional response headers (e.g. Location for redirects)
-          items:
-            $ref: "#/components/schemas/OperationResponseHeader"
-
-    OperationResponseHeader:
+    OperationHeaderMatch:
       type: object
       required:
         - name
@@ -4374,11 +4360,18 @@ components:
       properties:
         name:
           type: string
+          description: Header name (case-insensitive)
           pattern: '^[a-zA-Z0-9!#$%&''*+\-.^_`|~]+$'
-          example: Location
+          example: version
         value:
           type: string
-          example: http://example.org
+          description: Header value to match
+          example: one
+        type:
+          type: string
+          description: Header match type
+          enum: [Exact, RegularExpression]
+          default: Exact
 
     Policy:
       type: object

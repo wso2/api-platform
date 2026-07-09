@@ -486,8 +486,8 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route).Build()
 		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.NoError(t, err)
-		require.NotNil(t, spec.Operations[0].DirectResponse)
-		require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
+		require.True(t, operationHasRespondPolicy(spec.Operations[0]), "unresolvable backend must terminate via respond policy")
+		require.Equal(t, 500, respondParamsOf(t, spec.Operations[0]).StatusCode)
 	})
 
 	t.Run("allows with matching ReferenceGrant", func(t *testing.T) {
@@ -531,8 +531,8 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, grant).Build()
 		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.NoError(t, err)
-		require.NotNil(t, spec.Operations[0].DirectResponse)
-		require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
+		require.True(t, operationHasRespondPolicy(spec.Operations[0]), "unresolvable backend must terminate via respond policy")
+		require.Equal(t, 500, respondParamsOf(t, spec.Operations[0]).StatusCode)
 	})
 
 	t.Run("rejects ReferenceGrant with empty From.group for HTTPRoute", func(t *testing.T) {
@@ -553,8 +553,8 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, grant).Build()
 		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.NoError(t, err)
-		require.NotNil(t, spec.Operations[0].DirectResponse)
-		require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
+		require.True(t, operationHasRespondPolicy(spec.Operations[0]), "unresolvable backend must terminate via respond policy")
+		require.Equal(t, 500, respondParamsOf(t, spec.Operations[0]).StatusCode)
 	})
 }
 
@@ -806,8 +806,8 @@ func TestBuildAPIConfigFromHTTPRoute_ServiceBackendRejectsNonCoreGroup(t *testin
 
 	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 	require.NoError(t, err)
-	require.NotNil(t, spec.Operations[0].DirectResponse)
-	require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
+	require.True(t, operationHasRespondPolicy(spec.Operations[0]), "unresolvable backend must terminate via respond policy")
+	require.Equal(t, 500, respondParamsOf(t, spec.Operations[0]).StatusCode)
 }
 
 func TestBuildAPIConfigFromHTTPRoute_CustomClusterDomain(t *testing.T) {

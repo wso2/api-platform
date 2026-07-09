@@ -50,16 +50,11 @@ type LLMMetadata struct {
 	ProviderName   string
 }
 
-// RouteDirectResponse configures an immediate HTTP response without contacting an upstream.
-type RouteDirectResponse struct {
-	StatusCode int
-	Headers    []RouteResponseHeader
-}
-
-// RouteResponseHeader is a single response header on a direct response route.
-type RouteResponseHeader struct {
+// RouteHeaderMatch mirrors Gateway API header matching for Envoy route selection.
+type RouteHeaderMatch struct {
 	Name  string
 	Value string
+	Type  string // Exact or RegularExpression
 }
 
 // Route represents a single Envoy route derived from an API operation.
@@ -68,15 +63,15 @@ type Route struct {
 	Path            string // full path including context prefix (set by transformer)
 	OperationPath   string // original operation path without context prefix
 	PathMatchType   string // Exact or PathPrefix (empty defaults to Exact semantics for legacy APIs)
-	DirectResponse  *RouteDirectResponse
+	MatchHeaders    []RouteHeaderMatch
 	Vhost           string // "" = default vhost
 	AutoHostRewrite bool
 	Timeout         *RouteTimeout
 	Upstream        RouteUpstream
 	// Order is the operation/rule index from the source API spec. It is used as the
 	// Gateway-API "earlier-rule-wins" tie-break when two routes share the same match
-	// precedence (same path and method). Routes are emitted in ascending Order so the
-	// stable route sorter preserves rule order for ties.
+	// precedence (same path, method, and header-match count). Routes are emitted in
+	// ascending Order so the stable route sorter preserves rule order for ties.
 	Order int
 }
 

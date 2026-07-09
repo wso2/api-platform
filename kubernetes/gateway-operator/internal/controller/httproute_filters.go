@@ -28,6 +28,9 @@ import (
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 )
 
+// dynamicEndpointPolicyName is the name of the dynamic-endpoint routing policy.
+const dynamicEndpointPolicyName = "dynamic-endpoint"
+
 func policyFromParams(name, version string, params map[string]interface{}) (apiv1.Policy, error) {
 	raw, err := json.Marshal(params)
 	if err != nil {
@@ -40,9 +43,8 @@ func policyFromParams(name, version string, params map[string]interface{}) (apiv
 	}, nil
 }
 
-func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.Policy, *apiv1.OperationDirectResponse, bool, error) {
+func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.Policy, bool, error) {
 	var policies []apiv1.Policy
-	var direct *apiv1.OperationDirectResponse
 	var hasRedirect bool
 
 	for _, f := range filters {
@@ -64,7 +66,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, false, err
+					return nil, false, err
 				}
 				policies = append(policies, p)
 			}
@@ -88,7 +90,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, false, err
+					return nil, false, err
 				}
 				policies = append(policies, p)
 			}
@@ -105,7 +107,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, false, err
+					return nil, false, err
 				}
 				policies = append(policies, p)
 			}
@@ -119,7 +121,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 			// legitimately has no backends.
 			p, err := redirectPolicyFromFilter(f.RequestRedirect)
 			if err != nil {
-				return nil, nil, false, err
+				return nil, false, err
 			}
 			policies = append(policies, p)
 			hasRedirect = true
@@ -127,33 +129,41 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 			// ExtensionRef and unsupported filters are handled elsewhere or ignored.
 		}
 	}
-	return policies, direct, hasRedirect, nil
+	return policies, hasRedirect, nil
 }
 
-func directResponse500() *apiv1.OperationDirectResponse {
-	return &apiv1.OperationDirectResponse{StatusCode: 500}
-}
-
-// mapHTTPHeaderMatches converts Gateway-API header matchers into the operator-internal
-// headerMatch form used to build the header-based-routing policy. The result is not part
-// of the emitted API spec — header matching is expressed only via that policy.
-func mapHTTPHeaderMatches(headers []gatewayv1.HTTPHeaderMatch) []headerMatch {
+// mapHTTPHeaderMatches converts Gateway-API header matchers into the operation's
+// MatchHeaders field, which the gateway-controller renders as Envoy route header matchers
+// for route selection and precedence.
+func mapHTTPHeaderMatches(headers []gatewayv1.HTTPHeaderMatch) []apiv1.OperationHeaderMatch {
 	if len(headers) == 0 {
 		return nil
 	}
-	out := make([]headerMatch, 0, len(headers))
+	out := make([]apiv1.OperationHeaderMatch, 0, len(headers))
 	for _, h := range headers {
 		matchType := "Exact"
 		if h.Type != nil && *h.Type == gatewayv1.HeaderMatchRegularExpression {
 			matchType = "RegularExpression"
 		}
-		out = append(out, headerMatch{
+		out = append(out, apiv1.OperationHeaderMatch{
 			Name:  string(h.Name),
 			Value: h.Value,
 			Type:  matchType,
 		})
 	}
 	return out
+}
+
+// findDynamicEndpoint returns the operation's dynamic-endpoint policy if present. Retained as
+// a shared helper (used by redirect/direct-response handling and tests) after header-based
+// routing was reverted to native matchHeaders.
+func findDynamicEndpoint(op apiv1.Operation) (apiv1.Policy, bool) {
+	for _, p := range op.Policies {
+		if p.Name == dynamicEndpointPolicyName {
+			return p, true
+		}
+	}
+	return apiv1.Policy{}, false
 }
 
 func pathMatchTypeFromHTTPRoute(m *gatewayv1.HTTPPathMatch) apiv1.OperationPathMatchType {

@@ -647,10 +647,34 @@ func payloadMetadataForHTTPRoute(route *gatewayv1.HTTPRoute, handle string) gate
 	if len(route.Annotations) > 0 {
 		md.Annotations = make(map[string]string, len(route.Annotations))
 		for k, v := range route.Annotations {
+			// Skip the operator's own reconcile-bookkeeping annotations. They are written
+			// back onto the HTTPRoute after every deploy, so including them here would make
+			// the payload — and thus its config hash — depend on the previous deploy's hash.
+			// That is self-referential: the hash never matches the stored value, the dedup
+			// guard never trips, and the reconciler redeploys in a hot loop (~50/s). These
+			// annotations are operator-internal and meaningless to the gateway-controller.
+			if isOperatorBookkeepingAnnotation(k) {
+				continue
+			}
 			md.Annotations[k] = v
+		}
+		if len(md.Annotations) == 0 {
+			md.Annotations = nil
 		}
 	}
 	return md
+}
+
+// isOperatorBookkeepingAnnotation reports whether an annotation key is one the operator
+// writes onto the HTTPRoute during reconcile (deploy hash, last parent). These must never
+// feed into the deployed payload/config hash — see payloadMetadataForHTTPRoute.
+func isOperatorBookkeepingAnnotation(key string) bool {
+	switch key {
+	case AnnHTTPRouteLastDeployedConfigHash, AnnHTTPRouteLastDeployedParentGateway:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *HTTPRouteReconciler) patchHTTPRouteParentCondition(ctx context.Context, route *gatewayv1.HTTPRoute, parentRef gatewayv1.ParentReference, conds ...metav1.Condition) error {

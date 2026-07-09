@@ -20,6 +20,7 @@ package transform
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -510,6 +511,81 @@ func upstreamClusterKeys(rdc *models.RuntimeDeployConfig) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func hdrMatch(name, value string) api.OperationHeaderMatch {
+	return api.OperationHeaderMatch{Name: name, Value: value}
+}
+
+// TestRestAPITransformer_HeaderMatchRoutesDoNotCollide verifies that operations sharing the same
+// method/path/vhost but differing by header matches produce distinct routes (no map collision),
+// that header-matched routes carry a 4th discriminator segment while a header-less operation keeps
+// the legacy 3-segment key, and that each route's Order reflects its operation index (used as the
+// Gateway-API earlier-rule-wins tie-break). This is the regression guard for the
+// HTTPRouteHeaderMatching / MatchingAcrossRoutes conformance behavior.
+func TestRestAPITransformer_HeaderMatchRoutesDoNotCollide(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	apiData := api.APIConfigData{
+		DisplayName: "Header Matching API",
+		Context:     "/test",
+		Version:     "1.0.0",
+		Operations: []api.Operation{
+			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("version", "one")}},
+			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("version", "two")}},
+			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("version", "two"), hdrMatch("color", "orange")}},
+			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("color", "blue")}},
+			{Method: "GET", Path: "/"}, // header-less: must keep the legacy 3-segment key
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{Url: ptrStr("http://backend:8080")},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID:          "hdr-api",
+		Kind:          string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "hdr-api"}, Spec: apiData},
+	}
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, rdc)
+
+	// One vhost, no sandbox: 5 operations must yield 5 distinct routes (no collision).
+	assert.Len(t, rdc.Routes, 5, "each operation must produce its own route; collision indicates the header-match bug")
+	assert.Len(t, rdc.PolicyChains, 5, "each route must have its own policy chain")
+
+	baseKey := "GET|/test/|main.local"
+	headerCount, legacyCount := 0, 0
+	orders := map[int]bool{}
+	for key, r := range rdc.Routes {
+		orders[r.Order] = true
+		segments := strings.Count(key, "|") + 1
+		switch segments {
+		case 3:
+			assert.Equal(t, baseKey, key, "the only 3-segment key must be the header-less operation")
+			legacyCount++
+		case 4:
+			assert.True(t, strings.HasPrefix(key, baseKey+"|"),
+				"header-matched key must extend the base key with a discriminator segment")
+			headerCount++
+		default:
+			t.Fatalf("unexpected route key segment count %d for key %q", segments, key)
+		}
+	}
+	assert.Equal(t, 4, headerCount, "expected 4 header-matched routes")
+	assert.Equal(t, 1, legacyCount, "expected exactly 1 header-less (legacy-key) route")
+
+	// Order must be populated from the operation index 0..4.
+	assert.Equal(t, map[int]bool{0: true, 1: true, 2: true, 3: true, 4: true}, orders,
+		"Order must reflect operation/rule index for the earlier-rule-wins tie-break")
+
+	// The header-less operation is index 4.
+	require.Contains(t, rdc.Routes, baseKey)
+	assert.Equal(t, 4, rdc.Routes[baseKey].Order)
 }
 
 // TestSplitVhosts covers the ";"-separated vhosts.main parser: single host, multiple hosts,

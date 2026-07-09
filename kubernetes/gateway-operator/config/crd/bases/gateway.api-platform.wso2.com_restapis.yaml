@@ -55,32 +55,30 @@ spec:
                 items:
                   description: Operation defines model for Operation.
                   properties:
-                    directResponse:
-                      description: DirectResponse When set, the gateway responds directly
-                        without calling an upstream.
-                      properties:
-                        headers:
-                          description: Headers Optional response headers (e.g. Location
-                            for redirects)
-                          items:
-                            description: OperationResponseHeader is a single response
-                              header on a direct response.
-                            properties:
-                              name:
-                                type: string
-                              value:
-                                type: string
-                            required:
-                            - name
-                            - value
-                            type: object
-                          type: array
-                        statusCode:
-                          description: StatusCode HTTP status code
-                          type: integer
-                      required:
-                      - statusCode
-                      type: object
+                    matchHeaders:
+                      description: MatchHeaders ANDed header matchers applied before
+                        routing to this operation.
+                      items:
+                        description: OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch
+                          for Envoy route selection.
+                        properties:
+                          name:
+                            description: Name Header name (case-insensitive)
+                            type: string
+                          type:
+                            description: Type Match type (Exact or RegularExpression)
+                            enum:
+                            - Exact
+                            - RegularExpression
+                            type: string
+                          value:
+                            description: Value Header value to match
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
                     method:
                       description: Method HTTP method
                       enum:

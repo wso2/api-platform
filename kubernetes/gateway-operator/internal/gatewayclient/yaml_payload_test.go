@@ -22,9 +22,10 @@ func TestBuildRestAPIYAML_Deterministic(t *testing.T) {
 		Version:     "v1.0",
 		Operations: []apiv1.Operation{
 			{
-				Method:   apiv1.OperationMethodGET,
-				Path:     "/*",
-				Policies: []apiv1.Policy{{Name: "dynamic-endpoint", Version: "v1", Params: &rawParams}},
+				Method:       apiv1.OperationMethodGET,
+				Path:         "/*",
+				MatchHeaders: []apiv1.OperationHeaderMatch{{Name: "version", Value: "two", Type: "Exact"}},
+				Policies:     []apiv1.Policy{{Name: "dynamic-endpoint", Version: "v1", Params: &rawParams}},
 			},
 		},
 		UpstreamDefinitions: []apiv1.UpstreamDefinition{

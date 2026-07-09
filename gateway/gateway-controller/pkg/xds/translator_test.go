@@ -2686,77 +2686,6 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 	})
 }
 
-// TestDirectResponseMatch_MirrorsNormalRoute guards the fix for the reviewer concern
-// "Keep direct-response matching identical to normal route matching." A direct-response /
-// redirect route must match exactly the same requests its non-direct counterpart would.
-// Before the fix, setDirectResponseMatch had drifted: parameterized ({param}) paths fell
-// back to a literal-escaped regex, and RegularExpression header matches were downgraded to
-// exact matches — so direct-response routes matched a different request set. Both kinds of
-// route now build their matchers through the same shared helpers, so these assert parity.
-func TestDirectResponseMatch_MirrorsNormalRoute(t *testing.T) {
-	logger := createTestLogger()
-	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
-
-	rdc := &models.RuntimeDeployConfig{
-		UpstreamClusters: map[string]*models.UpstreamCluster{
-			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
-		},
-	}
-
-	t.Run("parameterized path uses the same regex matcher", func(t *testing.T) {
-		base := &models.Route{
-			Method:        "GET",
-			Path:          "/api/users/{id}",
-			OperationPath: "/users/{id}",
-			Upstream:      models.RouteUpstream{ClusterKey: "main"},
-		}
-		// Normal route.
-		normal := translator.createRouteFromRDC("GET|/api/users/{id}|", base, rdc)
-		require.NotNil(t, normal)
-		normalRegex, ok := normal.GetMatch().GetPathSpecifier().(*route.RouteMatch_SafeRegex)
-		require.True(t, ok, "normal route should use safe_regex, got %T", normal.GetMatch().GetPathSpecifier())
-
-		// Direct-response route on the same operation.
-		dr := *base
-		dr.DirectResponse = &models.RouteDirectResponse{StatusCode: 418}
-		direct := translator.createRouteFromRDC("GET|/api/users/{id}|", &dr, rdc)
-		require.NotNil(t, direct)
-		directRegex, ok := direct.GetMatch().GetPathSpecifier().(*route.RouteMatch_SafeRegex)
-		require.True(t, ok, "direct-response route should use safe_regex, got %T", direct.GetMatch().GetPathSpecifier())
-
-		// Both must use the parameterized regex (param expanded), NOT a literal-escaped {id}.
-		assert.Equal(t, "^/api/users/[^/]+$", directRegex.SafeRegex.GetRegex())
-		assert.Equal(t, normalRegex.SafeRegex.GetRegex(), directRegex.SafeRegex.GetRegex(),
-			"direct-response path matcher must be identical to the normal route's")
-	})
-
-	t.Run("plain and exact paths are unchanged", func(t *testing.T) {
-		// Plain path -> default trailing-slash regex (same as before the refactor).
-		plain := &models.Route{
-			Method: "GET", Path: "/p/plain", OperationPath: "/plain",
-			DirectResponse: &models.RouteDirectResponse{StatusCode: 200},
-			Upstream:       models.RouteUpstream{ClusterKey: "main"},
-		}
-		rp := translator.createRouteFromRDC("GET|/p/plain|", plain, rdc)
-		require.NotNil(t, rp)
-		rpRegex, ok := rp.GetMatch().GetPathSpecifier().(*route.RouteMatch_SafeRegex)
-		require.True(t, ok)
-		assert.Equal(t, "^/p/plain/?$", rpRegex.SafeRegex.GetRegex())
-
-		// Exact path -> native exact matcher (so the sorter ranks it above regex/prefix).
-		exact := &models.Route{
-			Method: "GET", Path: "/p/exact", OperationPath: "/exact", PathMatchType: "Exact",
-			DirectResponse: &models.RouteDirectResponse{StatusCode: 200},
-			Upstream:       models.RouteUpstream{ClusterKey: "main"},
-		}
-		re := translator.createRouteFromRDC("GET|/p/exact|", exact, rdc)
-		require.NotNil(t, re)
-		rePath, ok := re.GetMatch().GetPathSpecifier().(*route.RouteMatch_Path)
-		require.True(t, ok, "exact direct-response path should use native matcher, got %T", re.GetMatch().GetPathSpecifier())
-		assert.Equal(t, "/p/exact", rePath.Path)
-	})
-}
-
 // TestCreateWeightedCluster_TLS guards the fix for the reviewer concern
 // "Configure TLS for weighted HTTPS upstreams." A multi-endpoint (weighted) upstream
 // definition whose endpoints are HTTPS must be dialed over TLS, mirroring the single-endpoint
@@ -2857,4 +2786,47 @@ func TestParseDurationAllowZero_MatchesCRDPattern(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestBuildMatchHeaders_HeaderMatchersRendered guards that configured header matches are rendered
+// as Envoy header matchers on the route (the mechanism that makes header-based route selection and
+// cross-HTTPRoute precedence work), and that a RegularExpression match becomes a safe_regex rather
+// than being downgraded to an exact match.
+func TestBuildMatchHeaders_HeaderMatchersRendered(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+
+	route1 := &models.Route{
+		Method: "GET", Path: "/svc/v1/things", OperationPath: "/things",
+		Upstream: models.RouteUpstream{ClusterKey: "main"},
+		MatchHeaders: []models.RouteHeaderMatch{
+			{Name: "Version", Type: "Exact", Value: "two"},
+			{Name: "X-Flavor", Type: "RegularExpression", Value: "red|blue"},
+		},
+	}
+	r := translator.createRouteFromRDC("GET|/svc/v1/things|main.local|abc123", route1, rdc)
+	require.NotNil(t, r)
+
+	var version, flavor *route.HeaderMatcher
+	for _, h := range r.GetMatch().GetHeaders() {
+		switch h.GetName() {
+		case "version":
+			version = h
+		case "x-flavor":
+			flavor = h
+		}
+	}
+	require.NotNil(t, version, "expected a lower-cased 'version' header matcher")
+	_, exactOK := version.GetHeaderMatchSpecifier().(*route.HeaderMatcher_StringMatch)
+	require.True(t, exactOK, "Exact header match must be a string_match, got %T", version.GetHeaderMatchSpecifier())
+
+	require.NotNil(t, flavor, "expected an 'x-flavor' header matcher")
+	rx, ok := flavor.GetHeaderMatchSpecifier().(*route.HeaderMatcher_SafeRegexMatch)
+	require.True(t, ok, "RegularExpression header match must stay a safe_regex, got %T", flavor.GetHeaderMatchSpecifier())
+	assert.Equal(t, "red|blue", rx.SafeRegexMatch.GetRegex())
 }

@@ -144,9 +144,9 @@ type Operation struct {
 	// +kubebuilder:validation:Enum=Exact;PathPrefix
 	PathMatchType OperationPathMatchType `json:"pathMatchType,omitempty"`
 
-	// DirectResponse When set, the gateway responds directly without calling an upstream.
+	// MatchHeaders ANDed header matchers applied before routing to this operation.
 	// +optional
-	DirectResponse *OperationDirectResponse `json:"directResponse,omitempty"`
+	MatchHeaders []OperationHeaderMatch `json:"matchHeaders,omitempty"`
 
 	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
 	// +optional
@@ -161,21 +161,20 @@ const (
 	OperationPathMatchPathPrefix OperationPathMatchType = "PathPrefix"
 )
 
-// OperationDirectResponse configures an immediate HTTP response for a route.
-type OperationDirectResponse struct {
-	// StatusCode HTTP status code
+// OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch for Envoy route selection.
+type OperationHeaderMatch struct {
+	// Name Header name (case-insensitive)
 	// +kubebuilder:validation:Required
-	StatusCode int `json:"statusCode"`
+	Name string `json:"name"`
 
-	// Headers Optional response headers (e.g. Location for redirects)
-	// +optional
-	Headers []OperationResponseHeader `json:"headers,omitempty"`
-}
-
-// OperationResponseHeader is a single response header on a direct response.
-type OperationResponseHeader struct {
-	Name  string `json:"name"`
+	// Value Header value to match
+	// +kubebuilder:validation:Required
 	Value string `json:"value"`
+
+	// Type Match type (Exact or RegularExpression)
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;RegularExpression
+	Type string `json:"type,omitempty"`
 }
 
 // Resilience defines backend/route timeout configuration (maps to Envoy RouteAction

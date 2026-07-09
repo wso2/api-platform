@@ -69,7 +69,7 @@ func BuildAPIConfigFromHTTPRoute(
 	}
 
 	defsByName := make(map[string]apiv1.UpstreamDefinition)
-	var staged []stagedOperation
+	var ops []apiv1.Operation
 	mainUpstreamURL := backendResolution.PlaceholderURL
 	if mainUpstreamURL == "" {
 		mainUpstreamURL = "http://127.0.0.1:1"
@@ -81,7 +81,7 @@ func BuildAPIConfigFromHTTPRoute(
 		if err != nil {
 			return nil, err
 		}
-		filterPolicies, ruleDirect, hasRedirect, err := policiesFromHTTPRouteFilters(rule.Filters)
+		filterPolicies, hasRedirect, err := policiesFromHTTPRouteFilters(rule.Filters)
 		if err != nil {
 			return nil, err
 		}
@@ -131,22 +131,17 @@ func BuildAPIConfigFromHTTPRoute(
 			)
 		}
 
-		var useDirect *apiv1.OperationDirectResponse
+		// respondStatus != 0 marks a rule that terminates at the gateway with an immediate
+		// response, realized as the respond policy. Per Gateway-API a rule with no backends
+		// or with unresolvable backends returns a 500.
+		respondStatus := 0
 		switch {
 		case hasRedirect:
 			// A RequestRedirect rule terminates at the gateway (its redirect policy is
 			// already in filterPolicies) and legitimately has no backendRefs, so this must
 			// take precedence over the "no backends → 500" fallback below.
-		case !ruleHasBackendRefs(rule):
-			if ruleDirect != nil {
-				useDirect = ruleDirect
-			} else {
-				useDirect = directResponse500()
-			}
-		case ruleFailed:
-			useDirect = directResponse500()
-		case ruleDirect != nil:
-			useDirect = ruleDirect
+		case !ruleHasBackendRefs(rule), ruleFailed:
+			respondStatus = 500
 		}
 
 		if !weightedRule {
@@ -176,14 +171,21 @@ func BuildAPIConfigFromHTTPRoute(
 					Method:        method,
 					Path:          pathVal,
 					PathMatchType: pathType,
+					MatchHeaders:  headerMatches,
 					Policies:      copyPolicies(rulePolicies),
 				}
 				op.Policies = append(op.Policies, filterPolicies...)
 
-				// A redirect rule's policy is already attached via filterPolicies and
+				// A terminating rule's policy (respond or redirect) is already attached and
 				// short-circuits the request, so it needs no backend routing.
-				if useDirect != nil {
-					op.DirectResponse = useDirect
+				if respondStatus != 0 {
+					// Realize the gateway-terminated immediate response as the respond
+					// policy; it short-circuits the request so no backend routing is attached.
+					p, err := respondPolicyFromStatus(respondStatus)
+					if err != nil {
+						return nil, err
+					}
+					op.Policies = append(op.Policies, p)
 				} else if hasRedirect {
 					// redirect policy already attached; nothing to route.
 				} else if weightedRule {
@@ -215,21 +217,14 @@ func BuildAPIConfigFromHTTPRoute(
 					}
 				}
 
-				staged = append(staged, stagedOperation{op: op, headers: headerMatches})
+				ops = append(ops, op)
 			}
 		}
 	}
 
-	if len(staged) == 0 {
+	if len(ops) == 0 {
 		return nil, newInvalidHTTPRouteConfigError("no operations derived from HTTPRoute")
 	}
-
-	// Realize header-based route selection via the header-based-routing policy: header-
-	// differentiated ops that share a path+method collapse into a single operation carrying
-	// that policy. Reshapes routing only; the upstream definitions built above are reused as
-	// the policy's destinations. Non-header ops pass through unchanged.
-	mainDest := mainUpstreamDefName(defsByName, mainUpstreamRef, mainUpstreamURL)
-	ops := collapseHeaderMatchesToPolicy(staged, mainDest, log)
 
 	apiPolicies, err := loadHTTPRouteAPIPolicies(ctx, c, route, log)
 	if err != nil {

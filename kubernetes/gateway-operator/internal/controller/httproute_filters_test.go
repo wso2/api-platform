@@ -37,7 +37,7 @@ func TestPoliciesFromHTTPRouteFilters_RemoveHeadersAreObjects(t *testing.T) {
 		},
 	}}
 
-	policies, _, _, err := policiesFromHTTPRouteFilters(filters)
+	policies, _, err := policiesFromHTTPRouteFilters(filters)
 	require.NoError(t, err)
 	require.Len(t, policies, 1)
 	require.Equal(t, "remove-headers", policies[0].Name)
@@ -64,7 +64,7 @@ func TestPoliciesFromHTTPRouteFilters_SetHeadersAreObjects(t *testing.T) {
 			Set: []gatewayv1.HTTPHeader{{Name: "X-Set", Value: "v"}},
 		},
 	}}
-	policies, _, _, err := policiesFromHTTPRouteFilters(filters)
+	policies, _, err := policiesFromHTTPRouteFilters(filters)
 	require.NoError(t, err)
 	require.Len(t, policies, 1)
 	require.Equal(t, "set-headers", policies[0].Name)
@@ -91,7 +91,7 @@ func TestPoliciesFromHTTPRouteFilters_AddHeadersUseAppend(t *testing.T) {
 			Add: []gatewayv1.HTTPHeader{{Name: "X-Header-Add", Value: "add-appends-values"}},
 		},
 	}}
-	policies, _, _, err := policiesFromHTTPRouteFilters(filters)
+	policies, _, err := policiesFromHTTPRouteFilters(filters)
 	require.NoError(t, err)
 	require.Len(t, policies, 1)
 	require.Equal(t, "set-headers", policies[0].Name)
@@ -124,10 +124,9 @@ func TestPoliciesFromHTTPRouteFilters_Redirect(t *testing.T) {
 		},
 	}}
 
-	policies, direct, hasRedirect, err := policiesFromHTTPRouteFilters(filters)
+	policies, hasRedirect, err := policiesFromHTTPRouteFilters(filters)
 	require.NoError(t, err)
 	require.True(t, hasRedirect, "a RequestRedirect must signal hasRedirect")
-	require.Nil(t, direct, "a redirect must not produce a direct response")
 
 	var redirectPolicies int
 	for _, p := range policies {
