@@ -125,6 +125,9 @@ jobs:
                               number
                               state
                               title
+                              issueType {
+                                name
+                              }
                               repository {
                                 name
                                 owner {
@@ -192,8 +195,12 @@ jobs:
               }
 
               const labels = issue.labels.nodes.map(label => label.name);
-              if (!labels.includes(GATE_TRIGGER_TYPE)) {
-                console.log(`#${issue.number} is not a feature issue. Skipping.`);
+              const issueType = issue.issueType?.name || '';
+              const isFeatureIssue = labels.some(label => label.toLowerCase() === GATE_TRIGGER_TYPE)
+                || issueType.toLowerCase() === GATE_TRIGGER_TYPE;
+
+              if (!isFeatureIssue) {
+                console.log(`#${issue.number} is not a feature issue. Labels: ${labels.join(', ') || 'none'}. Type: ${issueType || 'none'}. Skipping.`);
                 continue;
               }
 
