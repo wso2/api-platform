@@ -116,11 +116,22 @@ const ensurePermission = (currentPage, role, req) => {
 
 // Rejects requests whose path contains traversal or encoded-separator sequences.
 // Checked on the path only; query strings may legitimately contain dots.
-const PATH_TRAVERSAL_RE = /(?:\.\.|%2e%2e|%2f|%5c|%00)/i;
+const ENCODED_SEPARATOR_RE = /%2f|%5c|%00/i;
 function hasTraversalSequence(originalUrl) {
     const rawUrl = originalUrl || '';
     const rawPath = rawUrl.split('?')[0];
-    return rawUrl.includes('\0') || rawPath.includes('\\') || PATH_TRAVERSAL_RE.test(rawPath);
+    if (rawUrl.includes('\0') || rawPath.includes('\\')) return true;
+    // Encoded separators are always suspicious in a path.
+    if (ENCODED_SEPARATOR_RE.test(rawPath)) return true;
+    // Decode once (originalUrl is raw — Express does not decode it) so mixed-encoding
+    // dot segments (.., .%2e, %2e., %2e%2e) all normalize to '..' before the check.
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(rawPath);
+    } catch {
+        return true; // malformed percent-encoding — fail closed
+    }
+    return decodedPath.includes('..') || decodedPath.includes('\\') || decodedPath.includes('\0');
 }
 
 const ensureAuthenticated = async (req, res, next) => {

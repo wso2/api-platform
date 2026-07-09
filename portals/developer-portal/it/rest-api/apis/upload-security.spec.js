@@ -74,6 +74,9 @@ describe('artifact ZIP upload — file-access hardening', () => {
         const zip = createZip(entries);
         const res = await client.as('publisher').postMultipart('/apis').attach('artifact', zip, 'artifact.zip');
         expect(res.status).toBe(400);
+        // The API must not have been created despite carrying a valid api.yaml.
+        const get = await client.as('publisher').get(`/apis/${handle}`);
+        expect(get.status).toBe(404);
     });
 
     it('rejects a multipart upload larger than the configured limit with HTTP 413', async () => {
@@ -82,7 +85,11 @@ describe('artifact ZIP upload — file-access hardening', () => {
         const zip = createZip([{ name: 'big.bin', content: oversized }]);
         const res = await client.as('publisher').postMultipart('/apis').attach('artifact', zip, 'artifact.zip');
         expect(res.status).toBe(413);
-        // The configured limit must not be disclosed in the response.
-        expect(JSON.stringify(res.body)).not.toContain(String(MAX_UPLOAD_BYTES));
+        // The configured limit must not be disclosed in any representation — raw byte
+        // count nor common human-readable forms.
+        const body = JSON.stringify(res.body);
+        for (const form of [String(MAX_UPLOAD_BYTES), '10 MB', '10MB', '10 MiB', '10MiB', '10240']) {
+            expect(body).not.toContain(form);
+        }
     }, 30000);
 });

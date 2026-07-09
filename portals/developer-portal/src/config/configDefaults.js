@@ -150,7 +150,6 @@ const DEFAULTS = {
         maxBytes: 10485760,     // 10 MiB — single upload / single archive entry
         maxTotalBytes: 52428800, // 50 MiB — total extracted per archive
         maxZipEntries: 500,
-        maxZipRatio: 20,
         maxDepth: 10,
     },
     developer: {

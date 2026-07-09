@@ -254,15 +254,16 @@ function build() {
         }
         const status = err.status || 500;
         if (status >= 500) {
+            // Return a generic message with a correlation id; the full detail is logged
+            // under the same trackingId, never sent to the client.
+            const trackingId = crypto.randomUUID();
             logger.error('OpenAPI router error', {
+                trackingId,
                 error: err.message,
                 stack: err.stack,
                 url: req.originalUrl,
                 method: req.method,
             });
-            // Return a generic message with a correlation id; detail is logged, not sent.
-            const trackingId = crypto.randomUUID();
-            logger.error('OpenAPI router error correlation', { trackingId });
             return res.status(status).json({
                 code: status,
                 message: 'An unexpected error occurred.',
