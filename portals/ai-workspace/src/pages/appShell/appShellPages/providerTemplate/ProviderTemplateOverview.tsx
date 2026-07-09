@@ -265,7 +265,7 @@ export default function ProviderTemplateOverview() {
     setEndpointUrl(t.metadata?.endpointUrl ?? '');
     setProvider(
       (t.managedBy ?? t.provider)?.trim() ||
-        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'customer')
+        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'organization')
     );
     setOpenapiSpecUrl(t.metadata?.openapiSpecUrl ?? '');
     setLogoUrlField(t.metadata?.logoUrl ?? '');
@@ -413,7 +413,7 @@ export default function ProviderTemplateOverview() {
       id: template.id,
       displayName: template.displayName,
       version: currentVersion,
-      managedBy: provider.trim() || 'customer',
+      managedBy: provider.trim() || 'organization',
       description: template.description,
       ...fromTokenConfig(defaultTokens),
       metadata: Object.keys(metadata).length ? metadata : undefined,

@@ -6844,8 +6844,8 @@ components:
           type: string
           description: |
             Identifies who manages the template. Built-in templates use 'wso2';
-            custom templates default to 'customer' and may be set to any value.
-          default: customer
+            custom templates default to 'organization' and may be set to any value.
+          default: organization
           maxLength: 255
           example: wso2
         description:
@@ -6954,10 +6954,10 @@ components:
         managedBy:
           type: string
           description: |
-            Identifies who manages the template. Custom templates default to 'customer'.
-          default: customer
+            Identifies who manages the template. Custom templates default to 'organization'.
+          default: organization
           maxLength: 255
-          example: customer
+          example: organization
         description:
           type: string
           description: Description of the LLM provider template
