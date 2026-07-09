@@ -26,9 +26,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,18 +40,50 @@ import (
 	"ai-workspace-bff/internal/tlsutil"
 )
 
+// bannerWidth is the character width of the startup banner's rule lines.
+const bannerWidth = 72
+
+// centerInBanner left-pads s so it sits centered between the banner rules.
+func centerInBanner(s string) string {
+	if len(s) >= bannerWidth {
+		return s
+	}
+	return strings.Repeat(" ", (bannerWidth-len(s))/2) + s
+}
+
 // printStartedMarker writes a large, prominent banner for humans watching
 // the console, matching the gateway controller's startup banner style. It's
 // purely decorative — the structured "AI Workspace BFF started" slog.Info
 // line is the source of truth for log parsing.
-func printStartedMarker(mode string) {
+func printStartedMarker(mode, url string) {
+	rule := strings.Repeat("=", bannerWidth)
 	fmt.Print("\n\n" +
-		"========================================================================\n" +
+		rule + "\n" +
 		"\n" +
-		"                    AI Workspace Started mode=" + mode + "\n" +
+		centerInBanner("AI Workspace Started mode="+mode) + "\n\n" +
+		centerInBanner("Visit "+url) + "\n" +
 		"\n" +
-		"========================================================================\n" +
+		rule + "\n" +
 		"\n\n")
+}
+
+// portalURL renders the browser-visitable address of the portal. A wildcard or
+// empty listen host is reported as localhost, since "https://:8081" and
+// "https://0.0.0.0:8081" are not addresses a human can click.
+func portalURL(addr string, tlsEnabled bool) string {
+	scheme := "http"
+	if tlsEnabled {
+		scheme = "https"
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return scheme + "://" + addr
+	}
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "localhost"
+	}
+	return scheme + "://" + net.JoinHostPort(host, port)
 }
 
 func main() {
@@ -92,14 +126,16 @@ func main() {
 		if cfg.DemoMode {
 			mode = "DEMO"
 		}
+		url := portalURL(cfg.Addr, tlsConfig != nil)
 		slog.Info("AI Workspace BFF started",
 			"addr", cfg.Addr,
+			"url", url,
 			"mode", mode,
 			"auth_mode", cfg.AuthMode,
 			"platform_api", cfg.PlatformAPIURL,
 			"oidc_enabled", cfg.OIDC.Enabled,
 		)
-		printStartedMarker(mode)
+		printStartedMarker(mode, url)
 		var serveErr error
 		if tlsConfig != nil {
 			serveErr = httpServer.ListenAndServeTLS("", "")
