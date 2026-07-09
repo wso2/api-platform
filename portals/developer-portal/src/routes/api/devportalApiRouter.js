@@ -241,10 +241,12 @@ function build() {
     // objects with { status, message, errors? }.
     router.use((err, req, res, next) => {
         if (res.headersSent) return next(err);
+        // Log the path only — the query string may carry tokens/secrets.
+        const reqPath = (req.originalUrl || '').split('?')[0];
         // Oversize uploads surface as 413 with a generic message.
         if (err.code === 'LIMIT_FILE_SIZE') {
             logger.warn('Upload rejected: file exceeds size limit', {
-                url: req.originalUrl,
+                url: reqPath,
                 method: req.method,
             });
             return res.status(413).json({
@@ -261,7 +263,7 @@ function build() {
                 trackingId,
                 error: err.message,
                 stack: err.stack,
-                url: req.originalUrl,
+                url: reqPath,
                 method: req.method,
             });
             return res.status(status).json({
@@ -274,7 +276,7 @@ function build() {
         logger.warn('OpenAPI router rejected request', {
             error: err.message,
             status,
-            url: req.originalUrl,
+            url: reqPath,
             method: req.method,
         });
         res.status(status).json({
