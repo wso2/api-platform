@@ -175,7 +175,7 @@ const getLlmsConfig = async (req, res) => {
         res.json(JSON.parse(asset.file_content.toString('utf8')));
     } catch (err) {
         logger.error('Error getting llms config', { error: err.message, stack: err.stack });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to get LLMs configuration' });
     }
 };
 
@@ -208,7 +208,7 @@ const saveLlmsConfig = async (req, res) => {
         res.json({ message: 'Saved successfully' });
     } catch (err) {
         logger.error('Error saving llms config', { error: err.message, stack: err.stack });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to save LLMs configuration' });
     }
 };
 

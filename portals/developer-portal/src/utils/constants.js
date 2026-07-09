@@ -28,6 +28,8 @@ const DEVPORTAL_BASE_PATH = `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
 const devportalOrgPath = (_orgId) => `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
 
 module.exports = {
+    // Allowed algorithms for IdP JWT verification.
+    JWT_ASYMMETRIC_ALGORITHMS: ['RS256', 'RS384', 'RS512', 'PS256'],
     DEVPORTAL_API: {
         BASE_SEGMENT: DEVPORTAL_BASE_SEGMENT,
         VERSION: DEVPORTAL_VERSION,
