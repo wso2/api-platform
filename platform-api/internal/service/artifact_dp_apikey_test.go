@@ -50,14 +50,23 @@ func (dpNoopEventHub) UnsubscribeAll(string) error                     { return 
 func (dpNoopEventHub) CleanUpEvents() error                            { return nil }
 func (dpNoopEventHub) Close() error                                    { return nil }
 
-// dpKeyGatewayRepo returns a single gateway for the org so API-key creation has a
-// broadcast target (an empty list would short-circuit with ErrGatewayUnavailable).
-type dpKeyGatewayRepo struct {
-	repository.GatewayRepository
+// dpKeyAPIRepo returns a single associated gateway so LLM API-key creation has a
+// broadcast target. Association-scoped selection mirrors the REST key path.
+type dpKeyAPIRepo struct {
+	repository.APIRepository
 }
 
-func (dpKeyGatewayRepo) GetByOrganizationID(string) ([]*model.Gateway, error) {
-	return []*model.Gateway{{ID: "gw-1"}}, nil
+func (dpKeyAPIRepo) GetAPIGatewaysWithDetails(string, string) ([]*model.APIGatewayWithDetails, error) {
+	return []*model.APIGatewayWithDetails{{ID: "gw-1", Name: "gw-1"}}, nil
+}
+
+// dpKeyNoAssocAPIRepo models an artifact with NO gateway associations (undeployed).
+type dpKeyNoAssocAPIRepo struct {
+	repository.APIRepository
+}
+
+func (dpKeyNoAssocAPIRepo) GetAPIGatewaysWithDetails(string, string) ([]*model.APIGatewayWithDetails, error) {
+	return nil, nil
 }
 
 // dpCapturingAPIKeyRepo captures the persisted API key so tests can assert it was created
@@ -91,7 +100,7 @@ func TestLLMProviderAPIKey_AllowedForDPOrigin(t *testing.T) {
 		getByIDFunc: func(string, string) (*model.LLMProvider, error) { return provider, nil },
 	}
 	keyRepo := &dpCapturingAPIKeyRepo{}
-	svc := NewLLMProviderAPIKeyService(providerRepo, dpKeyGatewayRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
+	svc := NewLLMProviderAPIKeyService(providerRepo, dpKeyAPIRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
 
 	resp, err := svc.CreateLLMProviderAPIKey(context.Background(), "dp-prov", "org-1", "",
 		&api.CreateLLMProviderAPIKeyRequest{DisplayName: "dp-consumer-key"})
@@ -124,7 +133,7 @@ func TestLLMProxyAPIKey_AllowedForDPOrigin(t *testing.T) {
 		getByIDFunc: func(string, string) (*model.LLMProxy, error) { return proxy, nil },
 	}
 	keyRepo := &dpCapturingAPIKeyRepo{}
-	svc := NewLLMProxyAPIKeyService(proxyRepo, dpKeyGatewayRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
+	svc := NewLLMProxyAPIKeyService(proxyRepo, dpKeyAPIRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
 
 	resp, err := svc.CreateLLMProxyAPIKey(context.Background(), "dp-proxy", "org-1", "",
 		&api.CreateLLMProxyAPIKeyRequest{DisplayName: "dp-consumer-key"})
@@ -139,5 +148,78 @@ func TestLLMProxyAPIKey_AllowedForDPOrigin(t *testing.T) {
 	}
 	if keyRepo.created.ArtifactUUID != proxy.UUID {
 		t.Errorf("persisted key ArtifactUUID = %q, want proxy UUID %q", keyRepo.created.ArtifactUUID, proxy.UUID)
+	}
+}
+
+// TestCreateLLMProviderAPIKey_AssociationScoped verifies that creating a key for a
+// provider with NO gateway associations persists the key and broadcasts to ZERO
+// gateways — i.e. the broadcast is association-scoped, not org-wide (issue: LLM key
+// events were previously sent to every org gateway, causing "artifact not found").
+func TestCreateLLMProviderAPIKey_AssociationScoped(t *testing.T) {
+	provider := &model.LLMProvider{
+		UUID:             "prov-uuid",
+		ID:               "prov",
+		OrganizationUUID: "org-1",
+		Name:             "Prov",
+		Version:          "v1.0",
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(string, string) (*model.LLMProvider, error) { return provider, nil },
+	}
+	keyRepo := &dpCapturingAPIKeyRepo{}
+	hub := &capturingEventHub{}
+	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
+
+	svc := NewLLMProviderAPIKeyService(providerRepo, dpKeyNoAssocAPIRepo{}, keyRepo,
+		events, newTestIdentityService(), newTestLogger())
+
+	resp, err := svc.CreateLLMProviderAPIKey(context.Background(), "prov", "org-1", "",
+		&api.CreateLLMProviderAPIKeyRequest{DisplayName: "k"})
+	if err != nil {
+		t.Fatalf("CreateLLMProviderAPIKey with no associations = %v, want success", err)
+	}
+	if resp == nil || resp.ApiKey == "" {
+		t.Fatalf("expected a generated key, got %#v", resp)
+	}
+	if keyRepo.created == nil {
+		t.Fatalf("key was not persisted")
+	}
+	if len(hub.published) != 0 {
+		t.Fatalf("expected 0 broadcasts for an unassociated provider, got %d", len(hub.published))
+	}
+}
+
+// TestCreateLLMProxyAPIKey_AssociationScoped is the LLM-proxy counterpart.
+func TestCreateLLMProxyAPIKey_AssociationScoped(t *testing.T) {
+	proxy := &model.LLMProxy{
+		UUID:             "proxy-uuid",
+		ID:               "proxy",
+		OrganizationUUID: "org-1",
+		Name:             "Proxy",
+		Version:          "v1.0",
+	}
+	proxyRepo := &mockLLMProxyRepo{
+		getByIDFunc: func(string, string) (*model.LLMProxy, error) { return proxy, nil },
+	}
+	keyRepo := &dpCapturingAPIKeyRepo{}
+	hub := &capturingEventHub{}
+	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
+
+	svc := NewLLMProxyAPIKeyService(proxyRepo, dpKeyNoAssocAPIRepo{}, keyRepo,
+		events, newTestIdentityService(), newTestLogger())
+
+	resp, err := svc.CreateLLMProxyAPIKey(context.Background(), "proxy", "org-1", "",
+		&api.CreateLLMProxyAPIKeyRequest{DisplayName: "k"})
+	if err != nil {
+		t.Fatalf("CreateLLMProxyAPIKey with no associations = %v, want success", err)
+	}
+	if resp == nil || resp.ApiKey == "" {
+		t.Fatalf("expected a generated key, got %#v", resp)
+	}
+	if keyRepo.created == nil {
+		t.Fatalf("key was not persisted")
+	}
+	if len(hub.published) != 0 {
+		t.Fatalf("expected 0 broadcasts for an unassociated proxy, got %d", len(hub.published))
 	}
 }

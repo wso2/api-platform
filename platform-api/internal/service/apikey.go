@@ -179,6 +179,26 @@ func filterGatewaysByAllowedTargets(gateways []*model.Gateway, allowedTargets st
 	return filtered
 }
 
+// filterAPIGatewaysByAllowedTargets is filterGatewaysByAllowedTargets for the
+// association-scoped []*model.APIGatewayWithDetails shape returned by
+// GetAPIGatewaysWithDetails. Matching is by gateway Name, identical to the base helper.
+func filterAPIGatewaysByAllowedTargets(gateways []*model.APIGatewayWithDetails, allowedTargets string) []*model.APIGatewayWithDetails {
+	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
+		return gateways
+	}
+	allowed := make(map[string]struct{})
+	for _, name := range strings.Split(allowedTargets, ",") {
+		allowed[strings.TrimSpace(name)] = struct{}{}
+	}
+	filtered := make([]*model.APIGatewayWithDetails, 0, len(gateways))
+	for _, gw := range gateways {
+		if _, ok := allowed[gw.Name]; ok {
+			filtered = append(filtered, gw)
+		}
+	}
+	return filtered
+}
+
 // randomHexString generates a random lowercase hex string of the requested length.
 func randomHexString(n int) (string, error) {
 	bytes := make([]byte, (n+1)/2)
@@ -276,6 +296,84 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 	return "", fmt.Errorf("failed to generate a unique API key name after %d retries", maxRetries)
 }
 
+// APIKeyCreatedEventFromModel builds an apikey.created broadcast payload from a
+// persisted API key record. It sends the hash JSON and masked key, never the plain
+// key. Used both at key-creation time and to (re)broadcast pre-existing keys to a
+// gateway the API is newly associated with at deploy time.
+func APIKeyCreatedEventFromModel(k *model.APIKey) *model.APIKeyCreatedEvent {
+	event := &model.APIKeyCreatedEvent{
+		UUID:         k.UUID,
+		ApiId:        k.ArtifactUUID,
+		Name:         k.Name,
+		ApiKeyHashes: k.APIKeyHashes,
+		MaskedApiKey: k.MaskedAPIKey,
+		Issuer:       k.Issuer,
+		CreatedAt:    k.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    k.UpdatedAt.Format(time.RFC3339),
+	}
+	if k.ExpiresAt != nil {
+		expiresAtStr := k.ExpiresAt.Format(time.RFC3339)
+		event.ExpiresAt = &expiresAtStr
+	}
+	return event
+}
+
+// BackfillAPIKeysToGateway (re)broadcasts an artifact's existing active API keys to a
+// gateway it has just been deployed/associated to. Keys are broadcast to their associated
+// gateways only once, at creation time (CreateAPIKey and the per-kind key services), so a
+// key created before this association would otherwise reach the gateway only after the
+// gateway-controller's next reconnect bulk sync — leaving a window where the artifact is
+// live but the key is rejected. Pushing existing keys here closes that window.
+//
+// It is artifact-kind-agnostic: ListByArtifact and the apikey.created event/controller
+// handler are the same for REST APIs, LLM providers/proxies, MCP proxies, and WebSub/
+// WebBroker APIs, so every deploy path can share this one helper.
+//
+// Best-effort: the controller upserts apikey.created idempotently, so re-sending a key the
+// gateway already holds is harmless, and any failure is logged without blocking the
+// deployment (the reconnect bulk sync remains the safety net).
+func BackfillAPIKeysToGateway(apiKeyRepo repository.APIKeyRepository, events *GatewayEventsService, slogger *slog.Logger, artifactUUID, gatewayID, actor string) {
+	if events == nil || apiKeyRepo == nil {
+		return
+	}
+
+	keys, err := apiKeyRepo.ListByArtifact(artifactUUID)
+	if err != nil {
+		if slogger != nil {
+			slogger.Warn("Failed to load API keys for deploy-time backfill",
+				"artifactId", artifactUUID, "gatewayId", gatewayID, "error", err)
+		}
+		return
+	}
+
+	now := time.Now()
+	backfilled := 0
+	for _, k := range keys {
+		if k == nil || k.Status != constants.APIKeyStatusActive {
+			continue
+		}
+		// Skip expired keys — never push a dead key to a gateway.
+		if k.ExpiresAt != nil && !k.ExpiresAt.After(now) {
+			continue
+		}
+
+		event := APIKeyCreatedEventFromModel(k)
+		if err := events.BroadcastAPIKeyCreatedEvent(gatewayID, actor, event); err != nil {
+			if slogger != nil {
+				slogger.Warn("Failed to backfill API key to gateway",
+					"artifactId", artifactUUID, "gatewayId", gatewayID, "keyName", k.Name, "error", err)
+			}
+			continue
+		}
+		backfilled++
+	}
+
+	if backfilled > 0 && slogger != nil {
+		slogger.Info("Backfilled existing API keys to gateway at deploy time",
+			"artifactId", artifactUUID, "gatewayId", gatewayID, "count", backfilled)
+	}
+}
+
 // CreateAPIKey hashes an external API key and broadcasts it to gateways where the API is deployed.
 // This method is used when external platforms inject API keys to hybrid gateways.
 func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId, userId string, req *api.CreateAPIKeyRequest) error {
@@ -292,7 +390,9 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	apiId := apiMetadata.ID
 
-	// Get all deployments for this API to find target gateways
+	// Get all deployments for this API to find target gateways.
+	// An empty list is valid: the key is still persisted centrally and any gateway
+	// associated later picks it up via deployment-time sync.
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
 		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
@@ -358,21 +458,8 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
-	event := &model.APIKeyCreatedEvent{
-		UUID:          apiKeyUUID,
-		ApiId:         apiId,
-		Name:          keyName,
-		ApiKeyHashes:  apiKeyHashesJSON,
-		MaskedApiKey:  maskedAPIKey,
-		ExternalRefId: req.ExternalRefId,
-		Issuer:        issuer,
-		CreatedAt:     dbKey.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     dbKey.UpdatedAt.Format(time.RFC3339),
-	}
-	if expiresAt != nil {
-		expiresAtStr := expiresAt.Format(time.RFC3339)
-		event.ExpiresAt = &expiresAtStr
-	}
+	event := APIKeyCreatedEventFromModel(dbKey)
+	event.ExternalRefId = req.ExternalRefId
 
 	successCount := 0
 	failureCount := 0

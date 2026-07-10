@@ -42,6 +42,7 @@ type MCPDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	utils                *utils.MCPUtils
@@ -50,13 +51,14 @@ type MCPDeploymentService struct {
 
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
-	gatewayEventsService *GatewayEventsService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
+	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
 		artifactRepo:         artifactRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		utils:                &utils.MCPUtils{},
@@ -344,6 +346,9 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, proxyUUID, gatewayID, createdBy)
 	}
 
 	// Return deployment response
@@ -550,6 +555,9 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, proxyUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
